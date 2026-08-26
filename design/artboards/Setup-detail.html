@@ -1,0 +1,143 @@
+<!doctype html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"><style>body{margin:0;background:#050507;padding:24px}</style></head><body>
+<helmet>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0B0E;font-family:'Space Grotesk',system-ui,sans-serif}
+a{color:#C8FF00}a:hover{color:#8B5CF6}
+@keyframes ccpulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes ccup{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}
+input::placeholder{color:#6E675F}
+*::-webkit-scrollbar{display:none}
+</style>
+</helmet><div data-screen-label="Setup detail" style="position:absolute;inset:0;display:flex;flex-direction:column;background:#0B0B0E;z-index:5">
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 16px 8px">
+    <button onClick="{{ closeDetail }}" style="width:34px;height:34px;border-radius:12px;border:1px solid rgba(255,247,232,.1);background:#17171C;color:#FFF7E8;font-size:16px;cursor:pointer">‹</button>
+    <div style="flex:1">
+      <div style="font:700 17px 'Space Grotesk';letter-spacing:-.01em">META</div>
+      <div style="display:flex;align-items:center;gap:6px;font:500 11px 'JetBrains Mono',monospace;color:#32D6FF"><span style="width:6px;height:6px;border-radius:50%;background:{{ liveDotCol }};animation:ccpulse 2s infinite"></span>{{ freshLabel }}</div>
+    </div>
+    <div style="font:700 15px 'Space Grotesk';color:#FFC857;border:1.5px solid rgba(255,200,87,.45);border-radius:10px;padding:4px 9px">B+</div>
+  </div>
+  <div style="display:flex;gap:6px;padding:2px 16px 10px;overflow-x:auto">
+    <sc-for list="{{ steps }}" as="st" hint-placeholder-count="6">
+      <div style="flex:none;display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:99px;font:500 10.5px 'Space Grotesk';white-space:nowrap;background:{{ st.bg }};border:1px solid {{ st.bd }};color:{{ st.col }}">{{ st.mark }} {{ st.label }}</div>
+    </sc-for>
+  </div>
+  <div style="display:flex;gap:4px;margin:0 16px 12px;padding:4px;background:#17171C;border-radius:12px">
+    <button onClick="{{ dtLive }}" style="flex:1;padding:8px 0;border:none;border-radius:9px;font:600 12.5px 'Space Grotesk';cursor:pointer;background:{{ segLiveBg }};color:{{ segLiveCol }}">Live</button>
+    <button onClick="{{ dtPlan }}" style="flex:1;padding:8px 0;border:none;border-radius:9px;font:600 12.5px 'Space Grotesk';cursor:pointer;background:{{ segPlanBg }};color:{{ segPlanCol }}">Plan</button>
+    <button onClick="{{ dtLearn }}" style="flex:1;padding:8px 0;border:none;border-radius:9px;font:600 12.5px 'Space Grotesk';cursor:pointer;background:{{ segLearnBg }};color:{{ segLearnCol }}">Learn</button>
+  </div>
+  <div style="flex:1;overflow-y:auto;padding:0 16px 24px;display:flex;flex-direction:column;gap:12px">
+
+    <sc-if value="{{ dLive }}" hint-placeholder-val="{{ true }}">
+      <div style="background:#111117;border:1px solid rgba(255,247,232,.07);border-radius:16px;padding:14px 10px 10px">
+        <div style="position:relative;height:200px">
+          <div style="position:absolute;left:0;right:0;top:{{ yEntryHi }}px;height:{{ entryBandH }}px;background:rgba(200,255,0,.08);border-top:1px solid rgba(200,255,0,.35);border-bottom:1px solid rgba(200,255,0,.35)"></div>
+          <div style="position:absolute;left:0;right:0;top:{{ yTarget }}px;border-top:1.5px dashed rgba(53,208,127,.6)"></div>
+          <div style="position:absolute;left:0;right:0;top:{{ ySupport }}px;border-top:1px dashed rgba(50,214,255,.45)"></div>
+          <div style="position:absolute;left:0;right:0;top:{{ yInval }}px;border-top:1.5px dashed rgba(255,90,95,.6)"></div>
+          <div style="position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;gap:3px">
+            <sc-for list="{{ candles }}" as="c" hint-placeholder-count="24">
+              <div style="position:relative;width:9px;height:200px">
+                <div style="position:absolute;left:4px;top:{{ c.wt }}px;height:{{ c.wh }}px;width:1.5px;background:{{ c.col }}"></div>
+                <div style="position:absolute;left:1px;top:{{ c.bt }}px;height:{{ c.bh }}px;width:7px;border-radius:1.5px;background:{{ c.col }}"></div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="position:absolute;right:0;top:{{ yTargetLbl }}px;font:600 9.5px 'JetBrains Mono',monospace;color:#0B0B0E;background:#35D07F;border-radius:5px;padding:2px 5px">TARGET 540.00</div>
+          <div style="position:absolute;left:0;top:{{ yEntryLbl }}px;font:600 9.5px 'JetBrains Mono',monospace;color:#C8FF00;background:rgba(200,255,0,.12);border:1px solid rgba(200,255,0,.3);border-radius:5px;padding:2px 5px">ENTRY 500–504</div>
+          <div style="position:absolute;left:0;top:{{ ySupportLbl }}px;font:600 9.5px 'JetBrains Mono',monospace;color:#32D6FF;background:rgba(50,214,255,.1);border-radius:5px;padding:2px 5px">SUPPORT 480.00</div>
+          <div style="position:absolute;right:0;top:{{ yInvalLbl }}px;font:600 9.5px 'JetBrains Mono',monospace;color:#0B0B0E;background:#FF5A5F;border-radius:5px;padding:2px 5px">FAILS 460.00</div>
+          <div style="position:absolute;right:0;top:{{ yPriceLbl }}px;font:700 10px 'JetBrains Mono',monospace;color:#0B0B0E;background:#32D6FF;border-radius:5px;padding:2px 6px">{{ priceStr }}</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:10px;font:500 10px 'JetBrains Mono',monospace;color:#6E675F"><span>{{ feedLabel }}</span><span>1D · 5m candles</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{ narration }}" as="n" hint-placeholder-count="3">
+          <div style="display:flex;gap:10px;background:#17171C;border:1px solid rgba(139,92,246,.22);border-left:3px solid #8B5CF6;border-radius:12px;padding:11px 12px">
+            <div style="flex:1">
+              <div style="font:400 13.5px/1.45 'Space Grotesk';color:#FFF7E8">{{ n.text }}</div>
+              <div style="margin-top:5px;font:500 10px 'JetBrains Mono',monospace;color:#8B5CF6">KAI · {{ n.time }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <button onClick="{{ toggleTech }}" style="border:1px dashed rgba(255,247,232,.18);background:none;border-radius:12px;padding:10px;font:500 12px 'Space Grotesk';color:#B9B0A8;cursor:pointer;text-align:left">{{ techToggleLabel }}</button>
+      <sc-if value="{{ techOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#111117;border-radius:12px;padding:12px;font:400 12px/1.6 'JetBrains Mono',monospace;color:#B9B0A8">VWAP reclaimed at 9:36 · RVOL 1.3× (needs 1.4×) · 5m higher lows since 9:15 · ORB high 504.10 · ATR(14) 6.2</div>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{ dPlan }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#17171C;border:1px solid rgba(255,247,232,.07);border-radius:16px;padding:6px 16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid rgba(255,247,232,.06)"><span style="font:400 13px 'Space Grotesk';color:#B9B0A8">Entry condition</span><span style="font:500 12.5px 'Space Grotesk';color:#FFF7E8;text-align:right;max-width:55%">5-min close above 504 with volume</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid rgba(255,247,232,.06)"><span style="font:400 13px 'Space Grotesk';color:#B9B0A8">Entry zone</span><span style="font:600 13px 'JetBrains Mono',monospace;color:#C8FF00">$500.00–504.00</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid rgba(255,247,232,.06)"><span style="font:400 13px 'Space Grotesk';color:#B9B0A8">Stop</span><span style="font:600 13px 'JetBrains Mono',monospace;color:#FF5A5F">$478.50</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid rgba(255,247,232,.06)"><span style="font:400 13px 'Space Grotesk';color:#B9B0A8">Setup fails</span><span style="font:600 13px 'JetBrains Mono',monospace;color:#FF5A5F">close below $460.00</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid rgba(255,247,232,.06)"><span style="font:400 13px 'Space Grotesk';color:#B9B0A8">Targets</span><span style="font:600 13px 'JetBrains Mono',monospace;color:#35D07F">$520.00 · $540.00</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0"><span style="font:400 13px 'Space Grotesk';color:#B9B0A8">Suggested size</span><span style="font:500 12.5px 'Space Grotesk';color:#FFF7E8">$500 · 1 share · risks $24</span></div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <div style="flex:1;background:rgba(53,208,127,.08);border:1px solid rgba(53,208,127,.25);border-radius:14px;padding:12px"><div style="font:600 11px 'Space Grotesk';color:#35D07F;letter-spacing:.06em">IF IT WORKS</div><div style="font:600 18px 'JetBrains Mono',monospace;color:#35D07F;margin:5px 0 3px">+$18</div><div style="font:400 11px/1.4 'Space Grotesk';color:#B9B0A8">at first target $520</div></div>
+        <div style="flex:1;background:rgba(255,90,95,.07);border:1px solid rgba(255,90,95,.25);border-radius:14px;padding:12px"><div style="font:600 11px 'Space Grotesk';color:#FF5A5F;letter-spacing:.06em">IF IT FAILS</div><div style="font:600 18px 'JetBrains Mono',monospace;color:#FF5A5F;margin:5px 0 3px">−$24</div><div style="font:400 11px/1.4 'Space Grotesk';color:#B9B0A8">at stop $478.50</div></div>
+      </div>
+      <div style="font:400 12px/1.5 'Space Grotesk';color:#B9B0A8;padding:0 2px">You'll see a full preview before anything is sent. Kai never trades without your confirmation.</div>
+      <sc-if value="{{ canOrder }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ openOrder }}" style="border:none;border-radius:14px;padding:15px;background:#C8FF00;color:#0B0B0E;font:700 15px 'Space Grotesk';cursor:pointer" style-hover="background:#D6FF3D">Prepare order</button>
+      </sc-if>
+      <sc-if value="{{ marketClosedNote }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(255,247,232,.12);border-radius:14px;padding:14px;text-align:center;font:500 13px 'Space Grotesk';color:#6E675F">Market closed — prices are stale. Ordering resumes at 9:30 AM ET.</div>
+      </sc-if>
+      <sc-if value="{{ posOpenNote }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ goPositionsFromDetail }}" style="border:1px solid rgba(53,208,127,.4);background:rgba(53,208,127,.08);border-radius:14px;padding:14px;font:600 14px 'Space Grotesk';color:#35D07F;cursor:pointer">Position open · view in Positions →</button>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{ dLearn }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#17171C;border:1px solid rgba(139,92,246,.25);border-radius:16px;padding:16px">
+        <div style="font:600 11px 'JetBrains Mono',monospace;color:#8B5CF6;letter-spacing:.08em;margin-bottom:8px">WHY THIS SETUP CAN WORK</div>
+        <div style="font:400 14px/1.55 'Space Grotesk';color:#FFF7E8">When buyers defend the same price twice, sellers who bet against it start giving up. If volume rises as price pushes back above the old breakout level, the crowd that sold often has to buy back — which fuels the move.</div>
+      </div>
+      <div style="background:#111117;border:1px solid rgba(255,247,232,.07);border-radius:16px;padding:16px">
+        <div style="font:600 11px 'JetBrains Mono',monospace;color:#32D6FF;letter-spacing:.08em;margin-bottom:10px">THE PATTERN</div>
+        <div style="position:relative;height:84px">
+          <div style="position:absolute;left:0;right:0;top:56px;border-top:1.5px dashed rgba(50,214,255,.5)"></div>
+          <div style="position:absolute;left:8%;top:30px;width:8px;height:30px;border-radius:2px;background:#FF5A5F"></div>
+          <div style="position:absolute;left:22%;top:44px;width:8px;height:16px;border-radius:2px;background:#FF5A5F"></div>
+          <div style="position:absolute;left:36%;top:48px;width:8px;height:14px;border-radius:2px;background:#35D07F"></div>
+          <div style="position:absolute;left:50%;top:38px;width:8px;height:20px;border-radius:2px;background:#35D07F"></div>
+          <div style="position:absolute;left:64%;top:24px;width:8px;height:26px;border-radius:2px;background:#35D07F"></div>
+          <div style="position:absolute;left:78%;top:8px;width:8px;height:30px;border-radius:2px;background:#35D07F"></div>
+          <div style="position:absolute;right:0;top:60px;font:500 9.5px 'JetBrains Mono',monospace;color:#32D6FF">support held twice</div>
+        </div>
+        <div style="font:400 12px/1.5 'Space Grotesk';color:#B9B0A8;margin-top:8px">Two rejections at support, then rising green candles away from it — that's the shape Kai is watching for on META right now.</div>
+      </div>
+      <div style="background:#17171C;border:1px solid rgba(255,247,232,.07);border-radius:16px;padding:16px">
+        <div style="font:600 11px 'JetBrains Mono',monospace;color:#B9B0A8;letter-spacing:.08em;margin-bottom:6px">SIMILAR SETUP</div>
+        <div style="font:400 13.5px/1.5 'Space Grotesk';color:#FFF7E8">NVDA · May 12 — same support-reclaim shape, graded B+. Reached its first target in 3 hours.</div>
+      </div>
+      <div style="background:#17171C;border:1px solid rgba(255,247,232,.07);border-radius:16px;padding:16px">
+        <div style="font:600 11px 'JetBrains Mono',monospace;color:#B9B0A8;letter-spacing:.08em;margin-bottom:10px">QUICK CHECK</div>
+        <div style="font:500 14px/1.4 'Space Grotesk';color:#FFF7E8;margin-bottom:10px">What would make this setup invalid?</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button onClick="{{ quizRight }}" style="text-align:left;border:1px solid {{ qRightBd }};background:{{ qRightBg }};border-radius:11px;padding:11px 12px;font:400 13px 'Space Grotesk';color:#FFF7E8;cursor:pointer">A close below $460</button>
+          <button onClick="{{ quizWrong }}" style="text-align:left;border:1px solid {{ qWrongBd }};background:{{ qWrongBg }};border-radius:11px;padding:11px 12px;font:400 13px 'Space Grotesk';color:#FFF7E8;cursor:pointer">Price touching $504</button>
+          <button onClick="{{ quizWrong }}" style="text-align:left;border:1px solid rgba(255,247,232,.1);background:#111117;border-radius:11px;padding:11px 12px;font:400 13px 'Space Grotesk';color:#FFF7E8;cursor:pointer">Volume increasing</button>
+        </div>
+        <sc-if value="{{ quizFeedback }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:10px;font:500 12.5px/1.45 'Space Grotesk';color:{{ quizCol }}">{{ quizMsg }}</div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</sc-if>
+
+<!-- ===================== MAIN APP ===================== -->
+<sc-if value="{{ showApp }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+
+  <sc-if value="{{ tHome }}" hint-placeholder-val="{{ true }}">
+  </body></html>

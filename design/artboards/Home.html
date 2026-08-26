@@ -1,0 +1,88 @@
+<!doctype html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"><style>body{margin:0;background:#050507;padding:24px}</style></head><body>
+<helmet>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0B0E;font-family:'Space Grotesk',system-ui,sans-serif}
+a{color:#C8FF00}a:hover{color:#8B5CF6}
+@keyframes ccpulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes ccup{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}
+input::placeholder{color:#6E675F}
+*::-webkit-scrollbar{display:none}
+</style>
+</helmet><div data-screen-label="Home" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:8px 18px 10px">
+      <div style="font:700 23px 'Space Grotesk';letter-spacing:-.02em">Good morning, Kway</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:99px;background:rgba(200,255,0,.1);border:1px solid rgba(200,255,0,.35);font:600 11.5px 'Space Grotesk';color:#C8FF00">◆ Day Trade <span style="font-size:9px">▾</span></div>
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:99px;background:#17171C;font:500 11.5px 'Space Grotesk';color:{{ mktCol }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ mktCol }};animation:ccpulse 2.4s infinite"></span>{{ mktLabel }}</div>
+      </div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:2px 18px 12px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;gap:10px;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.3);border-radius:16px;padding:13px 14px">
+        <div style="flex:none;width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 35% 35%, #A78BFA, #6D28D9);box-shadow:0 0 14px rgba(139,92,246,.5)"></div>
+        <div>
+          <div style="font:400 14px/1.45 'Space Grotesk';color:#FFF7E8">I'm watching 4 setups this morning. META is closest to ready — buyers are defending 480 and volume is building.</div>
+          <div style="margin-top:5px;font:500 10px 'JetBrains Mono',monospace;color:#8B5CF6">KAI · UPDATED 2M AGO</div>
+        </div>
+      </div>
+      <div style="background:#17171C;border:1px solid rgba(255,247,232,.08);border-radius:18px;padding:16px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:36px;height:36px;border-radius:12px;background:#111117;border:1px solid rgba(255,247,232,.1);display:flex;align-items:center;justify-content:center;font:700 14px 'Space Grotesk';color:#32D6FF">M</div>
+          <div style="flex:1">
+            <div style="font:700 16px 'Space Grotesk'">META</div>
+            <div style="display:flex;align-items:center;gap:5px;font:500 11px 'Space Grotesk';color:#32D6FF"><span style="width:5px;height:5px;border-radius:50%;background:#32D6FF"></span>Forming</div>
+          </div>
+          <div style="text-align:right"><div style="font:700 17px 'Space Grotesk';color:#FFC857">B+</div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6E675F">SETUP GRADE</div></div>
+        </div>
+        <div style="font:500 16.5px/1.4 'Space Grotesk';color:#FFF7E8;margin:12px 0 4px">Buyers are defending an important level.</div>
+        <div style="font:400 12.5px/1.5 'Space Grotesk';color:#B9B0A8">Kai is waiting for stronger volume before this is ready. <span style="color:#FF5A5F">Fails below $460.</span></div>
+        <div style="display:flex;align-items:flex-end;gap:10px;margin:12px 0 4px">
+          <div style="flex:1;display:flex;align-items:flex-end;gap:3px;height:60px">
+            <sc-for list="{{ spark }}" as="s" hint-placeholder-count="14">
+              <div style="flex:1;position:relative;height:60px">
+                <div style="position:absolute;bottom:{{ s.b }}px;height:{{ s.h }}px;left:20%;right:20%;border-radius:1.5px;background:{{ s.col }}"></div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="text-align:right"><div style="font:600 16px 'JetBrains Mono',monospace;color:#32D6FF">{{ priceStr }}</div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6E675F">{{ freshShort }}</div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+          <button onClick="{{ openDetail }}" style="border:none;border-radius:13px;padding:14px;background:#C8FF00;color:#0B0B0E;font:700 14.5px 'Space Grotesk';cursor:pointer" style-hover="background:#D6FF3D">See what Kai sees →</button>
+          <button onClick="{{ toggleAlert }}" style="border:1px solid {{ alertBtnBd }};border-radius:13px;padding:12px;background:{{ alertBtnBg }};color:{{ alertBtnCol }};font:600 13px 'Space Grotesk';cursor:pointer">{{ alertBtnLabel }}</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <div style="flex:1;background:#17171C;border:1px solid rgba(255,247,232,.07);border-radius:14px;padding:12px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:700 13.5px 'Space Grotesk'">NVDA</span><span style="font:700 13px 'Space Grotesk';color:#35D07F">A−</span></div>
+          <div style="font:400 11.5px/1.4 'Space Grotesk';color:#B9B0A8;margin-top:4px">Watching · holding a rising trendline</div>
+        </div>
+        <div style="flex:1;background:#17171C;border:1px solid rgba(255,247,232,.07);border-radius:14px;padding:12px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:700 13.5px 'Space Grotesk'">AAPL</span><span style="font:700 13px 'Space Grotesk';color:#B9B0A8">C+</span></div>
+          <div style="font:400 11.5px/1.4 'Space Grotesk';color:#B9B0A8;margin-top:4px">Early · reversal needs confirmation</div>
+        </div>
+      </div>
+      <sc-if value="{{ hasChat }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{ chat }}" as="m" hint-placeholder-count="2">
+            <div style="display:flex;flex-direction:column;align-items:{{ m.align }}">
+              <div style="max-width:85%;border-radius:14px;padding:10px 13px;font:400 13.5px/1.45 'Space Grotesk';color:#FFF7E8;background:{{ m.bg }};border:1px solid {{ m.bd }}">{{ m.text }}</div>
+              <div style="font:500 9.5px 'JetBrains Mono',monospace;color:{{ m.metaCol }};margin-top:3px">{{ m.who }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <div style="display:flex;gap:8px">
+        <button onClick="{{ chipRisk }}" style="border:1px solid rgba(139,92,246,.35);background:rgba(139,92,246,.08);border-radius:99px;padding:7px 12px;font:500 11.5px 'Space Grotesk';color:#C4B5FD;cursor:pointer">What's my risk today?</button>
+        <button onClick="{{ chipWhy }}" style="border:1px solid rgba(139,92,246,.35);background:rgba(139,92,246,.08);border-radius:99px;padding:7px 12px;font:500 11.5px 'Space Grotesk';color:#C4B5FD;cursor:pointer">Why META?</button>
+      </div>
+    </div>
+    <div style="padding:8px 14px 6px;display:flex;gap:8px;align-items:center">
+      <input value="{{ draft }}" onChange="{{ onDraft }}" placeholder="Ask Kai about a stock or the market…" style="flex:1;background:#17171C;border:1px solid rgba(139,92,246,.3);border-radius:99px;padding:12px 16px;font:400 13.5px 'Space Grotesk';color:#FFF7E8;outline:none">
+      <button onClick="{{ sendChat }}" style="flex:none;width:42px;height:42px;border-radius:50%;border:none;background:#8B5CF6;color:#FFF7E8;font-size:16px;cursor:pointer">↑</button>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ tAlerts }}" hint-placeholder-val="{{ false }}">
+  </body></html>
