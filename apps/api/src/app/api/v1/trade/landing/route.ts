@@ -252,6 +252,22 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
     });
   }
 
+  // Recent rows are priced from the SAME grouped snapshot the watchlist and the
+  // movers strip use. They were shipping `quote:null`, so a symbol the user
+  // actually holds rendered as "No quote yet" two rows under its own position.
+  const recentTop = recent.slice(0, 6);
+  const quoteBy = new Map(snap.quotes.map((qq) => [qq.symbol, qq]));
+  const unpriced = recentTop.map((r) => r.symbol).filter((sym) => !quoteBy.has(sym));
+  let recentDegraded = false;
+  let recentDegradedReason: string | null = null;
+  if (unpriced.length) {
+    const extra = await getSnapshot(unpriced);
+    for (const qq of extra.quotes) quoteBy.set(qq.symbol, qq);
+    recentDegraded = extra.degraded;
+    recentDegradedReason = extra.degraded_reason;
+  }
+  for (const r of recentTop) r.quote = quoteBy.get(r.symbol) ?? null;
+
   return ok(
     TradeLandingV5Response.parse({
       mode,
@@ -302,7 +318,7 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
       open_orders: openOrders,
       needs_action: needsAction,
       watchlist: wl.items,
-      recent: recent.slice(0, 6),
+      recent: recentTop,
       discovery: { movers, catalysts: [] },
       daily_risk: {
         cap: dailyRiskBlock.cap,
@@ -311,8 +327,9 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
         currency: 'USD',
       },
       paper_plain: PAPER_FILL_PLAIN,
-      degraded: snap.degraded || wl.degraded || positions.degraded,
-      degraded_reason: snap.degraded_reason ?? wl.degraded_reason ?? positions.degraded_reason,
+      degraded: snap.degraded || wl.degraded || positions.degraded || recentDegraded,
+      degraded_reason:
+        snap.degraded_reason ?? wl.degraded_reason ?? positions.degraded_reason ?? recentDegradedReason,
     })
   );
 });

@@ -29,10 +29,21 @@
  * It also writes the 30 daily bars into `candles`, which warms the cache the
  * API reads from and saves API calls later (the plan allows 5 a minute).
  *
+ * WRITING THE SEED BACK (--write-seed)
+ * supabase/seed.sql shipped with the hand-written levels, so `supabase db reset`
+ * threw away every refresh and the app went back to planning META at $504
+ * against a $576 quote. With --write-seed the script rewrites the `insert into
+ * setups (…)` block in supabase/seed.sql from the rows it just wrote, so a reset
+ * restores the SAME levels the database is holding. It touches that one
+ * statement and nothing else in the file, and it keeps the seed's identity:
+ * scanner_run_id stays the zero uuid, score_components keeps seed=true plus the
+ * source/refreshed_at stamp, quote_snapshot stays 'delayed'.
+ *
  *   cd apps/api && node scripts/refresh-seed-setups.mjs
  *   node scripts/refresh-seed-setups.mjs --dry-run
+ *   node scripts/refresh-seed-setups.mjs --write-seed
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -48,6 +59,8 @@ const SUPABASE_URL = need('SUPABASE_URL');
 const SERVICE_KEY = need('SUPABASE_SERVICE_ROLE_KEY');
 const POLYGON_KEY = need('POLYGON_API_KEY');
 const DRY = process.argv.includes('--dry-run');
+const WRITE_SEED = process.argv.includes('--write-seed');
+const SEED_FILE = process.env.SEED_FILE ?? resolve(HERE, '../../../supabase/seed.sql');
 
 const LOOKBACK_SESSIONS = 10;
 const HISTORY_DAYS = 30;
@@ -145,11 +158,96 @@ async function main() {
     await writeCandles(setup.symbol, recent);
   }
 
+  if (WRITE_SEED && !DRY) await writeSeedFile();
+
   console.log(
     DRY
       ? '\nDry run — nothing written.'
       : '\nDone. Setups now carry real levels, labeled seed-derived and delayed.'
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* seed.sql round-trip                                                  */
+/* ------------------------------------------------------------------ */
+
+const SEED_COLUMNS =
+  'id,symbol,mode,intent,state,score,grade_band,grade_display,score_components,' +
+  'thesis_plain,thesis_technical,entry_condition,invalidation,stop,targets,quote_snapshot';
+
+/**
+ * Rewrite ONLY the `insert into setups (…) values … on conflict (id) do nothing;`
+ * statement, from the rows now in the database. Everything else in seed.sql —
+ * instruments, rooms, entitlements, the thesis, the market session — is left
+ * exactly as it is.
+ */
+async function writeSeedFile() {
+  const rows = await sb(
+    'GET',
+    `/rest/v1/setups?scanner_run_id=eq.${SEED_RUN_ID}&select=${SEED_COLUMNS}&order=score.desc`
+  );
+  if (!rows.length) {
+    console.log('\nNothing to write back to seed.sql — no seeded setups came back.');
+    return;
+  }
+
+  const sql = [
+    'insert into setups (',
+    '  id, symbol, mode, intent, state, score, grade_band, grade_display, score_components,',
+    '  thesis_plain, thesis_technical,',
+    '  entry_condition, invalidation, stop, targets,',
+    '  quote_snapshot, valid_until, scanner_run_id',
+    ') values',
+    rows.map(seedValues).join(',\n'),
+    'on conflict (id) do nothing;',
+  ].join('\n');
+
+  const file = readFileSync(SEED_FILE, 'utf8');
+  const start = file.indexOf('insert into setups (');
+  if (start === -1) throw new Error(`Could not find the setups insert in ${SEED_FILE}`);
+  const endMarker = 'on conflict (id) do nothing;';
+  const end = file.indexOf(endMarker, start);
+  if (end === -1) throw new Error(`The setups insert in ${SEED_FILE} has no closing on-conflict clause`);
+
+  writeFileSync(SEED_FILE, file.slice(0, start) + sql + file.slice(end + endMarker.length), 'utf8');
+  console.log(`\nseed.sql rewritten — ${rows.length} setup(s), same levels the database is holding.`);
+}
+
+function seedValues(r) {
+  const q = r.quote_snapshot ?? {};
+  return [
+    '(',
+    `  ${lit(r.id)}, ${lit(r.symbol)}, ${lit(r.mode)}, ${lit(r.intent)}, ${lit(r.state)},`,
+    `  ${numLit(r.score)}, ${lit(r.grade_band)}, ${lit(r.grade_display)},`,
+    `  ${lit(JSON.stringify(r.score_components ?? {}))},`,
+    `  ${lit(r.thesis_plain)},`,
+    `  ${lit(r.thesis_technical)},`,
+    `  ${lit(JSON.stringify(r.entry_condition ?? {}))},`,
+    `  ${lit(JSON.stringify(r.invalidation ?? {}))},`,
+    `  ${numLit(r.stop)},`,
+    `  ${lit(JSON.stringify(r.targets ?? []))},`,
+    '  jsonb_build_object(',
+    `    'price', ${numLit(q.price)},`,
+    `    'source_ts', ${lit(q.source_ts)}::timestamptz,`,
+    "    'received_ts', now(),",
+    `    'freshness', ${lit(q.freshness ?? 'delayed')},`,
+    `    'delay_reason', ${lit(q.delay_reason ?? 'entitlement')}`,
+    '  ),',
+    "  now() + interval '7 days',",
+    `  ${lit(SEED_RUN_ID)}`,
+    ')',
+  ].join('\n');
+}
+
+/** Single-quoted SQL literal, quotes doubled. `null` stays an unquoted null. */
+function lit(v) {
+  if (v === null || v === undefined) return 'null';
+  return `'${String(v).replace(/'/g, "''")}'`;
+}
+function numLit(v) {
+  if (v === null || v === undefined || v === '') return 'null';
+  const n = Number(v);
+  return Number.isFinite(n) ? String(n) : 'null';
 }
 
 /* ------------------------------------------------------------------ */

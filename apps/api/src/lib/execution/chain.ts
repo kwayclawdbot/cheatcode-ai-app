@@ -46,7 +46,7 @@ export async function decisionChain(opts: {
     (() => {
       const q = db
         .from('orders')
-        .select('id,symbol,side,qty,status,created_at')
+        .select('id,symbol,side,qty,status,leg,limit_price,stop_price,avg_fill_price,exec_meta,created_at')
         .eq('user_id', opts.userId)
         .neq('status', 'draft')
         .neq('status', 'previewed')
@@ -100,12 +100,11 @@ export async function decisionChain(opts: {
   }
 
   for (const r of (orders.data ?? []) as Record<string, unknown>[]) {
-    const side = String(r.side) as keyof typeof SIDE_LABEL;
     out.push({
       kind: 'order',
       id: String(r.id),
       at: String(r.created_at),
-      plain: `${SIDE_LABEL[side]} ${Number(r.qty)} ${String(r.symbol)} — ${String(r.status).replace('_', ' ')}.`,
+      plain: orderPlain(r),
       route: `/order/${String(r.id)}`,
     });
   }
@@ -134,4 +133,66 @@ export async function decisionChain(opts: {
   }
 
   return out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).slice(0, limit);
+}
+
+/* ------------------------------------------------------------------ */
+/* Order copy                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Why a bracket leg is never described as "Sell 1 META":
+ *
+ * A bracketed entry writes THREE orders — the entry, a stop and a target — and
+ * the two exits are the same side, the same size and the same symbol. Rendered
+ * from side+qty alone they came out as two identical "Sell 1 META — accepted."
+ * lines, which reads like a duplicate row rather than the two halves of the
+ * protection the user just armed. `orders.leg` is the authority, so a leg is
+ * named by the job it does and the level it does it at.
+ */
+const CANCEL_PLAIN: Record<string, string> = {
+  oco_sibling_stop: 'the stop hit first',
+  oco_sibling_target: 'the target hit first',
+  position_closed: 'the position was already closed',
+  position_closed_by_user: 'you closed the position yourself',
+  plan_cancelled: 'you called the plan off',
+  no_open_position: 'there was no position left to protect',
+};
+
+function num(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function orderPlain(r: Record<string, unknown>): string {
+  const symbol = String(r.symbol);
+  const status = String(r.status);
+  const leg = r.leg === 'stop' || r.leg === 'target' ? r.leg : null;
+  const filled = num(r.avg_fill_price);
+  const meta = (r.exec_meta as Record<string, unknown>) ?? {};
+  const reason = typeof meta.cancel_reason === 'string' ? CANCEL_PLAIN[meta.cancel_reason] : undefined;
+
+  if (leg) {
+    const level = leg === 'stop' ? (num(r.stop_price) ?? num(r.limit_price)) : (num(r.limit_price) ?? num(r.stop_price));
+    const name = leg === 'stop' ? 'Stop' : 'Target';
+    const named = level === null ? `${name} on ${symbol}` : `${name} ${level} on ${symbol}`;
+    switch (status) {
+      case 'filled':
+      case 'partially_filled':
+        return filled === null ? `${named} filled.` : `${name} on ${symbol} filled at $${filled}.`;
+      case 'cancelled':
+        return `${name} on ${symbol} cancelled${reason ? ` — ${reason}` : ''}.`;
+      case 'rejected':
+        return `${named} was rejected. Nothing was placed.`;
+      default:
+        return `${named} — armed.`;
+    }
+  }
+
+  const side = String(r.side) as keyof typeof SIDE_LABEL;
+  const head = `${SIDE_LABEL[side]} ${Number(r.qty)} ${symbol}`;
+  if (status === 'filled' && filled !== null) return `${head} — filled at $${filled}.`;
+  if (status === 'cancelled' && reason) return `${head} — cancelled, ${reason}.`;
+  if (status === 'accepted') return `${head} — accepted, not filled yet.`;
+  return `${head} — ${status.replace('_', ' ')}.`;
 }

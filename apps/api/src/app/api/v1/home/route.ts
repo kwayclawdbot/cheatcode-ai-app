@@ -35,6 +35,7 @@ import { dailyRisk } from '@/lib/execution/risk';
 import { loadOpenPositions } from '@/lib/execution/positions-view';
 import { loadPaperAccount } from '@/lib/execution/engine';
 import { alsoWatching, choosePriority } from '@/lib/v5/priority';
+import { loadFollowMarks } from '@/lib/v5/attention';
 import { ensureDevTicker } from '@/lib/execution/tick-dev';
 
 export const dynamic = 'force-dynamic';
@@ -69,7 +70,12 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
       .limit(5),
   ]);
 
-  const risk = await dailyRisk(ctx.user.id, kctx.risk?.daily_loss_cap_usd ?? null);
+  const [risk, marks] = await Promise.all([
+    dailyRisk(ctx.user.id, kctx.risk?.daily_loss_cap_usd ?? null),
+    // Which symbols/setups the user actually has something riding on. Home's
+    // priority and Alerts → Attention both rank off this, so they agree.
+    loadFollowMarks(ctx.user.id, positions.rows),
+  ]);
 
   const lead = kctx.setups.find((s) => s.state !== 'invalidated' && s.state !== 'expired') ?? kctx.setups[0] ?? null;
   const leadEnvelope = lead ? derivedEnvelope(lead, ctx.user.id) : null;
@@ -99,6 +105,7 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
     }),
     equity: account?.equity ?? null,
     dayChange: null,
+    marks,
   });
 
   // Round-2 `watching` stays exactly as it was.

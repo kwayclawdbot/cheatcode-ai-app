@@ -9,6 +9,7 @@
 import { KAI_HISTORY_TURNS, type AppMode } from '@shared/api';
 import { serviceClient } from '../db';
 import { marketBlock, quoteFromSnapshot } from '../market';
+import { ensureSeedLevelsChecked } from '../v5/seed-guard';
 
 export type SetupRow = {
   id: string;
@@ -70,6 +71,9 @@ const SETUP_COLUMNS =
 
 /** Ranked setups for a mode: score desc, then urgency-ish by state. */
 export async function rankedSetups(mode: AppMode, cap: number, state?: string): Promise<SetupRow[]> {
+  // Warns (once, then hourly) when the seeded levels are stale enough to
+  // contradict a live quote. Fire-and-forget: it never blocks the read.
+  ensureSeedLevelsChecked();
   const db = serviceClient();
   let q = db
     .from('setups')

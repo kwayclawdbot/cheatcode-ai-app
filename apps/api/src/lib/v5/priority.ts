@@ -6,15 +6,27 @@
  * screen it lives on. A client must never re-derive "Watch this" vs "Review
  * setup" — if two surfaces can disagree about what the next step is, they will.
  *
- * Order of precedence, most urgent first, and each one is urgent for a
- * different reason:
- *   1. a position sitting on its stop        — real money, right now
- *   2. an alert that fired                   — a condition the user chose fired
- *   3. a setup that has met every condition  — the thing they were waiting for
- *   4. an armed plan                         — the decision is already made
- *   5. an invalidated setup they follow      — a thesis died; that is news
- *   6. a setup still forming                 — the honest "nothing yet"
- *   7. the portfolio itself                  — when nothing else needs them
+ * Order of precedence. The top band is everything the USER has skin in, because
+ * an event about their own money or their own decision outranks anything the
+ * scanner noticed on its own:
+ *
+ *   A. things the user has skin in
+ *      1. a position sitting on its stop     — real money, right now
+ *      2. an alert that fired                — a condition the user chose fired
+ *      3. a followed thesis that died        — a setup they hold, planned or watch
+ *      4. an armed plan                      — the decision is already made
+ *   B. 5. a setup that has met every condition, best score first
+ *   C. 6. a setup still forming, best score first — the honest "nothing yet"
+ *   D. 7. the portfolio itself               — when nothing else needs them
+ *
+ * An invalidated or expired setup the user NEVER touched is deliberately absent
+ * from that list. It is housekeeping, not news: it goes to "also watching" with
+ * the "off the table" note and can never claim the one slot on Home. Before this
+ * rule a grade-C seed that died outranked a B+ that was actually forming.
+ *
+ * Everything in band A is also an Alerts → Attention row, built from the same
+ * helpers in ./attention, so the two screens cannot disagree about what needs
+ * the user.
  *
  * Nothing here manufactures urgency. When there is genuinely nothing, the
  * priority says so plainly rather than promoting something to fill the space.
@@ -23,8 +35,16 @@ import type { AlsoWatchingRow, HomePriority, OpenPositionRow, PlainAction, Quote
 import { STATE_ACTION_LABEL } from '@shared/api';
 import { quoteFromSnapshot } from '../market';
 import { derivedEnvelope } from '../kai/objects';
-import { levels } from '../setups';
 import type { SetupRow } from '../kai/context';
+import {
+  NO_MARKS,
+  atRiskPositions,
+  deadFollowedSetups,
+  isDead,
+  setupDetail,
+  setupHeadline,
+  type FollowMarks,
+} from './attention';
 
 export type PriorityInputs = {
   userId: string;
@@ -34,6 +54,8 @@ export type PriorityInputs = {
   armedPlans: { id: string; symbol: string; entry: number | null; stop: number | null }[];
   equity: number | null;
   dayChange: number | null;
+  /** Symbols and setups the user has a position, plan or watch on. */
+  marks?: FollowMarks;
 };
 
 function action(label: string, route: string | null, act: string): PlainAction {
@@ -49,8 +71,11 @@ export function labelForState(state: string): string {
 }
 
 export function choosePriority(input: PriorityInputs): HomePriority | null {
+  const marks = input.marks ?? NO_MARKS;
+
+  // ---- A. things the user has skin in ---------------------------------
   // 1. a position under pressure
-  const atRisk = input.positions.find((p) => p.health === 'at_risk');
+  const atRisk = atRiskPositions(input.positions)[0];
   if (atRisk) {
     return {
       kind: 'position',
@@ -91,9 +116,10 @@ export function choosePriority(input: PriorityInputs): HomePriority | null {
     };
   }
 
-  // 3. a setup that has met everything
-  const ready = input.setups.find((s) => s.state === 'ready');
-  if (ready) return fromSetup(ready, input.userId);
+  // 3. a thesis the user was actually in died. Only theirs — a setup nobody
+  //    touched going invalid is not an event about the user.
+  const deadOnThem = deadFollowedSetups(input.setups, marks)[0];
+  if (deadOnThem) return fromSetup(deadOnThem, input.userId);
 
   // 4. an armed plan
   const plan = input.armedPlans[0];
@@ -115,15 +141,21 @@ export function choosePriority(input: PriorityInputs): HomePriority | null {
     };
   }
 
-  // 5. a thesis that died
-  const dead = input.setups.find((s) => s.state === 'invalidated');
-  if (dead) return fromSetup(dead, input.userId);
+  // ---- B. the best setup that has met everything (setups arrive ranked) -
+  const ready = input.setups.find((s) => {
+    const state = String(s.state);
+    return state === 'ready' || state === 'approaching';
+  });
+  if (ready) return fromSetup(ready, input.userId);
 
-  // 6. something still forming
-  const forming = input.setups.find((s) => s.state === 'forming' || s.state === 'watching' || s.state === 'discovered');
+  // ---- C. the best setup still building --------------------------------
+  const forming = input.setups.find((s) => {
+    const state = String(s.state);
+    return state === 'forming' || state === 'watching' || state === 'discovered';
+  });
   if (forming) return fromSetup(forming, input.userId);
 
-  // 7. the portfolio
+  // ---- D. the portfolio ------------------------------------------------
   if (input.positions.length) {
     const total = input.positions.reduce((a, p) => a + (p.unrealized_pnl ?? 0), 0);
     return {
@@ -146,37 +178,24 @@ export function choosePriority(input: PriorityInputs): HomePriority | null {
 }
 
 function fromSetup(row: SetupRow, userId: string): HomePriority {
-  const { entry, stop } = levels(row);
   const state = String(row.state);
   const quote = quoteFromSnapshot(row.symbol, row.quote_snapshot) as Quote;
-
-  const detail =
-    state === 'invalidated'
-      ? `${row.thesis_plain ?? `The ${row.symbol} idea`} — the level it leaned on gave way, so the idea is off. Nothing to do except understand why.`
-      : state === 'ready'
-        ? `${row.thesis_plain ?? `${row.symbol} is set up`} Everything I defined has happened${entry === null ? '' : ` at $${entry}`}${stop === null ? '' : `, and it fails below $${stop}`}. Your move.`
-        : `${row.thesis_plain ?? `${row.symbol} is on my list`}${entry === null ? '' : ` It triggers at $${entry}`}${stop === null ? '' : ` and fails at $${stop}`}. Not there yet.`;
 
   return {
     kind: 'setup',
     id: row.id,
     symbol: row.symbol,
     state,
-    headline:
-      state === 'ready'
-        ? `${row.symbol} has met every condition`
-        : state === 'invalidated'
-          ? `${row.symbol} is off — the level failed`
-          : `${row.symbol} is building`,
+    headline: setupHeadline(row, state),
     subhead: row.grade_display ? `Grade ${row.grade_display}` : null,
-    detail_plain: detail,
+    detail_plain: setupDetail(row, state),
     quote,
     grade_display: row.grade_display,
     object: derivedEnvelope(row, userId),
     primary_action: action(
       labelForState(state),
       `/symbol/${row.symbol}?tab=overview&setup=${row.id}`,
-      state === 'ready' ? 'review_setup' : state === 'invalidated' ? 'review_change' : 'watch_this'
+      state === 'ready' ? 'review_setup' : isDead(state) ? 'review_change' : 'watch_this'
     ),
     secondary_actions: [
       secondary('See why', `/symbol/${row.symbol}?tab=kai&setup=${row.id}`, 'see_why'),
@@ -185,6 +204,11 @@ function fromSetup(row: SetupRow, userId: string): HomePriority {
   };
 }
 
+/**
+ * The quiet list. Every setup that is NOT the priority lands here — including
+ * the invalidated ones nobody touched, which is the only place they belong:
+ * visible and honestly labelled "off the table", never claiming the screen.
+ */
 export function alsoWatching(input: {
   userId: string;
   setups: SetupRow[];
@@ -215,9 +239,9 @@ export function alsoWatching(input: {
       id: s.id,
       symbol: s.symbol,
       plain:
-        state === 'invalidated'
-          ? 'Off — the level failed'
-          : state === 'ready'
+        isDead(state)
+          ? 'Off the table — the level it leaned on failed'
+          : state === 'ready' || state === 'approaching'
             ? 'Conditions met — your move'
             : state === 'forming'
               ? 'Confirmation building'

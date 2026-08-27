@@ -16,6 +16,7 @@ import {
   AlertActivateRequest,
   AlertActivateResponse,
   MONITORING_PLAIN,
+  SETUP_CAPS,
   type AlertTypeFilter,
 } from '@shared/api';
 import { authed, ok, parseBody, parseQuery, type Ctx } from '@/lib/http';
@@ -27,6 +28,14 @@ import { notify } from '@/lib/notify';
 import { getSnapshot } from '@/lib/market/polygon';
 import { loadOpenPositions } from '@/lib/execution/positions-view';
 import { ensureDevTicker } from '@/lib/execution/tick-dev';
+import { loadProfile, rankedSetups } from '@/lib/kai/context';
+import {
+  atRiskPositions,
+  deadFollowedSetups,
+  deadThesisAttentionRow,
+  loadFollowMarks,
+  positionAttentionRow,
+} from '@/lib/v5/attention';
 import { alertRow, monitoringFor } from './shape';
 import {
   buildFilters,
@@ -81,7 +90,18 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
     }
   }
 
-  const attention = rows.filter((r) => r.status === 'triggered').map(toAttentionRow);
+  // Attention is not "triggered alerts" — it is everything that needs the user,
+  // and it must be the same set Home ranks its priority from (lib/v5/attention).
+  const profile = await loadProfile(ctx.user.id);
+  const [marks, modeSetups] = await Promise.all([
+    loadFollowMarks(ctx.user.id, positions.rows),
+    rankedSetups(profile.primary_mode, SETUP_CAPS[profile.primary_mode]),
+  ]);
+  const attention = [
+    ...atRiskPositions(positions.rows).map(positionAttentionRow),
+    ...rows.filter((r) => r.status === 'triggered').map(toAttentionRow),
+    ...deadFollowedSetups(modeSetups, marks).map(deadThesisAttentionRow),
+  ];
   const monitoring = [
     ...watched.map((r) => {
       const sym = (r.refs as Record<string, unknown> | null)?.symbol;
