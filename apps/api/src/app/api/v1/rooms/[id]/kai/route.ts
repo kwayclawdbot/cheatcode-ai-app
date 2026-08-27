@@ -1,6 +1,9 @@
 /**
  * POST /api/v1/rooms/:id/kai   {command, message_id?, args?}
  *
+ * Commands (08 §5): summarize · verify · to_alert · compare · explain ·
+ * mark_levels.
+ *
  * SYNCHRONOUS in this round. 02 §9 specifies these as async with `kai_status`
  * events; there is no kai worker yet, so the model runs inline and the finished
  * object comes back in the response — and is also posted into the room as a
@@ -81,6 +84,7 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
         id: String(r.id),
         seq: Number(r.seq),
         author: author?.display_name ?? author?.handle ?? 'A member',
+        author_id: r.user_id ? String(r.user_id) : null,
         at: String(r.created_at),
         text: String(r.body ?? ''),
         kind: String(r.kind),
@@ -103,6 +107,7 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
       setup_summary: s
         ? `${s.symbol} · ${s.grade_display ?? '—'} · ${s.state}${s.thesis_plain ? ` — ${s.thesis_plain}` : ''}`
         : null,
+      symbol: s?.symbol ? String(s.symbol) : null,
       known_symbols: known,
     },
     messages,
@@ -123,7 +128,9 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
       message_id: target?.id ?? null,
       sample_size: messages.length,
     },
-    model: result.degraded ? DETERMINISTIC_MODEL : undefined,
+    // `mark_levels` derives its object rather than generating one, so it names
+    // the deterministic model even though nothing about it is degraded.
+    model: result.model ?? (result.degraded ? DETERMINISTIC_MODEL : undefined),
     requestId: ctx.requestId,
   });
   if (!object) throw new ApiError('INTERNAL', 'We could not save that answer. Please try again.');

@@ -32,6 +32,8 @@ import {
   authorsFor,
   objectsFor,
   toMessageRow,
+  unreadFor,
+  catchUpPlain,
 } from '@/lib/rooms';
 
 export const dynamic = 'force-dynamic';
@@ -80,7 +82,9 @@ export const GET = authedParams<{ id: string }>(async (req: NextRequest, ctx: Ct
   const messages = page.map((r) => toMessageRow(r, authors, objects));
   const lastSeq = stats.get(ctx.params.id)?.last_seq ?? 0;
   const sinceSeq = membership.last_read_seq;
-  const unread = Math.max(0, lastSeq - sinceSeq);
+  // Counted BEFORE the read mark moves below, and never counting the caller's
+  // own posts — "3 new since you left" over three of your own messages is a lie.
+  const unread = await unreadFor(ctx.params.id, ctx.user.id, sinceSeq);
 
   // Mark read up to what we just handed over.
   const maxShown = messages.length ? messages[messages.length - 1].seq : sinceSeq;
@@ -101,7 +105,7 @@ export const GET = authedParams<{ id: string }>(async (req: NextRequest, ctx: Ct
       catch_up: {
         since_seq: sinceSeq,
         count: unread,
-        plain: unread ? `${unread} new since you left.` : 'You are up to date.',
+        plain: catchUpPlain(unread),
       },
     })
   );

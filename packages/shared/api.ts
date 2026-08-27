@@ -1431,7 +1431,11 @@ export const MessagesResponse = z.object({
   messages: z.array(MessageRow),
   last_seq: z.number(),
   has_more: z.boolean(),
-  /** From room_members.last_read_seq — drives the "N new since you left" pill. */
+  /**
+   * From room_members.last_read_seq — drives the "N new since you left" pill.
+   * `count` NEVER counts the caller's own posts: you did not miss your own
+   * writing, and a pill that says you did is just wrong.
+   */
   catch_up: z.object({ since_seq: z.number(), count: z.number(), plain: z.string() }),
 });
 export type MessagesResponse = z.infer<typeof MessagesResponse>;
@@ -1452,7 +1456,15 @@ export const PostMessageResponse = z.object({
 });
 export type PostMessageResponse = z.infer<typeof PostMessageResponse>;
 
-export const RoomKaiCommand = z.enum(['summarize', 'verify', 'to_alert', 'compare', 'explain']);
+export const RoomKaiCommand = z.enum([
+  'summarize',
+  'verify',
+  'to_alert',
+  'compare',
+  'explain',
+  /** 08 §5: the prices this room keeps coming back to, read out of the text. */
+  'mark_levels',
+]);
 export type RoomKaiCommand = z.infer<typeof RoomKaiCommand>;
 
 export const RoomKaiRequest = z.object({
@@ -1518,6 +1530,24 @@ export const ComparisonPayload = z.object({
 });
 export type ComparisonPayload = z.infer<typeof ComparisonPayload>;
 
+/**
+ * chart_response payload — 02 §7.
+ *
+ * `mark_levels` produces one of these from a room: the prices MEMBERS named,
+ * never a price Kai worked out. Annotations carry semantics only; the client
+ * maps them to the Volt & Violet tokens (14).
+ */
+export const ChartResponsePayload = z.object({
+  /** Null when the room has not settled on a symbol this system follows. */
+  symbol: z.string().nullable(),
+  timeframe: z.string(),
+  annotations: z.array(ChartAnnotation),
+  rationale_plain: z.string(),
+  /** How far this reading reaches, in plain English. Levels go stale. */
+  validity: z.string(),
+});
+export type ChartResponsePayload = z.infer<typeof ChartResponsePayload>;
+
 export const StructuredAssistResponse = z.object({
   original: z.record(z.string(), z.unknown()),
   improved: StructuredIdea,
@@ -1528,6 +1558,48 @@ export const StructuredAssistResponse = z.object({
   degraded: z.boolean(),
 });
 export type StructuredAssistResponse = z.infer<typeof StructuredAssistResponse>;
+
+/**
+ * POST /rooms/:id/structured-assist — the SAME review, before anything exists.
+ *
+ * The message-scoped route reviews a draft that has already been posted. 08 §7
+ * puts Kai's review BEFORE publication, so the room-scoped route takes the
+ * draft itself and posts nothing at all — there is no message to point at yet.
+ */
+export const RoomStructuredAssistBody = z.object({
+  structured_idea: StructuredIdea,
+  /** The composer's free text, when it says more than the fields do. */
+  body: z.string().max(4000).nullable().optional(),
+});
+export type RoomStructuredAssistBody = z.infer<typeof RoomStructuredAssistBody>;
+
+/**
+ * Same shape as `StructuredAssistResponse`, plus the three names the room
+ * composer reads. `improved_draft`/`feedback_plain` are aliases of
+ * `improved`/`plain` — one payload, so neither client has to guess — and
+ * `gaps` names the fields still missing rather than making one up.
+ */
+export const RoomStructuredAssistResponse = StructuredAssistResponse.extend({
+  improved_draft: StructuredIdea,
+  feedback_plain: z.string(),
+  gaps: z.array(z.string()),
+});
+export type RoomStructuredAssistResponse = z.infer<typeof RoomStructuredAssistResponse>;
+
+/** POST /rooms/:id/read — advance room_members.last_read_seq. */
+export const RoomReadBody = z.object({
+  seq: z.number().int().min(0),
+});
+export type RoomReadBody = z.infer<typeof RoomReadBody>;
+
+export const RoomReadResponse = z.object({
+  room_id: z.string(),
+  last_read_seq: z.number(),
+  /** Recomputed after the advance, and never counting your own posts. */
+  unread: z.number(),
+  plain: z.string(),
+});
+export type RoomReadResponse = z.infer<typeof RoomReadResponse>;
 
 export const ReportRequest = z.object({
   reason: z.string().min(3).max(500),

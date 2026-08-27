@@ -95,10 +95,12 @@ market data goes live" rather than implying tick-by-tick checking.
 |---|---|---|
 | `GET` | `/rooms?mode=` | Core + setup rooms with member/message counts and unread. Not in the brief's list — added because counts are aggregates a client cannot compute under RLS. `live_notice` says live sessions are a later release. |
 | `POST` | `/rooms/:id/join` | Core rooms only, via `join_core_room`. |
-| `GET` | `/rooms/:id/messages?after_seq=&limit=` | Through `messages_public` (deleted rows keep their place, body nulled). Membership enforced. Advances `last_read_seq`. |
+| `GET` | `/rooms/:id/messages?after_seq=&limit=` | Through `messages_public` (deleted rows keep their place, body nulled). Membership enforced. Advances `last_read_seq`. `catch_up.count` never counts the caller's own posts — you did not miss your own writing. Kai's posts do count. |
 | `POST` | `/rooms/:id/messages` | Pipeline in order: zod → membership → moderation mute/ban → posting restriction → slow mode → rate limit 10/min → spam precheck → **disclosure required when `structured_idea` is present** → `post_room_message` (assigns `seq`). |
-| `POST` | `/rooms/:id/kai` | `summarize \| verify \| to_alert \| compare \| explain`. **Synchronous** this round. Returns the object and posts it into the room. |
-| `POST` | `/messages/:id/structured-assist` | An improved draft. `published:false` is a literal — nothing is posted. |
+| `POST` | `/rooms/:id/kai` | `summarize \| verify \| to_alert \| compare \| explain \| mark_levels`. **Synchronous** this round. Returns the object and posts it into the room. `mark_levels` returns a `chart_response` built without the model — see note 19. |
+| `POST` | `/rooms/:id/read` | `{seq}` → advances `room_members.last_read_seq`. Forward-only and clamped to the room's last seq, so a stale or wild client cannot rewind the mark or read past the end. Returns the recomputed `unread`. |
+| `POST` | `/messages/:id/structured-assist` | An improved draft of a POSTED message. `published:false` is a literal — nothing is posted. |
+| `POST` | `/rooms/:id/structured-assist` | `{structured_idea, body?}` → the same review on a draft that does not exist yet, which is the order 08 §7 asks for. Nothing is written at all. Adds `improved_draft` / `feedback_plain` (aliases of `improved` / `plain`) and `gaps[]` — the 08 §7 fields still empty. |
 | `POST` | `/messages/:id/report` | Files a report; the message is not removed. |
 | `POST` | `/rooms/:id/mute` · `/unmute` | The member's OWN notification mute (`muted_until`). A moderator mute lives in `moderation_muted_until` and only that one blocks posting. |
 | `GET` | `/contributors/:user_id` | Role labels, contribution counts, disclosures on recent posts **in rooms the caller is also in**. `rankings` is a null literal — 08 §8 forbids them. |
@@ -526,7 +528,24 @@ And it asserts the refusals, because a guard that never fires is not a guard:
     screen needs member and message counts, which are aggregates a client cannot
     compute under RLS, and `rooms` RLS only shows a non-member the CORE rooms,
     so setup rooms would otherwise be invisible.
-19. **Seed setups are still seed setups.** `refresh-seed-setups.mjs` gives them
+19. **`mark_levels` never calls the model.** Every other room command asks Kai;
+    this one reads the prices out of the text with a regex and counts distinct
+    authors. Two reasons, both in `src/lib/kai/room.ts`: a model asked for "the
+    levels people mentioned" will round 604.50 to 605 or add the obvious round
+    number nobody typed, and "mentioned by N members" is a COUNT — models cannot
+    count, and a wrong count here reads as social proof, the exact thing 08 §5
+    forbids. A useful side effect is that no member text reaches the payload, so
+    there is no injection surface. When nobody has named a price, the object
+    carries no annotations and the posted message says so in plain English.
+
+20. **The smoke test posts into a room it creates and then deletes.** It writes
+    spam and prompt-injection fixtures and then asks Kai to summarise them.
+    Pointed at a seeded room, that text stays there for real members to read —
+    with Kai's summary quoting it back. `cleanup_smoke_room` runs on `trap EXIT`,
+    so the room, its messages, its members and the Kai objects they produced go
+    away on failure too.
+
+21. **Seed setups are still seed setups.** `refresh-seed-setups.mjs` gives them
     real levels from real bars and labels them `seed:true, source:'polygon-daily'`,
     but the 10-session high/low rule is not a detector. Nothing derived from it
     should be read as analysis, and grade/score/state are untouched for exactly

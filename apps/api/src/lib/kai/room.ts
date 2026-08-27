@@ -4,7 +4,10 @@
  * 02 §9 specifies these commands as async with `kai_status` events; there is no
  * kai worker yet, so the request runs the model inline and returns the finished
  * object. The command set is the one in 08 §5: summarize · verify · to_alert ·
- * compare · explain (mark_levels needs chart annotations and is deferred).
+ * compare · explain · mark_levels.
+ *
+ * `mark_levels` is the one command that never calls the model — see the
+ * MARK_LEVELS section below for why.
  *
  * SECURITY (03 Unit 3, normative). Room text is other people's writing. It
  * enters the prompt only inside a delimited `<untrusted_content>` block via
@@ -22,6 +25,7 @@ import {
   ComparisonPayload,
   AlertPreviewPayload,
   BriefingPayload,
+  ChartResponsePayload,
   type KaiObjectType,
   type RoomKaiCommand,
 } from '@shared/api';
@@ -30,12 +34,15 @@ import { marketDate } from '../market';
 import { buildSystemPrompt } from './system-prompt';
 import { anthropicConfigured, completeOnce } from './stream';
 import { wrapUntrusted, scanPayload, type Untrusted } from './guard';
+import { DETERMINISTIC_MODEL } from './objects';
 import type { ProfileRow } from './context';
 
 export type RoomMessageInput = {
   id: string;
   seq: number;
   author: string;
+  /** Who wrote it, for counting distinct members. Null for Kai's own posts. */
+  author_id: string | null;
   at: string;
   text: string;
   kind: string;
@@ -46,6 +53,8 @@ export type RoomInfo = {
   name: string;
   mode: string | null;
   setup_summary: string | null;
+  /** The pinned setup's ticker, when this is a setup room. */
+  symbol: string | null;
   /** Symbols this system actually follows, from `instruments`. */
   known_symbols: Set<string>;
 };
@@ -56,6 +65,8 @@ export type RoomKaiResult = {
   body_plain: string;
   degraded: boolean;
   reason: string | null;
+  /** Set when the object was derived rather than generated. */
+  model?: string;
 };
 
 const SYMBOL_RE = /\$?\b([A-Z]{1,5})\b/g;
@@ -126,6 +137,153 @@ function fallbackSummary(room: RoomInfo, messages: RoomKaiInput['messages']): un
 }
 
 /* ------------------------------------------------------------------ */
+/* MARK_LEVELS — deterministic, and deliberately so                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 08 §5: "the prices this room keeps coming back to." Every other command asks
+ * the model; this one must not, for two reasons.
+ *
+ * 1. NEVER INVENTED. The whole value of the answer is that each price was typed
+ *    by a member. A model asked for "the levels people mentioned" will happily
+ *    round 604.50 to 605, or add the obvious round number nobody said. Reading
+ *    them out of the text is the only way to be sure.
+ * 2. "mentioned by N members" IS A COUNT. Models cannot count, and a wrong
+ *    count here reads as social proof — the exact thing 08 §5 says must never
+ *    stand in for evidence.
+ *
+ * A useful side effect: no member text reaches the payload at all — only
+ * numbers, a symbol from `instruments`, and Kai's own sentences — so there is
+ * no injection surface here to begin with.
+ */
+
+/** Words that make a nearby bare number a price rather than a quantity. */
+const LEVEL_WORDS =
+  /\b(support|resistance|level|levels|break|breaks|breaking|breakout|breakdown|above|below|over|under|through|at|near|around|toward|towards|target|targets|stop|entry|enter|hold|holds|holding|lose|loses|losing|reclaim|reclaims|retest|tag|tags|gap|high|highs|low|lows|pivot|vwap|close|closes|closed|fill|fills|bounce|bounces|sweep|line|zone|print|prints|watch|watching|buy|sell|long|short|add|trim|bid|offer|ask)\b/i;
+
+const PRICE_RE = /(\$?)(\d{1,3}(?:,\d{3})+|\d+)(\.\d{1,4})?/g;
+
+/**
+ * What follows a number when it is NOT a price: a percentage, a multiple, a
+ * count of days/bars/shares, a clock time, an ordinal.
+ */
+const REJECT_AFTER =
+  /^(?:\s*(?:%|percent\b|pct\b|x\b|bps\b|k\b|m\b|bn\b)|:\d|[-\s]*(?:day|days|week|weeks|month|months|year|years|min|mins|minute|minutes|hour|hours|sec|secs|bar|bars|sma|ema|ma|dma|period|periods|pt|pts|share|shares|contract|contracts|lot|lots|am|pm|st|nd|rd|th)\b)/i;
+
+/** Tickers we follow that this message names. */
+function symbolsIn(text: string, known: Set<string>): Set<string> {
+  const out = new Set<string>();
+  for (const match of text.matchAll(SYMBOL_RE)) {
+    const sym = match[1];
+    if (COMMON_WORDS.has(sym) || sym.length < 2) continue;
+    if (known.has(sym)) out.add(sym);
+  }
+  return out;
+}
+
+/** Every number in `text` that reads as a price. Nothing else. */
+export function pricesIn(text: string): number[] {
+  const out: number[] = [];
+  for (const m of text.matchAll(PRICE_RE)) {
+    const idx = m.index ?? 0;
+    const prev = idx > 0 ? text[idx - 1] : ' ';
+    // Glued to a word, another number, a decimal point or a clock — not a price.
+    if (/[A-Za-z0-9.:#/\\]/.test(prev)) continue;
+    if (REJECT_AFTER.test(text.slice(idx + m[0].length))) continue;
+
+    const value = Number(`${m[2].replace(/,/g, '')}${m[3] ?? ''}`);
+    if (!Number.isFinite(value) || value <= 0 || value > 1_000_000) continue;
+
+    const hasDollar = m[1] === '$';
+    const hasCents = Boolean(m[3]);
+    // A bare integer is only a price if the sentence was talking about prices.
+    const contextual = LEVEL_WORDS.test(text.slice(Math.max(0, idx - 24), idx));
+    if (!(hasDollar || hasCents || (contextual && value >= 5))) continue;
+
+    out.push(Math.round(value * 10_000) / 10_000);
+  }
+  return out;
+}
+
+function plural(n: number, one: string, many: string): string {
+  return n === 1 ? one : many;
+}
+
+function markLevels(room: RoomInfo, messages: RoomMessageInput[]): RoomKaiResult {
+  const known = room.known_symbols;
+  const target =
+    room.symbol && known.has(room.symbol.toUpperCase())
+      ? room.symbol.toUpperCase()
+      : (assetsMentioned(messages, known)[0] ?? null);
+
+  const first = messages[0] ?? null;
+  const last = messages[messages.length - 1] ?? null;
+  const window =
+    first && last
+      ? `Read from messages #${first.seq}–#${last.seq} in this room.`
+      : 'Read from this room.';
+
+  const done = (annotations: unknown[], rationale: string, body: string): RoomKaiResult => ({
+    type: 'chart_response',
+    payload: ChartResponsePayload.parse({
+      symbol: target,
+      timeframe: '1d',
+      annotations,
+      rationale_plain: rationale,
+      validity: `${window} Levels move — run this again after new posts.`,
+    }),
+    body_plain: body,
+    degraded: false,
+    reason: null,
+    model: DETERMINISTIC_MODEL,
+  });
+
+  if (!target) {
+    const plain =
+      'Nobody in here has named a ticker I follow yet, so I do not know what to mark levels on.';
+    return done([], plain, plain);
+  }
+
+  // A price counts for the room's asset when the message names that asset, or
+  // names no asset at all — in a room about one name, most posts drop the
+  // ticker. A message about a DIFFERENT ticker is left out entirely.
+  const byPrice = new Map<number, Set<string>>();
+  for (const m of messages) {
+    const syms = symbolsIn(m.text, known);
+    if (syms.size > 0 && !syms.has(target)) continue;
+    const who = m.author_id ?? m.author;
+    for (const price of pricesIn(m.text)) {
+      const set = byPrice.get(price) ?? new Set<string>();
+      set.add(who);
+      byPrice.set(price, set);
+    }
+  }
+
+  if (byPrice.size === 0) {
+    const plain = `Nobody in here has named a price for ${target} yet, so there is nothing for me to mark.`;
+    return done([], plain, plain);
+  }
+
+  const annotations = [...byPrice.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .slice(0, 8)
+    .map(([price, members]) => ({
+      kind: 'level' as const,
+      price,
+      text: `mentioned by ${members.size} ${plural(members.size, 'member', 'members')}`,
+      semantic: 'note' as const,
+    }));
+
+  const rationale = `${annotations.length} ${plural(annotations.length, 'price', 'prices')} members named for ${target}, taken straight out of what they wrote. These are their levels, not mine — I have not checked any of them against the chart, and a price being repeated is not evidence that it matters.`;
+
+  return done(
+    annotations,
+    rationale,
+    `Here ${plural(annotations.length, 'is the price', 'are the prices')} this room has named for ${target}.`
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Prompt bodies                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -145,6 +303,7 @@ const OBJECT_TYPE: Record<RoomKaiCommand, KaiObjectType> = {
   to_alert: 'alert_preview',
   compare: 'comparison',
   explain: 'briefing',
+  mark_levels: 'chart_response',
 };
 
 function instructionFor(input: RoomKaiInput): string {
@@ -286,7 +445,9 @@ function validate(command: RoomKaiCommand, payload: unknown): { ok: true; value:
           ? AlertPreviewPayload
           : command === 'compare'
             ? ComparisonPayload
-            : BriefingPayload;
+            : command === 'mark_levels'
+              ? ChartResponsePayload
+              : BriefingPayload;
   const parsed = schema.safeParse(payload);
   if (!parsed.success) {
     return { ok: false, reason: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') };
@@ -308,6 +469,7 @@ const BODY_PLAIN: Record<RoomKaiCommand, string> = {
   to_alert: 'Here is that idea as a watch you can activate. It only watches; it never places an order.',
   compare: 'Here is the bull case and the bear case, side by side.',
   explain: 'Here is what is going on in here, in plain English.',
+  mark_levels: 'Here are the prices this room keeps coming back to.',
 };
 
 /* ------------------------------------------------------------------ */
@@ -323,6 +485,9 @@ export async function runRoomCommand(input: RoomKaiInput): Promise<RoomKaiResult
     degraded: true,
     reason,
   });
+
+  // mark_levels reads the text itself — no model, so no offline path either.
+  if (input.command === 'mark_levels') return markLevels(input.room, input.messages);
 
   if (!anthropicConfigured()) return fallback('Kai is offline right now.');
   if ((input.command === 'verify' || input.command === 'to_alert') && !input.target) {

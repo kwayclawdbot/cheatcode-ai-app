@@ -89,6 +89,32 @@ export async function roomStats(roomIds: string[]): Promise<
   return out;
 }
 
+/**
+ * What the member has actually missed: past their read mark, still visible,
+ * and NOT their own writing. You did not miss your own post, and a "3 new"
+ * pill over three of your own messages is simply wrong.
+ *
+ * Kai's posts DO count. `user_id` is null on those, and a bare `neq` would
+ * drop them with the NULL — hence the explicit `is.null` arm.
+ */
+export async function unreadFor(roomId: string, userId: string, sinceSeq: number): Promise<number> {
+  const db = serviceClient();
+  const { count } = await db
+    .from('messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('room_id', roomId)
+    .gt('seq', sinceSeq)
+    .is('deleted_at', null)
+    .or(`user_id.is.null,user_id.neq.${userId}`);
+  return Math.max(0, Number(count ?? 0));
+}
+
+/** One sentence for the catch-up pill. */
+export function catchUpPlain(count: number): string {
+  if (count <= 0) return 'You are up to date.';
+  return `${count} new since you left.`;
+}
+
 export function toRoomRow(
   row: Record<string, unknown>,
   stats: { members: number; messages: number; last_seq: number } | undefined,

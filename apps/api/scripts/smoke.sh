@@ -7,6 +7,11 @@
 # trade turned into a debrief. Asserts 2xx on each call and prints the SSE
 # frames, the room_summary object and the debrief verbatim.
 #
+# The room work happens in a THROWAWAY core room this script creates and then
+# deletes (see cleanup_smoke_room). It must never post into a seeded room: the
+# fixtures here include spam and a prompt-injection attempt, and a member
+# opening that room would read both — with Kai's summary quoting them back.
+#
 #   cd apps/api && ./scripts/smoke.sh            # expects `next dev` on :3000
 #   API_BASE=http://localhost:3000 ./scripts/smoke.sh
 #
@@ -28,9 +33,28 @@ fi
 : "${SUPABASE_SERVICE_ROLE_KEY:?SUPABASE_SERVICE_ROLE_KEY not set}"
 
 PASS=0; FAIL=0
+ROOM_ID=""
 green() { printf '\033[32m%s\033[0m\n' "$1"; }
 red()   { printf '\033[31m%s\033[0m\n' "$1"; }
 hr()    { printf '%s\n' "------------------------------------------------------------"; }
+
+# Everything this script writes into the room goes away again, whether it passed,
+# failed or was interrupted. A fixture left in a room a member can open is a bug.
+cleanup_smoke_room() {
+  local code=$?
+  [ -n "$ROOM_ID" ] || return $code
+  curl -sS -o /dev/null -X DELETE "$SUPABASE_URL/rest/v1/kai_objects?refs->>room_id=eq.$ROOM_ID" \
+    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
+  curl -sS -o /dev/null -X DELETE "$SUPABASE_URL/rest/v1/messages?room_id=eq.$ROOM_ID" \
+    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
+  curl -sS -o /dev/null -X DELETE "$SUPABASE_URL/rest/v1/room_members?room_id=eq.$ROOM_ID" \
+    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
+  curl -sS -o /dev/null -X DELETE "$SUPABASE_URL/rest/v1/rooms?id=eq.$ROOM_ID" \
+    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
+  printf 'cleaned up the throwaway room %s\n' "$ROOM_ID"
+  return $code
+}
+trap cleanup_smoke_room EXIT
 
 # check <name> <method> <path> [json-body]
 check() {
@@ -423,10 +447,27 @@ print("  actions:",[(a["action"],a["enabled"]) for a in d["actions"]])'
 hr; echo "ROUND 2 — community: join, post 3, @Kai summarize"; hr
 
 check "rooms list" GET "/api/v1/rooms?mode=day_trade"
-ROOM_ID=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["core"][0]["id"])')
-ROOM_NAME=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["core"][0]["name"])')
-echo "  room: $ROOM_NAME ($ROOM_ID)"
+printf '  core rooms: '; printf '%s' "$BODY" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["core"]))'
 printf '  live notice: '; printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["live_notice"])'
+
+# --- a THROWAWAY room to post into --------------------------------------------
+# This script posts spam fixtures and a prompt-injection fixture, and then asks
+# Kai to summarise them. Run against a SEEDED room ("Market Open") that text
+# stays there, real members read it, and Kai's summary quotes the injection back
+# at them. So the smoke gets its own core room, and `cleanup_smoke_room` removes
+# the room, its messages, its members and the Kai objects they produced — on
+# success and on failure alike (trap EXIT).
+ROOM_SLUG="smoke-$(date +%s)"
+ROOM_NAME="Smoke Test Room (throwaway)"
+ROOM_ID=$(curl -sS -X POST "$SUPABASE_URL/rest/v1/rooms" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  -H 'Content-Type: application/json' -H 'Prefer: return=representation' \
+  -d "{\"type\":\"core\",\"mode\":\"day_trade\",\"slug\":\"$ROOM_SLUG\",\"name\":\"$ROOM_NAME\",\"description\":\"Created by scripts/smoke.sh. Deleted when it finishes.\",\"config\":{\"intel_eligible\":false}}" \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["id"] if isinstance(d,list) and d else "")' 2>/dev/null)
+if [ -z "$ROOM_ID" ]; then red "FAIL  could not create the throwaway room"; exit 1; fi
+green "PASS  created throwaway room $ROOM_SLUG ($ROOM_ID)"; PASS=$((PASS+1))
+echo "  room: $ROOM_NAME ($ROOM_ID)"
 
 expect "messages before joining are refused" 403 GET "/api/v1/rooms/$ROOM_ID/messages"
 
@@ -526,6 +567,142 @@ import json,sys
 d=json.load(sys.stdin)
 print("  published:",d["published"],"| degraded:",d["degraded"])
 print("  notes:",d["notes"][:3])'
+
+hr
+echo "ROUND 2b — draft-scoped review, mark_levels, read receipts"
+hr
+
+# --- draft-scoped structured assist ------------------------------------------
+# 08 §7 puts Kai's review BEFORE publication. This is the route the composer
+# uses: there is no message yet, and there must not be one afterwards either.
+check "message count before the draft review" GET "/api/v1/rooms/$ROOM_ID/messages"
+BEFORE_COUNT=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["messages"]))')
+
+check "draft-scoped structured assist (nothing exists yet)" POST "/api/v1/rooms/$ROOM_ID/structured-assist" \
+  '{"structured_idea":{"direction":"long","thesis":"META reclaims the 10-day high and holds it, so I want the long","symbol":"META"},"body":"Thinking long META on the reclaim. I have not written down my risk yet."}'
+printf '%s' "$BODY" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["published"] is False, "published must be the literal false"
+assert isinstance(d["improved_draft"], dict) and d["improved_draft"]["thesis"], "improved_draft missing"
+assert d["improved_draft"] == d["improved"], "improved_draft must alias improved"
+assert d["feedback_plain"] == d["plain"], "feedback_plain must alias plain"
+assert isinstance(d["gaps"], list), "gaps must be a list"
+assert d["original"]["thesis"].startswith("META"), "the members own draft must come back untouched"
+print("  published:",d["published"],"| degraded:",d["degraded"])
+print("  gaps:",d["gaps"])
+print("  improved thesis:",d["improved_draft"]["thesis"][:90])'
+if [ $? -eq 0 ]; then
+  green "PASS  the draft review answers in the shape the composer reads"; PASS=$((PASS+1))
+else
+  red "FAIL  the draft review answered in the wrong shape"; FAIL=$((FAIL+1))
+fi
+
+check "the draft review published nothing" GET "/api/v1/rooms/$ROOM_ID/messages"
+AFTER_COUNT=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["messages"]))')
+if [ "$BEFORE_COUNT" = "$AFTER_COUNT" ]; then
+  green "PASS  the room is unchanged — $BEFORE_COUNT messages before and after"; PASS=$((PASS+1))
+else
+  red "FAIL  the draft review posted something ($BEFORE_COUNT -> $AFTER_COUNT)"; FAIL=$((FAIL+1))
+fi
+
+expect "a draft review without a draft is refused" 400 POST "/api/v1/rooms/$ROOM_ID/structured-assist" '{}'
+
+# --- read receipts ------------------------------------------------------------
+# The GET above already advanced the mark to the end of the room, so this asserts
+# the two things a direct RLS write would not give us: forward-only, and clamped.
+check "read the room state" GET "/api/v1/rooms/$ROOM_ID/messages"
+LAST_SEQ=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["last_seq"])')
+
+check "mark read at the end of the room" POST "/api/v1/rooms/$ROOM_ID/read" "{\"seq\":$LAST_SEQ}"
+printf '%s' "$BODY" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+assert d['last_read_seq'] == $LAST_SEQ, 'the mark did not land on the end of the room'
+assert d['unread'] == 0, 'nothing can be unread at the end of the room'
+print('  last_read_seq:',d['last_read_seq'],'|',d['plain'])"
+if [ $? -eq 0 ]; then
+  green "PASS  the read mark advanced to #$LAST_SEQ"; PASS=$((PASS+1))
+else
+  red "FAIL  the read mark did not advance correctly"; FAIL=$((FAIL+1))
+fi
+
+check "a read receipt past the end of the room is clamped" POST "/api/v1/rooms/$ROOM_ID/read" '{"seq":999999}'
+printf '%s' "$BODY" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+assert d['last_read_seq'] == $LAST_SEQ, 'a bad seq marked unwritten messages as read'
+print('  clamped back to #',d['last_read_seq'])"
+if [ $? -eq 0 ]; then
+  green "PASS  a seq past the end of the room was clamped, not trusted"; PASS=$((PASS+1))
+else
+  red "FAIL  a seq past the end of the room was written through"; FAIL=$((FAIL+1))
+fi
+
+check "a stale read receipt never moves the mark backwards" POST "/api/v1/rooms/$ROOM_ID/read" '{"seq":1}'
+printf '%s' "$BODY" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+assert d['last_read_seq'] == $LAST_SEQ, 'a stale client rewound the read mark'
+print('  still #',d['last_read_seq'])"
+if [ $? -eq 0 ]; then
+  green "PASS  the read mark is forward-only"; PASS=$((PASS+1))
+else
+  red "FAIL  the read mark moved backwards"; FAIL=$((FAIL+1))
+fi
+
+expect "a negative read receipt is refused" 400 POST "/api/v1/rooms/$ROOM_ID/read" '{"seq":-1}'
+
+# --- @Kai mark_levels ---------------------------------------------------------
+# The room named 604.50 (message 1) and 537 (message 2) for META, and nothing
+# else that is a price: "10-day high" is a lookback, "three weeks" is a horizon.
+# Kai must return exactly those two, and no others.
+check "room @Kai mark_levels" POST "/api/v1/rooms/$ROOM_ID/kai" '{"command":"mark_levels"}'
+printf '%s' "$BODY" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+o=d["object"]; p=o["payload"]
+print("  type:",o["type"],"| symbol:",p["symbol"],"| timeframe:",p["timeframe"])
+for a in p["annotations"]:
+    print("    %s %s — %s (%s)"%(a["kind"],a["price"],a["text"],a["semantic"]))
+print("  rationale:",p["rationale_plain"][:120])
+print("  validity:",p["validity"])
+assert o["type"] == "chart_response", "mark_levels must produce a chart_response"
+assert p["timeframe"] == "1d"
+assert p["symbol"] == "META", "the room is talking about META"
+prices = sorted(a["price"] for a in p["annotations"])
+assert prices == [537.0, 604.5], "levels must be exactly the ones members typed, got %r" % (prices,)
+for a in p["annotations"]:
+    assert a["kind"] == "level" and a["semantic"] == "note"
+    assert a["text"] == "mentioned by 1 member", a["text"]
+assert d["degraded"] is False'
+if [ $? -eq 0 ]; then
+  green "PASS  mark_levels returned only the prices members actually typed"; PASS=$((PASS+1))
+else
+  red "FAIL  mark_levels invented, dropped or miscounted a level"; FAIL=$((FAIL+1))
+fi
+
+# Kai just posted into the room while the caller's mark sat at the end, so the
+# catch-up pill must now count exactly that one post — and never the caller's own.
+check "catch_up counts Kai's post and none of your own" GET "/api/v1/rooms/$ROOM_ID/messages"
+printf '%s' "$BODY" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+me='$USER_ID'
+since=d['catch_up']['since_seq']
+past=[m for m in d['messages'] if m['seq']>since and not m['deleted']]
+theirs=[m for m in past if (m['author'] or {}).get('user_id') != me]
+mine=[m for m in past if (m['author'] or {}).get('user_id') == me]
+print('  since #%d | %d past it (%d mine, %d not mine) | count %d | %s'%(
+    since,len(past),len(mine),len(theirs),d['catch_up']['count'],d['catch_up']['plain']))
+assert d['catch_up']['count'] == len(theirs), 'catch_up counted the callers own messages'
+assert since == $LAST_SEQ, 'the mark moved when it should not have'
+assert len(theirs) == 1, 'Kai posted exactly one object'"
+if [ $? -eq 0 ]; then
+  green "PASS  catch_up counts other people's posts only"; PASS=$((PASS+1))
+else
+  red "FAIL  catch_up miscounted"; FAIL=$((FAIL+1))
+fi
 
 check "report a message" POST "/api/v1/messages/$IDEA_ID/report" '{"reason":"smoke-test report, please ignore"}'
 check "mute room" POST "/api/v1/rooms/$ROOM_ID/mute" '{"minutes":30}'
