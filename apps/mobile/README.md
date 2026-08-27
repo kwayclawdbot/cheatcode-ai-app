@@ -1,56 +1,60 @@
-# Welcome to your Expo app 👋
+# Cheat Code AI — mobile (Expo + expo-router)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+The client for the v1 slice: sign up/in, the Kai onboarding walkthrough, and the
+Home Kai workspace behind the L6 tab bar (Home · Alerts · Community · Trade ·
+Account).
 
-## Get started
+Design truth is `design/artboards/*.html` — the DOM and inline styles, not the
+PNGs. Tokens are lifted from those files into `src/ui/tokens.ts`; when the
+artboard and `docs/14_PALETTE_LOCK_VOLT_VIOLET.md` disagree, the artboard wins.
 
-1. Install dependencies
+Colour grammar, enforced throughout: **volt = you**, **violet = Kai**,
+**cyan = the market**, green/red/gold = financial semantics only.
 
-   ```bash
-   npm install
-   ```
+## Layout
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+src/app/                 expo-router routes
+  (auth)/                welcome · sign-up · sign-in
+  (onboarding)/          kai · goal · risk · summary · learn
+  (tabs)/                home · alerts · community · trade · account
+src/ui/                  tokens, fonts, and every primitive the artboards use
+src/lib/                 supabase client, session gate, api client, SSE, fixtures
+scripts/proof.mjs        Playwright gate (fixtures)
+scripts/proof-live.mjs   Playwright gate (real session + real Kai)
+proof/                   screenshots + artboard comparisons
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+`packages/shared/api.ts` is imported **type-only** — zod stays server-side and
+the import is erased at build, so Metro never resolves outside `apps/mobile`.
+All contract → view-model mapping lives in `src/lib/adapters.ts`.
 
-### Other setup steps
+## Running
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```bash
+npm start                      # phone via Expo Go
+npm run web                    # browser
+EXPO_PUBLIC_FIXTURES=1 npm run web   # every screen from local fixtures, no network
+```
 
-## Learn more
+Env (`.env`, git-ignored — copy from `supabase/.env.local.example`):
+`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`, `EXPO_PUBLIC_API_BASE`.
+On a physical phone use the Mac's LAN IP, not `127.0.0.1`.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Verification
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+npx tsc --noEmit
+npx expo export --platform web
 
-## Join the community
+# fixtures gate
+EXPO_PUBLIC_FIXTURES=1 npx expo start --web --port 8081
+node scripts/proof.mjs
 
-Join our community of developers creating universal apps.
+# live gate (needs supabase start + apps/api on :3000)
+npx expo start --web --port 8082
+node scripts/proof-live.mjs
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+`proof/compare-home.png` and `proof/compare-onboarding-kai.png` put the artboard
+and the build side by side at 390×844. Element-level match is the bar.
