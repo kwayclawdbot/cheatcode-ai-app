@@ -61,15 +61,18 @@ const main = async () => {
   page.on('console', (m) => { if (m.type() === 'error') console.log('  ! console:', m.text().slice(0, 240)); });
 
   try {
-    console.log('\n[1] community home');
+    // Community is three rooms (owner decision 2026-08-26): #day-trade, #swing,
+    // #investing, all visible to everyone. There is no mode chip row to tap any
+    // more, so [1] shoots the directory and then opens the second room from its
+    // own row — which is the only way in now.
+    console.log('\n[1] community home — three rooms');
     await open(page, '/community');
     await shot(page, 'b-01-community');
-    await tap(page, 'mode-swing');
-    await shot(page, 'b-02-community-swing');
-    await tap(page, 'mode-day_trade');
+    await tap(page, 'room-swing', 1400);
+    await shot(page, 'b-02-room-swing');
 
-    console.log('[2] setup room');
-    await open(page, '/room/room-meta-setup');
+    console.log('[2] the day-trade room, with its pinned setup');
+    await open(page, '/room/room-day-trade');
     await shot(page, 'b-03-room-setup');
     await tap(page, 'composer-kai');
     await shot(page, 'b-04-room-kai-sheet');
@@ -77,20 +80,20 @@ const main = async () => {
     await shot(page, 'b-05-room-kai-compare');
 
     console.log('[3] verify a member claim');
-    await open(page, '/room/room-meta-setup');
+    await open(page, '/room/room-day-trade');
     await tap(page, 'message-m-5');            // select a claim
     await tap(page, 'composer-kai');
     await tap(page, 'kai-cmd-verify', 1200);
     await shot(page, 'b-06-room-verify');
 
-    console.log('[4] core room');
-    await open(page, '/room/room-live-setups');
+    console.log('[4] a room with no setup attached');
+    await open(page, '/room/room-investing');
     await shot(page, 'b-07-room-core');
     await tap(page, 'header-right');
     await shot(page, 'b-08-room-options');
 
     console.log('[5] structured composer');
-    await open(page, '/room/room-meta-setup/compose');
+    await open(page, '/room/room-day-trade/compose');
     await shot(page, 'b-09-compose-empty');
     const fill = async (id, text) => {
       const el = page.getByTestId(id).last();

@@ -41,81 +41,39 @@ const META_SETUP: RoomSetup = {
   headline: 'Buyers are defending an important level.',
 };
 
+/**
+ * The three rooms (owner decision 2026-08-26). Nothing else is a room any more:
+ * no per-mode sub-rooms, no setup rooms in the directory.
+ *
+ * `#day-trade` keeps the META setup attached and the fixture conversation about
+ * it, so the room screen's pinned-setup path and the @Kai objects still have
+ * something real-shaped to render in the proof shots.
+ */
 export const fixtureRooms: Room[] = [
   {
-    id: 'room-meta-setup', slug: 'meta-setup', name: 'meta-setup',
-    description: 'The META B+ setup, while it is live.',
-    mode: 'day_trade', type: 'setup',
-    member_count: 28, discussing_count: 28, unread: 3, last_read_seq: 4,
+    id: 'room-day-trade', slug: 'day-trade', name: 'Day Trade',
+    description: 'Intraday setups, confirmations, exits — today.',
+    mode: 'day_trade', type: 'core',
+    member_count: 124, discussing_count: 31, unread: 3, last_read_seq: 4,
     joined: true, muted_until: null,
-    config: { intel_eligible: false },
-    pinned: [{ kind: 'kai', text: 'Watching META into the open. CPI print at 10:00 is the main risk.' }],
+    config: { slow_mode_s: 0, intel_eligible: false },
+    pinned: [{ kind: 'kai', text: 'Watching META and NVDA into the open. CPI print at 10:00 is the main risk.' }],
     setup_id: META_SETUP.id,
     setup: META_SETUP,
     preview: { who: 'Kai', text: 'volume confirmed 1.6×', by_kai: true },
   },
   {
-    id: 'room-nvda-setup', slug: 'nvda-setup', name: 'nvda-setup',
-    description: 'NVDA is pausing, not breaking down.',
-    mode: 'day_trade', type: 'setup',
-    member_count: 12, discussing_count: 12, unread: 0, last_read_seq: 0,
-    joined: false, muted_until: null,
-    config: { intel_eligible: false },
-    pinned: [],
-    setup_id: '11111111-1111-4111-8111-000000000002',
-    setup: {
-      id: '11111111-1111-4111-8111-000000000002', symbol: 'NVDA', grade_display: 'B',
-      state: 'watching', entry: '128.50', target: '136.00', invalid: '118.00',
-      freshness: 'delayed', price: '126.85', change_pct: '-0.41%',
-      headline: 'Price is pausing after a strong run, not breaking down.',
-    },
-    preview: { who: 'Jordan', text: 'catalyst thread updated', by_kai: false },
-  },
-  {
-    id: 'room-market-open', slug: 'dt-market-open', name: 'Market Open',
-    description: 'What is moving as the session starts.',
-    mode: 'day_trade', type: 'core',
-    member_count: 124, discussing_count: 31, unread: 0, last_read_seq: 0,
-    joined: true, muted_until: null,
-    config: { intel_eligible: false }, pinned: [], setup_id: null, setup: null, preview: null,
-  },
-  {
-    id: 'room-live-setups', slug: 'dt-live-setups', name: 'Live Setups',
-    description: 'Setups Kai and members are watching right now.',
-    mode: 'day_trade', type: 'core',
-    member_count: 87, discussing_count: 22, unread: 3, last_read_seq: 6,
-    joined: true, muted_until: null,
-    config: { slow_mode_s: 0, intel_eligible: false },
-    pinned: [{ kind: 'kai', text: 'Watching META and NVDA into the open. CPI print at 10:00 is the main risk.' }],
-    setup_id: null, setup: null, preview: null,
-  },
-  {
-    id: 'room-trade-ready', slug: 'dt-trade-ready', name: 'Trade Ready',
-    description: 'Setups that have met their entry condition.',
-    mode: 'day_trade', type: 'core',
-    member_count: 41, discussing_count: 4, unread: 0, last_read_seq: 0,
-    joined: false, muted_until: null,
-    config: { intel_eligible: false }, pinned: [], setup_id: null, setup: null, preview: null,
-  },
-  {
-    id: 'room-beginner', slug: 'dt-beginner-questions', name: 'Beginner Questions',
-    description: 'No question is too basic here.',
-    mode: 'day_trade', type: 'core',
-    member_count: 36, discussing_count: 9, unread: 0, last_read_seq: 0,
-    joined: false, muted_until: null,
-    config: { intel_eligible: false }, pinned: [], setup_id: null, setup: null, preview: null,
-  },
-  {
-    id: 'room-new-ideas', slug: 'sw-new-ideas', name: 'New Ideas',
-    description: 'Fresh theses looking for confirmation.',
+    id: 'room-swing', slug: 'swing', name: 'Swing',
+    description: 'Ideas held for days or weeks: theses, catalysts, updates.',
     mode: 'swing', type: 'core',
     member_count: 52, discussing_count: 7, unread: 0, last_read_seq: 0,
     joined: false, muted_until: null,
-    config: { intel_eligible: false }, pinned: [], setup_id: null, setup: null, preview: null,
+    config: { intel_eligible: false }, pinned: [], setup_id: null, setup: null,
+    preview: { who: 'Jordan', text: 'catalyst thread updated', by_kai: false },
   },
   {
-    id: 'room-stock-research', slug: 'iv-stock-research', name: 'Stock Research',
-    description: 'Digging into individual businesses.',
+    id: 'room-investing', slug: 'investing', name: 'Investing',
+    description: 'Building and reviewing a long-term portfolio.',
     mode: 'invest', type: 'core',
     member_count: 63, discussing_count: 5, unread: 0, last_read_seq: 0,
     joined: false, muted_until: null,

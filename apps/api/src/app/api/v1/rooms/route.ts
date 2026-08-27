@@ -1,13 +1,16 @@
 /**
  * GET /api/v1/rooms?mode=
  *
- * The Community directory: core rooms for the mode plus any setup rooms, each
- * with real counts and the reader's unread position.
+ * The Community directory. Owner decision 2026-08-26: Community is THREE rooms
+ * — Day Trade, Swing, Investing — and every member sees all three.
+ *
+ * `?mode=` is still accepted so an older client does not break, and the response
+ * still echoes a `mode` (the caller's primary mode) because the schema carries
+ * it. Neither one filters the list any more: a swing trader who wants to read
+ * the intraday room is not doing anything that needs gating.
  *
  * Not in the brief's endpoint list, added because the screen needs it: counts
- * are aggregates a client cannot compute under RLS, and `rooms` RLS only shows
- * a non-member the CORE rooms, so setup rooms would be invisible without a
- * server read. Documented in the README.
+ * are aggregates a client cannot compute under RLS.
  *
  * There is no live block. Live sessions are Phase 2 and the response says so —
  * a fake "LIVE" card would be a lie about a feature that does not exist.
@@ -23,17 +26,32 @@ export const dynamic = 'force-dynamic';
 
 const LIVE_NOTICE = 'Live sessions arrive in a later release.';
 
+/**
+ * Setup rooms are not surfaced for now (owner decision 2026-08-26 — Community
+ * is the three core rooms and nothing else). The shaping below still handles
+ * them, and `setup_rooms` stays in the response contract, so turning this back
+ * on is one boolean rather than a re-write. Kai may still open a setup room and
+ * a deep link into one still works; it just is not listed in the directory.
+ */
+const INCLUDE_SETUP_ROOMS = false;
+
+/** The order the directory reads in. Not alphabetical — shortest horizon first. */
+const MODE_ORDER = ['day_trade', 'swing', 'invest'];
+const rank = (mode: string | null) => {
+  const i = MODE_ORDER.indexOf(String(mode));
+  return i === -1 ? MODE_ORDER.length : i;
+};
+
 export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
   const q = parseQuery(req, RoomsQuery);
   const profile = await loadProfile(ctx.user.id);
   const mode = q.mode ?? profile.primary_mode;
   const db = serviceClient();
 
-  const { data } = await db
-    .from('rooms')
-    .select(ROOM_COLUMNS)
-    .or(`mode.eq.${mode},mode.is.null`)
-    .order('created_at', { ascending: true });
+  // Every core room, for everybody. The `mode` column still describes what a
+  // room is about; it no longer decides who may see it.
+  const query = db.from('rooms').select(ROOM_COLUMNS).order('created_at', { ascending: true });
+  const { data } = await (INCLUDE_SETUP_ROOMS ? query : query.eq('type', 'core'));
 
   const rows = (data ?? []) as Record<string, unknown>[];
   const ids = rows.map((r) => String(r.id));
@@ -60,13 +78,15 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
 
   const shaped = rows.map((r) => toRoomRow(r, stats.get(String(r.id)), memberBy.get(String(r.id)) ?? null));
 
+  const core = shaped.filter((r) => r.type === 'core').sort((a, b) => rank(a.mode) - rank(b.mode));
+
   return ok(
     RoomsResponse.parse({
       mode,
-      core: shaped.filter((r) => r.type === 'core'),
-      setup_rooms: shaped.filter((r) => r.type === 'setup'),
+      core,
+      setup_rooms: INCLUDE_SETUP_ROOMS ? shaped.filter((r) => r.type === 'setup') : [],
       live_notice: LIVE_NOTICE,
-      empty_copy: 'No rooms for this mode yet.',
+      empty_copy: 'No rooms yet.',
     })
   );
 });

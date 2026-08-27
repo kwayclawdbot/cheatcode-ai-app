@@ -93,7 +93,7 @@ market data goes live" rather than implying tick-by-tick checking.
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/rooms?mode=` | Core + setup rooms with member/message counts and unread. Not in the brief's list — added because counts are aggregates a client cannot compute under RLS. `live_notice` says live sessions are a later release. |
+| `GET` | `/rooms?mode=` | **The three core rooms** — `#day-trade`, `#swing`, `#investing`, in that order — with member/message counts and unread. Every member sees all three: `?mode=` is accepted for compatibility and echoed back as `mode`, but it does **not** filter. `setup_rooms` is an empty array this release (`INCLUDE_SETUP_ROOMS = false` in the route; the shaping is intact and a deep link into a setup room still works, it is just not listed). Not in the brief's list — added because counts are aggregates a client cannot compute under RLS. `live_notice` says live sessions are a later release. |
 | `POST` | `/rooms/:id/join` | Core rooms only, via `join_core_room`. |
 | `GET` | `/rooms/:id/messages?after_seq=&limit=` | Through `messages_public` (deleted rows keep their place, body nulled). Membership enforced. Advances `last_read_seq`. `catch_up.count` never counts the caller's own posts — you did not miss your own writing. Kai's posts do count. |
 | `POST` | `/rooms/:id/messages` | Pipeline in order: zod → membership → moderation mute/ban → posting restriction → slow mode → rate limit 10/min → spam precheck → **disclosure required when `structured_idea` is present** → `post_room_message` (assigns `seq`). |

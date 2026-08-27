@@ -27,6 +27,88 @@ const API = process.env.PROOF_API ?? 'http://localhost:3000';
 const EMAIL = `proofb+${Date.now()}@cheatcode.test`;
 const PASSWORD = 'paper-money-first';
 
+/**
+ * Community is three real rooms now, so this script posts into one a member
+ * actually reads. Everything it writes there is removed again when it finishes
+ * — see `cleanupRoom`, which runs on success, on failure and on Ctrl-C. A proof
+ * fixture left in #day-trade is a bug, not a screenshot.
+ *
+ * The cleanup needs the service role, the same way apps/api/scripts/smoke.sh
+ * does; it is read from apps/api/.env.local (git-ignored) unless exported.
+ */
+async function loadServiceEnv() {
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.SUPABASE_URL) {
+    return { url: process.env.SUPABASE_URL, key: process.env.SUPABASE_SERVICE_ROLE_KEY };
+  }
+  try {
+    const text = await fs.readFile(path.resolve(ROOT, '../api/.env.local'), 'utf8');
+    const read = (k) => text.match(new RegExp(`^${k}=(.*)$`, 'm'))?.[1]?.trim() ?? null;
+    const url = process.env.SUPABASE_URL ?? read('SUPABASE_URL');
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? read('SUPABASE_SERVICE_ROLE_KEY');
+    return url && key ? { url, key } : null;
+  } catch {
+    return null;
+  }
+}
+
+const SERVICE = await loadServiceEnv();
+
+const rest = (pathAndQuery, init = {}) =>
+  fetch(`${SERVICE.url}/rest/v1/${pathAndQuery}`, {
+    ...init,
+    headers: {
+      apikey: SERVICE.key,
+      Authorization: `Bearer ${SERVICE.key}`,
+      'Content-Type': 'application/json',
+      ...(init.headers ?? {}),
+    },
+  });
+
+/** Set once the script knows which room it is about to write into. */
+const written = { roomId: null, baselineSeq: 0, userId: null };
+let cleaned = false;
+
+/**
+ * Remove every row this run put in the room: the member's posts, the Kai
+ * objects and Kai messages those posts provoked, and the membership itself.
+ * Scoped by `seq > baseline`, so nothing that was in the room beforehand is
+ * touched even if another session is posting at the same time.
+ */
+async function cleanupRoom() {
+  if (cleaned) return;
+  cleaned = true;
+  if (!SERVICE) { console.log('  ! no service key — could not clean the room up'); return; }
+  try {
+    if (written.roomId) {
+      const listed = await rest(
+        `messages?room_id=eq.${written.roomId}&seq=gt.${written.baselineSeq}&select=id,refs`,
+      );
+      const rows = await listed.json().catch(() => []);
+      const ids = (Array.isArray(rows) ? rows : []).map((r) => r.id);
+      if (ids.length) {
+        // verifications reference messages with no ON DELETE, so they go first.
+        await rest(`verifications?message_id=in.(${ids.join(',')})`, { method: 'DELETE' });
+        await rest(`messages?id=in.(${ids.join(',')})`, { method: 'DELETE' });
+        for (const oid of rows.map((r) => r?.refs?.kai_object_id).filter(Boolean)) {
+          await rest(`kai_objects?id=eq.${oid}`, { method: 'DELETE' });
+        }
+      }
+      await rest(`room_seq_counters?room_id=eq.${written.roomId}`, {
+        method: 'PATCH', body: JSON.stringify({ last_seq: written.baselineSeq }),
+      });
+      console.log(`  · cleaned ${ids.length} message(s) out of the room`);
+    }
+    if (written.userId) {
+      await rest(`room_members?user_id=eq.${written.userId}`, { method: 'DELETE' });
+      await rest(`kai_objects?user_id=eq.${written.userId}`, { method: 'DELETE' });
+    }
+  } catch (e) {
+    console.log('  ! cleanup failed:', e.message);
+  }
+}
+
+process.on('SIGINT', async () => { await cleanupRoom(); process.exit(130); });
+
 const HIDE_DEV_CHROME = `.__expo_fast_refresh { display: none !important; }`;
 const installHideDevChrome = (ctx) =>
   ctx.addInitScript((css) => {
@@ -152,21 +234,37 @@ const main = async () => {
     const token = await accessToken(page);
     console.log(token ? '  · got a session token' : '  ! no session token — API-backed steps will be skipped');
 
-    console.log('[2] community, real rooms');
+    console.log('[2] community — the three rooms');
     await go(page, '/community', 3500);
     await shot(page, 'live2b-01-community');
 
-    // Take whichever room the real data offers, in the tab's own order.
+    // Exactly three rooms, in order, no mode chips. Asserted here rather than
+    // eyeballed in the screenshot.
     const roomIds = await page.evaluate(() =>
       Array.from(document.querySelectorAll('[data-testid^="room-"]')).map((n) => n.getAttribute('data-testid')));
-    console.log(`  · ${roomIds.length} rooms on screen`);
-    const firstRoom = roomIds[0] ?? null;
+    const WANT = ['room-day-trade', 'room-swing', 'room-investing'];
+    console.log(`  · rooms on screen: ${roomIds.join(', ') || '(none)'}`);
+    if (JSON.stringify(roomIds) !== JSON.stringify(WANT)) {
+      throw new Error(`expected exactly ${WANT.join(', ')} — got ${roomIds.join(', ') || '(none)'}`);
+    }
+    const chips = await page.locator('[data-testid^="mode-"]').count();
+    if (chips) throw new Error(`the mode chips are still on the community tab (${chips} of them)`);
+    const firstRoom = WANT[0];
 
-    if (firstRoom) {
+    {
       console.log('[3] post a real message, then ask Kai');
       await page.locator(`[data-testid="${firstRoom}"]`).last().click();
       await page.waitForTimeout(3500);
       await shot(page, 'live2b-02-room');
+
+      // Everything written from here on is removed by cleanupRoom().
+      written.userId = token ? jwtSub(token) : null;
+      written.roomId = page.url().split('/room/')[1]?.split(/[/?#]/)[0] ?? null;
+      if (written.roomId && SERVICE) {
+        const r = await rest(`room_seq_counters?room_id=eq.${written.roomId}&select=last_seq`);
+        written.baselineSeq = (await r.json().catch(() => []))?.[0]?.last_seq ?? 0;
+        console.log(`  · writing into ${written.roomId} from seq ${written.baselineSeq}`);
+      }
 
       const input = page.getByTestId('composer-input').last();
       if (await input.count()) {
@@ -223,7 +321,7 @@ const main = async () => {
     }
 
     console.log('[5] contributor — the real signed-in member');
-    const uid = token ? jwtSub(token) : null;
+    const uid = written.userId ?? (token ? jwtSub(token) : null);
     await go(page, `/contributor/${uid ?? 'u-jordan'}`, 3500);
     await shot(page, 'live2b-09-contributor');
 
@@ -263,6 +361,7 @@ const main = async () => {
       await shot(page, 'live2b-11-debriefs');
     }
   } finally {
+    await cleanupRoom();
     await ctx.close();
     await browser.close();
   }

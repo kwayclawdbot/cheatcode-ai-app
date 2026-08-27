@@ -446,9 +446,23 @@ print("  actions:",[(a["action"],a["enabled"]) for a in d["actions"]])'
 
 hr; echo "ROUND 2 — community: join, post 3, @Kai summarize"; hr
 
+# Community is THREE rooms (owner decision 2026-08-26) and every member sees all
+# three, so `?mode=` must NOT narrow the list. The param is still sent here to
+# prove an older client that passes it gets the whole directory back anyway.
+# This runs BEFORE the throwaway room below exists, so "exactly 3" is exact.
 check "rooms list" GET "/api/v1/rooms?mode=day_trade"
-printf '  core rooms: '; printf '%s' "$BODY" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["core"]))'
-printf '  live notice: '; printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["live_notice"])'
+if printf '%s' "$BODY" | python3 -c '
+import json,sys
+d = json.load(sys.stdin)
+core = d["core"]
+got = [(r["slug"], r["mode"]) for r in core]
+want = [("day-trade","day_trade"), ("swing","swing"), ("investing","invest")]
+print("  core rooms: %d %s" % (len(core), [s for s,_ in got]))
+print("  setup rooms: %d (not surfaced this release)" % len(d["setup_rooms"]))
+print("  live notice: %s" % d["live_notice"])
+assert got == want, "expected exactly the three core rooms in order, got %r" % (got,)
+assert all(("member_count" in r and "message_count" in r and "unread" in r) for r in core), "a room is missing its counts"
+'; then :; else red "FAIL  the rooms directory is not the three core rooms"; FAIL=$((FAIL+1)); fi
 
 # --- a THROWAWAY room to post into --------------------------------------------
 # This script posts spam fixtures and a prompt-injection fixture, and then asks

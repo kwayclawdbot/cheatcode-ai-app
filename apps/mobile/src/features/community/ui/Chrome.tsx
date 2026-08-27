@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Pressable, ScrollView, Modal, ViewStyle, StyleProp } from 'react-native';
+import { View, Pressable, Modal, ViewStyle, StyleProp } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { alpha, color, gradient, gradientAngle, radius } from '../../../ui/tokens';
@@ -247,42 +247,12 @@ export function PinnedStrip({ kind, text }: { kind: 'kai' | 'moderator' | 'warni
   );
 }
 
-/** Mode selector chip row — Day trade / Swing / Investing. */
-export function ModeChips({
-  value, onChange, options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { id: string; label: string }[];
-}) {
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-      {options.map((o) => {
-        const on = o.id === value;
-        return (
-          <Pressable
-            key={o.id}
-            testID={`mode-${o.id}`}
-            accessibilityRole="button"
-            accessibilityLabel={o.label}
-            accessibilityState={{ selected: on }}
-            onPress={() => onChange(o.id)}
-            hitSlop={{ top: 8, bottom: 8 }}
-            style={({ pressed }) => ({
-              height: 30, paddingHorizontal: 13, borderRadius: radius.pill,
-              flexDirection: 'row', alignItems: 'center',
-              borderWidth: on ? 0 : 0.5, borderColor: alpha.ivory24,
-              backgroundColor: on ? color.volt : 'transparent',
-              opacity: pressed ? 0.82 : 1,
-            })}
-          >
-            <T size={12} weight={on ? 'bold' : 'semibold'} c={on ? color.bg : color.muted}>{o.label}</T>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
-  );
-}
+/*
+ * ModeChips (the Day trade / Swing / Investing selector) lived here. Removed
+ * 2026-08-26: Community is three rooms and every member sees all three, so
+ * there is nothing left for a mode filter to do. The room's own mode is shown
+ * on the row instead.
+ */
 
 /** Bottom sheet used for the @Kai command list, moderation actions, etc. */
 export function Sheet({

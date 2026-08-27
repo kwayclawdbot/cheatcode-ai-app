@@ -2,88 +2,116 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, ScrollView, Pressable, RefreshControl, ActivityIndicator } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Screen } from '../../ui/Screen';
-import { T, Num, Eyebrow } from '../../ui/Text';
+import { T, Num } from '../../ui/Text';
 import { ObjectCard, RowList, Row } from '../../ui/Panel';
 import { alpha, color, radius } from '../../ui/tokens';
 import { useSession } from '../../lib/session';
 import { communityApi, type Source } from '../../lib/community-api';
-import { ModeChips } from '../../features/community/ui/Chrome';
 import type { Room } from '../../features/community/types';
 
 /**
  * V3-C0 Community home.
  *
- * DEVIATION from the artboard, deliberate: the artboard's red LIVE "Market Open
- * Desk" card is Phase 2 (08 §9 live rooms). Faking it would be a promise the
- * product cannot keep, so it is replaced by one quiet line. Everything else —
- * the two sections, the `#slug` rhythm, grade chips, preview lines, counts — is
- * the artboard's.
+ * OWNER DECISION 2026-08-26: Community is THREE rooms — Day Trade, Swing,
+ * Investing — and every member sees all three. What that removed:
+ *   · the mode chip row, because there is nothing left to filter;
+ *   · the SETUP ROOMS section, which is not surfaced this release.
+ * The member's primary mode is still worth saying out loud, so the matching row
+ * carries a quiet "your mode" label. It is a signpost, not a filter — the other
+ * two rows are just as reachable.
+ *
+ * DEVIATION from the artboard, deliberate and unchanged: the artboard's red LIVE
+ * "Market Open Desk" card is Phase 2 (08 §9 live rooms). Faking it would be a
+ * promise the product cannot keep, so it is replaced by one quiet line.
  *
  * Presence and member counts render in muted, not the artboard's green/cyan:
  * the palette lock reserves green for financial semantics and cyan for market
  * data, and "36 members" is neither.
  */
 
-const MODES = [
-  { id: 'day_trade', label: 'Day trade' },
-  { id: 'swing', label: 'Swing' },
-  { id: 'invest', label: 'Investing' },
-];
+/** Shortest horizon first — the order the API returns and the screen re-asserts. */
+const MODE_ORDER = ['day_trade', 'swing', 'invest'];
+const rank = (mode: string | null) => {
+  const i = MODE_ORDER.indexOf(String(mode));
+  return i === -1 ? MODE_ORDER.length : i;
+};
 
-function CountBadge({ value, strong }: { value: number; strong?: boolean }) {
+function CountBadge({ value }: { value: number }) {
   return (
     <View
       style={{
-        minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10,
-        alignItems: 'center', justifyContent: 'center',
-        backgroundColor: strong ? color.volt : alpha.ivory14,
+        minWidth: 22, height: 22, paddingHorizontal: 7, borderRadius: 11,
+        alignItems: 'center', justifyContent: 'center', backgroundColor: color.volt,
       }}
     >
-      <T size={10} weight="bold" c={strong ? color.bg : color.text}>{value}</T>
+      <T size={11} weight="bold" c={color.bg}>{value}</T>
     </View>
   );
 }
 
-function RoomRowContent({ room, onPress }: { room: Room; onPress: () => void }) {
-  const setup = room.setup;
+/**
+ * One of the three. Bigger than the old directory row on purpose — with three
+ * rooms instead of nineteen, each one is a destination rather than a list item.
+ */
+function RoomRow({ room, yours, onPress }: { room: Room; yours: boolean; onPress: () => void }) {
   const preview = room.preview;
+  const active = room.discussing_count ?? 0;
+  const members = room.member_count ?? 0;
   return (
     <Pressable
       testID={`room-${room.slug}`}
       accessibilityRole="button"
-      accessibilityLabel={`${room.name}. ${room.description ?? ''} ${room.unread ? `${room.unread} new` : ''}`}
+      accessibilityLabel={
+        `${room.name}. ${room.description ?? ''} ` +
+        `${members} ${members === 1 ? 'member' : 'members'}. ` +
+        `${room.unread ? `${room.unread} new.` : ''}${yours ? ' Your mode.' : ''}`
+      }
       accessibilityHint="Opens the room"
       onPress={onPress}
-      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minHeight: 44, opacity: pressed ? 0.75 : 1 })}
+      style={({ pressed }) => ({
+        flexDirection: 'row', alignItems: 'flex-start', gap: 11,
+        flex: 1, minHeight: 62, paddingVertical: 12, opacity: pressed ? 0.75 : 1,
+      })}
     >
-      <Num size={15} weight="regular" c={color.muted}>#</Num>
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <T size={14} weight={room.type === 'setup' ? 'bold' : 'semibold'} numberOfLines={1} style={{ flexShrink: 1 }}>
-            {room.name}
-          </T>
-          {setup?.grade_display ? (
-            <T size={11} weight="bold" c={color.violet}>{setup.grade_display}</T>
+      {/* The hash sits ON the room name's line, the way a channel list reads —
+          not floated against the middle of a three-line block. */}
+      <Num size={20} weight="regular" c={color.dim} style={{ marginTop: 1 }}>#</Num>
+
+      <View style={{ flex: 1, gap: 3 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+          <T size={17} weight="bold" numberOfLines={1} style={{ flexShrink: 1 }}>{room.name}</T>
+          {yours ? (
+            <View
+              style={{
+                paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5,
+                borderWidth: 0.5, borderColor: alpha.ivory25,
+              }}
+            >
+              <T size={9} c={color.muted}>your mode</T>
+            </View>
           ) : null}
         </View>
+
         {preview ? (
-          <T size={11} c={color.muted} numberOfLines={1} style={{ marginTop: 1 }}>
-            {preview.who ? <T size={11} c={preview.by_kai ? color.violetLight : color.muted}>{preview.who}: </T> : null}
+          <T size={12} c={color.muted} numberOfLines={1}>
+            {preview.who ? <T size={12} c={preview.by_kai ? color.violetLight : color.muted}>{preview.who}: </T> : null}
             {preview.text}
           </T>
         ) : room.description ? (
-          <T size={11} c={color.muted} numberOfLines={1} style={{ marginTop: 1 }}>{room.description}</T>
+          <T size={12} lh={17} c={color.muted} numberOfLines={2}>{room.description}</T>
         ) : null}
-      </View>
-      {room.unread > 0 ? (
-        <CountBadge value={room.unread} strong />
-      ) : room.discussing_count ? (
-        <T size={10} c={color.muted}>{room.discussing_count} active</T>
-      ) : room.member_count ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
           <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color.dim }} />
-          <T size={10} c={color.muted}>{room.member_count}</T>
+          <T size={10} c={color.dim}>
+            {members} {members === 1 ? 'member' : 'members'}
+            {active ? ` · ${active} active` : ''}
+          </T>
         </View>
+      </View>
+
+      {room.unread > 0 ? (
+        <View style={{ marginTop: 2 }}><CountBadge value={room.unread} /></View>
       ) : null}
     </Pressable>
   );
@@ -92,7 +120,6 @@ function RoomRowContent({ room, onPress }: { room: Room; onPress: () => void }) 
 export default function Community() {
   const router = useRouter();
   const { profile } = useSession();
-  const [mode, setMode] = useState<string>(profile?.primary_mode ?? 'day_trade');
   const [rooms, setRooms] = useState<Room[]>([]);
   const [source, setSource] = useState<Source>('fixtures');
   const [note, setNote] = useState<string | null>(null);
@@ -100,27 +127,27 @@ export default function Community() {
   const [refreshing, setRefreshing] = useState(false);
   const [joining, setJoining] = useState<string | null>(null);
 
-  const load = useCallback(async (m: string) => {
-    const r = await communityApi.rooms(m);
+  // No mode argument: the directory is the same three rooms for everyone.
+  const load = useCallback(async () => {
+    const r = await communityApi.rooms();
     setRooms(r.rooms);
     setSource(r.source);
     setNote(r.note);
     setLoading(false);
   }, []);
 
-  useEffect(() => { setLoading(true); load(mode); }, [mode, load]);
-  useFocusEffect(useCallback(() => { load(mode); }, [mode, load]));
+  useEffect(() => { setLoading(true); load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  useEffect(() => {
-    if (profile?.primary_mode) setMode(profile.primary_mode);
-  }, [profile?.primary_mode]);
-
-  const forMode = useMemo(
-    () => rooms.filter((r) => r.mode === mode || r.mode == null),
-    [rooms, mode],
+  /**
+   * Core rooms only, shortest horizon first. Setup rooms are filtered here as
+   * well as server-side so a cached or fixture payload cannot put one back on
+   * the screen.
+   */
+  const coreRooms = useMemo(
+    () => rooms.filter((r) => r.type === 'core').sort((a, b) => rank(a.mode) - rank(b.mode)),
+    [rooms],
   );
-  const setupRooms = useMemo(() => forMode.filter((r) => r.type === 'setup'), [forMode]);
-  const coreRooms = useMemo(() => forMode.filter((r) => r.type !== 'setup'), [forMode]);
 
   const open = async (room: Room) => {
     setJoining(room.id);
@@ -138,24 +165,20 @@ export default function Community() {
     <Screen variant="corner" layout="tab" testID="screen-community">
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingTop: 8, paddingHorizontal: 16, gap: 11, paddingBottom: 28 }}
+        contentContainerStyle={{ paddingTop: 8, paddingHorizontal: 16, gap: 13, paddingBottom: 28 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             tintColor={color.violet}
-            onRefresh={async () => { setRefreshing(true); await load(mode); setRefreshing(false); }}
+            onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }}
           />
         }
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <T size={28} weight="bold">Cheat Code Club</T>
-          <T size={11} c={color.muted}>
-            {coreRooms.length + setupRooms.length} rooms
-          </T>
+          <T size={11} c={color.muted}>{coreRooms.length} rooms</T>
         </View>
-
-        <ModeChips value={mode} onChange={setMode} options={MODES} />
 
         {/* The artboard's LIVE card is Phase 2. One honest line, not a fake. */}
         <ObjectCard r={radius.xl} style={{ paddingVertical: 12, paddingHorizontal: 15 }}>
@@ -170,40 +193,22 @@ export default function Community() {
           <View style={{ paddingVertical: 40, alignItems: 'center' }}>
             <ActivityIndicator color={color.violet} />
           </View>
+        ) : coreRooms.length === 0 ? (
+          <ObjectCard r={radius.xl} style={{ padding: 16 }}>
+            <T size={13} c={color.muted}>No rooms yet.</T>
+          </ObjectCard>
         ) : (
-          <>
-            <Eyebrow>SETUP ROOMS</Eyebrow>
-            {setupRooms.length === 0 ? (
-              <ObjectCard r={radius.xl} style={{ padding: 16 }}>
-                <T size={13} lh={19} c={color.muted}>
-                  No setup has a room open right now. Kai opens one when a setup is worth discussing.
-                </T>
-              </ObjectCard>
-            ) : (
-              <RowList>
-                {setupRooms.map((r, i) => (
-                  <Row key={r.id} last={i === setupRooms.length - 1}>
-                    <RoomRowContent room={r} onPress={() => open(r)} />
-                  </Row>
-                ))}
-              </RowList>
-            )}
-
-            <Eyebrow>ROOMS</Eyebrow>
-            {coreRooms.length === 0 ? (
-              <ObjectCard r={radius.xl} style={{ padding: 16 }}>
-                <T size={13} c={color.muted}>No rooms are open to you in this mode yet.</T>
-              </ObjectCard>
-            ) : (
-              <RowList>
-                {coreRooms.map((r, i) => (
-                  <Row key={r.id} last={i === coreRooms.length - 1}>
-                    <RoomRowContent room={r} onPress={() => open(r)} />
-                  </Row>
-                ))}
-              </RowList>
-            )}
-          </>
+          <RowList>
+            {coreRooms.map((r, i) => (
+              <Row key={r.id} last={i === coreRooms.length - 1}>
+                <RoomRow
+                  room={r}
+                  yours={Boolean(profile?.primary_mode) && r.mode === profile?.primary_mode}
+                  onPress={() => open(r)}
+                />
+              </Row>
+            ))}
+          </RowList>
         )}
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 2 }}>

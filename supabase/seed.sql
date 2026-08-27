@@ -26,32 +26,18 @@ insert into scan_universes (name, symbols) values
 on conflict (name) do update set symbols = excluded.symbols, updated_at = now();
 
 -- =====================================================================
--- rooms - core set per mode (08_COMMUNITY_SPEC §3)
--- config.intel_eligible = false until community-intelligence terms are disclosed
+-- rooms - the three core rooms (owner decision 2026-08-26)
+--
+-- Community is three rooms, full stop: Day Trade, Swing, Investing. No
+-- per-mode sub-rooms and no setup rooms are surfaced. `mode` is kept on the row
+-- because the schema and the API still carry it (and a room is genuinely about
+-- one horizon), but it is NOT a filter any more - every member sees all three.
+-- config.intel_eligible = false until community-intelligence terms are disclosed.
 -- =====================================================================
 insert into rooms (type, mode, slug, name, description, config) values
-  -- Day Trade: fast, session-based, archived by trading day
-  ('core','day_trade','dt-market-open',        'Market Open',        'What is moving as the session starts.',                     '{"intel_eligible": false}'),
-  ('core','day_trade','dt-live-setups',        'Live Setups',        'Setups Kai and members are watching right now.',            '{"intel_eligible": false}'),
-  ('core','day_trade','dt-trade-ready',        'Trade Ready',        'Setups that have met their entry condition.',                '{"intel_eligible": false}'),
-  ('core','day_trade','dt-active-trades',      'Active Trades',      'Open risk, management, and exits in progress.',              '{"intel_eligible": false}'),
-  ('core','day_trade','dt-reviews',            'Reviews',            'What happened and why - process before outcome.',            '{"intel_eligible": false}'),
-  ('core','day_trade','dt-beginner-questions', 'Beginner Questions', 'No question is too basic here.',                             '{"intel_eligible": false}'),
-  -- Swing Trade: thesis-led, persistent through the position lifecycle
-  ('core','swing','sw-new-ideas',        'New Ideas',        'Fresh theses looking for confirmation.',                 '{"intel_eligible": false}'),
-  ('core','swing','sw-entry-watch',      'Entry Watch',      'Ideas waiting on a level, a catalyst, or volume.',        '{"intel_eligible": false}'),
-  ('core','swing','sw-active-swings',    'Active Swings',    'Positions being carried and managed.',                   '{"intel_eligible": false}'),
-  ('core','swing','sw-catalysts',        'Catalysts',        'Earnings, filings, and events that change a thesis.',     '{"intel_eligible": false}'),
-  ('core','swing','sw-position-updates', 'Position Updates', 'Adds, trims, stops moved, theses changed.',              '{"intel_eligible": false}'),
-  ('core','swing','sw-weekly-review',    'Weekly Review',    'What the week taught us.',                               '{"intel_eligible": false}'),
-  -- Investing: long-term, goal and research oriented
-  ('core','invest','iv-portfolio-building', 'Portfolio Building', 'Building a portfolio on purpose, not by accident.',   '{"intel_eligible": false}'),
-  ('core','invest','iv-stock-research',     'Stock Research',     'Digging into individual businesses.',                 '{"intel_eligible": false}'),
-  ('core','invest','iv-etfs',               'ETFs',               'Index and sector funds, and what is inside them.',    '{"intel_eligible": false}'),
-  ('core','invest','iv-fundamentals',       'Fundamentals',       'Revenue, margins, cash flow, and what they mean.',    '{"intel_eligible": false}'),
-  ('core','invest','iv-dividends',          'Dividends',          'Income, payout safety, and reinvestment.',            '{"intel_eligible": false}'),
-  ('core','invest','iv-beginner-investing', 'Beginner Investing', 'Start here if you are new to investing.',             '{"intel_eligible": false}'),
-  ('core','invest','iv-reviews',            'Reviews',            'Portfolio check-ins and decisions revisited.',        '{"intel_eligible": false}')
+  ('core','day_trade','day-trade','Day Trade','Intraday setups, confirmations, exits - today.',            '{"intel_eligible": false}'),
+  ('core','swing','swing','Swing','Ideas held for days or weeks: theses, catalysts, updates.',             '{"intel_eligible": false}'),
+  ('core','invest','investing','Investing','Building and reviewing a long-term portfolio.',                '{"intel_eligible": false}')
 on conflict (slug) do nothing;
 
 -- =====================================================================
