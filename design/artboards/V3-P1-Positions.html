@@ -1,0 +1,75 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#050507;padding:24px}</style></head><body>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root { --surface-market-info:#0F2733; --surface-positive:#122A1E; --surface-risk:#2E1517; }
+body { margin:0; background:#060608; }
+a { color:#C8FF00; text-decoration:none; }
+a:hover { color:#DEFF66; }
+</style>
+</helmet><div data-screen-label="V3 P1 Positions" style="height:100%; background:radial-gradient(420px 320px at 20% -5%, rgba(139,92,246,0.14), transparent 60%), radial-gradient(380px 300px at 95% 30%, rgba(50,214,255,0.07), transparent 65%), #0B0B0E; color:#FFF7E8; font-family:'Space Grotesk',sans-serif; display:flex; flex-direction:column; box-sizing:border-box; padding-top:62px;">
+          <div style="flex:1; overflow:hidden; padding:8px 16px 0; display:flex; flex-direction:column; gap:11px;">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <div style="font-size:28px; font-weight:700;">Positions</div>
+              <span style="font-size:11px; padding:4px 10px; border-radius:999px; border:0.5px solid rgba(50,214,255,0.4); color:#32D6FF; background:rgba(50,214,255,0.08);">Paper</span>
+            </div>
+            <div style="display:flex; align-items:baseline; gap:10px;">
+              <span style="font-family:'JetBrains Mono',monospace; font-size:30px; font-weight:600; color:#35D07F;">{{ plMain }}</span>
+              <span style="font-size:12px; color:#B9B0A8;">today · 2 open</span>
+            </div>
+            <div style="background:linear-gradient(160deg, rgba(255,247,232,0.06), rgba(23,23,28,0.55) 45%, rgba(23,23,28,0.75)); backdrop-filter:blur(18px) saturate(140%); -webkit-backdrop-filter:blur(18px) saturate(140%); border:0.5px solid rgba(255,247,232,0.16); box-shadow:inset 0 1px 0 rgba(255,247,232,0.16), 0 18px 40px rgba(0,0,0,0.5); border-radius:18px; padding:14px 15px; display:flex; flex-direction:column; gap:10px;">
+              <div style="display:flex; align-items:center; gap:9px;">
+                <div style="font-size:17px; font-weight:700;">META</div>
+                <span style="font-size:10px; color:#B9B0A8;">Long · $650</span>
+                <span style="display:flex; align-items:center; gap:5px; font-size:11px; color:#35D07F; margin-left:auto;"><span style="width:6px; height:6px; border-radius:50%; background:#35D07F;"></span>Healthy</span>
+              </div>
+              <div style="display:flex; align-items:baseline; gap:8px;"><span style="font-family:'JetBrains Mono',monospace; font-size:19px; font-weight:600; color:#35D07F;">+$54.10</span><span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#B9B0A8;">+1.8% · in 2h</span></div>
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <div style="height:7px; border-radius:4px; background:rgba(255,247,232,0.08); position:relative;"><div style="width:46%; height:100%; border-radius:4px; background:linear-gradient(90deg, #FF5A5F, #32D6FF 40%, #35D07F);"></div><span style="position:absolute; left:46%; top:-3px; width:2px; height:13px; background:#FFF7E8;"></span></div>
+                <div style="display:flex; justify-content:space-between; font-size:10px; color:#B9B0A8;"><span style="color:#FF5A5F;">Stop 460</span><span>now 508</span><span style="color:#35D07F;">Target 540</span></div>
+              </div>
+              <div style="display:flex; align-items:center; gap:7px; font-size:12px; color:#C4B5FD;"><div style="width:16px; height:16px; border-radius:50%; background:radial-gradient(circle at 35% 35%, #C4B5FD, #8B5CF6 55%, #6D28D9);"></div>Thesis intact — nothing to do.</div>
+            </div>
+            <div style="background:linear-gradient(160deg, rgba(255,200,87,0.14), rgba(255,200,87,0.04) 55%, rgba(23,23,28,0.6)); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); border:0.5px solid rgba(255,200,87,0.6); box-shadow:inset 0 1px 0 rgba(255,200,87,0.2); border-radius:18px; padding:14px 15px; display:flex; flex-direction:column; gap:10px;">
+              <div style="display:flex; align-items:center; gap:9px;">
+                <div style="font-size:17px; font-weight:700;">NVDA</div>
+                <span style="font-size:10px; color:#B9B0A8;">Long · $480</span>
+                <span style="display:flex; align-items:center; gap:5px; font-size:11px; color:#FFC857; margin-left:auto;"><span style="width:6px; height:6px; border-radius:50%; background:#FFC857;"></span>At risk</span>
+              </div>
+              <div style="display:flex; align-items:baseline; gap:8px;"><span style="font-family:'JetBrains Mono',monospace; font-size:19px; font-weight:600; color:#FF5A5F;">−$21.30</span><span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#B9B0A8;">−4.4% · 1% from stop</span></div>
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <div style="height:7px; border-radius:4px; background:rgba(255,247,232,0.08); position:relative;"><div style="width:8%; height:100%; border-radius:4px; background:#FF5A5F;"></div><span style="position:absolute; left:8%; top:-3px; width:2px; height:13px; background:#FFF7E8;"></span></div>
+                <div style="display:flex; justify-content:space-between; font-size:10px; color:#B9B0A8;"><span style="color:#FF5A5F;">Stop 912</span><span>now 921</span><span style="color:#35D07F;">Target 980</span></div>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <div style="flex:1; height:40px; border-radius:999px; background:#C8FF00; color:#0B0B0E; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700;">Review</div>
+                <div style="height:40px; padding:0 15px; border-radius:999px; border:0.5px solid rgba(255,247,232,0.24); box-shadow:inset 0 1px 0 rgba(255,247,232,0.10); display:flex; align-items:center; font-size:13px; font-weight:600;">Exit now</div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; font-size:12px; color:#B9B0A8; padding:0 2px;">
+              <span>Daily risk used</span>
+              <div style="flex:1; height:6px; border-radius:3px; background:rgba(255,247,232,0.08);"><div style="width:29%; height:100%; border-radius:3px; background:#C8FF00;"></div></div>
+              <span style="font-family:'JetBrains Mono',monospace;">$58 / $200</span>
+            </div>
+          </div>
+          <div style="display:flex; justify-content:space-around; padding:8px 8px 30px; border-top:1px solid rgba(255,247,232,0.07);">
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; color:#B9B0A8;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B9B0A8" stroke-width="2"><path d="M3 10 12 3l9 7v10h-6v-6h-6v6H3V10z"></path></svg><span style="font-size:10px;">Home</span></div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; color:#B9B0A8;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B9B0A8" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path></svg><span style="font-size:10px;">Alerts</span></div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; color:#B9B0A8;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B9B0A8" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9.5" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M15.5 3.13a4 4 0 0 1 0 7.75"></path></svg><span style="font-size:10px;">Community</span></div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; color:#C8FF00;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C8FF00" stroke-width="2"><path d="M7 4v3M7 17v3M17 2v3M17 14v3"></path><rect x="5" y="7" width="4" height="10" rx="1"></rect><rect x="15" y="5" width="4" height="9" rx="1"></rect></svg><span style="font-size:10px; font-weight:600;">Trade</span></div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; color:#B9B0A8;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B9B0A8" stroke-width="2"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"></path></svg><span style="font-size:10px;">Account</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ V3 · K1 OBJECT-FIRST RESEARCH ============ -->
+    <div style="display:flex; flex-direction:column; gap:12px;">
+      <div style="font-size:13px; color:#B9B0A8;"><span style="color:#C8FF00; font-weight:600;">V3·K1</span> Research · object first, one sentence, depth behind Why?</div>
+      <div style="width:402px; height:874px; border-radius:56px; background:#0B0B0E; border:6px solid #1c1c22; box-shadow:0 24px 60px rgba(0,0,0,0.55), 0 0 0 2px #000; position:relative; overflow:hidden;">
+        <div style="position:absolute; top:11px; left:50%; transform:translateX(-50%); width:126px; height:37px; border-radius:24px; background:#000; z-index:50;"></div>
+        <div style="position:absolute; top:0; left:0; right:0; display:flex; justify-content:space-between; align-items:center; padding:20px 36px 0; z-index:40; color:#FFF7E8;"><span style="font-size:16px; font-weight:600; font-family:'Space Grotesk',sans-serif;">9:41</span><span style="display:flex; gap:7px; align-items:center;"><svg width="19" height="12" viewBox="0 0 19 12"><rect x="0" y="7.5" width="3.2" height="4.5" rx="0.7" fill="#FFF7E8"></rect><rect x="4.8" y="5" width="3.2" height="7" rx="0.7" fill="#FFF7E8"></rect><rect x="9.6" y="2.5" width="3.2" height="9.5" rx="0.7" fill="#FFF7E8"></rect><rect x="14.4" y="0" width="3.2" height="12" rx="0.7" fill="#FFF7E8"></rect></svg><svg width="27" height="13" viewBox="0 0 27 13"><rect x="0.5" y="0.5" width="23" height="12" rx="3.5" stroke="#FFF7E8" stroke-opacity="0.35" fill="none"></rect><rect x="2" y="2" width="20" height="9" rx="2" fill="#FFF7E8"></rect></svg></span></div>
+        <div style="position:absolute; bottom:8px; left:50%; transform:translateX(-50%); width:139px; height:5px; border-radius:99px; background:rgba(255,255,255,0.7); z-index:60;"></div>
+        </body></html>
