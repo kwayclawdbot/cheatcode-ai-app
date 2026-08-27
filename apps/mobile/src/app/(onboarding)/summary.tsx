@@ -1,15 +1,26 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { View, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen } from '../../ui/Screen';
 import { T, Num } from '../../ui/Text';
 import { KaiOrb } from '../../ui/KaiOrb';
 import { ObjectCard } from '../../ui/Panel';
 import { Button } from '../../ui/Button';
+import { Field } from '../../ui/Field';
+import { Sheet } from '../../ui/Sheet';
 import { ProgressBars } from '../../ui/Progress';
-import { Check } from '../../ui/Icons';
-import { color, radius } from '../../ui/tokens';
-import { RISK_EXAMPLES, capFor, useOnboardingDraft, useSession } from '../../lib/session';
+import { Check, ChevronRight } from '../../ui/Icons';
+import { alpha, color, radius } from '../../ui/tokens';
+import {
+  BALANCE_CHOICES,
+  BALANCE_MAX,
+  BALANCE_MIN,
+  RISK_EXAMPLES,
+  capFor,
+  clampBalance,
+  useOnboardingDraft,
+  useSession,
+} from '../../lib/session';
 import { api } from '../../lib/api';
 import { env } from '../../lib/env';
 
@@ -26,15 +37,51 @@ const FOCUS_LABEL: Record<string, string> = {
   invest: 'Build My Portfolio',
 };
 
+const usd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
+
+/** One row of the summary card — label left, value right, artboard's 13px rhythm. */
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+      <T size={13} c={color.muted}>{label}</T>
+      {children}
+    </View>
+  );
+}
+
 /** S03-Summary.html → POST /api/v1/onboarding/complete → tap-to-learn. */
 export default function Summary() {
   const router = useRouter();
-  const { draft } = useOnboardingDraft();
+  const { draft, set } = useOnboardingDraft();
   const { patchProfile } = useSession();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [custom, setCustom] = useState('');
+  const [customError, setCustomError] = useState<string | null>(null);
 
-  const cap = capFor(draft.risk_answer, draft.starting_balance);
+  const balance = draft.starting_balance;
+  const cap = capFor(draft.risk_answer, balance);
+
+  const choose = (amount: number) => {
+    set({ starting_balance: clampBalance(amount) });
+    setCustom('');
+    setCustomError(null);
+    setPicking(false);
+  };
+
+  const useCustom = () => {
+    const parsed = Number(custom.replace(/[^0-9.]/g, ''));
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setCustomError('Type an amount, like 7500.');
+      return;
+    }
+    if (parsed < BALANCE_MIN || parsed > BALANCE_MAX) {
+      setCustomError(`Practice accounts run from ${usd(BALANCE_MIN)} to ${usd(BALANCE_MAX)}.`);
+      return;
+    }
+    choose(parsed);
+  };
 
   const start = async () => {
     setError(null);
@@ -43,7 +90,7 @@ export default function Summary() {
       if (api.available()) {
         await api.completeOnboarding({
           goal_mode: draft.goal_mode ?? 'day_trade',
-          starting_balance: draft.starting_balance,
+          starting_balance: clampBalance(balance),
           risk_answer: draft.risk_answer ?? 'balanced',
           involvement: draft.involvement ?? 'hands_on',
           experience: draft.experience,
@@ -79,25 +126,37 @@ export default function Summary() {
         ))}
 
         <ObjectCard r={radius.xl} style={{ marginTop: 10, paddingVertical: 14, paddingHorizontal: 16, gap: 8 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <T size={13} c={color.muted}>Daily loss cap</T>
-            <Num size={13} c={color.gold}>{`$${cap}`}</Num>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <T size={13} c={color.muted}>Practice mode</T>
+          {/* The one line on this screen the person can still change, so it is
+              volt and it is first. Everything under it is derived from it. */}
+          <Pressable
+            testID="row-practice-money"
+            accessibilityRole="button"
+            accessibilityLabel={`Practice money, ${usd(balance)}. Change it.`}
+            onPress={() => setPicking(true)}
+            hitSlop={{ top: 6, bottom: 6 }}
+          >
+            <Row label="Practice money">
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Num testID="practice-money-value" size={13} c={color.volt}>{usd(balance)}</Num>
+                <ChevronRight size={13} color={color.volt} />
+              </View>
+            </Row>
+          </Pressable>
+          <Row label="Daily loss cap">
+            <Num testID="daily-cap-value" size={13} c={color.gold}>{usd(cap)}</Num>
+          </Row>
+          <Row label="Practice mode">
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color.cyan }} />
               <T size={13} c={color.cyan}>Paper trading on</T>
             </View>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <T size={13} c={color.muted}>Focus</T>
+          </Row>
+          <Row label="Focus">
             <T size={13}>{FOCUS_LABEL[draft.goal_mode ?? 'day_trade']}</T>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <T size={13} c={color.muted}>Risk style</T>
+          </Row>
+          <Row label="Risk style">
             <T size={13}>{RISK_EXAMPLES[draft.risk_answer ?? 'balanced'].title}</T>
-          </View>
+          </Row>
         </ObjectCard>
 
         {error ? <T size={12} c={color.red}>{error}</T> : null}
@@ -107,6 +166,65 @@ export default function Summary() {
       </View>
 
       <Button testID="cta-start" label="Start with Kai" height={52} arrow loading={busy} onPress={start} />
+
+      <Sheet
+        testID="sheet-practice-money"
+        visible={picking}
+        onClose={() => setPicking(false)}
+        title="How much practice money?"
+      >
+        <T size={13} lh={19} c={color.muted}>
+          Practice money is not real. Pick an amount that makes the numbers mean something to you — you can change it later in Account.
+        </T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
+          {BALANCE_CHOICES.map((amount) => {
+            const on = amount === balance;
+            return (
+              <Pressable
+                key={amount}
+                testID={`balance-${amount}`}
+                accessibilityRole="button"
+                accessibilityLabel={usd(amount)}
+                accessibilityState={{ selected: on }}
+                onPress={() => choose(amount)}
+                style={{
+                  minHeight: 44,
+                  paddingHorizontal: 16,
+                  justifyContent: 'center',
+                  borderRadius: radius.pill,
+                  borderWidth: on ? 1 : 0.5,
+                  borderColor: on ? alpha.volt60 : alpha.ivory16,
+                  backgroundColor: on ? alpha.volt10 : alpha.surface50,
+                }}
+              >
+                <Num size={14} weight={on ? 'semibold' : 'regular'} c={on ? color.volt : color.muted}>
+                  {usd(amount)}
+                </Num>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={{ gap: 8, marginTop: 4 }}>
+          <Field
+            testID="balance-custom"
+            label="Or type your own"
+            value={custom}
+            onChangeText={(t) => { setCustom(t); setCustomError(null); }}
+            onSubmitEditing={useCustom}
+            keyboardType="number-pad"
+            inputMode="numeric"
+            returnKeyType="done"
+            placeholder="7500"
+            error={customError}
+          />
+          <Button testID="balance-custom-save" label="Use this amount" height={48} onPress={useCustom} />
+        </View>
+
+        <T size={11} c={color.dim}>
+          {`Anything from ${usd(BALANCE_MIN)} to ${usd(BALANCE_MAX)}.`}
+        </T>
+      </Sheet>
     </Screen>
   );
 }

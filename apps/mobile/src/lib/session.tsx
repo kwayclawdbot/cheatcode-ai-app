@@ -31,9 +31,29 @@ export type OnboardingDraft = {
   experience: 'beginner' | 'intermediate' | 'advanced';
   starting_balance: number;
 };
+/**
+ * Practice money.
+ *
+ * $10,000 is not a decoration — it is the schema trigger's own default for a new
+ * paper account, and `POST /onboarding/complete` clamps whatever we send into
+ * $1k–$100k. Starting the draft anywhere else meant a brand-new account was
+ * created at $10,000 and then immediately lowered by onboarding: at $2,000, the
+ * default 10%-per-position rule leaves $200 to work with, and the cheapest
+ * seeded symbol is over $200. A new user could not place a single order.
+ */
+export const BALANCE_MIN = 1000;
+export const BALANCE_MAX = 100000;
+export const DEFAULT_BALANCE = 10000;
+export const BALANCE_CHOICES: number[] = [1000, 5000, 10000, 25000, 100000];
+
+export function clampBalance(n: number): number {
+  if (!Number.isFinite(n)) return DEFAULT_BALANCE;
+  return Math.min(BALANCE_MAX, Math.max(BALANCE_MIN, Math.round(n)));
+}
+
 const DEFAULT_DRAFT: OnboardingDraft = {
   goal_mode: null, funding: null, risk_answer: null, involvement: null,
-  experience: 'beginner', starting_balance: 2000,
+  experience: 'beginner', starting_balance: DEFAULT_BALANCE,
 };
 
 type DraftValue = { draft: OnboardingDraft; set: (p: Partial<OnboardingDraft>) => void; reset: () => void };
@@ -136,7 +156,12 @@ export function useOnboardingDraft(): DraftValue {
   return v;
 }
 
-/** Daily loss cap derived from the risk answer on a $2,000 account (S02 copy). */
+/**
+ * Daily loss cap by example. The caps below are quoted against a $2,000 account
+ * because that is the number S02 teaches with; `capFor` scales them to whatever
+ * balance the person actually chose, so the cap on the summary is THEIR cap and
+ * not the teaching example.
+ */
 export const RISK_EXAMPLES: Record<RiskAnswer, { title: string; cap: number; note?: string }> = {
   careful: { title: 'Careful', cap: 20 },
   balanced: { title: 'Balanced', cap: 60 },

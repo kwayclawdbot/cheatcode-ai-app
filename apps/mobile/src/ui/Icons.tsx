@@ -108,6 +108,10 @@ export const ChevronDown = ({ size = 9, color: c = color.volt, strokeWidth = 2.5
   <S size={size}><Path d="M6 9l6 6 6-6" stroke={c} strokeWidth={strokeWidth} /></S>
 );
 
+export const ChevronRight = ({ size = 9, color: c = color.volt, strokeWidth = 2.5 }: IconProps) => (
+  <S size={size}><Path d="M9 6l6 6-6 6" stroke={c} strokeWidth={strokeWidth} /></S>
+);
+
 export const Gear = ({ size = 18, color: c = color.muted, strokeWidth = 2 }: IconProps) => (
   <S size={size}>
     <Circle cx={12} cy={12} r={3} stroke={c} strokeWidth={strokeWidth} />

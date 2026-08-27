@@ -106,7 +106,7 @@ export default function OnboardingKai() {
           <>
             <UserBubble maxWidth={328}>{echo}</UserBubble>
             <KaiBubble size={15} maxWidth={350}>
-              Got it — small and careful. Practicing first, or connecting an account?
+              Got it. Practice money first, or do you want to connect an account?
             </KaiBubble>
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
               <Chip testID="funding-paper" label="Start with paper trading" selected onPress={() => pickFunding('paper')} />

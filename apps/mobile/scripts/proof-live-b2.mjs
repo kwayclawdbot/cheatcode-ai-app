@@ -42,63 +42,17 @@ async function internalSecret() {
 }
 
 /**
- * Service-role access, read the way apps/api/scripts/smoke.sh reads it.
+ * Practice money.
  *
- * It is used for exactly one thing: topping the fresh paper account up to the
- * schema's own $10,000 default. Round-1 onboarding hard-codes `starting_balance`
- * at $2,000 and offers no control for it, and at the default 10%-per-position
- * rule that leaves NOTHING in the seeded instrument universe placeable — the
- * cheapest symbol is $205. That is a real product blocker (reported), not
- * something this proof pretends away: the account is raised through the same
- * column the trigger sets, and every number after that is the app's own.
+ * This used to be a service-role PATCH straight at `accounts`, because round-1
+ * onboarding hard-coded `starting_balance` at $2,000 and offered no control for
+ * it — and at the default 10%-per-position rule that left NOTHING in the seeded
+ * universe placeable, the cheapest symbol being over $200. That workaround is
+ * gone: onboarding now defaults to $10,000 and the summary screen carries a
+ * chooser, so this proof picks the amount the way a person does, in the UI, and
+ * touches the database with nothing but the app's own requests.
  */
-async function loadServiceEnv() {
-  if (process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.SUPABASE_URL) {
-    return { url: process.env.SUPABASE_URL, key: process.env.SUPABASE_SERVICE_ROLE_KEY };
-  }
-  try {
-    const text = await fs.readFile(path.resolve(ROOT, '../api/.env.local'), 'utf8');
-    const read = (k) => text.match(new RegExp(`^${k}=(.*)$`, 'm'))?.[1]?.trim() ?? null;
-    const url = read('SUPABASE_URL');
-    const key = read('SUPABASE_SERVICE_ROLE_KEY');
-    return url && key ? { url, key } : null;
-  } catch {
-    return null;
-  }
-}
-
 const PAPER_BALANCE = 10000;
-
-async function topUpPaperAccount(service, userId) {
-  if (!service || !userId) return false;
-  const res = await fetch(
-    `${service.url}/rest/v1/accounts?user_id=eq.${userId}&kind=eq.paper`,
-    {
-      method: 'PATCH',
-      headers: {
-        apikey: service.key,
-        Authorization: `Bearer ${service.key}`,
-        'Content-Type': 'application/json',
-        Prefer: 'return=minimal',
-      },
-      body: JSON.stringify({
-        cash: PAPER_BALANCE, buying_power: PAPER_BALANCE,
-        equity: PAPER_BALANCE, starting_balance: PAPER_BALANCE,
-      }),
-    },
-  );
-  return res.ok;
-}
-
-/** base64url — '-' and '_' are not base64, Buffer would silently drop them. */
-function jwtSub(token) {
-  try {
-    const b = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(Buffer.from(b, 'base64').toString('utf8')).sub ?? null;
-  } catch {
-    return null;
-  }
-}
 
 const HIDE_DEV_CHROME = `.__expo_fast_refresh { display: none !important; }`;
 const installHideDevChrome = (ctx) =>
@@ -258,6 +212,16 @@ const main = async () => {
     await arrive(page, 'screen-risk');
     await tap(page, 'screen-risk', 'cta-continue');
     await arrive(page, 'screen-summary');
+    // The practice balance is a real choice on this screen now.
+    await tap(page, 'screen-summary', 'row-practice-money');
+    await page.getByTestId('sheet-practice-money').last().waitFor({ state: 'visible', timeout: 20_000 });
+    await page.waitForTimeout(500);
+    await shot(page, 'live-summary-balance');
+    await page.getByTestId(`balance-${PAPER_BALANCE}`).last().click();
+    await page.waitForTimeout(600);
+    await must(page, 'screen-summary', 'practice-money-value', `practice money is $${PAPER_BALANCE}, chosen in the UI`);
+    await must(page, 'screen-summary', 'daily-cap-value', 'and the daily loss cap is derived from it');
+    await shot(page, 'live-summary-balance-set');
     await tap(page, 'screen-summary', 'cta-start');
     await arrive(page, 'screen-learn');
     await tap(page, 'screen-learn', 'level-504');
@@ -274,12 +238,6 @@ const main = async () => {
     await must(page, 'screen-trade', 'paper-strip', 'the account strip leads the page');
     await must(page, 'screen-trade', 'account-value', 'with a real account value');
     await shot(page, 'live2b2-01-trade');
-
-    const service = await loadServiceEnv();
-    const topped = await topUpPaperAccount(service, jwtSub(token));
-    console.log(topped
-      ? `  · paper account raised to $${PAPER_BALANCE} (round-1 onboarding hard-codes $2,000 — see the note in this file)`
-      : '  ! could not raise the paper account; the position-size rule may block everything');
 
     const round2 = (n) => Math.round(n * 100) / 100;
     const sym = await apiCall(token, `/symbols/${SYMBOL}?mode=day_trade`);

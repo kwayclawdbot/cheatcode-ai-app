@@ -8,19 +8,26 @@ import { Button, Tag } from '../../ui/Button';
 import { ProgressBars } from '../../ui/Progress';
 import { Check } from '../../ui/Icons';
 import { alpha, color, radius } from '../../ui/tokens';
-import { useOnboardingDraft } from '../../lib/session';
+import { capFor, useOnboardingDraft } from '../../lib/session';
 import type { Involvement, RiskAnswer } from '../../lib/types';
 
 /**
  * S02-Risk.html — risk chosen by example, not by jargon.
  * Backend enum `involvement` has ONLY hands_on and guided, so "Mostly hands-off"
  * is shown disabled with "Unlocks later" exactly as drawn.
+ *
+ * The dollar figures are the POINT of this screen, so they are the person's own
+ * money, not a teaching example: every cap is `capFor` against the practice
+ * balance in the draft. The artboard's "$2,000 account" numbers survive as the
+ * ratios inside `RISK_EXAMPLES`.
  */
-const RISKS: { key: RiskAnswer; title: string; cap: number; tag?: string }[] = [
-  { key: 'careful', title: 'Careful', cap: 20 },
-  { key: 'balanced', title: 'Balanced', cap: 60 },
-  { key: 'aggressive', title: 'Aggressive', cap: 140, tag: 'Higher swings' },
+const RISKS: { key: RiskAnswer; title: string; tag?: string }[] = [
+  { key: 'careful', title: 'Careful' },
+  { key: 'balanced', title: 'Balanced' },
+  { key: 'aggressive', title: 'Aggressive', tag: 'Higher swings' },
 ];
+
+const usd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
 
 const INVOLVEMENT: { key: Involvement | 'auto'; label: string; disabled?: boolean; tag?: string }[] = [
   { key: 'hands_on', label: 'I confirm every action' },
@@ -33,22 +40,26 @@ export default function Risk() {
   const { draft, set } = useOnboardingDraft();
   const risk = draft.risk_answer ?? 'balanced';
   const involvement = draft.involvement ?? 'hands_on';
+  const account = usd(draft.starting_balance);
 
   return (
     <Screen variant="corner" layout="stack" testID="screen-risk">
       <ProgressBars total={3} done={2} />
       <T size={27} weight="bold" ls={-0.4} lh={32}>How much risk feels right?</T>
-      <T size={14} c={color.muted} style={{ marginTop: 8 }}>Real examples, not jargon. This sets your daily loss cap.</T>
+      <T size={14} c={color.muted} style={{ marginTop: 8 }}>
+        {`Real examples, not jargon. This sets your daily loss cap on the ${account} you'll practice with.`}
+      </T>
 
       <View style={{ gap: 10, marginTop: 22 }}>
-        {RISKS.map(({ key, title, cap, tag }) => {
+        {RISKS.map(({ key, title, tag }) => {
           const on = risk === key;
+          const cap = capFor(key, draft.starting_balance);
           return (
             <Pressable
               key={key}
               testID={`risk-${key}`}
               accessibilityRole="button"
-              accessibilityLabel={`${title}. On a $2,000 account, a bad day costs about $${cap}.`}
+              accessibilityLabel={`${title}. On ${account}, a bad day costs about ${usd(cap)}.`}
               accessibilityState={{ selected: on }}
               onPress={() => set({ risk_answer: key })}
             >
@@ -61,7 +72,7 @@ export default function Risk() {
                   {on ? <Check size={16} color={color.volt} strokeWidth={2.6} /> : null}
                 </View>
                 <T size={12} c={color.muted} style={{ marginTop: 3 }}>
-                  On a $2,000 account, a bad day costs about <T size={12} weight="bold" c={color.text}>${cap}</T>.
+                  On {account}, a bad day costs about <T size={12} weight="bold" c={color.text}>{usd(cap)}</T>.
                 </T>
               </ObjectCard>
             </Pressable>
