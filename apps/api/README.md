@@ -86,6 +86,7 @@ src/lib/
     briefing.ts       one briefing per user per market day, cached in kai_objects
     contradiction.ts  orientation / stop / narrative-vs-structured / coherence
     objects.ts        envelope, persist, cache lookup, deterministic graded_setup from a row
+src/proxy.ts          CORS for /api/* (Next 16 renamed `middleware.ts` → `proxy.ts`)
 src/app/api/v1/…      the routes above
 scripts/smoke.sh      end-to-end smoke against the local stack
 ```
@@ -114,6 +115,32 @@ SUPABASE_SERVICE_ROLE_KEY=…
 Local Supabase values come from `supabase status`; a copy-paste version is in
 `supabase/.env.local.example` and `docs/ENV.md`.
 
+### CORS
+
+Native Expo does not do CORS; **Expo web does**. `src/proxy.ts` answers the
+`OPTIONS` preflight with `204` and puts `Access-Control-Allow-Origin` on every
+`/api/*` response — the SSE route included, because `NextResponse.next()`
+headers are merged into the route handler's streaming response.
+
+The request `Origin` is echoed back only when it matches one of:
+
+| | |
+|---|---|
+| `^http://localhost(:\d+)?$` | `npx expo start --web` on 8081, 8082, or whatever port Metro grabs |
+| `^http://127\.0\.0\.1(:\d+)?$` | same, by IP |
+| `^http://192\.168\.\d+\.\d+(:\d+)?$` | LAN dev — a phone browser hitting the laptop |
+| anything in `ALLOWED_ORIGINS` | exact match, comma-separated. **This is where the deployed web origin goes.** |
+
+```
+ALLOWED_ORIGINS=https://app.cheatcode.com,https://cheatcode-ai.vercel.app
+```
+
+An unlisted origin gets no `ACAO` header (the browser blocks it) — the request
+itself is still served, because auth is the Bearer token, not the origin.
+`Vary: Origin` is set on every response so no cache serves one origin's answer
+to another. `Access-Control-Allow-Credentials` is deliberately **not** sent:
+this API has no cookie session, so the echoed origin can never ride one.
+
 ## Running
 
 ```bash
@@ -135,16 +162,21 @@ anything fails.
 
 ## Known gaps (Phase 0)
 
-1. **Outbox transaction gap.** `01 §3` requires the domain write and its
-   `user_events` row in *one* transaction. PostgREST offers no multi-statement
-   transaction, so `emitUserEvent()` is a second round-trip after the domain
-   write, is best-effort, and is logged rather than raised — a failed outbox
-   write never fails the user's request. Closing this needs a SQL function
-   (`append_user_event(...)`, or one RPC per command) that does both inserts
-   inside a single `plpgsql` body; the API lane cannot write migrations, so it
-   is handed to the schema lane. `user_events.seq` itself is already correct —
-   the `user_events_assign_seq` BEFORE-INSERT trigger takes the row lock on
-   `user_event_counters` (supabase/migrations/0013), so we omit `seq` on insert.
+1. **Outbox transaction gap — closed for onboarding, open elsewhere.**
+   `01 §3` requires the domain write and its `user_events` row in *one*
+   transaction, and PostgREST offers no multi-statement transaction. The fix is
+   one SQL function per command (supabase/migrations/0016):
+   `complete_onboarding(p_user_id, p_patch)` does profile + risk policy +
+   `risk_policy_events` journal + paper-account balance + `user_events` in a
+   single `plpgsql` body, and decides idempotency inside that transaction under
+   a row lock on `profiles` — so `POST /onboarding/complete` is now atomic.
+   Every OTHER write path (`PUT /mode`, `POST /alerts/draft`, the Kai stream)
+   still calls `emitUserEvent()` as a second round-trip after its domain write.
+   That call now goes through `append_user_event(...)` (same migration), which
+   returns the assigned `seq`, but it is still a separate transaction from the
+   domain write, so it stays best-effort — logged, never raised, and a failed
+   outbox write never fails the user's request. Closing the rest means giving
+   each of those commands its own RPC in the same shape.
 2. **No market-holidays table.** `src/lib/market.ts` computes the session from
    the America/New_York clock and weekends only. US market holidays are not
    known, and every market block says so via `holidays_known:false`. The

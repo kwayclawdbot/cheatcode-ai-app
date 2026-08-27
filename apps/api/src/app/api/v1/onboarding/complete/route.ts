@@ -5,6 +5,13 @@
  * updates profiles, risk_policies (+ journal row), and the paper account
  * balance. Idempotent: a second call after completion returns the stored state
  * with `idempotent_replay:true` and changes nothing.
+ *
+ * All five writes (profile, risk policy, journal, paper account, user_events)
+ * go through the `complete_onboarding(...)` RPC
+ * (supabase/migrations/0016) so they share ONE transaction — 01 §3's rule that
+ * a domain write and its outbox row are never separable. The idempotency check
+ * happens inside that transaction under a row lock on `profiles`, so two
+ * concurrent completes cannot both write.
  */
 import type { NextRequest } from 'next/server';
 import {
@@ -16,7 +23,6 @@ import {
 import { authed, ok, parseBody, type Ctx } from '@/lib/http';
 import { serviceClient } from '@/lib/db';
 import { ApiError } from '@/lib/errors';
-import { emitUserEvent } from '@/lib/events';
 
 export const dynamic = 'force-dynamic';
 
@@ -100,88 +106,37 @@ export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
   const body = await parseBody(req, OnboardingCompleteRequest);
   const db = serviceClient();
 
-  const before = await loadState(ctx.user.id);
-  const onboarding = (before.profile.onboarding ?? {}) as Record<string, unknown>;
-  if (onboarding.completed_at) {
-    return ok(shape(before, true));
-  }
-
   const dailyLossCap = Math.round(body.starting_balance * RISK_ANSWER_DAILY_LOSS_PCT[body.risk_answer] * 100) / 100;
   const maxPositionPct = RISK_ANSWER_MAX_POSITION_PCT[body.risk_answer];
   const completedAt = new Date().toISOString();
 
-  const { error: pErr } = await db
-    .from('profiles')
-    .update({
-      primary_mode: body.goal_mode,
+  const { data, error } = await db.rpc('complete_onboarding', {
+    p_user_id: ctx.user.id,
+    p_patch: {
+      goal_mode: body.goal_mode,
       experience: body.experience,
       involvement: body.involvement,
-      explanation_level: body.experience,
-      onboarding: {
-        ...onboarding,
-        completed_at: completedAt,
-        goal_mode: body.goal_mode,
-        risk_answer: body.risk_answer,
-        practice_choice: body.practice_choice,
-        starting_balance: body.starting_balance,
-        version: 'v1-slice',
-      },
-    })
-    .eq('user_id', ctx.user.id);
-  if (pErr) throw new ApiError('INTERNAL', 'We could not save your setup. Please try again.', { detail: pErr.message });
-
-  const { error: rErr } = await db
-    .from('risk_policies')
-    .upsert(
-      {
-        user_id: ctx.user.id,
-        daily_loss_cap_usd: dailyLossCap,
-        max_position_pct: maxPositionPct,
-        max_open_positions: body.involvement === 'hands_on' ? 5 : 3,
-        min_reward_risk: 1.5,
-        pdt_warnings: true,
-        updated_by: 'api',
-      },
-      { onConflict: 'user_id' }
-    );
-  if (rErr) throw new ApiError('INTERNAL', 'We could not save your risk settings. Please try again.', { detail: rErr.message });
-
-  // Append-only journal (01 §2).
-  await db.from('risk_policy_events').insert({
-    user_id: ctx.user.id,
-    change: {
-      source: 'onboarding',
       risk_answer: body.risk_answer,
+      practice_choice: body.practice_choice,
+      starting_balance: body.starting_balance,
       daily_loss_cap_usd: dailyLossCap,
       max_position_pct: maxPositionPct,
-      starting_balance: body.starting_balance,
-      at: completedAt,
+      max_open_positions: body.involvement === 'hands_on' ? 5 : 3,
+      min_reward_risk: 1.5,
+      completed_at: completedAt,
+      version: 'v1-slice',
     },
   });
 
-  if (before.account?.id) {
-    const { error: aErr } = await db
-      .from('accounts')
-      .update({
-        starting_balance: body.starting_balance,
-        cash: body.starting_balance,
-        buying_power: body.starting_balance,
-        equity: body.starting_balance,
-      })
-      .eq('id', before.account.id as string)
-      .eq('user_id', ctx.user.id);
-    if (aErr) throw new ApiError('INTERNAL', 'We could not set up your practice account. Please try again.', { detail: aErr.message });
+  if (error) {
+    // The RPC raises no_data_found when the provisioning trigger has not yet
+    // created the profile row for this auth user.
+    if (error.code === 'P0002' || /profile not found/i.test(error.message ?? '')) {
+      throw new ApiError('NOT_FOUND', 'We could not find your account yet. Try signing in again.');
+    }
+    throw new ApiError('INTERNAL', 'We could not save your setup. Please try again.', { detail: error.message });
   }
 
-  await emitUserEvent(
-    ctx.user.id,
-    'system',
-    'profile',
-    ctx.user.id,
-    { event: 'onboarding_completed', goal_mode: body.goal_mode, daily_loss_cap_usd: dailyLossCap },
-    ctx.requestId
-  );
-
-  const after = await loadState(ctx.user.id);
-  return ok(shape(after, false));
+  const replay = Boolean((data as { idempotent_replay?: boolean } | null)?.idempotent_replay);
+  return ok(shape(await loadState(ctx.user.id), replay));
 });

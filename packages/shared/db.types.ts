@@ -2773,6 +2773,20 @@ export type Database = {
       }
     }
     Functions: {
+      append_user_event: {
+        Args: {
+          p_entity_id: string
+          p_entity_type: string
+          p_event_type: string
+          p_payload: Json
+          p_user_id: string
+        }
+        Returns: number
+      }
+      complete_onboarding: {
+        Args: { p_patch: Json; p_user_id: string }
+        Returns: Json
+      }
       is_room_member: { Args: { p_room: string }; Returns: boolean }
       next_user_event_seq: { Args: { p_user: string }; Returns: number }
     }
