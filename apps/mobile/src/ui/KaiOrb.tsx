@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { View } from 'react-native';
 import Svg, { Defs, RadialGradient, Stop, Circle } from 'react-native-svg';
 import { color } from './tokens';
@@ -9,6 +9,10 @@ import { color } from './tokens';
  *           + box-shadow 0 0 14px rgba(139,77,255,0.55)
  */
 export function KaiOrb({ size = 30, glow = true, testID }: { size?: number; glow?: boolean; testID?: string }) {
+  // Per-instance gradient id: SVG ids are document-global on web, so two same-size orbs
+  // (e.g. a pushed screen keeping the previous one mounted) would otherwise collide and
+  // the second paints nothing.
+  const gradId = `orb-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   return (
     <View
       testID={testID}
@@ -28,13 +32,13 @@ export function KaiOrb({ size = 30, glow = true, testID }: { size?: number; glow
     >
       <Svg width={size} height={size} viewBox="0 0 100 100">
         <Defs>
-          <RadialGradient id={`orb${size}`} cx="35%" cy="35%" r="70%">
+          <RadialGradient id={gradId} cx="35%" cy="35%" r="70%">
             <Stop offset="0" stopColor={color.violetLight} />
             <Stop offset="0.55" stopColor={color.violet} />
             <Stop offset="1" stopColor={color.violetDeep} />
           </RadialGradient>
         </Defs>
-        <Circle cx="50" cy="50" r="50" fill={`url(#orb${size})`} />
+        <Circle cx="50" cy="50" r="50" fill={`url(#${gradId})`} />
       </Svg>
     </View>
   );
