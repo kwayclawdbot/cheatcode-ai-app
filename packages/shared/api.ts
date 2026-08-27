@@ -131,6 +131,14 @@ export type ErrorEnvelope = z.infer<typeof ErrorEnvelope>;
 /* Quote + freshness — every price-bearing payload carries this        */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Why a quote is not live. `entitlement` is the round-2 addition: the plan only
+ * permits delayed data, so the number is DELAYED — honest, usable, and actions
+ * stay enabled. It is never `stale` (stale means the feed failed).
+ */
+export const DelayReason = z.enum(['entitlement', 'feed_gap', 'market_closed', 'seed']);
+export type DelayReason = z.infer<typeof DelayReason>;
+
 export const Quote = z.object({
   symbol: z.string(),
   occ_symbol: z.string().nullable().optional(),
@@ -138,6 +146,8 @@ export const Quote = z.object({
   source_ts: z.string().nullable(),
   received_ts: z.string().nullable(),
   freshness: Freshness,
+  /** Set whenever freshness is not 'live'. Optional so v1 payloads still parse. */
+  delay_reason: DelayReason.nullable().optional(),
 });
 export type Quote = z.infer<typeof Quote>;
 
@@ -600,6 +610,13 @@ export const AlertRow = z.object({
     label: z.string(),
     action: z.enum(['activate', 'review', 'ask_kai', 'none']),
   }),
+  /**
+   * Round 2: there is no alert-evaluation worker yet, so an ACTIVE alert is
+   * "armed" and the app says so rather than implying tick-by-tick checking.
+   * Optional so v1-slice payloads still parse. See AlertMonitoring below.
+   */
+  monitoring: z.enum(['armed_no_feed', 'not_armed', 'resolved']).optional(),
+  monitoring_plain: z.string().optional(),
 });
 export type AlertRow = z.infer<typeof AlertRow>;
 
@@ -629,3 +646,1113 @@ export const HealthResponse = z.object({
   anthropic: z.boolean(),
 });
 export type HealthResponse = z.infer<typeof HealthResponse>;
+
+/* ==================================================================== */
+/* ROUND 2 — setups detail · alerts lifecycle · trade/symbol/market ·    */
+/*           debriefs · community · account                             */
+/*                                                                      */
+/* Appended, never edited: everything above stays byte-stable so the     */
+/* mobile app's type-only imports keep resolving. Canonical sources:     */
+/* docs/BUILD-BRIEF-round-2.md, docs/02_API_CONTRACTS.md §§1-3,6,9,11,   */
+/* docs/06_TRADE_PAGE_SPEC_extracted.md §§3-5,                          */
+/* docs/08_COMMUNITY_SPEC_extracted.md §§5,7,8.                         */
+/* ==================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* Market data                                                         */
+/* ------------------------------------------------------------------ */
+
+/** A quote with the extra context the Trade surfaces need. */
+export const MarketQuote = Quote.extend({
+  prev_close: z.number().nullable(),
+  change: z.number().nullable(),
+  change_pct: z.number().nullable(),
+  /** "Delayed 15m · last trade 3:55 PM ET" — the client shows this verbatim. */
+  label_plain: z.string(),
+  session: MarketStatus,
+});
+export type MarketQuote = z.infer<typeof MarketQuote>;
+
+export const Timeframe = z.enum(['1d', '5m']);
+export type Timeframe = z.infer<typeof Timeframe>;
+
+export const Candle = z.object({
+  ts: z.string(),
+  o: z.number().nullable(),
+  h: z.number().nullable(),
+  l: z.number().nullable(),
+  c: z.number().nullable(),
+  v: z.number().nullable(),
+});
+export type Candle = z.infer<typeof Candle>;
+
+export const CandlesQuery = z.object({
+  symbol: z.string().min(1).max(12),
+  tf: Timeframe.default('1d'),
+  from: z.string().optional(),
+  to: z.string().optional(),
+});
+export type CandlesQuery = z.infer<typeof CandlesQuery>;
+
+export const CandlesResponse = z.object({
+  symbol: z.string(),
+  timeframe: Timeframe,
+  candles: z.array(Candle),
+  /** 'polygon' = fetched this request; 'cache' = served from the candles table. */
+  source: z.enum(['polygon', 'cache', 'none']),
+  freshness: Freshness,
+  delay_reason: DelayReason.nullable(),
+  market: MarketBlock,
+  degraded: z.boolean(),
+  degraded_reason: z.string().nullable(),
+});
+export type CandlesResponse = z.infer<typeof CandlesResponse>;
+
+export const SnapshotQuery = z.object({ symbols: z.string().min(1).max(400) });
+export type SnapshotQuery = z.infer<typeof SnapshotQuery>;
+
+export const SnapshotResponse = z.object({
+  quotes: z.array(MarketQuote),
+  market: MarketBlock,
+  degraded: z.boolean(),
+  degraded_reason: z.string().nullable(),
+});
+export type SnapshotResponse = z.infer<typeof SnapshotResponse>;
+
+export const SessionResponse = z.object({
+  market: MarketBlock,
+  /** No holidays table yet — the client must say so where it matters. */
+  holidays_known: z.boolean(),
+  notice_plain: z.string().nullable(),
+});
+export type SessionResponse = z.infer<typeof SessionResponse>;
+
+/* ------------------------------------------------------------------ */
+/* GET /setups/:id — Live / Plan / Learn                               */
+/* ------------------------------------------------------------------ */
+
+export const StepStatus = z.enum(['done', 'current', 'pending', 'failed']);
+export type StepStatus = z.infer<typeof StepStatus>;
+
+export const SetupStep = z.object({
+  key: z.string(),
+  label: z.string(),
+  status: StepStatus,
+});
+export const SetupStepper = z.object({
+  steps: z.array(SetupStep),
+  current_index: z.number(),
+  plain: z.string(),
+});
+export type SetupStepper = z.infer<typeof SetupStepper>;
+
+/** ok:null means "not knowable from the data we have" — never a silent false. */
+export const Confirmation = z.object({
+  label: z.string(),
+  ok: z.boolean().nullable(),
+  detail_plain: z.string().nullable(),
+});
+export type Confirmation = z.infer<typeof Confirmation>;
+
+export const SetupLive = z.object({
+  quote: MarketQuote,
+  state: SetupState,
+  stepper: SetupStepper,
+  narration_plain: z.string(),
+  confirmations: z.array(Confirmation),
+});
+export type SetupLive = z.infer<typeof SetupLive>;
+
+export const SizeSuggestion = z.object({
+  shares: z.number().nullable(),
+  notional: z.number().nullable(),
+  max_loss_usd: z.number().nullable(),
+  within_policy: z.boolean(),
+  plain: z.string(),
+});
+export type SizeSuggestion = z.infer<typeof SizeSuggestion>;
+
+export const Scenario = z.object({
+  name: z.string(),
+  plain: z.string(),
+  outcome_usd: z.number().nullable(),
+  semantic: z.enum(['positive', 'neutral', 'risk']),
+});
+export type Scenario = z.infer<typeof Scenario>;
+
+export const UiAction = z.object({
+  action: z.string(),
+  label: z.string(),
+  enabled: z.boolean().default(true),
+  hint: z.string().nullable().default(null),
+  primary: z.boolean().default(false),
+  route: z.string().nullable().default(null),
+});
+export type UiAction = z.infer<typeof UiAction>;
+
+export const SetupPlanBlock = z.object({
+  entry: z.number().nullable(),
+  entry_condition: z.record(z.string(), z.unknown()).nullable(),
+  entry_plain: z.string(),
+  invalidation: z.record(z.string(), z.unknown()).nullable(),
+  invalidation_plain: z.string(),
+  stop: z.number().nullable(),
+  targets: z.array(SetupTarget),
+  size_suggestion: SizeSuggestion,
+  scenarios: z.array(Scenario),
+  risk_reward: z.number().nullable(),
+  risk_reward_plain: z.string(),
+  actions: z.array(UiAction),
+});
+export type SetupPlanBlock = z.infer<typeof SetupPlanBlock>;
+
+export const EvidenceItem = z.object({
+  label: z.string(),
+  ok: z.boolean(),
+  detail_plain: z.string().nullable(),
+});
+export type EvidenceItem = z.infer<typeof EvidenceItem>;
+
+/** One question, answer revealed. No score, no XP, no streak. */
+export const Quiz = z.object({
+  q: z.string(),
+  options: z.array(z.string()).min(2),
+  answer_idx: z.number(),
+  explanation_plain: z.string().nullable(),
+});
+export type Quiz = z.infer<typeof Quiz>;
+
+export const SetupLearn = z.object({
+  why_plain: z.string(),
+  evidence: z.array(EvidenceItem),
+  similar_example: z
+    .object({ symbol: z.string(), plain: z.string(), when: z.string().nullable() })
+    .nullable(),
+  quiz: Quiz.nullable(),
+});
+export type SetupLearn = z.infer<typeof SetupLearn>;
+
+export const SetupDetailQuery = z.object({ mode: AppMode.optional() });
+
+export const SetupDetailResponse = z.object({
+  id: z.string(),
+  symbol: z.string(),
+  name: z.string().nullable(),
+  mode: AppMode,
+  intent: PositionEffect,
+  state: SetupState,
+  grade_band: GradeBand.nullable(),
+  grade_display: z.string().nullable(),
+  score: z.number().nullable(),
+  seeded: z.boolean(),
+  /** 'polygon-daily' once refresh-seed-setups has run; null for raw seed rows. */
+  source: z.string().nullable(),
+  refreshed_at: z.string().nullable(),
+  live: SetupLive,
+  plan: SetupPlanBlock,
+  learn: SetupLearn,
+  explain: ExplainLevels,
+  fit: z.object({ ok: z.boolean(), reasons: z.array(z.string()) }),
+  next_action: UiAction,
+  thesis: z
+    .object({ id: z.string(), summary_plain: z.string(), status: z.string() })
+    .nullable(),
+  discussion_room_id: z.string().nullable(),
+  market: MarketBlock,
+  degraded: z.boolean(),
+  degraded_reason: z.string().nullable(),
+});
+export type SetupDetailResponse = z.infer<typeof SetupDetailResponse>;
+
+export const SetupFollowResponse = z.object({
+  setup_id: z.string(),
+  symbol: z.string(),
+  watchlisted: z.boolean(),
+  already_following: z.boolean(),
+  alert: AlertRow.nullable(),
+  preview: KaiObjectEnvelope.nullable(),
+  plain: z.string(),
+});
+export type SetupFollowResponse = z.infer<typeof SetupFollowResponse>;
+
+/* ------------------------------------------------------------------ */
+/* GET /theses?symbol=&mode=                                            */
+/* ------------------------------------------------------------------ */
+
+export const ThesesQuery = z.object({
+  symbol: z.string().optional(),
+  mode: AppMode.optional(),
+});
+
+export const ThesisRow = z.object({
+  id: z.string(),
+  symbol: z.string(),
+  mode: AppMode,
+  timeframe: z.string(),
+  setup_id: z.string().nullable(),
+  intent: PositionEffect,
+  summary_plain: z.string(),
+  evidence: z.record(z.string(), z.unknown()).nullable(),
+  status: z.enum(['active', 'superseded', 'expired']),
+  superseded_by: z.string().nullable(),
+  supersession: z.record(z.string(), z.unknown()).nullable(),
+  created_at: z.string(),
+});
+export type ThesisRow = z.infer<typeof ThesisRow>;
+
+export const ThesesResponse = z.object({
+  active: z.array(ThesisRow),
+  superseded: z.array(ThesisRow),
+  empty_copy: z.string(),
+});
+export type ThesesResponse = z.infer<typeof ThesesResponse>;
+
+/* ------------------------------------------------------------------ */
+/* Alerts lifecycle                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * There is no alert-evaluation worker in this round. An active alert is armed
+ * and honest about it — the app says "armed · live evaluation starts when
+ * market data goes live" rather than implying it is being checked tick by tick.
+ */
+export const AlertMonitoring = z.enum(['armed_no_feed', 'not_armed', 'resolved']);
+export type AlertMonitoring = z.infer<typeof AlertMonitoring>;
+
+export const MONITORING_PLAIN: Record<AlertMonitoring, string> = {
+  armed_no_feed: 'Armed · live evaluation starts when market data goes live.',
+  not_armed: 'Not armed — Kai is not watching this right now.',
+  resolved: 'Finished — nothing left to watch here.',
+};
+
+export const AlertActivateRequest = z.object({ draft_id: z.string().min(1) });
+export type AlertActivateRequest = z.infer<typeof AlertActivateRequest>;
+
+export const AlertLimit = z.object({
+  used: z.number(),
+  max: z.number().nullable(),
+  tier: z.string(),
+  plain: z.string(),
+});
+export type AlertLimit = z.infer<typeof AlertLimit>;
+
+export const AlertActivateResponse = z.object({
+  alert: AlertRow,
+  monitoring: AlertMonitoring,
+  monitoring_plain: z.string(),
+  limit: AlertLimit,
+});
+export type AlertActivateResponse = z.infer<typeof AlertActivateResponse>;
+
+export const AlertHistoryItem = z.object({
+  seq: z.number().nullable(),
+  at: z.string(),
+  event: z.string(),
+  plain: z.string(),
+});
+export type AlertHistoryItem = z.infer<typeof AlertHistoryItem>;
+
+/** Where the alert came from, already resolved to a label the app can show. */
+export const OriginRef = z.object({
+  kind: z.enum(['setup', 'symbol', 'room', 'conversation', 'level']),
+  label: z.string(),
+  route: z.string().nullable(),
+});
+export type OriginRef = z.infer<typeof OriginRef>;
+
+export const AlertDetailResponse = z.object({
+  alert: AlertRow,
+  condition_plain: z.string(),
+  structured: z.record(z.string(), z.unknown()),
+  data_dependency: z.record(z.string(), z.unknown()),
+  monitoring: AlertMonitoring,
+  monitoring_plain: z.string(),
+  history: z.array(AlertHistoryItem),
+  origin: z.array(OriginRef),
+  actions: z.array(UiAction),
+});
+export type AlertDetailResponse = z.infer<typeof AlertDetailResponse>;
+
+export const AlertActionRequest = z.object({
+  action: z.enum(['pause', 'resume', 'cancel', 'edit']),
+  natural_language: z.string().min(1).max(500).optional(),
+});
+export type AlertActionRequest = z.infer<typeof AlertActionRequest>;
+
+export const AlertActionResponse = z.object({
+  alert: AlertRow,
+  monitoring: AlertMonitoring,
+  monitoring_plain: z.string(),
+  /** Present only for `edit`: the re-parsed draft awaiting activation. */
+  preview: KaiObjectEnvelope.nullable(),
+  plain: z.string(),
+});
+export type AlertActionResponse = z.infer<typeof AlertActionResponse>;
+
+/* ------------------------------------------------------------------ */
+/* Watchlist                                                            */
+/* ------------------------------------------------------------------ */
+
+export const WatchlistItem = z.object({
+  symbol: z.string(),
+  name: z.string().nullable(),
+  note: z.string().nullable(),
+  added_at: z.string().nullable(),
+  quote: MarketQuote.nullable(),
+  setup_id: z.string().nullable(),
+  grade_display: z.string().nullable(),
+  state: SetupState.nullable(),
+});
+export type WatchlistItem = z.infer<typeof WatchlistItem>;
+
+export const WatchlistResponse = z.object({
+  id: z.string().nullable(),
+  name: z.string(),
+  items: z.array(WatchlistItem),
+  empty_copy: z.string(),
+  degraded: z.boolean(),
+  degraded_reason: z.string().nullable(),
+});
+export type WatchlistResponse = z.infer<typeof WatchlistResponse>;
+
+export const WatchlistAddRequest = z.object({
+  symbol: z.string().min(1).max(12),
+  note: z.string().max(280).optional(),
+});
+export type WatchlistAddRequest = z.infer<typeof WatchlistAddRequest>;
+
+/* ------------------------------------------------------------------ */
+/* GET /trade/landing?mode=  (02 §2 shape)                              */
+/* ------------------------------------------------------------------ */
+
+export const AccountStrip = z.object({
+  account_id: z.string().nullable(),
+  kind: z.literal('paper'),
+  label: z.string(),
+  equity: z.number().nullable(),
+  cash: z.number().nullable(),
+  buying_power: z.number().nullable(),
+  currency: z.string(),
+  plain: z.string(),
+});
+export type AccountStrip = z.infer<typeof AccountStrip>;
+
+export const Mover = z.object({
+  symbol: z.string(),
+  name: z.string().nullable(),
+  quote: MarketQuote,
+  direction: z.enum(['up', 'down']),
+});
+export type Mover = z.infer<typeof Mover>;
+
+export const ContinueItem = z.object({
+  kind: z.enum(['alert_draft', 'followed_setup', 'triggered_alert']),
+  id: z.string(),
+  symbol: z.string().nullable(),
+  label: z.string(),
+  plain: z.string(),
+  route: z.string(),
+});
+export type ContinueItem = z.infer<typeof ContinueItem>;
+
+export const TradeLandingQuery = z.object({ mode: AppMode.optional() });
+
+export const TradeLandingResponse = z.object({
+  mode: AppMode,
+  market: MarketBlock,
+  account_strip: AccountStrip,
+  search_ctx: z.object({ placeholder: z.string(), examples: z.array(z.string()) }),
+  watchlists: z.array(
+    z.object({ id: z.string().nullable(), name: z.string(), items: z.array(WatchlistItem) })
+  ),
+  markets: z.object({
+    movers: z.array(Mover),
+    sectors: z.array(z.unknown()),
+    calendar: z.array(z.unknown()),
+  }),
+  positions_snapshot: z.object({ open: z.array(z.unknown()), plain: z.string() }),
+  pending_orders: z.array(z.unknown()),
+  continue: z.array(ContinueItem),
+  kai_opportunities: z.array(SetupCard),
+  catalysts: z.array(z.unknown()),
+  /** Honest notices: what is not live yet on this surface. */
+  notices: z.array(z.string()),
+  degraded: z.boolean(),
+  degraded_reason: z.string().nullable(),
+});
+export type TradeLandingResponse = z.infer<typeof TradeLandingResponse>;
+
+export const TradeSearchQuery = z.object({ q: z.string().min(1).max(120) });
+
+export const InstrumentResult = z.object({
+  symbol: z.string(),
+  name: z.string().nullable(),
+  exchange: z.string().nullable(),
+  kind: z.enum(['equity', 'etf', 'option']),
+  route: z.string(),
+});
+export type InstrumentResult = z.infer<typeof InstrumentResult>;
+
+export const TradeSearchResponse = z.object({
+  q: z.string(),
+  instruments: z.array(InstrumentResult),
+  /** Nothing matched a ticker → offer it to Kai as a question instead. */
+  intent: z.object({ kind: z.literal('kai_question'), text: z.string() }).nullable(),
+  empty_copy: z.string(),
+});
+export type TradeSearchResponse = z.infer<typeof TradeSearchResponse>;
+
+/* ------------------------------------------------------------------ */
+/* GET /symbols/:symbol?mode=                                           */
+/* ------------------------------------------------------------------ */
+
+export const ChartAnnotation = z.object({
+  kind: z.enum(['level', 'zone', 'arrow', 'label', 'measure']),
+  price: z.number().nullable().optional(),
+  range: z.array(z.number()).nullable().optional(),
+  ts_range: z.array(z.string()).nullable().optional(),
+  text: z.string().nullable().optional(),
+  /** Semantics only. The backend never sends colours (14 palette lock). */
+  semantic: z.enum(['entry', 'stop', 'target', 'invalidation', 'note']),
+});
+export type ChartAnnotation = z.infer<typeof ChartAnnotation>;
+
+export const ChartConfig = z.object({
+  timeframes: z.array(z.string()),
+  default_timeframe: z.string(),
+  candles_path: z.string(),
+  annotations: z.array(ChartAnnotation),
+});
+export type ChartConfig = z.infer<typeof ChartConfig>;
+
+export const ModeLens = z.object({
+  mode: AppMode,
+  has_setup: z.boolean(),
+  setup_id: z.string().nullable(),
+  state: SetupState.nullable(),
+  grade_display: z.string().nullable(),
+  headline_plain: z.string(),
+  detail_plain: z.string(),
+  next_action: UiAction.nullable(),
+});
+export type ModeLens = z.infer<typeof ModeLens>;
+
+export const KaiInterpretation = z.object({
+  conclusion_plain: z.string(),
+  state: SetupState.nullable(),
+  grade_display: z.string().nullable(),
+  risk_plain: z.string(),
+  missing_evidence: z.array(z.string()),
+  invalidation_plain: z.string().nullable(),
+  last_updated: z.string(),
+  source: z.enum(['setup', 'kai', 'none']),
+  kai_object: KaiObjectEnvelope.nullable(),
+  refs: z.record(z.string(), z.unknown()),
+});
+export type KaiInterpretation = z.infer<typeof KaiInterpretation>;
+
+export const NewsItem = z.object({
+  id: z.string(),
+  title: z.string(),
+  publisher: z.string().nullable(),
+  url: z.string().nullable(),
+  published_utc: z.string(),
+  tickers: z.array(z.string()),
+  description: z.string().nullable(),
+});
+export type NewsItem = z.infer<typeof NewsItem>;
+
+export const SymbolDetailQuery = z.object({ mode: AppMode.optional() });
+
+export const SymbolDetailResponse = z.object({
+  symbol: z.string(),
+  name: z.string().nullable(),
+  mode: AppMode,
+  quote: MarketQuote,
+  market: MarketBlock,
+  chart: ChartConfig,
+  lenses: z.array(ModeLens),
+  kai_interpretation: KaiInterpretation,
+  your_context: z.object({
+    watchlisted: z.boolean(),
+    alerts: z.array(AlertRow),
+    plans: z.array(z.unknown()),
+    positions: z.array(z.unknown()),
+    plain: z.string(),
+  }),
+  evidence: z.object({ news: z.array(NewsItem), plain: z.string() }),
+  /** Placeholder until MOBILE-B's rooms ship; never a fabricated sentiment. */
+  community: z.object({
+    thread_summary: z.null(),
+    sentiment: z.null(),
+    room_id: z.string().nullable(),
+    plain: z.string(),
+  }),
+  actions: z.array(UiAction),
+  degraded: z.boolean(),
+  degraded_reason: z.string().nullable(),
+});
+export type SymbolDetailResponse = z.infer<typeof SymbolDetailResponse>;
+
+/* ------------------------------------------------------------------ */
+/* Positions & debriefs                                                 */
+/* ------------------------------------------------------------------ */
+
+export const PositionsQuery = z.object({
+  status: z.enum(['open', 'closed', 'all']).default('closed'),
+});
+
+export const PositionRow = z.object({
+  id: z.string(),
+  symbol: z.string(),
+  direction: z.enum(['long', 'short']),
+  qty: z.number(),
+  avg_cost: z.number(),
+  opened_at: z.string(),
+  closed_at: z.string().nullable(),
+  realized_pnl: z.number().nullable(),
+  mode: AppMode,
+  /** From origin/plan origin jsonb: dev-simulated trades are labeled, always. */
+  simulated: z.boolean(),
+  has_debrief: z.boolean(),
+  debrief_id: z.string().nullable(),
+  plain: z.string(),
+});
+export type PositionRow = z.infer<typeof PositionRow>;
+
+export const PositionsResponse = z.object({
+  positions: z.array(PositionRow),
+  empty_copy: z.string(),
+});
+export type PositionsResponse = z.infer<typeof PositionsResponse>;
+
+export const DebriefOutcome = z.object({
+  pnl: z.number().nullable(),
+  pnl_pct: z.number().nullable(),
+  held: z.string(),
+  held_ms: z.number().nullable(),
+  exit_reason: z.string(),
+  semantic: z.enum(['positive', 'neutral', 'risk']),
+});
+export type DebriefOutcome = z.infer<typeof DebriefOutcome>;
+
+export const ProcessReceiptItem = z.object({
+  label: z.string(),
+  ok: z.boolean(),
+  detail_plain: z.string().nullable(),
+});
+export type ProcessReceiptItem = z.infer<typeof ProcessReceiptItem>;
+
+export const TimelineItem = z.object({
+  at: z.string(),
+  kind: z.string(),
+  label: z.string(),
+  plain: z.string(),
+});
+export type TimelineItem = z.infer<typeof TimelineItem>;
+
+/** kai_object type 'debrief'. */
+export const DebriefPayload = z.object({
+  position_id: z.string(),
+  symbol: z.string(),
+  direction: z.enum(['long', 'short']),
+  outcome: DebriefOutcome,
+  process_receipt: z.array(ProcessReceiptItem),
+  what_worked: z.array(z.string()),
+  what_failed: z.array(z.string()),
+  timeline: z.array(TimelineItem),
+  lesson_plain: z.string(),
+  simulated: z.boolean(),
+});
+export type DebriefPayload = z.infer<typeof DebriefPayload>;
+
+export const DebriefRow = z.object({
+  id: z.string(),
+  position_id: z.string().nullable(),
+  symbol: z.string(),
+  created_at: z.string(),
+  kai_summary: z.string().nullable(),
+  payload: DebriefPayload,
+  kai_object: KaiObjectEnvelope.nullable(),
+  simulated: z.boolean(),
+  degraded: z.boolean(),
+  actions: z.array(UiAction),
+});
+export type DebriefRow = z.infer<typeof DebriefRow>;
+
+export const DebriefsResponse = z.object({
+  debriefs: z.array(DebriefRow),
+  /** Closed positions with no debrief yet → "Get Kai's debrief". */
+  awaiting: z.array(PositionRow),
+  empty_copy: z.string(),
+});
+export type DebriefsResponse = z.infer<typeof DebriefsResponse>;
+
+export const SaveLessonResponse = z.object({
+  saved: z.boolean(),
+  memory_id: z.string().nullable(),
+  plain: z.string(),
+});
+export type SaveLessonResponse = z.infer<typeof SaveLessonResponse>;
+
+export const SimulateClosedTradeRequest = z.object({
+  symbol: z.string().min(1).max(12).optional(),
+  outcome: z.enum(['win', 'loss']).optional(),
+});
+export type SimulateClosedTradeRequest = z.infer<typeof SimulateClosedTradeRequest>;
+
+export const SimulateClosedTradeResponse = z.object({
+  position_id: z.string(),
+  plan_id: z.string().nullable(),
+  order_id: z.string().nullable(),
+  symbol: z.string(),
+  realized_pnl: z.number(),
+  simulated: z.literal(true),
+  plain: z.string(),
+});
+export type SimulateClosedTradeResponse = z.infer<typeof SimulateClosedTradeResponse>;
+
+/* ------------------------------------------------------------------ */
+/* Community                                                            */
+/* ------------------------------------------------------------------ */
+
+export const RoomType = z.enum(['core', 'setup', 'announcement']);
+export type RoomType = z.infer<typeof RoomType>;
+
+export const MemberRole = z.enum(['member', 'moderator', 'educator', 'expert']);
+export type MemberRole = z.infer<typeof MemberRole>;
+
+export const MessageKind = z.enum([
+  'text',
+  'chart',
+  'voice_note',
+  'kai_object',
+  'position_update',
+  'system',
+]);
+export type MessageKind = z.infer<typeof MessageKind>;
+
+export const RoomRow = z.object({
+  id: z.string(),
+  type: RoomType,
+  mode: AppMode.nullable(),
+  slug: z.string().nullable(),
+  name: z.string(),
+  description: z.string().nullable(),
+  setup_id: z.string().nullable(),
+  config: z.record(z.string(), z.unknown()),
+  pinned: z.unknown(),
+  member_count: z.number(),
+  message_count: z.number(),
+  joined: z.boolean(),
+  last_read_seq: z.number().nullable(),
+  last_seq: z.number(),
+  unread: z.number(),
+  route: z.string(),
+});
+export type RoomRow = z.infer<typeof RoomRow>;
+
+export const RoomsQuery = z.object({ mode: AppMode.optional() });
+
+export const RoomsResponse = z.object({
+  mode: AppMode,
+  core: z.array(RoomRow),
+  setup_rooms: z.array(RoomRow),
+  /** Live sessions are Phase 2 — the client says so instead of faking a card. */
+  live_notice: z.string(),
+  empty_copy: z.string(),
+});
+export type RoomsResponse = z.infer<typeof RoomsResponse>;
+
+export const RoomJoinResponse = z.object({
+  room: RoomRow,
+  joined: z.boolean(),
+  already_member: z.boolean(),
+  plain: z.string(),
+});
+export type RoomJoinResponse = z.infer<typeof RoomJoinResponse>;
+
+export const MessageAuthor = z.object({
+  user_id: z.string(),
+  handle: z.string().nullable(),
+  display_name: z.string().nullable(),
+  avatar_url: z.string().nullable(),
+  role_labels: z.array(z.string()),
+  route: z.string(),
+});
+export type MessageAuthor = z.infer<typeof MessageAuthor>;
+
+export const PositionDisclosure = z.object({
+  holds: z.boolean(),
+  symbol: z.string().nullable().optional(),
+  direction: z.enum(['long', 'short']).nullable().optional(),
+  plain: z.string().nullable().optional(),
+});
+export type PositionDisclosure = z.infer<typeof PositionDisclosure>;
+
+export const StructuredIdea = z.object({
+  direction: z.enum(['long', 'short']),
+  thesis: z.string().min(1).max(2000),
+  entry_condition: z.string().max(500).nullable().optional(),
+  invalidation: z.string().max(500).nullable().optional(),
+  risk_and_size: z.string().max(500).nullable().optional(),
+  target_and_horizon: z.string().max(500).nullable().optional(),
+  evidence: z.string().max(1000).nullable().optional(),
+  symbol: z.string().max(12).nullable().optional(),
+});
+export type StructuredIdea = z.infer<typeof StructuredIdea>;
+
+export const MessageRow = z.object({
+  id: z.string(),
+  room_id: z.string(),
+  user_id: z.string().nullable(),
+  seq: z.number(),
+  kind: MessageKind,
+  body: z.string().nullable(),
+  parent_id: z.string().nullable(),
+  refs: z.record(z.string(), z.unknown()).nullable(),
+  structured_idea: z.record(z.string(), z.unknown()).nullable(),
+  position_disclosure: z.record(z.string(), z.unknown()).nullable(),
+  deleted: z.boolean(),
+  created_at: z.string(),
+  author: MessageAuthor.nullable(),
+  /** kind='kai_object' → the resolved envelope, so the client renders an object. */
+  kai_object: KaiObjectEnvelope.nullable(),
+});
+export type MessageRow = z.infer<typeof MessageRow>;
+
+export const MessagesQuery = z.object({
+  after_seq: z.coerce.number().optional(),
+  limit: z.coerce.number().min(1).max(200).default(50),
+});
+
+export const MessagesResponse = z.object({
+  room: RoomRow,
+  messages: z.array(MessageRow),
+  last_seq: z.number(),
+  has_more: z.boolean(),
+  /** From room_members.last_read_seq — drives the "N new since you left" pill. */
+  catch_up: z.object({ since_seq: z.number(), count: z.number(), plain: z.string() }),
+});
+export type MessagesResponse = z.infer<typeof MessagesResponse>;
+
+export const PostMessageBody = z.object({
+  kind: z.enum(['text', 'chart', 'position_update']).default('text'),
+  body: z.string().min(1).max(4000),
+  refs: z.record(z.string(), z.unknown()).optional(),
+  structured_idea: StructuredIdea.optional(),
+  position_disclosure: PositionDisclosure.optional(),
+  parent_id: z.string().optional(),
+});
+export type PostMessageBody = z.infer<typeof PostMessageBody>;
+
+export const PostMessageResponse = z.object({
+  message: MessageRow,
+  plain: z.string(),
+});
+export type PostMessageResponse = z.infer<typeof PostMessageResponse>;
+
+export const RoomKaiCommand = z.enum(['summarize', 'verify', 'to_alert', 'compare', 'explain']);
+export type RoomKaiCommand = z.infer<typeof RoomKaiCommand>;
+
+export const RoomKaiRequest = z.object({
+  command: RoomKaiCommand,
+  message_id: z.string().optional(),
+  args: z.record(z.string(), z.unknown()).optional(),
+});
+export type RoomKaiRequest = z.infer<typeof RoomKaiRequest>;
+
+export const RoomKaiResponse = z.object({
+  message: MessageRow,
+  object: KaiObjectEnvelope,
+  degraded: z.boolean(),
+});
+export type RoomKaiResponse = z.infer<typeof RoomKaiResponse>;
+
+/** room_summary payload — 08 §5: window, themes, claims, disagreements, assets. */
+export const RoomSummaryPayload = z.object({
+  room_id: z.string(),
+  room_name: z.string(),
+  window: z.object({
+    from: z.string().nullable(),
+    to: z.string().nullable(),
+    from_seq: z.number().nullable(),
+    to_seq: z.number().nullable(),
+  }),
+  sample_size: z.number(),
+  themes: z.array(z.object({ label: z.string(), plain: z.string() })),
+  claims: z.array(
+    z.object({
+      claim: z.string(),
+      verified: z.enum(['verified', 'partially_verified', 'unverified', 'false', 'unverifiable']),
+      plain: z.string(),
+    })
+  ),
+  disagreements: z.array(z.string()),
+  assets: z.array(z.string()),
+  missed_updates: z.array(z.string()),
+  /** Community claims stay labeled and separate from Kai's own conclusion. */
+  confidence_limits: z.string(),
+  kai_conclusion_plain: z.string(),
+});
+export type RoomSummaryPayload = z.infer<typeof RoomSummaryPayload>;
+
+export const VerificationCardPayload = z.object({
+  claim: z.string(),
+  result: z.enum(['verified', 'partially_verified', 'unverified', 'false', 'unverifiable']),
+  sources: z.array(
+    z.object({ label: z.string(), url: z.string().nullable(), ts: z.string().nullable() })
+  ),
+  timestamp: z.string(),
+  uncertainty: z.string(),
+  effect_on_setup: z.string(),
+});
+export type VerificationCardPayload = z.infer<typeof VerificationCardPayload>;
+
+export const ComparisonPayload = z.object({
+  subject: z.string(),
+  bull: z.object({ points: z.array(z.string()), plain: z.string() }),
+  bear: z.object({ points: z.array(z.string()), plain: z.string() }),
+  kai_conclusion_plain: z.string(),
+  confidence_limits: z.string(),
+});
+export type ComparisonPayload = z.infer<typeof ComparisonPayload>;
+
+export const StructuredAssistResponse = z.object({
+  original: z.record(z.string(), z.unknown()),
+  improved: StructuredIdea,
+  notes: z.array(z.string()),
+  plain: z.string(),
+  /** Nothing is published — the member still has to press Post. */
+  published: z.literal(false),
+  degraded: z.boolean(),
+});
+export type StructuredAssistResponse = z.infer<typeof StructuredAssistResponse>;
+
+export const ReportRequest = z.object({
+  reason: z.string().min(3).max(500),
+});
+export type ReportRequest = z.infer<typeof ReportRequest>;
+
+export const ReportResponse = z.object({
+  report_id: z.string(),
+  plain: z.string(),
+});
+export type ReportResponse = z.infer<typeof ReportResponse>;
+
+export const MuteRequest = z.object({
+  /** Minutes; omitted = until the member unmutes. */
+  minutes: z.number().min(1).max(60 * 24 * 30).optional(),
+});
+export type MuteRequest = z.infer<typeof MuteRequest>;
+
+export const MuteResponse = z.object({
+  room_id: z.string(),
+  muted_until: z.string().nullable(),
+  plain: z.string(),
+});
+export type MuteResponse = z.infer<typeof MuteResponse>;
+
+export const ContributorResponse = z.object({
+  user_id: z.string(),
+  handle: z.string().nullable(),
+  display_name: z.string().nullable(),
+  avatar_url: z.string().nullable(),
+  role_labels: z.array(z.string()),
+  contribution: z.object({
+    ideas_posted: z.number(),
+    theses_updated: z.number(),
+    outcomes_disclosed: z.number(),
+    defined_risk_rate: z.number().nullable(),
+    usefulness_score: z.number().nullable(),
+    plain: z.string(),
+  }),
+  recent_messages: z.array(
+    z.object({
+      id: z.string(),
+      room_id: z.string(),
+      room_name: z.string(),
+      created_at: z.string(),
+      excerpt: z.string(),
+      position_disclosure: z.record(z.string(), z.unknown()).nullable(),
+    })
+  ),
+  /** 08 §8: no points, streaks, leaderboards or profit contests. Ever. */
+  rankings: z.null(),
+  actions: z.array(UiAction),
+});
+export type ContributorResponse = z.infer<typeof ContributorResponse>;
+
+/* ------------------------------------------------------------------ */
+/* Account                                                              */
+/* ------------------------------------------------------------------ */
+
+export const Accessibility = z.object({
+  reduced_motion: z.boolean(),
+  text_scale: z.number(),
+});
+export type Accessibility = z.infer<typeof Accessibility>;
+
+export const QuietHours = z.object({
+  start: z.string().nullable(),
+  end: z.string().nullable(),
+  timezone: z.string().nullable(),
+});
+export type QuietHours = z.infer<typeof QuietHours>;
+
+export const SubscriptionBlock = z.object({
+  tier: z.enum(['free', 'premium']),
+  status: z.string(),
+  current_period_end: z.string().nullable(),
+  plain: z.string(),
+});
+export type SubscriptionBlock = z.infer<typeof SubscriptionBlock>;
+
+export const MeResponse = z.object({
+  profile: ProfileResponse,
+  risk_policy: RiskPolicyResponse.nullable(),
+  account: z.object({
+    id: z.string().nullable(),
+    kind: z.enum(['paper', 'broker']),
+    name: z.string(),
+    starting_balance: z.number().nullable(),
+    cash: z.number().nullable(),
+    buying_power: z.number().nullable(),
+    equity: z.number().nullable(),
+    reset_count: z.number(),
+    last_reset_at: z.string().nullable(),
+    can_reset: z.boolean(),
+    reset_plain: z.string(),
+  }),
+  subscription: SubscriptionBlock,
+  /** Flat flag map from entitlement_flags for the user's tier. */
+  entitlements: z.record(z.string(), z.unknown()),
+  memory_enabled: z.boolean(),
+  prefs: z.object({
+    explanation_level: ExperienceLevel,
+    quiet_hours: QuietHours.nullable(),
+    notifications: z.object({ per_mode: z.record(z.string(), z.unknown()) }),
+    accessibility: Accessibility,
+  }),
+  broker: z.object({ connected: z.boolean(), plain: z.string() }),
+  dev_tools: z.boolean(),
+  counts: z.object({
+    active_alerts: z.number(),
+    needs_attention: z.number(),
+    unread_notifications: z.number(),
+    debriefs: z.number(),
+  }),
+});
+export type MeResponse = z.infer<typeof MeResponse>;
+
+export const SettingsRequest = z
+  .object({
+    explanation_level: ExperienceLevel.optional(),
+    quiet_hours: QuietHours.nullable().optional(),
+    notifications: z.object({ per_mode: z.record(z.string(), z.unknown()) }).optional(),
+    accessibility: z
+      .object({
+        reduced_motion: z.boolean().optional(),
+        text_scale: z.number().min(0.8).max(2).optional(),
+      })
+      .optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'Nothing to change here yet.' });
+export type SettingsRequest = z.infer<typeof SettingsRequest>;
+
+export const SettingsResponse = z.object({
+  profile: ProfileResponse,
+  prefs: z.object({
+    explanation_level: ExperienceLevel,
+    quiet_hours: QuietHours.nullable(),
+    notifications: z.object({ per_mode: z.record(z.string(), z.unknown()) }),
+    accessibility: Accessibility,
+  }),
+  plain: z.string(),
+});
+export type SettingsResponse = z.infer<typeof SettingsResponse>;
+
+export const MemoryItem = z.object({
+  id: z.string(),
+  kind: z.enum(['preference', 'pattern', 'mistake', 'goal', 'note']),
+  content: z.string(),
+  refs: z.record(z.string(), z.unknown()).nullable(),
+  created_at: z.string(),
+});
+export type MemoryItem = z.infer<typeof MemoryItem>;
+
+export const MemoryResponse = z.object({
+  enabled: z.boolean(),
+  items: z.array(MemoryItem),
+  empty_copy: z.string(),
+});
+export type MemoryResponse = z.infer<typeof MemoryResponse>;
+
+export const MemorySettingsRequest = z.object({ enabled: z.boolean() });
+export type MemorySettingsRequest = z.infer<typeof MemorySettingsRequest>;
+
+export const MemoryDeleteResponse = z.object({
+  deleted: z.number(),
+  plain: z.string(),
+});
+export type MemoryDeleteResponse = z.infer<typeof MemoryDeleteResponse>;
+
+export const PaperResetResponse = z.object({
+  account: z.object({
+    id: z.string(),
+    cash: z.number().nullable(),
+    buying_power: z.number().nullable(),
+    equity: z.number().nullable(),
+    starting_balance: z.number().nullable(),
+    reset_count: z.number(),
+    last_reset_at: z.string().nullable(),
+  }),
+  next_reset_allowed_at: z.string().nullable(),
+  plain: z.string(),
+});
+export type PaperResetResponse = z.infer<typeof PaperResetResponse>;
+
+export const NotificationGroup = z.enum(['action_required', 'changes', 'fyi']);
+export type NotificationGroup = z.infer<typeof NotificationGroup>;
+
+export const NotificationsQuery = z.object({ group: NotificationGroup.optional() });
+
+export const NotificationRow = z.object({
+  id: z.string(),
+  kind: z.string(),
+  group: NotificationGroup,
+  title_plain: z.string(),
+  body_plain: z.string(),
+  route: z.string().nullable(),
+  payload: z.record(z.string(), z.unknown()),
+  created_at: z.string(),
+  read: z.boolean(),
+});
+export type NotificationRow = z.infer<typeof NotificationRow>;
+
+export const NotificationsResponse = z.object({
+  groups: z.object({
+    action_required: z.array(NotificationRow),
+    changes: z.array(NotificationRow),
+    fyi: z.array(NotificationRow),
+  }),
+  unread_count: z.number(),
+  empty_copy: z.string(),
+});
+export type NotificationsResponse = z.infer<typeof NotificationsResponse>;
+
+export const BillingCheckoutResponse = z.object({
+  url: z.string(),
+  session_id: z.string(),
+  plain: z.string(),
+});
+export type BillingCheckoutResponse = z.infer<typeof BillingCheckoutResponse>;
+
+/** Kai objects added this round on top of KaiEmittedObject's v1 union. */
+export const KaiEmittedObjectRound2 = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('room_summary'), payload: RoomSummaryPayload }),
+  z.object({ type: z.literal('verification_card'), payload: VerificationCardPayload }),
+  z.object({ type: z.literal('comparison'), payload: ComparisonPayload }),
+  z.object({ type: z.literal('debrief'), payload: DebriefPayload }),
+]);
+export type KaiEmittedObjectRound2 = z.infer<typeof KaiEmittedObjectRound2>;
