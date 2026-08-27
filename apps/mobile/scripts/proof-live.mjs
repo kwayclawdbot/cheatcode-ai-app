@@ -54,12 +54,8 @@ const arrive = async (page, screen) => {
 
 const main = async () => {
   await fs.mkdir(OUT, { recursive: true });
-  // KNOWN GAP (api lane): apps/api sends no CORS headers, so a browser client on
-  // :8082 cannot call :3000. Native has no CORS, so this only blocks expo-web.
-  // Isolated here so the live proof can run; the fix belongs in apps/api.
-  const browser = await chromium.launch({
-    args: ['--disable-web-security', '--disable-features=IsolateOrigins,site-per-process'],
-  });
+  // CORS is served by apps/api/src/proxy.ts — no browser security bypass here.
+  const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: 'dark', bypassCSP: true });
   await installHideDevChrome(ctx);
   const page = await ctx.newPage();
