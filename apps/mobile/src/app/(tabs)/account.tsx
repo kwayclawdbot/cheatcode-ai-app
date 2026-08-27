@@ -16,9 +16,9 @@ import { api } from '../../lib/api';
 import { env } from '../../lib/env';
 import { useSession } from '../../lib/session';
 import { useMe } from '../../features/account/useAccount';
+import { ModeSheet, MODE_LABEL } from '../../features/trade/ModeSheet';
+import { PaperChip, money } from '../../features/trade/components';
 import type { GoalMode } from '../../lib/types';
-
-const MODE_LABEL: Record<GoalMode, string> = { day_trade: 'Day Trade', swing: 'Swing', invest: 'Invest' };
 const INVOLVEMENT_LABEL = { hands_on: 'I confirm every action', guided: 'Kai prepares, I approve' } as const;
 
 function NavRow({
@@ -56,6 +56,7 @@ export default function Account() {
   const [memory, setMemory] = useState<boolean>(profile?.memory_enabled ?? true);
   const [simulating, setSimulating] = useState(false);
   const [simResult, setSimResult] = useState<string | null>(null);
+  const [modeOpen, setModeOpen] = useState(false);
 
   React.useEffect(() => {
     setMemory(data?.memory_enabled ?? profile?.memory_enabled ?? true);
@@ -122,19 +123,50 @@ export default function Account() {
           </LinearGradient>
           <View style={{ flex: 1 }}>
             <T size={20} weight="bold" numberOfLines={1}>{name}</T>
-            <View style={{ flexDirection: 'row', gap: 5, marginTop: 4 }}>
-              <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: alpha.volt50 }}>
+            <View style={{ flexDirection: 'row', gap: 5, marginTop: 4, alignItems: 'center' }}>
+              {/* Mode is global context, so it is CHANGEABLE wherever it is shown
+                  (audit §6) — the same sheet Trade uses, writing PUT /mode. */}
+              <Pressable
+                testID="mode-chip"
+                accessibilityRole="button"
+                accessibilityLabel={`Mode: ${MODE_LABEL[mode]}. Change it.`}
+                onPress={() => setModeOpen(true)}
+                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: alpha.volt50 }}
+              >
                 <T size={10} c={color.volt}>{MODE_LABEL[mode]}</T>
-              </View>
-              <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: alpha.cyan40 }}>
-                <T size={10} c={color.cyan}>Paper</T>
-              </View>
+              </Pressable>
+              <PaperChip />
               <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: tier === 'premium' ? alpha.gold40 : alpha.ivory14 }}>
                 <T size={10} c={tier === 'premium' ? color.gold : color.muted}>{tier === 'premium' ? 'Premium' : 'Free'}</T>
               </View>
             </View>
           </View>
         </View>
+
+        {/* Paper strip — the same account Trade opens on, stated the same way. */}
+        <Pressable
+          testID="paper-strip"
+          accessibilityRole="button"
+          accessibilityLabel="Practice account. Open your positions."
+          onPress={() => router.push('/position')}
+        >
+          <ObjectCard r={radius.xl} style={{ paddingVertical: 13, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <T size={10} c={color.muted}>Practice balance</T>
+              <Num size={19} weight="semibold" style={{ marginTop: 3 }}>
+                {data?.paper ? money(data.paper.equity) : '—'}
+              </Num>
+              <T size={10} c={color.muted} style={{ marginTop: 3 }}>Not real money — nothing here can be withdrawn.</T>
+            </View>
+            {data?.paper?.buying_power != null ? (
+              <View style={{ alignItems: 'flex-end' }}>
+                <T size={10} c={color.muted}>Buying power</T>
+                <Num size={13} style={{ marginTop: 3 }}>{money(data.paper.buying_power, 0)}</Num>
+              </View>
+            ) : null}
+          </ObjectCard>
+        </Pressable>
 
         <Eyebrow>MY RULES</Eyebrow>
         <RowList>
@@ -215,6 +247,8 @@ export default function Account() {
         {notAvailable ? <NotConnected what="Your account details" /> : null}
         {isFixture ? <T size={10} c={color.dim} align="center">Sample account — the account service is not connected here.</T> : null}
       </ScrollView>
+
+      <ModeSheet visible={modeOpen} mode={mode} onClose={() => setModeOpen(false)} />
 
       <Sheet visible={!!simResult} onClose={() => setSimResult(null)} title="Simulated trade" testID="sheet-simulate">
         <T size={13} lh={20} c={color.muted}>{simResult}</T>
