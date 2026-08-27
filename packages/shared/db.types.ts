@@ -626,6 +626,7 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          kai_object_id: string | null
           kai_summary: string | null
           lesson_refs: string[] | null
           outcome: Json
@@ -638,6 +639,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
+          kai_object_id?: string | null
           kai_summary?: string | null
           lesson_refs?: string[] | null
           outcome: Json
@@ -650,6 +652,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
+          kai_object_id?: string | null
           kai_summary?: string | null
           lesson_refs?: string[] | null
           outcome?: Json
@@ -660,6 +663,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "debriefs_kai_object_id_fkey"
+            columns: ["kai_object_id"]
+            isOneToOne: false
+            referencedRelation: "kai_objects"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "debriefs_plan_id_fkey"
             columns: ["plan_id"]
@@ -1524,6 +1534,7 @@ export type Database = {
           instrument_kind: Database["public"]["Enums"]["instrument_kind"]
           limit_price: number | null
           occ_symbol: string | null
+          origin: Json
           plan_id: string | null
           preview: Json | null
           qty: number
@@ -1549,6 +1560,7 @@ export type Database = {
           instrument_kind?: Database["public"]["Enums"]["instrument_kind"]
           limit_price?: number | null
           occ_symbol?: string | null
+          origin?: Json
           plan_id?: string | null
           preview?: Json | null
           qty: number
@@ -1574,6 +1586,7 @@ export type Database = {
           instrument_kind?: Database["public"]["Enums"]["instrument_kind"]
           limit_price?: number | null
           occ_symbol?: string | null
+          origin?: Json
           plan_id?: string | null
           preview?: Json | null
           qty?: number
@@ -1675,6 +1688,7 @@ export type Database = {
           mode: Database["public"]["Enums"]["app_mode"]
           occ_symbol: string | null
           opened_at: string
+          origin: Json
           origin_plan_id: string | null
           origin_room_id: string | null
           origin_setup_id: string | null
@@ -1696,6 +1710,7 @@ export type Database = {
           mode: Database["public"]["Enums"]["app_mode"]
           occ_symbol?: string | null
           opened_at: string
+          origin?: Json
           origin_plan_id?: string | null
           origin_room_id?: string | null
           origin_setup_id?: string | null
@@ -1717,6 +1732,7 @@ export type Database = {
           mode?: Database["public"]["Enums"]["app_mode"]
           occ_symbol?: string | null
           opened_at?: string
+          origin?: Json
           origin_plan_id?: string | null
           origin_room_id?: string | null
           origin_setup_id?: string | null
@@ -1922,6 +1938,7 @@ export type Database = {
           banned: boolean | null
           created_at: string
           last_read_seq: number | null
+          moderation_muted_until: string | null
           muted_until: string | null
           role: Database["public"]["Enums"]["member_role"]
           room_id: string
@@ -1932,6 +1949,7 @@ export type Database = {
           banned?: boolean | null
           created_at?: string
           last_read_seq?: number | null
+          moderation_muted_until?: string | null
           muted_until?: string | null
           role?: Database["public"]["Enums"]["member_role"]
           room_id: string
@@ -1942,6 +1960,7 @@ export type Database = {
           banned?: boolean | null
           created_at?: string
           last_read_seq?: number | null
+          moderation_muted_until?: string | null
           muted_until?: string | null
           role?: Database["public"]["Enums"]["member_role"]
           room_id?: string
@@ -1969,6 +1988,29 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles_public"
             referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      room_seq_counters: {
+        Row: {
+          last_seq: number
+          room_id: string
+        }
+        Insert: {
+          last_seq?: number
+          room_id: string
+        }
+        Update: {
+          last_seq?: number
+          room_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_seq_counters_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: true
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -2598,6 +2640,84 @@ export type Database = {
           },
         ]
       }
+      watchlist_items: {
+        Row: {
+          added_at: string
+          note: string | null
+          symbol: string
+          watchlist_id: string
+        }
+        Insert: {
+          added_at?: string
+          note?: string | null
+          symbol: string
+          watchlist_id: string
+        }
+        Update: {
+          added_at?: string
+          note?: string | null
+          symbol?: string
+          watchlist_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watchlist_items_symbol_fkey"
+            columns: ["symbol"]
+            isOneToOne: false
+            referencedRelation: "instruments"
+            referencedColumns: ["symbol"]
+          },
+          {
+            foreignKeyName: "watchlist_items_watchlist_id_fkey"
+            columns: ["watchlist_id"]
+            isOneToOne: false
+            referencedRelation: "watchlists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      watchlists: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          position: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name?: string
+          position?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          position?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watchlists_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "watchlists_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
     }
     Views: {
       messages_moderation: {
@@ -2788,7 +2908,166 @@ export type Database = {
         Returns: Json
       }
       is_room_member: { Args: { p_room: string }; Returns: boolean }
+      join_core_room: {
+        Args: { p_room_id: string; p_user_id: string }
+        Returns: {
+          banned: boolean | null
+          created_at: string
+          last_read_seq: number | null
+          moderation_muted_until: string | null
+          muted_until: string | null
+          role: Database["public"]["Enums"]["member_role"]
+          room_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "room_members"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      next_room_message_seq: { Args: { p_room: string }; Returns: number }
       next_user_event_seq: { Args: { p_user: string }; Returns: number }
+      notify: {
+        Args: { p_kind: string; p_payload?: Json; p_user_id: string }
+        Returns: {
+          channel: Database["public"]["Enums"]["notif_channel"]
+          created_at: string
+          delivery: Json | null
+          id: string
+          kind: string
+          payload: Json
+          sent_at: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "notifications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      post_kai_message: {
+        Args: { p_body?: string; p_kai_object_id: string; p_room_id: string }
+        Returns: {
+          body: string | null
+          created_at: string | null
+          deleted_at: string | null
+          edited_at: string | null
+          flags: Json
+          id: string
+          kind: Database["public"]["Enums"]["message_kind"]
+          parent_id: string | null
+          position_disclosure: Json | null
+          refs: Json | null
+          room_id: string
+          seq: number
+          structured_idea: Json | null
+          user_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "messages"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      post_room_message: {
+        Args: {
+          p_body: string
+          p_kind: Database["public"]["Enums"]["message_kind"]
+          p_parent_id?: string
+          p_position_disclosure?: Json
+          p_refs?: Json
+          p_room_id: string
+          p_structured_idea?: Json
+          p_user_id: string
+        }
+        Returns: {
+          body: string | null
+          created_at: string | null
+          deleted_at: string | null
+          edited_at: string | null
+          flags: Json
+          id: string
+          kind: Database["public"]["Enums"]["message_kind"]
+          parent_id: string | null
+          position_disclosure: Json | null
+          refs: Json | null
+          room_id: string
+          seq: number
+          structured_idea: Json | null
+          user_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "messages"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      record_debrief: {
+        Args: {
+          p_kai_object_id?: string
+          p_kai_summary?: string
+          p_outcome: Json
+          p_position_id: string
+          p_process_review?: Json
+          p_user_id: string
+        }
+        Returns: {
+          created_at: string | null
+          id: string
+          kai_object_id: string | null
+          kai_summary: string | null
+          lesson_refs: string[] | null
+          outcome: Json
+          plan_id: string | null
+          position_id: string | null
+          process_review: Json | null
+          updated_at: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "debriefs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      reset_paper_account: { Args: { p_user_id: string }; Returns: Json }
+      set_room_mute: {
+        Args: { p_room_id: string; p_until: string; p_user_id: string }
+        Returns: {
+          banned: boolean | null
+          created_at: string
+          last_read_seq: number | null
+          moderation_muted_until: string | null
+          muted_until: string | null
+          role: Database["public"]["Enums"]["member_role"]
+          room_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "room_members"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      simulate_closed_trade: {
+        Args: {
+          p_entry?: number
+          p_exit?: number
+          p_qty?: number
+          p_symbol?: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       account_kind: "paper" | "broker"

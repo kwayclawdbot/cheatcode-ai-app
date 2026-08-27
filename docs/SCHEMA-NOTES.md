@@ -1,6 +1,6 @@
 # Schema notes — Cheat Code AI v1 (SCHEMA lane)
 
-Companion to `docs/01_DATA_MODEL.md`. Two sections:
+Companion to `docs/01_DATA_MODEL.md`. Two kinds of entry, written per round:
 
 1. **Interpretations** — every place the migrations had to decide something the
    canonical doc did not state. Nothing here contradicts 01; it fills silence.
@@ -8,7 +8,10 @@ Companion to `docs/01_DATA_MODEL.md`. Two sections:
    wrong or incomplete. **These were implemented as written.** No enum value,
    column or default was invented to "fix" them. The owner decides.
 
-Migrations live in `supabase/migrations/0001…0015`, applied in filename order.
+Sections 1 and 2 cover the v1 slice (`0001…0016`); sections 3 and 4 cover round 2
+(`0017`, `0018`) and continue the same numbering.
+
+Migrations live in `supabase/migrations/0001…0018`, applied in filename order.
 
 ---
 
@@ -89,6 +92,7 @@ scan): `risk_policy_events(user_id, created_at desc)`,
 01 §13 row 1 lists "watchlist tables" among owner-write client-direct tables.
 The v2 model defines no watchlist table (the Trade tab's watchlist is served
 from `scan_universes` / `instruments` in this slice). Nothing was created.
+**Superseded in round 2 — see 1.20:** `0017_watchlists` creates them.
 
 ### 1.9 RLS: `kai_objects(public)` interpreted via `user_id`
 01 §13 grants `kai_objects(public)` to authenticated but `kai_objects` has no
@@ -262,3 +266,211 @@ setup. The seed picks `'5m'` by hand.
 in community spec §4 — a position must retain its original community thread —
 therefore rests on an unenforced reference: a deleted or merged room leaves a
 dangling id with no error. Implemented as written (no FK).
+
+---
+
+## 3. Round 2 — interpretations (migrations `0017`, `0018`)
+
+Numbering continues sections 1 and 2 so cross-references from the migration
+comments stay stable. Source: `docs/BUILD-BRIEF-round-2.md` § SCHEMA-2.
+
+### 1.20 `watchlists` / `watchlist_items` (0017)
+01 §4 defines no watchlist table while 01 §13 row 1 lists "watchlist tables" as
+owner-write client-direct — gap 1.8 above. Round 2 needs them, so they exist now
+with exactly the brief's columns, plus:
+
+- **`unique (user_id, name)`** — makes the default-watchlist provisioning
+  idempotent (`on conflict do nothing`) and stops the UI from showing a user two
+  lists it cannot tell apart. A user who wants two lists must name them.
+- **Default list on `profiles` insert**, not on `auth.users` insert. Hung off
+  `profiles` so any path that creates a profile (seeds, back-office, the
+  `handle_new_user` chain) gets the same guarantee. 0017 also backfills existing
+  profiles.
+- **Symbol normalisation trigger** (`upper(btrim(...))`). `watchlist_items.symbol`
+  is a real FK to `instruments(symbol)`, whose keys are upper case; a
+  client-direct insert of `'meta'` would otherwise fail with an FK error the app
+  cannot explain. Normalising is friendlier than a check constraint.
+- **Client-direct writes are real**: `authenticated` holds
+  SELECT/INSERT/UPDATE/DELETE and the owner policy is `for all`. The API's
+  `/watchlist` endpoints are a convenience wrapper over the same rows, not a
+  gate. `watchlist_items` has no `user_id`; its policy is an `exists` over
+  `watchlists`, which is evaluated under the caller's own owner-policy on
+  `watchlists` — no recursion, no security-definer helper.
+- Supabase's **default privileges grant new public tables to anon/authenticated**,
+  so 0017 revokes first and grants back (0014's blanket revoke ran before these
+  tables existed). `anon` still ends with zero access.
+
+### 1.21 `messages.seq` is now assigned in the database
+01 §10 says "assigned by api-app in txn". The api-app has no transaction
+(PostgREST), so `post_room_message` assigns it from **`room_seq_counters`** —
+the same counter-table + `UPDATE … RETURNING` row-lock shape 01 §3 ⚙ specifies
+for `user_events.seq`. `room_seq_counters` is worker-only (no client grant),
+cascades with the room, and 0018 backfills it from existing messages.
+
+### 1.22 Self-mute and moderator mute are different things
+The brief puts the room mute on `room_members.muted_until` "on self", but 01
+also uses that column as the moderation mute (`moderation_action` has `mute`).
+One column cannot be both: a member unmuting their own notifications would lift
+a moderator's mute. 0018 adds **`room_members.moderation_muted_until`** and
+splits the meanings:
+
+| Column | Meaning | Written by | Blocks posting? |
+|---|---|---|---|
+| `muted_until` | the member silenced this room's notifications for themselves | `set_room_mute` (self, client-callable) | **no** |
+| `moderation_muted_until` | a moderator muted this member here | moderation surface (does not exist yet) | **yes** |
+
+`post_room_message` gates on `banned` and `moderation_muted_until`, never on
+`muted_until`. A self-muted member can still post — which is what the UI means
+by "mute".
+
+### 1.23 What `post_room_message` enforces (and what it does not)
+The RPC is a floor under the API pipeline, not a replacement for it. In the
+database: membership, `banned`, moderation mute, `config.posting_restricted`
+(bypassed by role `moderator|educator|expert`), `config.slow_mode_s`, postable
+kinds (`text|chart|voice_note|position_update` — `kai_object` belongs to
+`post_kai_message`, `system` is back-office), **`position_disclosure` required
+whenever `structured_idea` is present** (community spec), and `parent_id` in the
+same room. Rate limiting and the spam precheck stay in the API (they need
+per-process state and heuristics). The RPC also advances the author's
+`last_read_seq`, so your own message is never counted in the "N new since you
+left" pill.
+
+### 1.24 `record_debrief` regenerates rather than duplicates
+"Get Kai's debrief" is a button a user can press twice. 0018 adds a partial
+unique index `debriefs(position_id)` and the RPC updates in place on the second
+call, emitting `debrief_regenerated` instead of `debrief_recorded`. It refuses a
+position that is not the caller's or is still open. 0018 also adds
+**`debriefs.kai_object_id`** (01 §7 gives only `lesson_refs` + `kai_summary`, and
+the API has to be able to resolve the persisted `kai_object` back).
+
+### 1.25 `reset_paper_account` refuses with a value, not an exception
+The monthly limit is a product rule the UI has to render ("you can reset again
+on 1 September"), not an error. The RPC returns
+`{ok:false, reason:'already_reset_this_month', next_allowed_at}` so the API never
+parses an error string. Genuine programming errors (no profile, no account in
+`simulate_closed_trade`) still raise. "Once per calendar month" is read as
+`date_trunc('month', last_reset_at) = date_trunc('month', now())` in **UTC**, not
+a rolling 30 days and not the user's timezone — worth revisiting if a user in
+`America/New_York` resets late on the last evening of a month.
+
+### 1.26 `simulate_closed_trade` and the `origin` envelopes
+`origin.simulated = true` has to survive into the UI (MOBILE-B renders a
+SIMULATED tag), but 01 §7 gives an `origin jsonb` only to `trade_plans`. 0018
+adds `origin jsonb not null default '{}'` to **`orders`** and **`positions`**, and
+the simulated fills carry `liquidity = 'simulated'`. Every `user_events` payload
+the RPC writes carries `simulated:true` too. Defaults, when the caller omits
+them: entry = latest `candles` 1d close for the symbol → else the newest
+`setups.quote_snapshot.price` → else 100; exit = entry × 1.032; qty 10; held
+2h14m. The symbol must already exist in `instruments` (`unknown_symbol`).
+
+### 1.27 `notify`
+`notify` is an unreserved keyword in PostgreSQL and works as a function name
+(verified). It writes exactly one `channel='in_app'` row; push fan-out is a later
+round, so the API should not expect a device delivery from it. The deep link
+belongs in `payload.route` (e.g. `cheatcodeai://alert/<id>`) — `notifications`
+has no route column.
+
+### 1.28 Grant decisions — and a security fix that was not optional
+The brief left this to the lane: *"execute to service_role only (and to
+authenticated for `join_core_room`, `set_room_mute` if you make them SECURITY
+DEFINER with auth.uid() checks — your call, document it)."*
+
+**Decision:** `join_core_room` and `set_room_mute` are `security definer` and
+granted to `authenticated`. Both start with
+
+```sql
+if auth.uid() is not null and auth.uid() <> p_user_id then
+  raise exception 'forbidden' using errcode = '42501';
+end if;
+```
+
+so a JWT holder may only act as itself, while `service_role` (no `auth.uid()`)
+may act for any user. Joining a room and muting it are the two community actions
+that must work with the app offline from the API; everything else
+(`post_room_message`, `post_kai_message`, `record_debrief`,
+`reset_paper_account`, `simulate_closed_trade`, `notify`,
+`next_room_message_seq`) is **service_role only**, because each one either needs
+the API's validation pipeline in front of it or writes financial history.
+
+While testing that, the lane found that **the `revoke all on function … from
+public` pattern used in 0016 does not actually close a function to clients.**
+Supabase configures default privileges that grant `EXECUTE` on every new
+function in `public` to `anon` and `authenticated`; revoking from `PUBLIC`
+leaves those role grants in place. Verified on the local stack: before the fix,
+a plain signed-in user could call
+
+- `complete_onboarding(<any other user's uuid>, <any jsonb>)` — `security
+  definer`, no `auth.uid()` check,
+- `append_user_event(<any user's uuid>, …)` — writes into another user's outbox,
+- `next_user_event_seq(<any user's uuid>)` — burns another user's event seq,
+- `post_room_message(...)` — posts to a room bypassing rate limit and spam
+  precheck,
+
+through PostgREST `/rpc/`. 0018 therefore ends with a **function grant floor**: a
+DO-loop that revokes `all` on every function in `public` from `public`, `anon`
+and `authenticated`, then grants back exactly `is_room_member`, `join_core_room`
+and `set_room_mute` to `authenticated`. Same model as 0014's table baseline. The
+`rls-test` asserts `post_room_message` is not client-callable, and that a
+client-direct `UPDATE` on `watchlists` still fires `set_updated_at` (trigger
+functions are permission-checked when the trigger is created, not when it
+fires — so tightening EXECUTE does not break triggers).
+
+`is_room_member` must stay granted to `authenticated`: it is referenced by the
+`rooms` / `room_members` / `messages` RLS policies, which are evaluated as the
+querying role.
+
+### 1.29 Error signalling convention
+RPC failures `raise exception '<machine_token>'` with SQLSTATE `42501`
+(not authorised / wrong state) or `22023` (invalid parameter), never a prose
+sentence. PostgREST surfaces the token in `message`, so the API maps it to an
+error envelope + user-facing copy in one place. Tokens are listed in the
+signature header of `0018_rpcs.sql`.
+
+### 1.30 `scripts/rls-test.mjs` extensions
+Added: watchlist isolation both directions (B cannot read, insert into, delete
+from or rename A's list; A can do all four to its own), the owner's
+client-direct update path, `join_core_room` (works, idempotent, **refused on a
+`setup` room**, refused for another user's id), "a joined member still cannot
+insert into `messages` directly", `post_room_message` closed to client JWTs but
+working as `service_role` with `seq = 1`, member vs non-member visibility through
+`messages_public`, and self-mute. The test creates two temporary rooms
+(`rls-tmp-core-*`, `rls-tmp-setup-*`) and deletes them in `finally`; it also
+sweeps leftovers from a crashed run at start, because a stray temp room would
+break the existing "19 core rooms" assertion.
+
+---
+
+## 4. Round 2 — known gaps (owner decides)
+
+### 2.7 The function grant floor must be re-applied by later migrations
+0018's DO-loop runs once. **Any migration after 0018 that creates a function in
+`public` re-opens it** to `PUBLIC`/`anon`/`authenticated` via Postgres and
+Supabase default privileges. Until that is fixed centrally (an `alter default
+privileges … revoke` in a future migration, or a CI check), every new migration
+must end with an explicit
+`revoke all on function <sig> from public, anon, authenticated;` and grant only
+what the client genuinely needs.
+
+### 2.8 `moderation_muted_until` has no writer
+1.22 splits the column, but there is no moderation surface in v1 — no staff role
+(gap 1.11), no admin endpoint. The column exists and `post_room_message` honours
+it; nothing sets it yet.
+
+### 2.9 Simulated trades outlive their user
+`positions.user_id` and `debriefs.user_id` are bare `uuid` columns in 01 §7 with
+no FK (only `trade_plans`, `orders`, `alerts` … cascade). Deleting an auth user
+therefore leaves the rows `simulate_closed_trade` created — plan/orders/fills
+cascade, position and debrief do not. Same family as gap 1.2 (delete policy) and
+not resolved here: adding the FK is a data-model decision, and account deletion
+is still not in the v1 surface.
+
+### 2.10 `rooms.config` still carries behaviour in unconstrained jsonb
+`post_room_message` now reads `config.posting_restricted` and `config.slow_mode_s`
+alongside `config.intel_eligible` (gap 2.3). Three behavioural switches, no
+column, no default, no type check: a typo silently reads as "off". They should
+become real columns when the moderation surface lands.
+
+### 2.11 `watchlists.position` is not enforced unique or contiguous
+The brief's `position int` orders a user's lists. Nothing stops two lists sharing
+a position or a gap appearing after a delete; the client is expected to sort by
+`(position, created_at)`. Fine while every user has exactly one list.
