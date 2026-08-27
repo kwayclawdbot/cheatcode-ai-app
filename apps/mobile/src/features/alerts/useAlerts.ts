@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { useResource } from '../../lib/useResource';
-import { fixtureAlertDetail, fixtureAlertLifecycle } from '../../lib/fixtures';
-import type { AlertDetail, AlertDraftPreview, AlertLifecycle, AlertMonitoring } from '../../lib/types';
+import { fixtureAlertDetail, fixtureAlertLifecycle, fixtureAlertsSimple } from '../../lib/fixtures';
+import type { AlertDetail, AlertDraftPreview, AlertLifecycle, AlertMonitoring, AlertsSimple } from '../../lib/types';
 
 /** GET /alerts, grouped into the five lifecycle sections. */
 export function useAlertsLifecycle() {
@@ -108,4 +108,19 @@ export function useAlertBuilder() {
   }, []);
 
   return { preview, pending, error, build, clear: () => setPreview(null) };
+}
+
+/* ==================================================================== */
+/* V5 — Attention · Monitoring · History (audit §6)                     */
+/* ==================================================================== */
+
+/**
+ * `GET /alerts` collapsed to three buckets.
+ * The five internal states are still what the server keeps; the screen just
+ * stops making the user learn them. "Active Trades" is gone: a position's
+ * monitoring event is a MONITORING ROW here, and the position itself lives in
+ * Trade.
+ */
+export function useAlertsSimple() {
+  return useResource<AlertsSimple>(() => api.alertsSimple(), fixtureAlertsSimple, []);
 }

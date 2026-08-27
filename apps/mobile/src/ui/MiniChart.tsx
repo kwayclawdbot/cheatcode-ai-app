@@ -194,14 +194,31 @@ export function CandleChart({
 
   const lows = candles.map((c) => c.l);
   const highs = candles.map((c) => c.h);
-  let min = Math.min(...lows, ...levels.map((l) => l.price));
-  let max = Math.max(...highs, ...levels.map((l) => l.price));
+  const barLow = Math.min(...lows);
+  const barHigh = Math.max(...highs);
+
+  /**
+   * The price scale belongs to the BARS, not to the levels.
+   * A stop 10% below the range would otherwise squash a day's candles into a
+   * dotted line. Levels inside a generous window widen the scale; a level
+   * outside it is pinned to the edge of the chart and keeps its tag, so the
+   * user still sees where the idea lives without losing the price action.
+   */
+  const barRange = Math.max(barHigh - barLow, barHigh * 0.002, 0.02);
+  const window = barRange * 0.75;
+  const inScale = levels.map((l) => l.price).filter((p) => p >= barLow - window && p <= barHigh + window);
+  let min = Math.min(barLow, ...inScale);
+  let max = Math.max(barHigh, ...inScale);
   if (max === min) { max += 1; min -= 1; }
-  const pad = (max - min) * 0.06;
+  const pad = (max - min) * 0.08;
   min -= pad;
   max += pad;
 
-  const y = (p: number) => ((max - p) / (max - min)) * priceH;
+  const y = (p: number) => {
+    const raw = ((max - p) / (max - min)) * priceH;
+    // clamp so an out-of-scale level draws at the very edge, never off-canvas
+    return Math.max(2, Math.min(priceH - 2, raw));
+  };
   const slot = W / candles.length;
   const bodyW = Math.max(1.5, Math.min(8, slot * 0.62));
 
@@ -300,6 +317,85 @@ export function CandleChart({
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
           <Num size={10} weight="regular" c={color.dim}>{footerLeft ?? ''}</Num>
           <Num size={10} weight="regular" c={color.dim}>{footerRight ?? ''}</Num>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/* ==================================================================== */
+/* PriceLine — V5-H1's priority chart.                                   */
+/* A line, the band the level sits in, the dashed level, and one callout. */
+/* Same freshness discipline as CandleChart: no bars means no invented    */
+/* line, just the levels and an honest sentence.                          */
+/* ==================================================================== */
+
+export function PriceLine({
+  candles,
+  level,
+  band = true,
+  height = 88,
+  note,
+  testID,
+}: {
+  candles: Candle[];
+  /** the level the idea turns on (entry) — drawn dashed, in market cyan */
+  level?: number | null;
+  band?: boolean;
+  height?: number;
+  /** "Entry 504 · 0.4% away" */
+  note?: string | null;
+  testID?: string;
+}) {
+  const W = 330;
+
+  if (!candles.length) {
+    return (
+      <View
+        testID={testID}
+        style={{ height, borderRadius: radius.lg, borderWidth: 0.5, borderColor: alpha.ivory12, backgroundColor: color.surface3, justifyContent: 'center', paddingHorizontal: 12, gap: 3 }}
+      >
+        <T size={12} c={color.muted}>No price bars yet</T>
+        {level != null ? <Num size={11} weight="medium" c={color.cyan}>{note ?? `Level ${level}`}</Num> : null}
+      </View>
+    );
+  }
+
+  const closes = candles.map((c) => c.c);
+  let min = Math.min(...closes, ...(level != null ? [level] : []));
+  let max = Math.max(...closes, ...(level != null ? [level] : []));
+  if (max === min) { max += 1; min -= 1; }
+  const pad = (max - min) * 0.12;
+  min -= pad; max += pad;
+
+  const y = (p: number) => ((max - p) / (max - min)) * height;
+  const step = candles.length > 1 ? W / (candles.length - 1) : W;
+  const points = closes.map((c, i) => `${(i * step).toFixed(1)},${y(c).toFixed(1)}`).join(' ');
+  const lastY = y(closes[closes.length - 1]);
+  const bandH = Math.max(6, height * 0.12);
+
+  return (
+    <View testID={testID}>
+      <Svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} accessibilityLabel={`Price line, last ${closes[closes.length - 1].toFixed(2)}`}>
+        {level != null && band ? (
+          <Rect x={0} y={Math.max(0, y(level) - bandH / 2)} width={W} height={bandH} fill={alpha.cyan14} />
+        ) : null}
+        {level != null ? (
+          <Line x1={0} y1={y(level)} x2={W} y2={y(level)} stroke={color.cyan} strokeWidth={1.2} strokeDasharray="5 4" opacity={0.8} />
+        ) : null}
+        <Polyline points={points} fill="none" stroke={color.cyan} strokeWidth={1.8} />
+        <Circle cx={W} cy={lastY} r={3.5} fill={color.cyan} />
+      </Svg>
+      {note ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', left: 4, top: Math.max(2, Math.min(height - 18, (level != null ? y(level) : height / 2) - 22)),
+            paddingHorizontal: 7, paddingVertical: 1, borderRadius: radius.sm,
+            backgroundColor: color.cyanTint, borderWidth: 0.5, borderColor: alpha.cyan40,
+          }}
+        >
+          <Num size={9} weight="medium" c={color.cyan}>{note}</Num>
         </View>
       ) : null}
     </View>

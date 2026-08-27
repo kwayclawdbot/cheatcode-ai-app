@@ -52,8 +52,9 @@ export function Eyebrow({ children, c = color.muted, style }: { children: React.
 }
 
 /** Price / level / time. Always mono + tabular; never plain text. */
-export function Num({ children, size = 13, weight = 'semibold', c = color.text, style }: {
+export function Num({ children, size = 13, weight = 'semibold', c = color.text, style, testID, accessibilityLabel }: {
   children: React.ReactNode; size?: number; weight?: Weight; c?: string; style?: StyleProp<TextStyle>;
+  testID?: string; accessibilityLabel?: string;
 }) {
-  return <T mono size={size} weight={weight} c={c} style={style}>{children}</T>;
+  return <T mono size={size} weight={weight} c={c} style={style} testID={testID} accessibilityLabel={accessibilityLabel}>{children}</T>;
 }

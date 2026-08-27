@@ -1,65 +1,90 @@
-import React, { useMemo, useState } from 'react';
-import { View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import Svg, { Path } from 'react-native-svg';
 import { Screen } from '../../ui/Screen';
-import { StackHeader } from '../../ui/StackHeader';
-import { T, Num, Eyebrow } from '../../ui/Text';
-import { ObjectCard, RowList, Row } from '../../ui/Panel';
-import { Button } from '../../ui/Button';
+import { T, Num } from '../../ui/Text';
+import { ObjectCard } from '../../ui/Panel';
 import { ChipRail } from '../../ui/Segmented';
 import { CandleChart, ChartLevel } from '../../ui/MiniChart';
-import { PriceRow } from '../../ui/Price';
+import { FreshnessMark } from '../../ui/FreshnessMark';
 import { KaiOrb } from '../../ui/KaiOrb';
-import { ArrowRight, Bell, Plus, Check } from '../../ui/Icons';
-import { alpha, color, radius } from '../../ui/tokens';
-import { TIMEFRAMES, useCandles, useSymbolDetail, useWatchlistToggle } from '../../features/trade/useTrade';
+import { color, radius } from '../../ui/tokens';
+import {
+  BuySellBar, CommunityLine, CommunityTab, HistoryRail, KaiTab, PlanTab, PositionModuleCard,
+  SeeWhyPanel, SetupModuleCard, useSetupDepth, useWatchThis, useWorkspace, useWorkspaceCandles,
+  WorkspaceTabs, WORKSPACE_TABS, WORKSPACE_TIMEFRAMES,
+} from '../../features/workspace';
+import { openKaiSheet } from '../../features/kai-sheet';
+import { useWatchlistToggle } from '../../features/trade/useTrade';
 import { useSession } from '../../lib/session';
-import type { GoalMode, Timeframe } from '../../lib/types';
+import type { GoalMode, Timeframe, WorkspaceTab } from '../../lib/types';
 
-const ago = (iso: string | null | undefined) => {
-  if (!iso) return '';
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return '';
-  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.round(hrs / 24)}d ago`;
-};
+const Back = ({ onPress }: { onPress: () => void }) => (
+  <Pressable
+    testID="back"
+    accessibilityRole="button"
+    accessibilityLabel="Back"
+    onPress={onPress}
+    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+  >
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path d="M15 5l-7 7 7 7" stroke={color.text} strokeWidth={2.2} />
+    </Svg>
+  </Pressable>
+);
+
+const Star = ({ on }: { on: boolean }) => (
+  <Svg width={18} height={18} viewBox="0 0 24 24" fill={on ? color.volt : 'none'} stroke={on ? color.volt : color.muted} strokeWidth={1.5}>
+    <Path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9z" />
+  </Svg>
+);
+
+const isTab = (v: unknown): v is WorkspaceTab =>
+  v === 'overview' || v === 'kai' || v === 'plan' || v === 'community';
 
 /**
- * Symbol detail — V4-TR2-Symbol-detail.html.
+ * The asset workspace — V5-W1-Asset-workspace.html.
  *
- * Deviations from the artboard, and why:
- *  · No bid/ask line — there is no level-1 feed this round, and inventing one
- *    would be a fabricated price.
- *  · Buy / Sell render as a disabled pair with the reason on the label. The
- *    artboard's geometry holds without pretending an order can be placed.
+ * ONE place per symbol (consolidation rule 1). The identity, price and chart
+ * are persistent; Overview · Kai · Plan · Community are views onto the same
+ * object; the setup is a MODULE inside Overview, not a destination; and the
+ * Sell / Buy pair is always at the bottom (audit §7).
+ *
+ * `/setup/[id]` redirects here with `?setup=`; `?tab=` deep-links a view.
  */
-export default function SymbolDetail() {
-  const params = useLocalSearchParams<{ symbol?: string }>();
+export default function AssetWorkspace() {
+  const params = useLocalSearchParams<{ symbol?: string; tab?: string; setup?: string }>();
   const symbol = String(params.symbol ?? '').toUpperCase();
   const router = useRouter();
   const { profile } = useSession();
   const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? 'day_trade';
-  const { data, loading, error, isFixture } = useSymbolDetail(symbol, mode);
+
+  const { data: w, loading, error, isFixture } = useWorkspace(symbol, mode);
+  const [tab, setTab] = useState<WorkspaceTab>(isTab(params.tab) ? params.tab : 'overview');
   const [tf, setTf] = useState<Timeframe>('1D');
-  const [lens, setLens] = useState<GoalMode>(mode);
-  const { candles, footer, isFixture: candlesFixture } = useCandles(symbol, tf, data?.candles ?? []);
-  const watch = useWatchlistToggle(symbol, data?.your_context.watchlisted ?? false);
+  const [whyOpen, setWhyOpen] = useState(false);
+
+  useEffect(() => { if (isTab(params.tab)) setTab(params.tab); }, [params.tab]);
+
+  const setupId = w?.overview.setup_module?.id ?? (typeof params.setup === 'string' ? params.setup : null);
+  const depth = useSetupDepth(setupId);
+  const { candles, isFixture: candlesFixture, footer } = useWorkspaceCandles(symbol, tf, w?.candles ?? []);
+  const watch = useWatchlistToggle(symbol, w?.watchlisted ?? false);
+  const watchThis = useWatchThis(setupId, w?.overview.setup_module?.following ?? false);
 
   const levels = useMemo<ChartLevel[]>(() => {
-    if (!data) return [];
+    if (!w) return [];
+    const l = w.overview.key_levels;
     const out: ChartLevel[] = [];
-    const l = data.levels;
-    if (l.entry != null) out.push({ price: l.entry, label: `Entry ${l.entry.toFixed(2)}`, c: color.cyan, weight: 1.4, side: 'left' });
-    if (l.support != null) out.push({ price: l.support, label: `Support ${l.support.toFixed(2)}`, c: color.cyan, weight: 1, side: 'left' });
-    if (l.target != null) out.push({ price: l.target, label: `Target ${l.target.toFixed(2)}`, c: color.green, weight: 1.2, side: 'right' });
-    if (l.invalid != null) out.push({ price: l.invalid, label: `Invalid ${l.invalid.toFixed(2)}`, c: color.red, weight: 1.2, side: 'right' });
+    if (l.entry != null) out.push({ price: l.entry, label: `${l.entry} entry`, c: color.cyan, weight: 1.4, side: 'left' });
+    if (l.target != null) out.push({ price: l.target, label: `${l.target} target`, c: color.green, weight: 1.2, side: 'right' });
+    if (l.invalid != null) out.push({ price: l.invalid, label: `${l.invalid} invalid`, c: color.red, weight: 1.2, side: 'right' });
     return out;
-  }, [data]);
+  }, [w]);
 
-  if (loading && !data) {
+  if (loading && !w) {
     return (
       <Screen variant="corner" layout="tab" testID="screen-symbol">
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={color.violet} /></View>
@@ -67,11 +92,11 @@ export default function SymbolDetail() {
     );
   }
 
-  if (!data) {
+  if (!w) {
     return (
       <Screen variant="corner" layout="tab" testID="screen-symbol">
-        <StackHeader title={symbol || 'Symbol'} />
-        <View style={{ paddingHorizontal: 16 }}>
+        <View style={{ paddingHorizontal: 16, paddingTop: 6, gap: 12 }}>
+          <Back onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} />
           <ObjectCard r={radius.xl} style={{ padding: 18, gap: 8 }}>
             <T size={15} weight="bold">{`I don't have ${symbol} yet.`}</T>
             <T size={13} c={color.muted} lh={19}>{error ?? 'It is not in the universe Kai covers in this release.'}</T>
@@ -81,184 +106,131 @@ export default function SymbolDetail() {
     );
   }
 
-  const activeLens = data.lenses.find((l) => l.mode === lens) ?? data.lenses[0] ?? null;
+  const up = (w.quote?.change_pct ?? 0) >= 0;
 
   return (
     <Screen variant="corner" layout="tab" testID="screen-symbol">
-      <StackHeader
-        title={data.symbol}
-        subtitle={[data.name, data.exchange].filter(Boolean).join(' · ') || null}
-        right={
-          <Pressable
-            testID="toggle-watchlist"
-            accessibilityRole="button"
-            accessibilityLabel={watch.on ? 'Remove from watchlist' : 'Add to watchlist'}
-            accessibilityState={{ selected: watch.on }}
-            onPress={watch.toggle}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: watch.on ? alpha.volt55 : alpha.ivory14, backgroundColor: watch.on ? alpha.volt10 : 'transparent' }}
-          >
-            {watch.on ? <Check size={15} color={color.volt} strokeWidth={2.6} /> : <Plus size={15} color={color.muted} />}
-          </Pressable>
-        }
-      />
+      {/* identity — persistent across every tab */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8 }}>
+        <Back onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} />
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+            <T size={17} weight="bold" testID="workspace-symbol">{w.symbol}</T>
+            <Num size={15} weight="semibold">{w.quote?.price != null ? `$${w.quote.price.toFixed(2)}` : '—'}</Num>
+            {w.quote?.change_pct != null ? (
+              <Num size={11} weight="regular" c={up ? color.green : color.red}>
+                {`${up ? '+' : '−'}${Math.abs(w.quote.change_pct).toFixed(2)}%`}
+              </Num>
+            ) : null}
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+            <T size={10} c={color.muted} testID="workspace-context">{w.context_line}</T>
+            <T size={10} c={color.dim}>·</T>
+            <FreshnessMark
+              freshness={w.quote?.freshness ?? 'unknown'}
+              delayReason={w.quote?.delay_reason}
+              size={10}
+              testID="workspace-freshness"
+            />
+          </View>
+        </View>
+        {/* Kai works in place from every tab — the sheet opens OVER this
+            screen and never sends the user back to Home (audit §5). */}
+        <Pressable
+          testID="workspace-ask-kai"
+          accessibilityRole="button"
+          accessibilityLabel={`Ask Kai about ${w.symbol}`}
+          onPress={() => openKaiSheet({
+            context: { kind: setupId ? 'setup' : 'symbol', id: setupId ?? undefined, symbol: w.symbol },
+          })}
+          hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+          style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, marginRight: 4 })}
+        >
+          <KaiOrb size={22} />
+        </Pressable>
+        <Pressable
+          testID="toggle-watchlist"
+          accessibilityRole="button"
+          accessibilityLabel={watch.on ? 'Remove from watchlist' : 'Add to watchlist'}
+          accessibilityState={{ selected: watch.on }}
+          onPress={watch.toggle}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+        >
+          <Star on={watch.on} />
+        </Pressable>
+      </View>
+
+      <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
+        <WorkspaceTabs
+          tabs={WORKSPACE_TABS}
+          value={tab}
+          onChange={setTab as (k: never) => void}
+          badge={{ community: w.community.message_count ?? null }}
+        />
+      </View>
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 28, gap: 11 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16, gap: 11 }}
         showsVerticalScrollIndicator={false}
       >
-        <PriceRow quote={data.quote} testID="symbol-quote" />
+        {tab === 'overview' ? (
+          <View testID="tab-body-overview" style={{ gap: 11 }}>
+            <View style={{ gap: 6 }}>
+              <CandleChart
+                testID="workspace-chart"
+                candles={candles}
+                levels={levels}
+                height={180}
+                footerLeft={candlesFixture ? 'Sample bars' : 'Polygon · delayed'}
+                footerRight={w.overview.volume_note ?? footer}
+              />
+              <ChipRail options={WORKSPACE_TIMEFRAMES} value={tf} onChange={setTf} testID="tf" />
+            </View>
 
-        <ChipRail options={TIMEFRAMES} value={tf} onChange={setTf} testID="tf" />
-
-        <CandleChart
-          testID="symbol-chart"
-          candles={candles}
-          levels={levels}
-          height={210}
-          footerLeft={candlesFixture ? 'Sample bars' : 'Polygon · delayed'}
-          footerRight={footer}
-        />
-
-        {/* mode lenses — the same symbol read three ways */}
-        {data.lenses.length ? (
-          <>
-            <ChipRail
-              options={data.lenses.map((l) => ({ key: l.mode, label: l.label }))}
-              value={lens}
-              onChange={setLens}
-              testID="lens"
-            />
-            {activeLens ? (
-              <ObjectCard r={radius.xl} style={{ padding: 13 }}>
-                <T size={13} lh={20} c={color.muted}>{activeLens.text}</T>
-              </ObjectCard>
-            ) : null}
-          </>
-        ) : null}
-
-        {/* Kai interpretation */}
-        {data.kai_interpretation ? (
-          <Pressable
-            testID="kai-interpretation"
-            accessibilityRole="button"
-            accessibilityLabel="Open Kai's read of this symbol"
-            disabled={!data.setup}
-            onPress={() => data.setup && router.push(`/setup/${encodeURIComponent(data.setup.id)}`)}
-          >
-            <ObjectCard tone="kai" r={radius.xl} style={{ paddingVertical: 11, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <KaiOrb size={22} />
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <T size={12} weight="bold" c={color.violetLight}>Kai analysis</T>
-                  {data.kai_interpretation.grade ? (
-                    <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, backgroundColor: alpha.violet14, borderWidth: 0.5, borderColor: alpha.violet50 }}>
-                      <T size={10} weight="bold" c={color.violet}>{data.kai_interpretation.grade}</T>
-                    </View>
-                  ) : null}
-                  {data.kai_interpretation.last_updated ? (
-                    <T size={10} c={color.muted} style={{ marginLeft: 'auto' }}>{ago(data.kai_interpretation.last_updated)}</T>
-                  ) : null}
+            {w.overview.setup_module ? (
+              <SetupModuleCard
+                symbol={w.symbol}
+                module={w.overview.setup_module}
+                watching={watchThis.on}
+                busy={watchThis.busy}
+                onWatch={() => { void watchThis.watch(); }}
+                onSeeWhy={() => setWhyOpen((v) => !v)}
+                onBuildPlan={() => setTab('plan')}
+              />
+            ) : (
+              <ObjectCard r={radius.xxl} style={{ padding: 15, gap: 6 }} testID="setup-module-empty">
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <KaiOrb size={18} />
+                  <T size={12} weight="bold" c={color.violetLight}>No setup right now</T>
                 </View>
-                <T size={12} style={{ marginTop: 2 }} lh={17}>{data.kai_interpretation.text}</T>
-              </View>
-              {data.setup ? <ArrowRight size={14} color={color.violetLight} /> : null}
-            </ObjectCard>
-          </Pressable>
-        ) : null}
+                <T size={12.5} lh={18} c={color.muted}>
+                  {`Kai has nothing graded on ${w.symbol} in ${mode === 'day_trade' ? 'Day Trade' : mode === 'swing' ? 'Swing' : 'Invest'}. You can still watch it, plan it or trade it.`}
+                </T>
+              </ObjectCard>
+            )}
 
-        {/* your context */}
-        <Eyebrow>YOUR CONTEXT</Eyebrow>
-        <RowList>
-          <Row>
-            <T size={13} c={color.muted} style={{ flex: 1 }}>Watchlist</T>
-            <T size={12.5} weight="medium" c={watch.on ? color.volt : color.muted}>{watch.on ? 'On your list' : 'Not added'}</T>
-          </Row>
-          {data.your_context.alerts.length ? (
-            data.your_context.alerts.map((a, i) => (
-              <Row key={a.id} last={i === data.your_context.alerts.length - 1}>
-                <Bell size={13} color={color.cyan} />
-                <T size={13} style={{ flex: 1 }}>{a.label}</T>
-                <Pressable accessibilityRole="button" accessibilityLabel={`Open alert ${a.label}`} onPress={() => router.push(`/alert/${encodeURIComponent(a.id)}`)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                  <ArrowRight size={12} color={color.muted} />
-                </Pressable>
-              </Row>
-            ))
-          ) : (
-            <Row last>
-              <T size={13} c={color.muted} style={{ flex: 1 }}>Alerts</T>
-              <T size={12.5} c={color.muted}>None on this symbol</T>
-            </Row>
-          )}
-        </RowList>
+            {whyOpen ? <SeeWhyPanel detail={depth} whatChanged={w.overview.what_changed} /> : null}
 
-        {/* evidence */}
-        {data.evidence.news.length ? (
-          <>
-            <Eyebrow c={color.cyan}>EVIDENCE</Eyebrow>
-            <RowList>
-              {data.evidence.news.map((n, i) => (
-                <Row key={n.id} last={i === data.evidence.news.length - 1} style={{ alignItems: 'flex-start' }}>
-                  <View style={{ flex: 1 }}>
-                    <T size={13} lh={18} numberOfLines={2}>{n.title}</T>
-                    <T size={10} c={color.muted} style={{ marginTop: 3 }}>
-                      {[n.source, ago(n.published_utc)].filter(Boolean).join(' · ')}
-                    </T>
-                  </View>
-                </Row>
-              ))}
-            </RowList>
-          </>
-        ) : null}
+            {w.overview.position ? <PositionModuleCard symbol={w.symbol} position={w.overview.position} /> : null}
 
-        {/* community */}
-        <Eyebrow c={color.violetLight}>COMMUNITY</Eyebrow>
-        {data.community.room_id ? (
-          <Pressable
-            testID="open-room"
-            accessibilityRole="button"
-            accessibilityLabel="Open the discussion room"
-            onPress={() => router.push(`/room/${encodeURIComponent(data.community.room_id as string)}`)}
-          >
-            <ObjectCard r={radius.xl} style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <T size={13} style={{ flex: 1 }}>{data.community.thread_summary ?? `Members are discussing ${data.symbol}`}</T>
-              <ArrowRight size={13} color={color.muted} />
-            </ObjectCard>
-          </Pressable>
-        ) : (
-          <ObjectCard r={radius.xl} style={{ padding: 14 }}>
-            <T size={13} c={color.muted} lh={19}>Discussion opens with Community rooms.</T>
-          </ObjectCard>
-        )}
+            {watchThis.error ? <T size={11} c={color.red}>{watchThis.error}</T> : null}
 
-        {/* actions — one dominant, then honest disabled order controls */}
-        <View style={{ gap: 8, marginTop: 4 }}>
-          <Button
-            testID="cta-ask-kai-symbol"
-            label={`Ask Kai about ${data.symbol}`}
-            kind="kai"
-            height={48}
-            icon={<KaiOrb size={16} glow={false} />}
-            onPress={() => router.push(`/home?ask=${encodeURIComponent(`What do you see on ${data.symbol}?`)}&symbol=${encodeURIComponent(data.symbol)}`)}
-          />
-          <Button
-            testID="cta-set-alert"
-            label="Set an alert"
-            kind="volt"
-            height={52}
-            onPress={() => router.push(`/alert/new?symbol=${encodeURIComponent(data.symbol)}${data.levels.entry != null ? `&level=${data.levels.entry}` : ''}`)}
-          />
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Button label="Sell" kind="outline" height={48} disabled style={{ flex: 1 }} accessibilityHint="Paper trading arrives next." />
-            <Button label="Buy" kind="outline" height={48} disabled style={{ flex: 1 }} accessibilityHint="Paper trading arrives next." />
+            <CommunityLine w={w} />
+            <HistoryRail w={w} />
           </View>
-          <T size={11} c={color.dim} align="center">Buy · Sell — paper trading arrives next.</T>
-        </View>
+        ) : null}
+
+        {tab === 'kai' ? <KaiTab w={w} /> : null}
+        {tab === 'plan' ? <PlanTab w={w} /> : null}
+        {tab === 'community' ? <CommunityTab w={w} /> : null}
 
         {error ? <T size={11} c={color.muted} align="center">{error}</T> : null}
         {isFixture ? <T size={10} c={color.dim} align="center">Sample data — the symbol service is not connected here.</T> : null}
       </ScrollView>
+
+      <BuySellBar w={w} />
     </Screen>
   );
 }

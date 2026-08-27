@@ -7,6 +7,7 @@ import { useAppFonts } from '../ui/fonts';
 import { color } from '../ui/tokens';
 import { SessionProvider, useSession } from '../lib/session';
 import { env } from '../lib/env';
+import { KaiSheetHost } from '../features/kai-sheet';
 
 /**
  * Routes an authenticated, onboarded user may sit on outside the tab group.
@@ -16,8 +17,9 @@ import { env } from '../lib/env';
  * so the gate allows them by name instead of allowing only `(tabs)`.
  */
 const STACK_GROUPS = new Set([
-  'setup', 'alert', 'symbol', 'account',   // this lane
-  'room', 'debrief', 'contributor',        // MOBILE-B
+  'setup', 'alert', 'symbol', 'account',       // this lane
+  'room', 'debrief', 'contributor',            // MOBILE-B round 2
+  'order', 'plan', 'position',                 // MOBILE-B round 3 (paper execution)
 ]);
 
 /**
@@ -79,6 +81,9 @@ export default function RootLayout() {
                 <Stack.Screen name="symbol/[symbol]" options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="symbol/search" options={{ animation: 'slide_from_bottom' }} />
               </Stack>
+              {/* Kai's contextual sheet lives above every route: it opens OVER
+                  the current screen and never navigates the user away (audit §5). */}
+              <KaiSheetHost />
             </Gate>
           </SessionProvider>
         )}

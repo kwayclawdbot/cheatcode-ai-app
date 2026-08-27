@@ -73,8 +73,14 @@ async function captureApp(browser) {
 
   console.log('[3] tabs');
   await open(page, '/home');              await shot(page, '11-home');
-  await page.getByTestId('composer-input').fill('What happens at the CPI print?');
-  await page.getByTestId('composer-send').click();
+  // mode is visible global context now — chip opens the sheet that PUTs /mode
+  await page.getByTestId('mode-chip').click();
+  await settle(page, 600);                await shot(page, '11b-home-mode-sheet');
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.getByTestId('mode-option-day_trade').click().catch(() => {});
+  await settle(page, 600);
+  await page.getByTestId('composer-input').first().fill('What happens at the CPI print?');
+  await page.getByTestId('composer-send').first().click();
   await settle(page, 200);                await shot(page, '12-home-typing');
   await settle(page, 4200);               await shot(page, '13-home-streamed-reply');
   await open(page, '/alerts');            await shot(page, '14-alerts');
@@ -91,41 +97,67 @@ async function captureApp(browser) {
   await open(page, '/trade');             await shot(page, '17-trade');
   await open(page, '/account');           await shot(page, '18-account');
 
-  console.log('[4] setup detail');
-  await open(page, '/setup/seed-meta');   await shot(page, '19-setup-live');
-  await page.getByTestId('setup-view-plan').click();
-  await settle(page, 500);                await shot(page, '20-setup-plan');
-  await page.getByTestId('setup-view-learn').click();
-  await settle(page, 500);                await shot(page, '21-setup-learn');
-  await page.getByTestId('explain-level-advanced').click();
-  await page.getByTestId('quiz-option-0').click();
-  await settle(page, 400);                await shot(page, '22-setup-learn-answered');
+  console.log('[4] asset workspace (V5-W1) — the setup is a module inside it');
+  await open(page, '/symbol/META');       await shot(page, '19-workspace-overview');
+  await page.getByTestId('setup-see-why').click();
+  await settle(page, 500);                await shot(page, '20-workspace-see-why');
+  await page.getByTestId('setup-see-why').click();
+  await page.getByTestId('tab-kai').click();
+  await settle(page, 600);                await shot(page, '21-workspace-kai');
+  await page.getByTestId('tab-plan').click();
+  await settle(page, 600);                await shot(page, '22-workspace-plan');
+  await page.getByTestId('tab-community').click();
+  await settle(page, 600);                await shot(page, '23-workspace-community');
+  await page.getByTestId('tab-overview').click();
+  await settle(page, 400);
+  // Watch this — the state-driven primary on a forming setup
+  await page.getByTestId('setup-primary').click();
+  await settle(page, 700);                await shot(page, '24-workspace-watching');
+  // the global Kai sheet, opened OVER the workspace (V5-W2)
+  await page.getByTestId('workspace-ask-kai').click();
+  await settle(page, 700);                await shot(page, '25-kai-sheet-open');
+  await page.getByTestId('composer-input').last().fill("Why hasn't it confirmed yet?");
+  await page.getByTestId('composer-send').last().click();
+  await settle(page, 3600);               await shot(page, '26-kai-sheet-answered');
+  await page.getByTestId('kai-sheet-close').click();
+  await settle(page, 500);
+  // the old /setup/:id link still works — it redirects into the workspace
+  await open(page, '/setup/seed-meta');   await shot(page, '27-setup-redirect');
 
-  console.log('[5] alerts lifecycle');
-  await open(page, '/alert/a2');           await shot(page, '23-alert-detail');
-  await page.getByTestId('alert-logic-toggle').click();
-  await settle(page, 400);                 await shot(page, '24-alert-detail-logic');
-  await open(page, '/alert/new');          await shot(page, '25-alert-new');
-  await page.getByTestId('alert-nl-input').fill('Watch META for a break above 504');
-  await page.getByTestId('cta-read-it').click();
-  await settle(page, 700);                 await shot(page, '26-alert-new-preview');
+  console.log('[5] alerts — Attention / Monitoring / History + inline composer');
+  await open(page, '/alerts');             await shot(page, '28-alerts-attention');
+  await page.getByTestId('filter-monitoring').click();
+  await settle(page, 500);                 await shot(page, '29-alerts-monitoring');
+  await page.getByTestId('filter-history').click();
+  await settle(page, 500);                 await shot(page, '30-alerts-history');
+  await page.getByTestId('filter-attention').click();
+  await settle(page, 400);
+  await page.getByTestId('alert-nl-input').fill('Tell me when TSLA drops below 170');
+  await page.getByTestId('alert-nl-read').click();
+  await settle(page, 900);                 await shot(page, '31-alerts-composer-preview');
+  await page.getByTestId('attention-ask-kai').click();
+  await settle(page, 800);                 await shot(page, '32-alerts-kai-sheet');
+  await page.getByTestId('kai-sheet-close').click();
+  await settle(page, 400);
+  await open(page, '/alert/a2');            await shot(page, '33-alert-detail');
+  await open(page, '/alert/new');           await shot(page, '34-alert-new');
 
-  console.log('[6] trade + symbol');
-  await open(page, '/symbol/search');      await shot(page, '27-symbol-search');
+  console.log('[6] search + workspace timeframes');
+  await open(page, '/symbol/search');      await shot(page, '35-symbol-search');
   await page.getByTestId('search-input').fill('META');
-  await settle(page, 900);                 await shot(page, '28-symbol-search-results');
-  await open(page, '/symbol/META');        await shot(page, '29-symbol-detail');
+  await settle(page, 900);                 await shot(page, '36-symbol-search-results');
+  await open(page, '/symbol/META?tab=overview');
   await page.getByTestId('tf-1M').click();
-  await settle(page, 700);                 await shot(page, '30-symbol-detail-1m');
+  await settle(page, 900);                 await shot(page, '37-workspace-1m');
 
   console.log('[7] account sub-screens');
-  await open(page, '/account/settings');      await shot(page, '31-account-settings');
-  await open(page, '/account/notifications'); await shot(page, '32-account-notifications');
-  await open(page, '/account/memory');        await shot(page, '33-account-memory');
-  await open(page, '/account/paper');         await shot(page, '34-account-paper');
-  await open(page, '/account/subscription');  await shot(page, '35-account-subscription');
+  await open(page, '/account/settings');      await shot(page, '38-account-settings');
+  await open(page, '/account/notifications'); await shot(page, '39-account-notifications');
+  await open(page, '/account/memory');        await shot(page, '40-account-memory');
+  await open(page, '/account/paper');         await shot(page, '41-account-paper');
+  await open(page, '/account/subscription');  await shot(page, '42-account-subscription');
   await page.getByTestId('cta-upgrade').click();
-  await settle(page, 600);                    await shot(page, '36-account-billing-sheet');
+  await settle(page, 600);                    await shot(page, '43-account-billing-sheet');
 
   await ctx.close();
 }
@@ -183,11 +215,15 @@ const main = async () => {
   try {
     await captureApp(browser);
     console.log('\n[8] artboards + compare');
-    await captureArtboard(browser, 'V3-H1-Glance-home.html', 'ab-home');
-    await captureArtboard(browser, 'V3-O0-Conversational-onboarding.html', 'ab-onboarding-kai');
-    // the artboard draws a conversation in progress, so compare against the same state
-    await compare(browser, 'ab-home', '12-home-typing', 'compare-home', 'V3-H1 Glance home — artboard vs build');
-    await compare(browser, 'ab-onboarding-kai', '05-onboarding-kai-answered', 'compare-onboarding-kai', 'V3-O0 Conversational onboarding — artboard vs build');
+    await captureArtboard(browser, 'V5-H1-Home-priority.html', 'ab2-home');
+    await captureArtboard(browser, 'V5-W1-Asset-workspace.html', 'ab2-workspace');
+    await captureArtboard(browser, 'V5-A1-Alerts-simple.html', 'ab2-alerts');
+    await captureArtboard(browser, 'V5-W2-Kai-sheet.html', 'ab2-kai-sheet');
+    await compare(browser, 'ab2-home', '11-home', 'compare2-home', 'V5-H1 Home priority — artboard vs build');
+    await compare(browser, 'ab2-workspace', '19-workspace-overview', 'compare2-workspace', 'V5-W1 Asset workspace — artboard vs build');
+    await compare(browser, 'ab2-alerts', '28-alerts-attention', 'compare2-alerts', 'V5-A1 Alerts simple — artboard vs build');
+    // the artboard draws an answered thread, so compare against the same state
+    await compare(browser, 'ab2-kai-sheet', '26-kai-sheet-answered', 'compare2-kai-sheet', 'V5-W2 Kai contextual sheet — artboard vs build');
   } finally {
     await browser.close();
   }

@@ -40,10 +40,12 @@ export function SetupObject({
   const st = STATE[setup.state] ?? STATE.watching;
   const fresh = setup.quote?.freshness ?? 'unknown';
   const router = useRouter();
-  /** Default destinations: the object IS the link to its detail, and "Why?"
-   *  lands directly on the Learn view (round-2 brief, Setup detail §1). */
-  const open = onOpen ?? (() => router.push(`/setup/${encodeURIComponent(setup.id)}`));
-  const why = onWhy ?? (() => router.push(`/setup/${encodeURIComponent(setup.id)}?view=learn`));
+  /** V5: the setup is a MODULE inside the symbol's workspace, so the object
+   *  links to the workspace with the setup pinned — never to a setup screen.
+   *  "See why" lands on the same workspace's Kai tab. */
+  const ws = `/symbol/${encodeURIComponent(setup.symbol)}?setup=${encodeURIComponent(setup.id)}`;
+  const open = onOpen ?? (() => router.push(`${ws}&tab=overview`));
+  const why = onWhy ?? (() => router.push(`${ws}&tab=kai`));
 
   return (
     <ObjectCard
@@ -82,14 +84,14 @@ export function SetupObject({
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Button
             testID="open-setup"
-            label={setup.next_action ?? 'Open setup'}
+            label={setup.next_action ?? `Open ${setup.symbol}`}
             kind="volt"
             height={42}
             arrow
             onPress={open}
             style={{ flex: 1 }}
           />
-          <Button testID="why" label="Why?" kind="kai" height={42} full={false} onPress={why} />
+          <Button testID="why" label="See why" kind="kai" height={42} full={false} onPress={why} />
         </View>
       )}
     </ObjectCard>

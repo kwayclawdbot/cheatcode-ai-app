@@ -22,7 +22,7 @@ import type {
 } from '@cheatcode/shared';
 import type {
   AlertRow, AlertsPayload, Briefing, BriefingLine, Freshness, GradedSetup,
-  HomePayload, MarketStatus, Quote, SetupState, WatchingItem,
+  HomePayload, KaiActionPreview, MarketStatus, Quote, SetupState, WatchingItem,
 } from './types';
 
 const money = (n: number | null | undefined) =>
@@ -875,4 +875,51 @@ export function adaptMemory(v: unknown): MemoryRow[] {
       created_at: nStr(m.created_at),
     };
   }).filter((m) => m.id && m.content);
+}
+
+/* ==================================================================== */
+/* V5 — action_preview / alert_preview frames                            */
+/* ==================================================================== */
+
+/** Plain-language labels (audit §8) for the actions Kai may propose. */
+const ACTION_LABEL: Record<string, string> = {
+  draft_alert: 'Set an alert',
+  open_setup: 'See why',
+  build_plan: 'Build a plan',
+  compare: 'Compare these',
+  explain: 'See why',
+  watch_setup: 'Watch this',
+};
+
+/**
+ * `action_preview` (and the older `alert_preview`) → a tappable proposal.
+ * Kai never executes; the sheet calls the real endpoint when the user taps.
+ */
+export function adaptActionPreview(env: KaiObjectEnvelope | null): KaiActionPreview | null {
+  if (!env) return null;
+  const p = (env.payload ?? {}) as Record<string, unknown>;
+
+  if (env.type === 'alert_preview') {
+    const symbol = typeof p.symbol === 'string' ? p.symbol : undefined;
+    const summary = typeof p.summary_plain === 'string' ? p.summary_plain : null;
+    return {
+      action: 'draft_alert',
+      label: 'Set an alert',
+      summary_plain: summary,
+      args: {
+        alert_id: typeof p.alert_id === 'string' ? p.alert_id : undefined,
+        natural_language: summary ?? '',
+        symbol,
+      },
+    };
+  }
+
+  const raw = typeof p.action === 'string' ? p.action : '';
+  const action = (ACTION_LABEL[raw] ? raw : 'explain') as KaiActionPreview['action'];
+  return {
+    action,
+    label: typeof p.label === 'string' && p.label ? p.label : ACTION_LABEL[action],
+    summary_plain: typeof p.summary_plain === 'string' ? p.summary_plain : null,
+    args: (p.args && typeof p.args === 'object' ? p.args : {}) as Record<string, unknown>,
+  };
 }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, ScrollView, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
+import { openKaiSheet } from '../../features/kai-sheet';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Screen } from '../../ui/Screen';
 import { StackHeader } from '../../ui/StackHeader';
@@ -104,7 +105,7 @@ export default function SymbolSearch() {
             accessibilityRole="button"
             accessibilityLabel={`Ask Kai: ${question.kind === 'kai_question' ? question.text : ''}`}
             onPress={() =>
-              router.push(`/home?ask=${encodeURIComponent(question.kind === 'kai_question' ? question.text : q)}`)
+              openKaiSheet({ question: question.kind === 'kai_question' ? question.text : q })
             }
           >
             <ObjectCard tone="kaiCard" r={radius.xl} style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 11 }}>

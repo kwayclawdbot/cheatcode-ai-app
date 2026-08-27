@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { openKaiSheet } from '../../features/kai-sheet';
 import { Screen } from '../../ui/Screen';
 import { StackHeader } from '../../ui/StackHeader';
 import { T, Num, Eyebrow } from '../../ui/Text';
@@ -243,6 +244,18 @@ export default function AlertDetail() {
             height={44}
             style={{ flex: 1 }}
             onPress={() => router.push(`/alert/new?edit=${encodeURIComponent(data.id)}&text=${encodeURIComponent(data.natural_language)}`)}
+          />
+          {/* Kai explains the change here, over the alert — audit §5. */}
+          <Button
+            testID="alert-ask-kai"
+            label="Ask Kai"
+            kind="kai"
+            height={44}
+            style={{ flex: 1 }}
+            onPress={() => openKaiSheet({
+              context: { kind: 'alert', id: data.id, symbol: data.symbol || undefined },
+              question: `What changed on ${data.symbol || 'this'}?`,
+            })}
           />
           <Button
             testID="alert-cancel"

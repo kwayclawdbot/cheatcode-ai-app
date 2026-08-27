@@ -11,10 +11,12 @@ import {
   adaptHome, adaptMe, adaptMemory, adaptNotifications, adaptQuoteLoose, adaptSearch,
   adaptSetupCard, adaptSetupDetail, adaptSymbolDetail, adaptTradeLanding,
 } from './adapters';
+import { adaptAlertsSimple, adaptHomeV5, adaptWorkspace, mergeSetupDetail } from './v5';
 import type {
-  AlertDetail, AlertDraftPreview, AlertLifecycle, AlertsPayload, Candle, ExplainLevel,
-  GoalMode, GradedSetup, HomePayload, Me, MemoryRow, NotificationRow, Quote,
-  SearchResult, SetupDetail, SymbolDetail, TradeLanding,
+  AlertDetail, AlertDraftPreview, AlertLifecycle, AlertsPayload, AlertsSimple, Candle,
+  ExplainLevel, GoalMode, GradedSetup, HomePayload, HomeV5, Me, MemoryRow,
+  NotificationRow, Quote, SearchResult, SetupDetail, SymbolDetail, SymbolWorkspace,
+  TradeLanding,
 } from './types';
 
 export class ApiError extends Error {
@@ -92,8 +94,21 @@ export const api = {
   draftAlert: (natural_language: string, refs: { symbol?: string; setup_id?: string; level?: number }) =>
     request<AlertDraftResponse>('/alerts/draft', { method: 'POST', body: JSON.stringify({ natural_language, refs }) }),
 
-  createConversation: (mode: GoalMode, pinned?: { symbols?: string[]; setup_ids?: string[] }) =>
-    request<CreateConversationResponse>('/kai/conversations', { method: 'POST', body: JSON.stringify({ mode, pinned }) }),
+  /**
+   * `context` (V5 / API-3) pins the object the sheet was opened over — the
+   * system prompt then carries the order preview numbers, the position state,
+   * the alert condition or the room summary, so Kai answers IN PLACE.
+   * Older API builds ignore the extra key.
+   */
+  createConversation: (
+    mode: GoalMode,
+    pinned?: { symbols?: string[]; setup_ids?: string[] },
+    context?: { kind: string; id?: string; symbol?: string },
+  ) =>
+    request<CreateConversationResponse>('/kai/conversations', {
+      method: 'POST',
+      body: JSON.stringify({ mode, pinned, ...(context ? { context } : null) }),
+    }),
 
   streamMessage: async (conversationId: string, content: string, h: SSEHandlers, signal?: AbortSignal) =>
     streamSSE(
@@ -185,6 +200,53 @@ export const api = {
   /** Returns a Stripe Checkout url, or throws ApiError('BILLING_NOT_CONFIGURED'). */
   billingCheckout: () =>
     request<{ url?: string }>('/billing/checkout', { method: 'POST', body: '{}' }),
+
+  /* ---------------- Round 3 · V5 consolidation ---------------- */
+
+  /**
+   * `GET /home?mode=` restructured: one opening line, ONE priority object with
+   * ONE state-driven primary action, compact "also watching", briefing below.
+   * The same call answers both shapes — see src/lib/v5.ts.
+   */
+  homeV5: async (mode: GoalMode): Promise<HomeV5> => {
+    const raw = await request<unknown>(`/home?mode=${mode}`);
+    const legacy = adaptHome(raw as HomeResponse);
+    return adaptHomeV5(raw, {
+      mode,
+      market: legacy.market,
+      briefing: legacy.briefing,
+      leadSetup: legacy.lead_setup,
+      watching: legacy.watching.map((w) => ({ id: w.id, symbol: w.symbol, label: w.label, value: w.value })),
+      dailyRisk: legacy.daily_risk,
+      degraded: legacy.degraded,
+      degradedReason: legacy.degraded_reason,
+      investNotice: legacy.invest_notice,
+    });
+  },
+
+  /**
+   * `GET /symbols/:symbol?mode=` → the one persistent asset workspace.
+   * When the payload carries a setup id but not the setup's depth, the
+   * round-2 `/setups/:id` detail is folded in so the module, Kai tab and Plan
+   * tab are real rather than half-empty.
+   */
+  workspace: async (symbol: string, mode: GoalMode): Promise<SymbolWorkspace> => {
+    const raw = await request<unknown>(`/symbols/${encodeURIComponent(symbol)}?mode=${mode}`);
+    const w = adaptWorkspace(raw, symbol);
+    const setupId = w.overview.setup_module?.id;
+    if (!setupId || w.plan.suggested?.scenarios.length) return w;
+    try {
+      return mergeSetupDetail(w, await api.setupDetail(setupId));
+    } catch {
+      return w;   // the workspace still renders without the setup's depth
+    }
+  },
+
+  /** `GET /alerts` → Attention · Monitoring · History (audit §6). */
+  alertsSimple: async (): Promise<AlertsSimple> => {
+    const raw = await request<unknown>('/alerts');
+    return adaptAlertsSimple(raw, adaptAlertLifecycle(raw));
+  },
 
   /** DEV_TOOLS=1 on the api-app only. */
   simulateClosedTrade: (symbol?: string) =>

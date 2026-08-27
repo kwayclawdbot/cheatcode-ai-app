@@ -5,9 +5,10 @@
  * the owner can preview and Playwright can shoot every screen with no network.
  */
 import type {
-  AlertDetail, AlertLifecycle, AlertsPayload, Briefing, Candle, GradedSetup, HomePayload,
-  Instrument, MarketStatus, Me, MemoryRow, NotificationRow, Profile, RiskPolicy, RoomRow,
-  SearchResult, SetupDetail, SymbolDetail, TradeLanding, WatchingItem,
+  AlertDetail, AlertLifecycle, AlertsPayload, AlertsSimple, Briefing, Candle, GradedSetup,
+  HomePayload, HomeV5, Instrument, MarketStatus, Me, MemoryRow, NotificationRow, Profile,
+  RiskPolicy, RoomRow, SearchResult, SetupDetail, SymbolDetail, SymbolWorkspace,
+  TradeLanding, WatchingItem,
 } from './types';
 
 const SOURCE_TS = '2026-08-26T13:41:00.000Z';
@@ -402,3 +403,144 @@ export const fixtureMemory: MemoryRow[] = [
   { id: 'm1', kind: 'preference', content: 'You prefer plain English before the technical read.', created_at: '2026-08-20T15:00:00.000Z' },
   { id: 'm2', kind: 'pattern', content: 'You size down when a setup is graded below B.', created_at: '2026-08-22T18:30:00.000Z' },
 ];
+
+/* ==================================================================== */
+/* V5 fixtures                                                           */
+/* ==================================================================== */
+
+/** The contextual sheet's canned answer (V5-W2 artboard copy). */
+export const fixtureSheetReply = (symbol: string) =>
+  `Volume faded on both pushes at 504 — buyers haven't committed yet. I've marked both attempts on your chart. ` +
+  `${symbol} is still inside the range, so nothing has invalidated; it just hasn't confirmed. Prices here are delayed, not live.`;
+
+/** V5-H1 — one opening line, one priority, three "also watching" rows. */
+export const fixtureHomeV5: HomeV5 = {
+  mode: 'day_trade',
+  market: fixtureMarket,
+  opening_line: 'Good morning, Kway. One setup needs your attention.',
+  priority: {
+    kind: 'setup',
+    id: 'seed-meta',
+    symbol: 'META',
+    grade_display: 'B+',
+    state_label: 'Approaching entry',
+    state_tone: 'market',
+    title: null,
+    detail: 'Buyers holding 480 · volume 1.6× · risk $58 if wrong',
+    chart_note: 'Entry 504 · 0.4% away',
+    levels: { entry: 504, target: 540, invalid: 460 },
+    quote: { symbol: 'META', price: 508.4, change: 10.56, change_pct: 2.14, source_ts: SOURCE_TS, freshness: 'delayed', delay_reason: 'entitlement' },
+    candles: fixtureCandles,
+    primary_action: { label: 'Review setup', route: '/symbol/META?tab=overview&setup=seed-meta' },
+  },
+  also_watching: [
+    { id: 'aw1', symbol: 'NVDA', text: '1% from invalidation · B−', tone: 'attention', action: { label: 'Review', route: '/symbol/NVDA?tab=overview&setup=seed-nvda' } },
+    { id: 'aw2', symbol: 'AAPL', text: 'Earnings in 9 days · reminder set', tone: 'neutral', action: null },
+    { id: 'aw3', symbol: 'CPI', text: "10:00 print · the day's main risk", tone: 'neutral', action: null },
+  ],
+  briefing: fixtureBriefing,
+  daily_risk: { cap: 60, used: 0, remaining: 60 },
+};
+
+/** V5-W1 — the one META workspace, setup as a module inside it. */
+export const fixtureWorkspace: SymbolWorkspace = {
+  symbol: 'META',
+  name: 'Meta Platforms, Inc.',
+  exchange: 'NASDAQ',
+  quote: { symbol: 'META', price: 504.18, change: 10.56, change_pct: 2.14, source_ts: SOURCE_TS, freshness: 'delayed', delay_reason: 'entitlement' },
+  context_line: 'Watching · no position',
+  watchlisted: true,
+  candles: fixtureCandles,
+  overview: {
+    setup_module: {
+      id: 'seed-meta',
+      state: 'forming',
+      state_label: 'Setup forming',
+      grade_display: 'B+',
+      distance_label: '0.4% from entry',
+      entry: '> 504',
+      target: '540',
+      invalid: '< 460',
+      primary_action: { label: 'Watch this', route: '/symbol/META?tab=overview&setup=seed-meta' },
+      note: 'Waiting for volume · risk $58 if wrong',
+      following: false,
+    },
+    position: null,
+    key_levels: { entry: 504, target: 540, invalid: 460, support: 480 },
+    what_changed: [
+      'Reclaimed 480 on the second attempt',
+      'Volume 1.6× the 20-day average',
+      'Two rejections at 504 — buyers have not committed yet',
+    ],
+    volume_note: 'Vol 1.6× avg',
+  },
+  kai: {
+    interpretation: 'B+ quality · forming · moderate risk. Price is holding above the 480 shelf, but the two pushes into 504 both faded on volume. A clean 5-minute close above 504 is what turns this from an idea into a trade.',
+    grade: 'B+',
+    last_updated: SOURCE_TS,
+    scenarios: [
+      { label: 'If it works', amount: '+$174', plain: 'A close above 504 opens the run to 540.', tone: 'good' },
+      { label: 'If it fails', amount: '−$58', plain: 'Losing 460 ends the idea — the stop takes you out.', tone: 'bad' },
+    ],
+    research_refs: [
+      { id: 'n1', title: 'Meta expands its AI assistant to more markets', source: 'Reuters', url: null, published_utc: '2026-08-26T11:02:00.000Z' },
+      { id: 'n2', title: 'Ad spend holds up through the quarter, analysts say', source: 'Bloomberg', url: null, published_utc: '2026-08-25T20:41:00.000Z' },
+    ],
+  },
+  plan: {
+    existing_plan_id: null,
+    suggested: {
+      entry: 504,
+      stop: 460,
+      targets: [540],
+      size: '3 shares · $58 at risk',
+      rr: '3.0 : 1',
+      scenarios: [
+        { label: 'If the target hits', amount: '+$174', plain: 'You close at 540.', tone: 'good' },
+        { label: 'If you are stopped', amount: '−$58', plain: 'The stop executes at 460.', tone: 'bad' },
+      ],
+    },
+    order_state: null,
+    daily_risk: { cap: 60, used: 0, remaining: 60 },
+  },
+  community: {
+    room_id: 'r2',
+    thread_summary: 'Members are split on whether 504 holds — most want a volume close before entering.',
+    sentiment: { sample: 28, split: 62, label: '62% bullish' },
+    verified_claims: ['volume claim verified'],
+    message_count: 28,
+  },
+  history: [
+    { id: 'h1', label: 'Kai graded this B+', at: '2026-08-26T13:15:00.000Z', route: null },
+    { id: 'h2', label: 'You set an alert on 504', at: '2026-08-26T13:16:00.000Z', route: '/alert/a2' },
+  ],
+  actions: {
+    buy_label: 'Buy',
+    sell_label: 'Sell',
+    buy_side: 'buy_to_open',
+    sell_side: 'sell_short',
+    note: 'Setup forming — Kai suggests waiting for confirmation',
+  },
+};
+
+/** V5-A1 — Attention · Monitoring · History. */
+export const fixtureAlertsSimple: AlertsSimple = {
+  attention: [
+    {
+      id: 'a1',
+      symbol: 'NVDA',
+      message: 'Fell to 921 — 1% from your invalidation at 912.',
+      grade_change: 'B → B−',
+      age: '4m ago',
+      quote: { symbol: 'NVDA', price: 921, source_ts: SOURCE_TS, freshness: 'delayed', delay_reason: 'entitlement' },
+    },
+  ],
+  monitoring: [
+    { id: 'a2', symbol: 'META', condition: 'Holds above 504 with volume', value: '508.40', value_tone: 'market', route: '/alert/a2', quote: { symbol: 'META', price: 508.4, source_ts: SOURCE_TS, freshness: 'delayed', delay_reason: 'entitlement' }, status: 'active' },
+    { id: 'p1', symbol: 'META', condition: 'Position · stop 460 · target 540', value: '+$54', value_tone: 'positive', route: '/position/p1', quote: null, status: 'active' },
+    { id: 'a3', symbol: 'AAPL', condition: 'Earnings gap-risk briefing', value: '9 days', value_tone: 'neutral', route: '/alert/a3', quote: null, status: 'active' },
+    { id: 'a6', symbol: 'SPY', condition: 'CPI print reaction', value: '10:00', value_tone: 'attention', route: '/alert/a6', quote: null, status: 'active' },
+  ],
+  history: fixtureAlerts.resolved,
+  empty_copy: "Kai isn't watching anything for you yet.",
+};

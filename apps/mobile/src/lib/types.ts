@@ -118,7 +118,22 @@ export type WallItem =
   | { kind: 'briefing'; id: string; briefing: Briefing }
   | { kind: 'setup'; id: string; setup: GradedSetup }
   | { kind: 'typing'; id: string }
+  | { kind: 'action'; id: string; action: KaiActionPreview }
   | { kind: 'notice'; id: string; text: string };
+
+/**
+ * action_preview frame (packages/shared ActionPreviewPayload) — a Kai-proposed
+ * action awaiting a user tap. Kai never executes: the client owns the call.
+ * Labels here are plain language (audit §8): Watch this / Set an alert /
+ * Build a plan / See why.
+ */
+export type KaiActionKind = 'draft_alert' | 'open_setup' | 'build_plan' | 'compare' | 'explain' | 'watch_setup';
+export type KaiActionPreview = {
+  action: KaiActionKind;
+  label: string;
+  summary_plain?: string | null;
+  args: Record<string, unknown>;
+};
 
 /* ==================================================================== */
 /* Round 2 — setup detail · alerts lifecycle · trade · account          */
@@ -343,3 +358,189 @@ export type NotificationRow = {
 };
 
 export type MemoryRow = { id: string; kind: string; content: string; created_at?: string | null };
+
+/* ==================================================================== */
+/* V5 consolidation (docs/BUILD-BRIEF-round-3.md + 09 audit)            */
+/*                                                                      */
+/* One symbol workspace, one Home priority, three alert buckets.        */
+/* Every shape is optional-tolerant: API-3 is landing the restructured  */
+/* endpoints in parallel, so the adapters read the new payload when it   */
+/* is there and derive the same view model from the round-2 payload      */
+/* when it is not. No screen ever waits on the other lane.               */
+/* ==================================================================== */
+
+/** A primary action is a LABEL plus where it goes. The label is state-driven
+ *  (Forming → "Watch this"; Ready → "Review setup"; Planned → "Buy";
+ *  Active → "Manage"; Invalidated → "Review what changed") and never taxonomy. */
+export type PrimaryAction = { label: string; route: string; tone?: 'volt' | 'kai' };
+
+export type PriorityKind = 'setup' | 'alert' | 'position' | 'portfolio';
+
+/** The ONE dominant object on Home (audit §4). */
+export type HomePriority = {
+  kind: PriorityKind;
+  id: string;
+  symbol?: string | null;
+  grade_display?: string | null;
+  /** "Approaching entry" / "Needs a decision" / "Open · +$54" */
+  state_label?: string | null;
+  state_tone?: 'market' | 'attention' | 'positive' | 'risk' | 'neutral';
+  /** headline used when there is no symbol (portfolio decisions) */
+  title?: string | null;
+  /** "Buyers holding 480 · volume 1.6× · risk $58 if wrong" */
+  detail?: string | null;
+  /** the chart callout: "Entry 504 · 0.4% away" */
+  chart_note?: string | null;
+  levels: { entry?: number | null; target?: number | null; invalid?: number | null };
+  quote?: Quote | null;
+  candles: Candle[];
+  primary_action: PrimaryAction;
+};
+
+/** Compact secondary row under "ALSO WATCHING". */
+export type AlsoWatchingRow = {
+  id: string;
+  symbol: string;
+  text: string;
+  tone: 'attention' | 'neutral';
+  action?: PrimaryAction | null;
+};
+
+export type HomeV5 = {
+  mode: GoalMode;
+  market: MarketStatus;
+  /** Kai's short opening statement: what changed and why it matters. */
+  opening_line: string;
+  priority: HomePriority | null;
+  also_watching: AlsoWatchingRow[];
+  /** The full morning report — BELOW the priority, in the conversation. */
+  briefing: Briefing | null;
+  daily_risk: { cap: number; used: number; remaining: number };
+  degraded?: boolean;
+  degraded_reason?: string | null;
+  invest_notice?: string | null;
+};
+
+/* ---------------- Asset workspace ---------------- */
+
+export type WorkspaceTab = 'overview' | 'kai' | 'plan' | 'community';
+
+/** The setup as a MODULE inside the symbol workspace — never a destination. */
+export type SetupModule = {
+  id: string;
+  state: SetupState;
+  /** "Setup forming" / "Setup ready" / "Setup invalidated" */
+  state_label: string;
+  grade_display: string;
+  /** "0.4% from entry" */
+  distance_label?: string | null;
+  entry?: string | null;
+  target?: string | null;
+  invalid?: string | null;
+  /** state-driven primary, e.g. { label: 'Watch this' } */
+  primary_action: PrimaryAction;
+  /** "Setup forming — Kai suggests waiting for confirmation" */
+  note?: string | null;
+  following?: boolean;
+};
+
+/** A position renders as a module on Overview and links to MOBILE-B's route. */
+export type PositionModule = {
+  id: string;
+  qty?: number | null;
+  avg_price?: number | null;
+  unrealized_pnl?: number | null;
+  health_label?: string | null;   // "Healthy" / "At risk"
+  stop?: number | null;
+  target?: number | null;
+  plain?: string | null;          // "Thesis intact — nothing to do"
+};
+
+export type ResearchRef = { id: string; title: string; source?: string | null; url?: string | null; published_utc?: string | null };
+
+export type PlanNumbers = {
+  entry?: number | null;
+  stop?: number | null;
+  targets: number[];
+  size?: string | null;
+  rr?: string | null;
+  scenarios: Scenario[];
+};
+
+export type WorkspaceHistoryItem = { id: string; label: string; at?: string | null; route?: string | null };
+
+export type CommunitySentiment = { sample: number; split: number; label: string };
+
+export type SymbolWorkspace = {
+  symbol: string;
+  name?: string | null;
+  exchange?: string | null;
+  quote: Quote | null;
+  /** "Watching · no position" — plain language, one line under the ticker. */
+  context_line: string;
+  watchlisted: boolean;
+  candles: Candle[];
+  overview: {
+    setup_module: SetupModule | null;
+    position: PositionModule | null;
+    key_levels: { entry?: number | null; target?: number | null; invalid?: number | null; support?: number | null };
+    what_changed: string[];
+    volume_note?: string | null;
+  };
+  kai: {
+    interpretation: string | null;
+    grade?: string | null;
+    last_updated?: string | null;
+    scenarios: Scenario[];
+    research_refs: ResearchRef[];
+  };
+  plan: {
+    existing_plan_id: string | null;
+    suggested: PlanNumbers | null;
+    order_state?: string | null;
+    daily_risk?: { cap: number; used: number; remaining: number } | null;
+  };
+  community: {
+    room_id: string | null;
+    thread_summary: string | null;
+    sentiment: CommunitySentiment | null;
+    verified_claims: string[];
+    message_count?: number | null;
+  };
+  history: WorkspaceHistoryItem[];
+  /** state-driven Buy / Sell labels + the line that explains them. */
+  actions: { buy_label: string; sell_label: string; sell_side: string; buy_side: string; note?: string | null };
+};
+
+/* ---------------- Alerts, simplified ---------------- */
+
+export type AlertFilterKey = 'attention' | 'monitoring' | 'history';
+
+/** The one gold card: something needs a decision now. */
+export type AttentionAlert = {
+  id: string;
+  symbol: string;
+  message: string;
+  grade_change?: string | null;
+  age?: string | null;
+  quote?: Quote | null;
+};
+
+/** A monitoring row: symbol · condition · value. Positions land here too. */
+export type MonitoringRow = {
+  id: string;
+  symbol: string;
+  condition: string;
+  value?: string | null;
+  value_tone?: 'market' | 'positive' | 'risk' | 'attention' | 'neutral';
+  route?: string | null;
+  quote?: Quote | null;
+  status?: AlertRow['status'];
+};
+
+export type AlertsSimple = {
+  attention: AttentionAlert[];
+  monitoring: MonitoringRow[];
+  history: AlertRow[];
+  empty_copy: string;
+};
