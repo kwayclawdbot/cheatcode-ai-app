@@ -23,6 +23,20 @@ const DEFAULT_STATUS: Partial<Record<ErrorCode, number>> = {
   FRESHNESS_STALE: 409,
   KAI_UNAVAILABLE: 503,
   INTERNAL: 500,
+  // Round 3 — paper execution. Every one of these means "go back and look
+  // again", never "we lost your order", so they are all client-recoverable 4xx.
+  PREVIEW_EXPIRED: 409,
+  PREVIEW_INVALID: 409,
+  RISK_LIMIT_DAILY_LOSS: 409,
+  RISK_LIMIT_POSITION_SIZE: 409,
+  RISK_LIMIT_CONCENTRATION: 409,
+  CAPABILITY_UNSUPPORTED: 409,
+  PDT_WARNING: 409,
+  EXTENDED_HOURS_UNSUPPORTED: 409,
+  BROKER_DISCONNECTED: 409,
+  BROKER_AUTH_EXPIRED: 409,
+  BROKER_PERMISSION_MISSING: 403,
+  OPTIONS_LEVEL_INSUFFICIENT: 403,
 };
 
 export class ApiError extends Error {

@@ -122,6 +122,55 @@ market data goes live" rather than implying tick-by-tick checking.
 `@Kai` in a room · a debrief being ready · a paper reset. Every mutation also
 calls `emitUserEvent`.
 
+### Round 3 — V5 consolidation + paper execution
+
+The canvas gained a **V5 (consolidation)** tier and `docs/09_UX_SIMPLIFICATION_AUDIT_extracted.md`
+is the why behind all of it. Three payloads were RESTRUCTURED — as supersets, so
+every round-2 key is still present and still means the same thing — and a paper
+execution chain was added.
+
+**Restructured**
+
+| Method | Path | What changed |
+|---|---|---|
+| `GET` | `/home?mode=` | `+ opening_line, priority{kind,object,primary_action{label,route}}, also_watching[], paper_plain`. ONE priority object, ONE primary action, and the label is **state-driven** (`STATE_ACTION_LABEL`: Forming → *Watch this* · Ready → *Review setup* · Planned → *Buy* · Active → *Manage* · Invalidated → *Review what changed*). The briefing is still here but it now lives BELOW the priority. |
+| `GET` | `/symbols/:symbol?mode=` | The asset workspace: `+ identity, chart_config, overview{setup_module, position, key_levels, what_changed[]}, kai{interpretation, scenarios, research_refs}, plan{existing_plan, suggested, order_state, daily_risk}, community{thread_summary, sentiment, verified_claims[]}, history[], actions[]`. **`lenses` is now always `[]`** — mode is global context, so per-asset mode lenses are gone (audit §10). A setup is a MODULE here, never a separate destination. |
+| `GET` | `/alerts?filter=` | `+ attention[], monitoring[], history[], filters[], composer`. Five internal states collapse into three sections with type FILTERS. "Active Trades" is gone: a position's stop and target appear as `monitoring` rows pointing at `/position/:id`, so Alerts has no second position-management destination (audit §6). |
+| `GET` | `/trade/landing?mode=` | `+ account{value,day_change,buying_power,kind:'paper'}, positions[], open_orders[], needs_action[], watchlist[], recent[], discovery{movers,catalysts}, daily_risk`. Re-ordered to the brokerage hierarchy in audit §7. |
+| `POST` | `/kai/conversations` | `+ context:{kind:'symbol'\|'setup'\|'alert'\|'order'\|'position'\|'room', id?, symbol?}` → `{header_plain, context_plain, available_actions[]}`. The real object is loaded into the system prompt (order preview numbers, position state + P/L, alert condition, room posts, setup module), so the sheet answers **in place**. Kai still never executes: it emits `action_preview` frames (`watch` · `alert` · `plan`) that the client routes to the real endpoints. |
+
+**Plans**
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/plans` | From `{setup_id}` or manual `{symbol, side, entry, stop, targets, size?}`. The server computes the size from the user's own risk policy and paper equity, so one number reaches the plan, the preview and the app. New plans are `draft` — written down, not armed. Orientation is validated in `create_plan` (long: stop < entry < targets), so a stop on the wrong side is refused with plain copy. |
+| `GET` | `/plans/:id` | Levels, size, R/R, the two outcomes in dollars, today's risk budget, and one primary action. |
+| `POST` | `/plans/:id/actions` | `activate \| cancel \| adjust_stop \| adjust_target \| set_exit_style`. `adjust_*` re-price the open position's stop/target **and** any resting bracket leg, in one transaction. |
+
+**Orders**
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/orders/preview` | The whole review screen. Gates in order: instrument → freshness → entitlement → capability → risk → estimate → persist. Returns `estimate`, `risk` (with the mandatory "You can lose up to $X…" sentence), `checks[]`, `advisories[]` (dismissible), `blockers[]` (not), `can_submit`, `bracket`, `expires_at` (60s day / 10m swing-invest), `tolerance_bps` (25 / 50), `confirm_label: "Place paper order"`, `footer_plain`. The preview is PERSISTED on the order row (`status='previewed'`, `preview` jsonb). |
+| `POST` | `/orders/submit` | `{preview_id, idempotency_key}`. `PREVIEW_EXPIRED` / `PREVIEW_INVALID` (price past tolerance) / the preview's own blocker code all send the user back to look again. A repeated key returns the ORIGINAL order with `deduplicated:true`. |
+| `POST` | `/orders/:id/cancel` | Working orders only. Cancelling an entry cancels its bracket legs; cancelling a stop says out loud that the position now has no protection. |
+| `GET` | `/orders?status=&symbol=` · `/orders/:id` | `open` means still working. A `previewed` row is an abandoned review, kept for the audit trail, never listed as an order. `/orders/:id` returns the legs, the fills and the whole event trail — that is what the client polls to move from accepted to filled. |
+
+**Positions**
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/positions?status=` | `+ open[]` (mark, freshness, stop/target, health), `daily_risk`, `totals`. Health is measured against the PLAN, not the P/L. |
+| `GET` | `/positions/:id` | The position now, the plan it came from, an explicit `plan_vs_now`, its orders, the conditions being watched, and the decision chain. |
+| `POST` | `/positions/:id/close` | Two-stage. Without `confirm:true` it answers `stage:'preview'` and nothing is sent. With `{confirm:true, idempotency_key}` it previews and submits in one round-trip, and the position's resting legs are cancelled **inside the same transaction**, before the closing fill. |
+
+**Internal**
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/internal/paper/tick` | `x-internal-secret: $INTERNAL_SECRET`. No bearer token, no user. Without the env var set it answers **404**, exactly as if it did not exist. |
+
+
 ### Error envelope
 
 Every non-2xx is `{error:{code, message_plain, detail?}}` with an
@@ -251,6 +300,136 @@ will hit the rate limit — wait a minute; the script is idempotent.
 
 ---
 
+## Paper execution
+
+PAPER ONLY. There is no broker, no SnapTrade, and no path to real money.
+
+### The fill model (`src/lib/execution/paper.ts`)
+
+03 Unit 4 specifies fills "marketable at NBBO opposite ± slippage". **We have no
+NBBO.** The Polygon plan on this account is delayed aggregates — no level 1, no
+book, no displayed size. Inventing a bid/ask from a last trade would be a
+fabricated number in a financial product, so the model is stated plainly instead
+and its assumptions are named in copy the user actually sees:
+
+| Input | What it really is |
+|---|---|
+| reference price | the last delayed print. The only real number here. |
+| spread proxy | `SPREAD_PROXY_BPS = 5` of price. A stand-in for a book we cannot see. |
+| slippage | `SLIPPAGE_BPS = 2`, applied against the taker: a buy pays up, a sell receives less. |
+| displayed size proxy | `DISPLAYED_SIZE_PROXY = 500` shares. Over `3×` that, the first clip fills and the rest rests (03 Unit 4's ">3× displayed" rule). |
+| shorts | always locatable. A simulation difference, and the preview says so. |
+
+Rules: **market** fills at the marketable price. **Buy limit** fills when the
+print is at or below the limit (sell limit mirrors), and never worse than the
+limit. **Stop** triggers on the losing side and becomes a market order — the
+copy says out loud that a stop is not a guaranteed price. Everything is
+deterministic: same inputs, same fill, every time, which is what lets the smoke
+test assert on an execution chain at all.
+
+**"Paper fills use delayed prices."** is one exported constant
+(`PAPER_FILL_PLAIN`) and it appears on every surface that shows a fill.
+
+### Status flow, and why accepted ≠ filled
+
+`draft → previewed → submitted → accepted → (partially_filled)* → filled | cancelled | rejected`
+
+`submitted` and `accepted` are always separate `order_events` with separate
+timestamps, and `OrderRow` carries `accepted_at` and `filled_at` as separate
+fields. A resting limit comes back `accepted` with `filled_at: null` and reads
+"accepted and waiting — accepted is not filled". No copy anywhere implies a fill
+that has not been booked.
+
+### Brackets
+
+A filled entry creates its exit legs as ONE authorized unit: same
+`bracket_group`, `leg` of `stop` / `target`, status `accepted` (armed, not
+filled). They are OCO — when one fills the other is cancelled — and `exit_style`
+decides what "firing" means:
+
+- **`auto`** (the `guided` default) — the leg executes. The stop is real protection.
+- **`alert_assisted`** (the `hands_on` default) — the leg does **not** execute.
+  An Attention alert and a notification are raised with one-tap close, and the
+  copy says plainly that this is a notification, not protection.
+
+Closing a position cancels its resting legs inside the same transaction as the
+closing fill, and before it — otherwise a stop could fire on shares the manual
+exit is already closing and open a brand-new position in the opposite direction.
+
+### Advisory vs blocker
+
+A **blocker** is not dismissible and sets `can_submit:false`: a stale quote, an
+unsupported capability, no buying power, a spent daily loss cap, a position cap
+already reached. An **advisory** IS dismissible and is rendered as a caution —
+never as a pass. Sector exposure and reward:risk are ALWAYS advisories: a 58%
+concentration is a judgement call, and showing it as a green "Passes" would be
+the worst possible lie on that screen. A check whose answer is unknown comes
+back `status:'unknown'`, which is also not a pass.
+
+One correctness note worth naming: a setup's stop is written for the setup's own
+entry, so an order priced elsewhere can inherit a stop on the WRONG side of its
+fill. Computing "risk" from that produces a number that is not risk (a long with
+a stop above the fill) and was consuming a daily cap it had no business
+touching. Such a stop is now **dropped**, and the order raises the missing-stop
+advisory instead — the honest reading is that no level here has been decided as
+"I was wrong".
+
+### Daily risk
+
+`used = today's realised losses + open risk (qty × |avg_cost − stop|) on
+positions opened today`. Money still on the table is still spent from the
+budget: three live trades each risking $50 have committed $150 even though
+nothing has been lost. 0020 ships this as the `daily_risk_v` view and that is
+what runs; `src/lib/execution/risk.ts` keeps the same computation in TypeScript
+as the fallback.
+
+### The tick
+
+`POST /api/v1/internal/paper/tick` refreshes one delayed quote per symbol with
+an open position or a resting order, then calls `apply_paper_tick` once per
+user+symbol. The RPC fills crossed resting entries, fires `auto` bracket legs
+and re-marks every position, in one transaction each; the API raises the
+notification for a fired leg and the Attention alert for an `alert_assisted`
+one, because that is where the copy lives.
+
+**Cost:** `getSnapshot()` covers every symbol in ONE `/v2/aggs/grouped` call
+(plus one cached call for the prior close), so a tick costs at most two Polygon
+requests regardless of how many symbols are in flight — a 60s interval sits
+inside the 5/min budget with room for the rest of the app.
+
+Two ways it runs:
+
+- **Locally** — an in-process `setInterval`, started by `ensureDevTicker()` and
+  guarded by a flag on `globalThis` (a module-level `let` would reset on hot
+  reload and leave three tickers racing into duplicate fills). It is off unless
+  `PAPER_TICK_DEV_INTERVAL_S` is a positive number AND `NODE_ENV !== 'production'`,
+  and a slow tick never overlaps the next one.
+- **Hosted** — a Vercel cron:
+
+  ```json
+  { "crons": [{ "path": "/api/v1/internal/paper/tick", "schedule": "* * * * *" }] }
+  ```
+
+  with the secret supplied by a header rewrite.
+
+`{"quotes":{"META":573.0}}` overrides the quote for a symbol so a test can cross
+a level on demand. It is **`DEV_TOOLS=1` only** — a synthetic price that could
+book a real-looking fill is exactly the kind of fixture that ends up in a
+screenshot as if it happened.
+
+### Where the atomicity lives
+
+0020 owns the transactions: `create_plan`, `plan_action`, `submit_paper_order`,
+`apply_paper_tick`, `close_position_prepare`, and the `daily_risk_v` view. This
+app owns the DECISION — the fill model decides whether an order transacts, at
+what price and for how many shares; the RPC books whatever was decided. Market
+judgement in TypeScript where it can be read and tested, bookkeeping in SQL
+where it can be transactional.
+
+Every RPC call goes through `src/lib/execution/adapter.ts`, and each one is
+paired with a multi-round-trip TypeScript path in `engine.ts` used only when the
+function is absent. Those fallbacks are **not atomic** — see "Known gaps".
+
 ## Kai in a room — the security boundary
 
 `POST /rooms/:id/kai` is the endpoint where other people's writing reaches the
@@ -316,10 +495,29 @@ src/lib/
     guard.ts          untrusted-content wrapping + output injection scan
     room.ts           the @Kai commands, synchronous
     debrief.ts        computed facts + generated judgement
+    sheet-context.ts  the contextual sheet: loads the real order/position/alert/room into the prompt
+  execution/
+    paper.ts          the fill model — pure, deterministic, no database, no network
+    risk.ts           daily risk budget + the advisory/blocker check builders
+    preview.ts        the preview pipeline: gates → estimate → persist
+    submit.ts         preview → order, the three refusals, idempotency
+    engine.ts         the non-atomic PostgREST fallback for fills, positions, legs
+    adapter.ts        the thin wrapper over 0020's RPCs (the atomic path)
+    tick.ts           mark-to-market + bracket evaluation, one grouped quote call
+    tick-dev.ts       the dev-only setInterval, guarded on globalThis
+    plans.ts          size, scenarios, R/R, plan shaping and events
+    shape.ts          orders/positions → wire shape, with the accepted≠filled copy
+    positions-view.ts open positions + mark + freshness + stop/target
+    chain.ts          the decision chain: discovery → … → review
+  v5/
+    priority.ts       Home's one priority object and its state-driven action
+    workspace.ts      the asset workspace's modules, sentiment and verified claims
 src/proxy.ts          CORS for /api/* (Next 16 renamed `middleware.ts` → `proxy.ts`)
 src/app/api/v1/…      the routes above
 scripts/
-  smoke.sh                 end-to-end smoke against the local stack (82 assertions)
+  smoke.sh                 end-to-end smoke against the local stack (181 assertions,
+                           including the whole plan → preview → submit → tick →
+                           bracket → close → debrief chain, long and short)
   refresh-seed-setups.mjs  interim scanner — real levels onto the seeded setups
 ```
 
@@ -343,7 +541,12 @@ SUPABASE_URL=http://127.0.0.1:54321
 SUPABASE_ANON_KEY=…
 SUPABASE_SERVICE_ROLE_KEY=…
 POLYGON_API_KEY=…
-DEV_TOOLS=1                 # gates POST /dev/simulate-closed-trade; 404 without it
+DEV_TOOLS=1                 # gates POST /dev/simulate-closed-trade and the tick's
+                            # synthetic {quotes} override; 404 without it
+INTERNAL_SECRET=…           # x-internal-secret for POST /internal/paper/tick.
+                            # UNSET = the route answers 404, as if it did not exist
+PAPER_TICK_DEV_INTERVAL_S=60  # dev only: in-process tick interval. 0/unset = off,
+                              # and it never starts when NODE_ENV=production
 POLYGON_RPM=5               # optional, matches the plan's requests-per-minute
 POLYGON_MAX_CANDLES=1500    # optional, aggregate page size
 STRIPE_SECRET_KEY=…         # optional — absent means BILLING_NOT_CONFIGURED
@@ -550,3 +753,52 @@ And it asserts the refusals, because a guard that never fires is not a guard:
     but the 10-session high/low rule is not a detector. Nothing derived from it
     should be read as analysis, and grade/score/state are untouched for exactly
     that reason.
+
+### Known gaps (round 3)
+
+22. **The execution fallbacks are not atomic.** Every 0020 RPC call goes through
+    `src/lib/execution/adapter.ts` and is paired with a TypeScript path in
+    `engine.ts` that does the same work in several PostgREST round-trips. 0020
+    IS applied, so the RPC path is what runs and the fallbacks are logged as
+    `rpc.fallback` if they ever fire — but a crash mid-sequence on the fallback
+    would leave an order filled with no position row. They exist because API-3
+    and SCHEMA-3 were built in parallel. Deleting them once 0020 is guaranteed
+    everywhere is a clean follow-up, and the same is true of the pre-0020
+    `preview.bracket_role` reading in `shape.ts` now that `orders.leg` exists.
+23. **The fill model is a model, not a market.** No NBBO, no book, no displayed
+    size — see "The fill model" above for exactly which numbers are real (the
+    last delayed print) and which are stand-ins (spread, displayed size). Fills
+    are optimistic in one specific way worth naming: a resting limit crossed on
+    a tick fills at the limit in full, with no queue position and no partial. A
+    real book would not always oblige.
+24. **The tick is a cron, not a feed.** Between ticks nothing is evaluated, so a
+    stop can only fire on a delayed print at most one interval old — and on a
+    delayed plan that print is itself late. A position can therefore "gap
+    through" its stop and fill materially worse than the level. That is honest
+    for practice and it is why `exit_style:'alert_assisted'` exists, but it is
+    not what a real broker's stop does.
+25. **Sector exposure is usually `unknown`.** `instruments.meta` carries no
+    sector for the seeded universe, so the concentration check reports that it
+    cannot work it out rather than inventing a bucket. `unknown` is deliberately
+    NOT a pass — the client must not render it as one.
+26. **Partial fills are barely exercised.** The `>3× displayed size` rule is
+    implemented and unit-shaped, but nothing in the smoke buys 1,500 shares, so
+    the partial path is reasoned-about rather than proven.
+27. **No PDT counter, no options, no extended hours.** `PDT_WARNING`,
+    `OPTIONS_LEVEL_INSUFFICIENT` and `EXTENDED_HOURS_UNSUPPORTED` have status
+    codes and copy but no producer. Options are refused at the capability gate
+    with `CAPABILITY_UNSUPPORTED` and the equity alternative.
+28. **The Kai sheet's `action_preview` frames are proposals only.** The model is
+    told the three shapes (`watch` · `alert` · `plan`) and the client routes
+    them to the real endpoints; there is no server-side execution path and no
+    `POST /kai/actions` yet, so a tap goes to `/alerts/draft`, `/watchlist` or
+    `/plans` exactly as if the user had typed it.
+29. **`GET /home`'s priority is derived, not generated.** It is computed from
+    rows (a position on its stop, a triggered alert, a ready setup, an armed
+    plan…), which is why Home still answers "what needs my attention" when
+    Anthropic is down. The consequence is that it cannot notice something a
+    query cannot express — a cross-symbol portfolio decision, for instance.
+30. **`recent[]` on Trade is inferred.** There is no view history in the data
+    model, so "recent" is what the user actually touched — positions, working
+    orders, then the setups Kai is watching. It is honest about why each row is
+    there (`reason_plain`) rather than pretending to be a visit log.

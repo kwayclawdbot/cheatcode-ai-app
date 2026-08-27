@@ -1,43 +1,59 @@
 /**
  * GET /api/v1/symbols/:symbol?mode=
  *
- * The symbol page (02 §2, 06 §4): quote header, chart config with the setup's
- * levels as SEMANTIC annotations, one lens per mode, Kai's interpretation, the
- * user's own context, timestamped evidence, and the actions that are honestly
- * available.
+ * THE asset workspace (V5 W1). Consolidation rule 1: the symbol is the
+ * canonical object, and everything the app knows about it lives here in four
+ * tabs — Overview · Kai · Plan · Community. A setup is a MODULE on Overview,
+ * not a separate destination with its own duplicate chart and plan (audit §3).
  *
- * Three deliberate refusals:
- *   - No bid/ask. There is no level-1 feed on this plan, so the fields are
- *     absent rather than filled with a last-trade price pretending to be a book.
- *   - No Buy/Sell. Paper orders are a later round; the client shows them
- *     disabled with the reason.
- *   - No community sentiment. `thread_summary` and `sentiment` are null until
- *     rooms actually carry the discussion — an invented number here would be
- *     exactly the "popularity as evidence" failure 08 §6 prohibits.
+ * Removed this round: per-asset mode "lenses". Mode is visible GLOBAL context
+ * now (audit §10), so `lenses` is always `[]` — the field stays for shape
+ * stability and nothing reads it.
+ *
+ * Still refused, and still for good reasons:
+ *   - no bid/ask (no level-1 feed on this plan, so the fields are absent rather
+ *     than filled with a last trade pretending to be a book);
+ *   - no invented community sentiment — it is computed from structured ideas
+ *     members actually posted, and it is null when nobody has posted one.
  */
 import type { NextRequest } from 'next/server';
 import {
+  PAPER_FILL_PLAIN,
+  STATE_ACTION_LABEL,
   SymbolDetailQuery,
-  SymbolDetailResponse,
+  SymbolWorkspaceResponse,
   type ChartAnnotation,
-  type ModeLens,
-  type AppMode,
-  type UiAction,
+  type PlainAction,
+  type SetupState,
 } from '@shared/api';
 import { authedParams, ok, parseQuery, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
 import { serviceClient } from '@/lib/db';
 import { marketBlock } from '@/lib/market';
 import { getQuote, getNews, polygonConfigured } from '@/lib/market/polygon';
-import { loadProfile, type SetupRow } from '@/lib/kai/context';
+import { loadProfile, loadRiskPolicy, type SetupRow } from '@/lib/kai/context';
 import { derivedEnvelope } from '@/lib/kai/objects';
 import { levels, isLong, buildConfirmations } from '@/lib/setups';
 import { listWatchlist } from '@/lib/watchlist';
+import { loadPaperAccount } from '@/lib/execution/engine';
+import { loadOpenPositions } from '@/lib/execution/positions-view';
+import { dailyRisk } from '@/lib/execution/risk';
+import { PLAN_COLUMNS, exitStylePlain, planScenarios, planSize, rrFor, rrPlain, toPlanRow } from '@/lib/execution/plans';
+import { decisionChain } from '@/lib/execution/chain';
+import { ensureDevTicker } from '@/lib/execution/tick-dev';
+import {
+  action,
+  communitySentiment,
+  keyLevels,
+  positionModule,
+  setupModule,
+  verifiedClaims,
+  whatChanged,
+} from '@/lib/v5/workspace';
 import { alertRow } from '../../alerts/shape';
 
 export const dynamic = 'force-dynamic';
 
-const MODES: AppMode[] = ['day_trade', 'swing', 'invest'];
 const TIMEFRAMES = ['1D', '5D', '1M', '3M', 'YTD', '1Y'];
 
 const SETUP_COLUMNS =
@@ -52,64 +68,18 @@ function annotationsFor(row: SetupRow | null): ChartAnnotation[] {
     out.push({ kind: 'level', price: stop, text: 'Invalidation', semantic: 'invalidation' });
     out.push({ kind: 'level', price: stop, text: 'Stop', semantic: 'stop' });
   }
-  for (const t of targets) {
-    out.push({ kind: 'level', price: t.price, text: t.label ?? 'Target', semantic: 'target' });
-  }
+  for (const t of targets) out.push({ kind: 'level', price: t.price, text: t.label ?? 'Target', semantic: 'target' });
   return out;
-}
-
-function lensFor(mode: AppMode, row: SetupRow | null): ModeLens {
-  const label = mode.replace('_', ' ');
-  if (!row) {
-    return {
-      mode,
-      has_setup: false,
-      setup_id: null,
-      state: null,
-      grade_display: null,
-      headline_plain: `No active ${label} setup here right now.`,
-      detail_plain: `I am not seeing anything worth trading on the ${label} timeframe. That is a normal answer, not a missing one.`,
-      next_action: null,
-    };
-  }
-  const { entry, stop } = levels(row);
-  const long = isLong(row.intent);
-  return {
-    mode,
-    has_setup: true,
-    setup_id: row.id,
-    state: row.state as ModeLens['state'],
-    grade_display: row.grade_display,
-    headline_plain: row.thesis_plain ?? `A ${label} setup is live here.`,
-    detail_plain: [
-      entry !== null ? `It triggers ${long ? 'above' : 'below'} $${entry}.` : null,
-      stop !== null ? `It fails ${long ? 'below' : 'above'} $${stop}.` : null,
-      `Right now it is ${row.state}.`,
-    ]
-      .filter(Boolean)
-      .join(' '),
-    next_action: {
-      action: 'open_setup',
-      label: 'Open setup',
-      enabled: true,
-      hint: null,
-      primary: true,
-      route: `/setup/${row.id}`,
-    },
-  };
 }
 
 export const GET = authedParams<{ symbol: string }>(
   async (req: NextRequest, ctx: Ctx & { params: { symbol: string } }) => {
+    ensureDevTicker();
     const q = parseQuery(req, SymbolDetailQuery);
     const symbol = ctx.params.symbol.toUpperCase();
     const db = serviceClient();
 
-    const instrument = await db
-      .from('instruments')
-      .select('symbol,name')
-      .eq('symbol', symbol)
-      .maybeSingle();
+    const instrument = await db.from('instruments').select('symbol,name').eq('symbol', symbol).maybeSingle();
     if (!instrument.data) {
       throw new ApiError('NOT_FOUND', `I do not follow ${symbol} yet, so I have nothing to show you here.`);
     }
@@ -117,37 +87,58 @@ export const GET = authedParams<{ symbol: string }>(
     const profile = await loadProfile(ctx.user.id);
     const mode = q.mode ?? profile.primary_mode;
 
-    const [quote, setupsRes, alertsRes, wl, newsRes] = await Promise.all([
-      getQuote(symbol),
-      db
-        .from('setups')
-        .select(SETUP_COLUMNS)
-        .eq('symbol', symbol)
-        .in('state', ['discovered', 'watching', 'forming', 'ready', 'invalidated'])
-        .order('score', { ascending: false, nullsFirst: false }),
-      db
-        .from('alerts')
-        .select('id,status,natural_language,condition,data_dependency,frequency,expires_at,refs,created_at')
-        .eq('user_id', ctx.user.id)
-        .in('status', ['draft', 'active', 'paused', 'triggered'])
-        .contains('refs', { symbol } as never),
-      listWatchlist(ctx.user.id, ctx.requestId),
-      getNews(symbol, 5),
-    ]);
+    const [quote, setupsRes, alertsRes, wl, newsRes, positions, account, policy, plansRes, ordersRes] =
+      await Promise.all([
+        getQuote(symbol),
+        db
+          .from('setups')
+          .select(SETUP_COLUMNS)
+          .eq('symbol', symbol)
+          .in('state', ['discovered', 'watching', 'forming', 'ready', 'invalidated'])
+          .order('score', { ascending: false, nullsFirst: false }),
+        db
+          .from('alerts')
+          .select('id,status,natural_language,condition,data_dependency,frequency,expires_at,refs,created_at')
+          .eq('user_id', ctx.user.id)
+          .in('status', ['draft', 'active', 'paused', 'triggered'])
+          .contains('refs', { symbol } as never),
+        listWatchlist(ctx.user.id, ctx.requestId),
+        getNews(symbol, 5),
+        loadOpenPositions({ userId: ctx.user.id }),
+        loadPaperAccount(ctx.user.id),
+        loadRiskPolicy(ctx.user.id),
+        db
+          .from('trade_plans')
+          .select(PLAN_COLUMNS)
+          .eq('user_id', ctx.user.id)
+          .eq('symbol', symbol)
+          .in('status', ['draft', 'planned', 'active'])
+          .order('created_at', { ascending: false })
+          .limit(1),
+        db
+          .from('orders')
+          .select('id,status,created_at')
+          .eq('user_id', ctx.user.id)
+          .eq('symbol', symbol)
+          .in('status', ['submitted', 'accepted', 'partially_filled'])
+          .order('created_at', { ascending: false }),
+      ]);
 
     const rows = (setupsRes.data ?? []) as unknown as SetupRow[];
-    const byMode = new Map<AppMode, SetupRow>();
-    for (const r of rows) if (!byMode.has(r.mode)) byMode.set(r.mode, r);
-    const current = byMode.get(mode) ?? null;
+    // Mode is global context now, so the setup shown is simply the best live one
+    // for the user's current mode, with any mode as the fallback.
+    const current = rows.find((r) => r.mode === mode) ?? rows[0] ?? null;
 
-    const lenses = MODES.map((m) => lensFor(m, byMode.get(m) ?? null));
+    const position = positions.rows.find((p) => p.symbol === symbol) ?? null;
+    const alerts = ((alertsRes.data ?? []) as Record<string, unknown>[]).map((a) => alertRow(a));
+    const watchlisted = wl.items.some((i) => i.symbol === symbol);
+    const roomId = (current as unknown as { discussion_room_id?: string } | null)?.discussion_room_id ?? null;
 
-    // Kai's interpretation comes from the setup when there is one. When there is
-    // not, we say there is not — we do not spend a model call inventing a view.
+    // ---- Kai interpretation (round-2 shape, still the source of truth) -----
     const interpretation = current
       ? {
           conclusion_plain: current.thesis_plain ?? `I have a ${current.state} setup on ${symbol}.`,
-          state: current.state as ModeLens['state'],
+          state: current.state as SetupState,
           grade_display: current.grade_display,
           risk_plain: (() => {
             const { stop } = levels(current);
@@ -155,10 +146,6 @@ export const GET = authedParams<{ symbol: string }>(
               ? 'I do not have an invalidation level on this one yet.'
               : `It fails ${isLong(current.intent) ? 'below' : 'above'} $${stop}.`;
           })(),
-          // From the confirmations, not from raw score_components: that jsonb
-          // also carries metadata (source, lookback_sessions, refreshed_at) and
-          // reading it numerically turned "lookback_sessions: 10" into
-          // "only 10 out of 100".
           missing_evidence: buildConfirmations(current, quote.price)
             .filter((c) => c.ok === false)
             .map((c) => c.detail_plain ?? c.label),
@@ -181,42 +168,69 @@ export const GET = authedParams<{ symbol: string }>(
           refs: { symbol, market_date: new Date().toISOString().slice(0, 10) },
         };
 
-    const alerts = ((alertsRes.data ?? []) as Record<string, unknown>[]).map((a) => alertRow(a));
-    const watchlisted = wl.items.some((i) => i.symbol === symbol);
+    // ---- plan tab ---------------------------------------------------------
+    const planRow = ((plansRes.data ?? []) as Record<string, unknown>[])[0] ?? null;
+    const existingPlan = planRow ? toPlanRow(planRow, policy, account?.equity ?? null) : null;
 
-    const actions: UiAction[] = [
-      { action: 'ask_kai', label: 'Ask Kai', enabled: true, hint: null, primary: true, route: null },
-      { action: 'set_alert', label: 'Set alert', enabled: true, hint: null, primary: false, route: '/alert/new' },
-      {
-        action: watchlisted ? 'remove_watchlist' : 'add_watchlist',
-        label: watchlisted ? 'On your watchlist' : 'Add to watchlist',
-        enabled: !wl.missing,
-        hint: wl.missing ? 'Watchlists are not set up on this database yet.' : null,
-        primary: false,
-        route: null,
-      },
-      {
-        action: 'buy',
-        label: 'Buy',
-        enabled: false,
-        hint: 'Paper trading arrives next.',
-        primary: false,
-        route: null,
-      },
-      {
-        action: 'sell',
-        label: 'Sell',
-        enabled: false,
-        hint: 'Paper trading arrives next.',
-        primary: false,
-        route: null,
-      },
+    const setupLevels = current ? levels(current) : { entry: null, stop: null, targets: [], perShare: null, rr: null };
+    const suggestedEntry = setupLevels.entry ?? quote.price;
+    const suggestedSize = planSize(
+      suggestedEntry,
+      setupLevels.stop,
+      setupLevels.targets,
+      policy,
+      account?.equity ?? null,
+      null
+    );
+    const suggestedRr = rrFor(suggestedEntry, setupLevels.stop, setupLevels.targets);
+    const openOrders = (ordersRes.data ?? []) as Record<string, unknown>[];
+    const risk = await dailyRisk(ctx.user.id, policy?.daily_loss_cap_usd ?? null);
+
+    const [chain, sentiment, claims, changed] = await Promise.all([
+      decisionChain({ userId: ctx.user.id, symbol, limit: 15 }),
+      communitySentiment(symbol, roomId ? [roomId] : []),
+      verifiedClaims(symbol),
+      whatChanged({ userId: ctx.user.id, symbol, setup: current }),
+    ]);
+
+    // ---- state-driven persistent actions ----------------------------------
+    const state = current ? String(current.state) : null;
+    const stateLabel = state ? (STATE_ACTION_LABEL[state] ?? 'Review setup') : null;
+    const workspaceActions: PlainAction[] = [
+      action('buy', position && position.direction === 'short' ? 'Cover' : 'Buy', `/order/new?symbol=${symbol}&side=${position && position.direction === 'short' ? 'buy_to_cover' : 'buy_to_open'}${existingPlan ? `&plan=${existingPlan.id}` : ''}${current ? `&setup=${current.id}` : ''}`, true),
+      action(
+        'sell',
+        position && position.direction === 'long' ? 'Sell' : 'Short',
+        `/order/new?symbol=${symbol}&side=${position && position.direction === 'long' ? 'sell_to_close' : 'sell_short'}`,
+      ),
+      // The star, not the setup's primary. "Watch this" belongs to the setup
+      // module (audit §8's mapping of "follow setup" → "Watch this"); reusing
+      // the same words on the watchlist toggle put two identical buttons on one
+      // screen doing different things.
+      action(
+        watchlisted ? 'remove_watchlist' : 'add_watchlist',
+        watchlisted ? 'On your watchlist' : 'Add to watchlist',
+        null,
+        false,
+        !wl.missing,
+        wl.missing ? 'Watchlists are not set up on this database yet.' : null
+      ),
+      action('set_alert', 'Set an alert', '/alert/new'),
+      action('ask_kai', 'Ask Kai', null),
     ];
+    if (stateLabel && current) {
+      workspaceActions.unshift(action('setup_primary', stateLabel, `/symbol/${symbol}?tab=overview&setup=${current.id}`));
+    }
 
-    const roomId = (current as unknown as { discussion_room_id?: string } | null)?.discussion_room_id ?? null;
+    const statusLine = position
+      ? `${position.direction === 'long' ? 'Long' : 'Short'} ${position.qty} · ${position.unrealized_pnl === null ? 'no current price' : `${position.unrealized_pnl >= 0 ? 'up' : 'down'} $${Math.abs(position.unrealized_pnl)}`}`
+      : watchlisted
+        ? 'Watching · no position'
+        : 'No position · not on your watchlist';
 
     return ok(
-      SymbolDetailResponse.parse({
+      SymbolWorkspaceResponse.parse({
+        // round-2 keys
         symbol,
         name: ((instrument.data as Record<string, unknown>).name as string) ?? null,
         mode,
@@ -228,17 +242,17 @@ export const GET = authedParams<{ symbol: string }>(
           candles_path: `/api/v1/market/candles?symbol=${symbol}`,
           annotations: annotationsFor(current),
         },
-        lenses,
+        lenses: [],
         kai_interpretation: interpretation,
         your_context: {
           watchlisted,
           alerts,
-          plans: [],
-          positions: [],
+          plans: existingPlan ? [existingPlan] : [],
+          positions: position ? [position] : [],
           plain: [
             watchlisted ? `${symbol} is on your watchlist.` : `${symbol} is not on your watchlist.`,
             alerts.length ? `You have ${alerts.length} watch${alerts.length === 1 ? '' : 'es'} on it.` : 'No watches on it.',
-            'No position — paper trading arrives next.',
+            position ? position.plain : 'No position.',
           ].join(' '),
         },
         evidence: {
@@ -249,17 +263,100 @@ export const GET = authedParams<{ symbol: string }>(
               ? 'No recent headlines came back for this one.'
               : 'News is not connected yet.',
         },
-        community: {
-          thread_summary: null,
-          sentiment: null,
+
+        // ---- V5 workspace ---------------------------------------------------
+        identity: {
+          symbol,
+          name: ((instrument.data as Record<string, unknown>).name as string) ?? null,
+          watchlisted,
+          status_line: statusLine,
           room_id: roomId,
-          plain: roomId
-            ? 'There is a room for this setup. What members think is not evidence — I keep it separate from my own read.'
-            : 'Discussion opens with Community rooms.',
         },
-        actions,
-        degraded: quote.price === null,
-        degraded_reason: quote.price === null ? 'I do not have a price for this one right now.' : null,
+        chart_config: {
+          timeframes: TIMEFRAMES,
+          default_timeframe: mode === 'day_trade' ? '1D' : '3M',
+          candles_path: `/api/v1/market/candles?symbol=${symbol}`,
+          annotations: annotationsFor(current),
+        },
+        overview: {
+          setup_module: current ? setupModule(current, quote.price) : null,
+          position: position ? positionModule(position) : null,
+          watchlist: watchlisted,
+          key_levels: keyLevels(current, quote.price),
+          what_changed: changed,
+        },
+        kai: {
+          interpretation,
+          grade: current?.grade_display ?? null,
+          scenarios: planScenarios(
+            suggestedEntry,
+            setupLevels.stop,
+            setupLevels.targets,
+            suggestedSize.shares,
+            current ? isLong(current.intent) : true
+          ),
+          research_refs: newsRes.news.slice(0, 3).map((n) => ({
+            label: n.title,
+            detail_plain: n.publisher,
+            at: n.published_utc,
+            url: n.url,
+          })),
+          conversation_id: null,
+          ask_action: action('ask_kai', 'Ask Kai', null, true),
+        },
+        plan: {
+          existing_plan: existingPlan,
+          suggested: {
+            entry: suggestedEntry,
+            stop: setupLevels.stop,
+            targets: setupLevels.targets,
+            size: suggestedSize,
+            rr: suggestedRr,
+            rr_plain: rrPlain(suggestedRr, policy),
+            scenarios: planScenarios(
+              suggestedEntry,
+              setupLevels.stop,
+              setupLevels.targets,
+              suggestedSize.shares,
+              current ? isLong(current.intent) : true
+            ),
+            stop_attaches_plain: exitStylePlain(existingPlan?.exit_style ?? 'auto'),
+          },
+          order_state: {
+            open_orders: openOrders.length,
+            last_order_id: openOrders.length ? String(openOrders[0].id) : null,
+            plain: openOrders.length
+              ? `${openOrders.length} order${openOrders.length === 1 ? '' : 's'} working on ${symbol}. Accepted is not filled.`
+              : `Nothing working on ${symbol} right now.`,
+          },
+          daily_risk: { cap: risk.cap, used: risk.used, remaining: risk.remaining, currency: 'USD' },
+          actions: existingPlan
+            ? [
+                action('review_order', 'Review order', `/order/new?symbol=${symbol}&side=${existingPlan.intent}&plan=${existingPlan.id}`, true),
+                action('open_plan', 'Open the plan', `/plan/${existingPlan.id}`),
+              ]
+            : [action('build_plan', 'Build a plan', `/plan/new?symbol=${symbol}${current ? `&setup=${current.id}` : ''}`, true)],
+        },
+        community: {
+          thread_summary: sentiment ? `${sentiment.label}.` : null,
+          sentiment,
+          verified_claims: claims,
+          room_id: roomId,
+          line_plain: sentiment
+            ? `${sentiment.label}${claims.length ? ` · ${claims.length} claim${claims.length === 1 ? '' : 's'} checked` : ''} · Join discussion`
+            : roomId
+              ? 'There is a room for this one, but nobody has written down an idea about it yet.'
+              : 'Discussion for this symbol has not started.',
+          actions: roomId
+            ? [action('join_discussion', 'Join discussion', `/room/${roomId}`, true)]
+            : [action('join_discussion', 'Join discussion', '/community', false, false, 'No room for this symbol yet.')],
+        },
+        history: chain,
+        actions: workspaceActions,
+        paper_plain: PAPER_FILL_PLAIN,
+        degraded: quote.price === null || positions.degraded,
+        degraded_reason:
+          quote.price === null ? 'I do not have a price for this one right now.' : positions.degraded_reason,
       })
     );
   }

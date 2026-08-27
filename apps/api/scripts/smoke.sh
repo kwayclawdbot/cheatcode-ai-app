@@ -845,6 +845,560 @@ if ls:
     print("  thesis:",p["thesis_plain"])
 print("  watching:",[(w["symbol"],w["quote"]["price"]) for w in d["watching"]])'
 
+# =============================================================================
+# ROUND 3 — V5 consolidation payloads
+# =============================================================================
+hr; echo "ROUND 3 — V5 payloads (Home priority · workspace · Alerts · Trade)"; hr
+
+# assert_body <name> <python-on-$BODY>
+assert_body() {
+  local name="$1" code="$2"
+  if printf '%s' "$BODY" | python3 -c "$code"; then
+    green "PASS  $name"; PASS=$((PASS+1))
+  else
+    red   "FAIL  $name"; FAIL=$((FAIL+1))
+  fi
+}
+
+# Direct-to-Postgres helpers. Used ONLY to arrange a test condition (a spent
+# daily cap, an account big enough to buy one share of a $500 stock inside a
+# 10% position limit). Never to fake a result the API should have produced.
+sb_patch() { # sb_patch <table?query> <json>
+  curl -sS -o /dev/null -X PATCH "$SUPABASE_URL/rest/v1/$1" \
+    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+    -H 'Content-Type: application/json' -H 'Prefer: return=minimal' -d "$2"
+}
+
+check "V5 home — one priority, one action" GET "/api/v1/home?mode=day_trade"
+assert_body "home carries opening_line + a state-driven primary action + also_watching" '
+import json,sys
+d=json.load(sys.stdin)
+assert isinstance(d["opening_line"],str) and d["opening_line"], "no opening line"
+p=d["priority"]
+assert p is not None, "no priority object"
+assert p["kind"] in ("setup","alert","position","portfolio"), p["kind"]
+pa=p["primary_action"]
+assert pa["label"] in ("Watch this","Review setup","Buy","Manage","Review what changed"), pa["label"]
+assert "also_watching" in d and isinstance(d["also_watching"],list)
+assert d["briefing"] is None or "payload" in d["briefing"]
+print("  opening:",d["opening_line"][:90])
+print("  priority:",p["kind"],p["symbol"],"->",pa["label"],pa["route"])
+print("  also watching:",[(r["kind"],r["symbol"]) for r in d["also_watching"]])
+print("  daily risk:",d["daily_risk"])'
+
+check "V5 asset workspace (mode lenses removed)" GET "/api/v1/symbols/META?mode=day_trade"
+SETUP_FOR_PLAN=$(printf '%s' "$BODY" | python3 -c '
+import json,sys
+d=json.load(sys.stdin); m=d["overview"]["setup_module"]
+print(m["setup_id"] if m else "")')
+LAST_PRICE=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["quote"]["price"] or 0)')
+assert_body "workspace has overview/kai/plan/community/history and NO mode lenses" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["lenses"] == [], "mode lenses must be gone (audit 10)"
+for k in ("identity","chart_config","overview","kai","plan","community","history","actions","paper_plain"):
+    assert k in d, "missing "+k
+assert d["paper_plain"] == "Paper fills use delayed prices."
+labels=[a["label"] for a in d["actions"]]
+assert len(labels) == len(set(labels)), "two actions share a label: %r" % (labels,)
+assert any(l in ("Buy","Cover") for l in labels) and any(l in ("Sell","Short") for l in labels), labels
+sm=d["overview"]["setup_module"]
+if sm:
+    assert sm["actions"][0]["label"] in ("Watch this","Review setup","Review what changed"), sm["actions"][0]
+    print("  setup module:",sm["state"],sm["grade_display"],"entry",sm["entry"],"stop",sm["stop"],"->",sm["actions"][0]["label"])
+print("  identity:",d["identity"]["status_line"])
+print("  key levels:",[(l["label"],l["price"]) for l in d["overview"]["key_levels"]])
+print("  plan rr:",d["plan"]["suggested"]["rr"],"| size:",d["plan"]["suggested"]["size"]["shares"])
+print("  community:",d["community"]["line_plain"][:100])
+print("  history:",len(d["history"]),"| actions:",labels)'
+
+check "V5 alerts — attention / monitoring / history + filters" GET "/api/v1/alerts"
+assert_body "alerts has the three sections, type filters, and no Active Trades" '
+import json,sys
+d=json.load(sys.stdin)
+for k in ("attention","monitoring","history","filters","composer"):
+    assert k in d, "missing "+k
+assert "active_trades" not in d
+keys={f["key"] for f in d["filters"]}
+assert "all" in keys, keys
+for r in d["monitoring"]:
+    assert r["kind"] in ("alert","position")
+print("  attention",len(d["attention"]),"monitoring",len(d["monitoring"]),"history",len(d["history"]))
+print("  filters:",[(f["key"],f["count"]) for f in d["filters"]])
+print("  composer:",d["composer"]["placeholder"])'
+
+check "V5 alerts filtered by type" GET "/api/v1/alerts?filter=price"
+
+check "V5 trade landing in the audit hierarchy" GET "/api/v1/trade/landing?mode=day_trade"
+assert_body "trade landing leads with the account, then positions/orders/needs-action" '
+import json,sys
+d=json.load(sys.stdin)
+for k in ("account","positions","open_orders","needs_action","watchlist","recent","discovery","daily_risk"):
+    assert k in d, "missing "+k
+a=d["account"]
+assert a["kind"] == "paper" and a["label"] == "PAPER"
+assert "value" in a and "day_change" in a and "buying_power" in a
+print("  account: $%s (day %s) | buying power $%s | %s"%(a["value"],a["day_change"],a["buying_power"],a["label"]))
+print("  positions",len(d["positions"]),"open orders",len(d["open_orders"]),"needs action",len(d["needs_action"]))
+print("  watchlist",len(d["watchlist"]),"recent",len(d["recent"]),"movers",len(d["discovery"]["movers"]))'
+
+check "Kai contextual sheet over a symbol" POST /api/v1/kai/conversations \
+  '{"mode":"day_trade","context":{"kind":"symbol","symbol":"META"}}'
+SHEET_CONV=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+assert_body "the sheet pins the object it was opened over" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["header_plain"] == "Kai · about META", d["header_plain"]
+assert d["context"]["kind"] == "symbol"
+labels=[a["label"] for a in d["available_actions"]]
+assert "Watch this" in labels and "Set an alert" in labels and "Build a plan" in labels, labels
+print("  header:",d["header_plain"],"|",d["context_plain"])
+print("  actions:",labels)'
+
+# =============================================================================
+# ROUND 3 — paper execution
+# =============================================================================
+hr; echo "ROUND 3 — paper execution (plan -> preview -> submit -> tick -> close)"; hr
+
+# The onboarding balance is $2,000 and the position limit is 10% of it, so a
+# single share of a $500 stock cannot be bought at all. Raise the practice
+# balance so the chain is about EXECUTION, not about a limit already proven
+# elsewhere. The daily loss cap is left exactly as onboarding set it.
+sb_patch "accounts?user_id=eq.$USER_ID&kind=eq.paper" '{"cash":100000,"equity":100000,"buying_power":100000,"starting_balance":100000}'
+green "PASS  arranged: practice balance raised to \$100,000 for the execution chain"; PASS=$((PASS+1))
+
+# --- plan from a setup -------------------------------------------------------
+check "plan from a setup" POST /api/v1/plans "{\"setup_id\":\"$SETUP_FOR_PLAN\"}"
+PLAN_FROM_SETUP=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["plan"]["id"])')
+assert_body "a new plan is written down, not armed, and carries a size from the user rules" '
+import json,sys
+d=json.load(sys.stdin)
+p=d["plan"]
+assert p["status"] == "draft", p["status"]
+assert p["entry"] is not None and p["stop"] is not None, "a plan needs both levels"
+assert p["size"]["shares"] is not None
+assert d["stop_attaches_plain"], "the stop copy has to be explicit"
+assert d["paper_plain"] == "Paper fills use delayed prices."
+print("  plan:",p["symbol"],p["intent"],"entry",p["entry"],"stop",p["stop"],"targets",[t["price"] for t in p["targets"]])
+print("  size:",p["size"]["shares"],"shares |",p["size"]["plain"])
+print("  rr:",p["rr"],"|",p["rr_plain"])
+print("  exits:",p["exit_style"],"|",p["exit_style_plain"])
+print("  scenarios:",[(s["name"],s["outcome_usd"]) for s in p["scenarios"]])'
+
+check "arm the plan" POST "/api/v1/plans/$PLAN_FROM_SETUP/actions" '{"action":"activate"}'
+assert_body "activating moves draft -> planned and journals it" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["plan"]["status"] == "planned", d["plan"]["status"]
+types=[e["type"] for e in d["events"]]
+assert "created" in types, types
+assert any(t.startswith("activat") for t in types), types
+assert types.count("created") == 1, "the plan history recorded the same move twice: %r" % (types,)
+print("  status:",d["plan"]["status"],"| events:",types)'
+
+check "read the plan back" GET "/api/v1/plans/$PLAN_FROM_SETUP"
+
+# --- the executable plan: levels near the actual price -----------------------
+PLAN_LEVELS=$(python3 -c "
+last=float('$LAST_PRICE')
+print('%.2f %.2f %.2f'%(last, round(last*0.995,2), round(last*1.02,2)))")
+ENTRY=$(echo $PLAN_LEVELS | cut -d' ' -f1)
+STOP=$(echo $PLAN_LEVELS | cut -d' ' -f2)
+TARGET=$(echo $PLAN_LEVELS | cut -d' ' -f3)
+
+check "a plan priced against the live quote" POST /api/v1/plans \
+  "{\"symbol\":\"META\",\"side\":\"buy_to_open\",\"entry\":$ENTRY,\"stop\":$STOP,\"targets\":[$TARGET],\"size\":2}"
+PLAN_ID=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["plan"]["id"])')
+
+expect "a plan whose stop is on the wrong side of the entry is refused" 400 POST /api/v1/plans \
+  "{\"symbol\":\"META\",\"side\":\"buy_to_open\",\"entry\":$STOP,\"stop\":$ENTRY,\"targets\":[$TARGET]}"
+printf '  '; printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["error"]["message_plain"])'
+
+# --- preview: the refusals first --------------------------------------------
+expect "a stale quote refuses the preview outright" 409 POST /api/v1/orders/preview \
+  "{\"symbol\":\"META\",\"side\":\"buy_to_open\",\"type\":\"market\",\"qty\":1,\"force_stale\":true}"
+assert_body "the stale refusal says nothing was sent" '
+import json,sys
+e=json.load(sys.stdin)["error"]
+assert e["code"] == "FRESHNESS_STALE", e["code"]
+assert "Nothing was sent" in e["message_plain"], e["message_plain"]
+print("  ",e["message_plain"])'
+
+# Arrange: spend the whole daily loss cap, then put it back.
+sb_patch "risk_policies?user_id=eq.$USER_ID" '{"daily_loss_cap_usd":0.01}'
+check "preview with the daily cap spent" POST /api/v1/orders/preview \
+  "{\"symbol\":\"META\",\"side\":\"buy_to_open\",\"type\":\"market\",\"qty\":2,\"plan_id\":\"$PLAN_ID\"}"
+CAPPED_PREVIEW=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["preview_id"])')
+assert_body "a spent daily cap is a BLOCKER, not a caution, and can_submit is false" '
+import json,sys
+d=json.load(sys.stdin)
+codes=[b["code"] for b in d["blockers"]]
+assert "RISK_LIMIT_DAILY_LOSS" in codes, codes
+assert d["can_submit"] is False
+assert all(b["dismissible"] is False for b in d["blockers"]), "a blocker must not be dismissible"
+print("  blocker:",[b["plain"] for b in d["blockers"]][0])
+print("  can_submit:",d["can_submit"])'
+
+expect "submitting past a blocker is refused" 409 POST /api/v1/orders/submit \
+  "{\"preview_id\":\"$CAPPED_PREVIEW\",\"idempotency_key\":\"smoke-capped-$(date +%s)\"}"
+printf '  '; printf '%s' "$BODY" | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; print(e["code"],"|",e["message_plain"])'
+sb_patch "risk_policies?user_id=eq.$USER_ID" '{"daily_loss_cap_usd":60}'
+
+# --- preview: the advisory case ---------------------------------------------
+check "preview with no exit level (advisory, never a pass)" POST /api/v1/orders/preview \
+  '{"symbol":"SPY","side":"buy_to_open","type":"market","qty":1}'
+assert_body "a missing stop is an advisory with plain copy and nothing reads as Passes" '
+import json,sys
+d=json.load(sys.stdin)
+keys=[a["key"] for a in d["advisories"]]
+assert "stop" in keys, keys
+adv=[a for a in d["advisories"] if a["key"] == "stop"][0]
+assert adv["status"] == "advisory" and adv["dismissible"] is True
+assert "no stop" in adv["plain"].lower()
+# Nothing that is not genuinely OK may render as a pass.
+for c in d["checks"]:
+    assert c["status"] in ("ok","advisory","blocker","unknown"), c["status"]
+    if c["key"] in ("sector_exposure","reward_risk"):
+        assert c["status"] != "ok" or "%" in c["plain"] or "to 1" in c["plain"], c
+assert d["risk"]["hard_stop_plain"], "the hard-stop sentence is mandatory"
+print("  advisories:",keys)
+print("  ",adv["plain"][:150])
+print("  hard stop:",d["risk"]["hard_stop_plain"])'
+
+# --- the real order ----------------------------------------------------------
+check "preview the planned order" POST /api/v1/orders/preview \
+  "{\"symbol\":\"META\",\"side\":\"buy_to_open\",\"type\":\"market\",\"qty\":2,\"plan_id\":\"$PLAN_ID\"}"
+PREVIEW_ID=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["preview_id"])')
+assert_body "the preview carries freshness, the hard-stop sentence, expiry, tolerance and paper copy" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["can_submit"] is True, d["blockers"]
+assert d["quote"]["freshness"] in ("live","delayed"), d["quote"]["freshness"]
+assert d["confirm_label"] == "Place paper order", d["confirm_label"]
+assert "Nothing is sent until you confirm" in d["footer_plain"], d["footer_plain"]
+assert d["paper_plain"] == "Paper fills use delayed prices."
+assert d["expires_at"] and d["tolerance_bps"] > 0
+assert d["bracket"] and d["bracket"]["stop"] is not None, "the plan stop must ride along"
+assert d["risk"]["max_loss_usd"] is not None
+assert "You can lose up to" in d["risk"]["hard_stop_plain"], d["risk"]["hard_stop_plain"]
+print("  est fill $%s | cost $%s | fees $%s | buying power after $%s"%(
+    d["estimate"]["fill_price"],d["estimate"]["notional"],d["estimate"]["fees"],d["estimate"]["buying_power_after"]))
+print("  risk:",d["risk"]["hard_stop_plain"])
+print("  bracket:",d["bracket"]["stop"],d["bracket"]["targets"],"|",d["bracket"]["plain"][:70])
+print("  expires in %ss | tolerance %sbps"%(d["expires_in_s"],d["tolerance_bps"]))
+print("  footer:",d["footer_plain"])'
+
+IDEM="smoke-entry-$(date +%s)"
+check "place the paper order" POST /api/v1/orders/submit \
+  "{\"preview_id\":\"$PREVIEW_ID\",\"idempotency_key\":\"$IDEM\"}"
+ORDER_ID=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["order"]["id"])')
+POSITION_OPEN=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["position_id"] or "")')
+assert_body "accepted is not filled — both transitions exist and are distinct" '
+import json,sys
+d=json.load(sys.stdin)
+tos=[e["to_status"] for e in d["events"]]
+assert "accepted" in tos, tos
+assert tos.index("submitted") < tos.index("accepted"), tos
+assert d["deduplicated"] is False
+o=d["order"]
+if o["status"] == "filled":
+    assert "filled" in tos and tos.index("accepted") < tos.index("filled"), tos
+    assert o["accepted_at"] and o["filled_at"], (o["accepted_at"],o["filled_at"])
+    assert d["position_id"], "a filled entry has to produce a position"
+else:
+    assert o["status"] == "accepted" and o["filled_at"] is None
+assert d["paper_plain"] == "Paper fills use delayed prices."
+assert all(e["plain"] for e in d["events"]), "every event needs a sentence"
+print("  order:",o["status"],"| accepted_at",o["accepted_at"],"| filled_at",o["filled_at"])
+print("  transitions:",tos)
+print("  ",d["fill_plain"])
+print("  legs:",[(l["bracket_role"],l["status"],l["stop_price"] or l["limit_price"]) for l in d["legs"]])
+print("  next:",d["next_action"]["label"],d["next_action"]["route"])'
+
+check "the same idempotency key does not send a second order" POST /api/v1/orders/submit \
+  "{\"preview_id\":\"$PREVIEW_ID\",\"idempotency_key\":\"$IDEM\"}"
+assert_body "a duplicate key returns the original order" "
+import json,sys
+d=json.load(sys.stdin)
+assert d['deduplicated'] is True, 'a repeat must be deduplicated'
+assert d['order']['id'] == '$ORDER_ID', 'a repeat returned a DIFFERENT order'
+print('  deduplicated:',d['deduplicated'],'| same order:',d['order']['id'] == '$ORDER_ID')"
+
+check "read the order back with its whole trail" GET "/api/v1/orders/$ORDER_ID"
+assert_body "the order detail carries its legs, fills and events" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["order"]["driver"] == "paper"
+assert len(d["events"]) >= 3, d["events"]
+print("  ",d["order"]["plain"])
+for e in d["events"]: print("    ",e["from_status"],"->",e["to_status"],"|",e["plain"][:80])
+print("  history links:",len(d["history"]))'
+
+check "open positions" GET "/api/v1/positions?status=open"
+assert_body "the position is open, marked, and its health is measured against the stop" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["open"], "no open position after a filled entry"
+p=d["open"][0]
+assert p["mark_freshness"] in ("live","delayed"), p["mark_freshness"]
+assert p["health"] in ("healthy","at_risk","unknown")
+assert d["paper_plain"] == "Paper fills use delayed prices."
+print("  ",p["plain"])
+print("  mark $%s (%s) | stop %s | target %s | %s"%(p["mark_price"],p["mark_freshness"],p["stop"],p["target"],p["health"]))
+print("  totals:",d["totals"]["plain"])
+print("  daily risk:",d["daily_risk"])'
+
+check "position detail — plan versus now" GET "/api/v1/positions/$POSITION_OPEN"
+assert_body "position detail compares the plan with where it stands and lists what is being watched" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["closed"] is False
+assert len(d["plan_vs_now"]) >= 3
+labels=[a["label"] for a in d["actions"]]
+assert "Exit now" in labels, labels
+print("  plan vs now:",[(r["label"],r["planned"],r["now"]) for r in d["plan_vs_now"]])
+print("  monitoring:",[(m["condition_plain"],m["monitoring"]) for m in d["monitoring"]])
+print("  actions:",labels)'
+
+check "the monitoring row for the position shows up in Alerts" GET "/api/v1/alerts"
+assert_body "a position condition is a monitoring row, not a second place to manage the trade" '
+import json,sys
+d=json.load(sys.stdin)
+pos=[m for m in d["monitoring"] if m["kind"] == "position"]
+assert pos, "the position stop should be monitored"
+assert all(m["route"].startswith("/position/") for m in pos), pos
+assert any(f["key"] == "position" for f in d["filters"])
+for m in pos: print("   ",m["condition_plain"],"|",m["value_plain"],"|",m["monitoring_plain"][:60])'
+
+# --- the tick ----------------------------------------------------------------
+TICK=$(curl -sS -X POST "$API_BASE/api/v1/internal/paper/tick" \
+  -H "x-internal-secret: $INTERNAL_SECRET" -H 'Content-Type: application/json' -d '{}' -w '\n%{http_code}')
+if [ "${TICK##*$'\n'}" = "200" ]; then
+  green "PASS  200  POST /api/v1/internal/paper/tick — marked to market"; PASS=$((PASS+1))
+  BODY="${TICK%$'\n'*}"
+  assert_body "the tick marks open positions against delayed prices" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["positions_marked"] >= 1, d
+assert "Paper fills use delayed prices." in d["plain"]
+print("  ",d["plain"],"| source",d["quote_source"],"| symbols",d["symbols"])'
+else
+  red "FAIL  the paper tick returned ${TICK##*$'\n'}"; FAIL=$((FAIL+1))
+fi
+
+UNAUTH_TICK=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$API_BASE/api/v1/internal/paper/tick" \
+  -H 'Content-Type: application/json' -d '{}')
+if [ "$UNAUTH_TICK" = "404" ]; then
+  green "PASS  404  the paper tick does not exist without the internal secret"; PASS=$((PASS+1))
+else
+  red "FAIL  the paper tick answered $UNAUTH_TICK without a secret"; FAIL=$((FAIL+1))
+fi
+
+# --- a bracket stop fires on a synthetic tick ---------------------------------
+STOP_TRIGGER=$(python3 -c "print(round(float('$STOP') - 1, 2))")
+TICK2=$(curl -sS -X POST "$API_BASE/api/v1/internal/paper/tick" \
+  -H "x-internal-secret: $INTERNAL_SECRET" -H 'Content-Type: application/json' \
+  -d "{\"quotes\":{\"META\":$STOP_TRIGGER}}" -w '\n%{http_code}')
+BODY="${TICK2%$'\n'*}"
+if [ "${TICK2##*$'\n'}" = "200" ]; then
+  green "PASS  200  synthetic tick through the stop"; PASS=$((PASS+1))
+else
+  red "FAIL  synthetic tick returned ${TICK2##*$'\n'}"; FAIL=$((FAIL+1))
+fi
+assert_body "the stop leg fired" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["quote_source"] == "override", d["quote_source"]
+assert d["legs_fired"] >= 1, d
+print("  ",d["plain"],"| legs fired",d["legs_fired"],"| alerts",d["alerts_created"])'
+
+check "the stopped-out position is closed and its sibling leg was cancelled" GET "/api/v1/orders?status=all&symbol=META"
+assert_body "one side of the bracket filled and the other was cancelled" '
+import json,sys
+d=json.load(sys.stdin)
+legs=[o for o in d["orders"] if o["bracket_role"] in ("stop","target")]
+assert legs, "no bracket legs were created"
+filled=[o for o in legs if o["status"] == "filled"]
+cancelled=[o for o in legs if o["status"] == "cancelled"]
+assert filled, "no exit leg filled"
+assert cancelled, "the other side of the bracket should have been cancelled"
+for o in legs: print("   ",o["bracket_role"],o["status"],"|",o["plain"][:80])'
+
+check "the position closed with a realised number" GET "/api/v1/positions?status=closed"
+assert_body "a closed position carries its realised P/L" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["positions"], "no closed positions"
+p=d["positions"][0]
+assert p["closed_at"] is not None
+print("  ",p["plain"])'
+
+# --- a resting limit, then crossed on a synthetic tick ------------------------
+REST_LIMIT=$(python3 -c "print(round(float('$LAST_PRICE') * 0.5, 2))")
+check "a limit away from the market" POST /api/v1/orders/preview \
+  "{\"symbol\":\"META\",\"side\":\"buy_to_open\",\"type\":\"limit\",\"qty\":1,\"limit_price\":$REST_LIMIT}"
+REST_PREVIEW=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["preview_id"])')
+assert_body "the preview says it will rest rather than fill" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["estimate"]["fills_immediately"] is False, d["estimate"]
+assert "Resting" in d["estimate"]["plain"], d["estimate"]["plain"]
+print("  ",d["estimate"]["plain"])'
+
+check "place the resting limit" POST /api/v1/orders/submit \
+  "{\"preview_id\":\"$REST_PREVIEW\",\"idempotency_key\":\"smoke-limit-$(date +%s)\"}"
+REST_ORDER=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["order"]["id"])')
+assert_body "a limit away from the market is ACCEPTED and NOT filled" '
+import json,sys
+d=json.load(sys.stdin)
+o=d["order"]
+assert o["status"] == "accepted", o["status"]
+assert o["filled_at"] is None, "an accepted order must not carry a fill time"
+assert o["accepted_at"] is not None
+assert o["resting"] is True
+assert "not filled" in d["fill_plain"].lower() or "Nothing has filled" in d["fill_plain"], d["fill_plain"]
+print("  ",o["plain"])
+print("  ",d["fill_plain"])'
+
+CROSS=$(python3 -c "print(round(float('$REST_LIMIT') - 0.5, 2))")
+TICK3=$(curl -sS -X POST "$API_BASE/api/v1/internal/paper/tick" \
+  -H "x-internal-secret: $INTERNAL_SECRET" -H 'Content-Type: application/json' \
+  -d "{\"quotes\":{\"META\":$CROSS}}" -w '\n%{http_code}')
+BODY="${TICK3%$'\n'*}"
+if [ "${TICK3##*$'\n'}" = "200" ]; then
+  green "PASS  200  synthetic tick through the resting limit"; PASS=$((PASS+1))
+else
+  red "FAIL  synthetic tick returned ${TICK3##*$'\n'}"; FAIL=$((FAIL+1))
+fi
+
+check "the resting limit filled when price crossed it" GET "/api/v1/orders/$REST_ORDER"
+assert_body "the resting order moved accepted -> filled, in that order" '
+import json,sys
+d=json.load(sys.stdin)
+o=d["order"]
+assert o["status"] == "filled", o["status"]
+assert o["filled_at"] is not None
+tos=[e["to_status"] for e in d["events"]]
+assert tos.index("accepted") < tos.index("filled"), tos
+print("  ",o["plain"],"| transitions",tos)'
+
+# --- close a position --------------------------------------------------------
+check "open positions before the close" GET "/api/v1/positions?status=open"
+CLOSE_POS=$(printf '%s' "$BODY" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["open"][0]["id"] if d["open"] else "")')
+
+check "closing previews first — nothing is sent" POST "/api/v1/positions/$CLOSE_POS/close" '{}'
+assert_body "an unconfirmed close is a preview, not a sale" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["stage"] == "preview", d["stage"]
+assert d["result"] is None
+assert "Nothing is sent until you confirm" in d["plain"], d["plain"]
+print("  ",d["plain"])
+print("  est fill $%s | %s"%(d["preview"]["estimate"]["fill_price"],d["preview"]["confirm_label"]))'
+
+check "confirm the close" POST "/api/v1/positions/$CLOSE_POS/close" \
+  "{\"confirm\":true,\"idempotency_key\":\"smoke-close-$(date +%s)\"}"
+assert_body "the confirmed close fills and books a realised number" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["stage"] == "submitted", d["stage"]
+o=d["result"]["order"]
+assert o["side"] in ("sell_to_close","buy_to_cover"), o["side"]
+assert o["status"] in ("filled","partially_filled"), o["status"]
+print("  ",o["plain"])
+print("  ",d["plain"])'
+
+check "debrief the closed position" POST "/api/v1/positions/$CLOSE_POS/debrief"
+printf '  '; printf '%s' "$BODY" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+print("debrief",d["id"],"| degraded",d["degraded"])'
+
+# --- the short path, once ----------------------------------------------------
+SHORT_LEVELS=$(python3 -c "
+last=float('$LAST_PRICE')
+print('%.2f %.2f'%(round(last*1.005,2), round(last*0.98,2)))")
+SHORT_STOP=$(echo $SHORT_LEVELS | cut -d' ' -f1)
+SHORT_TARGET=$(echo $SHORT_LEVELS | cut -d' ' -f2)
+
+check "a short plan" POST /api/v1/plans \
+  "{\"symbol\":\"META\",\"side\":\"sell_short\",\"entry\":$LAST_PRICE,\"stop\":$SHORT_STOP,\"targets\":[$SHORT_TARGET],\"size\":1}"
+SHORT_PLAN=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["plan"]["id"])')
+assert_body "a short plan orients the other way — stop above, target below" '
+import json,sys
+p=json.load(sys.stdin)["plan"]
+assert p["intent"] == "sell_short", p["intent"]
+assert p["stop"] > p["entry"], (p["stop"],p["entry"])
+assert p["targets"][0]["price"] < p["entry"], p["targets"]
+print("  short:",p["symbol"],"entry",p["entry"],"stop",p["stop"],"target",p["targets"][0]["price"],"| rr",p["rr"])'
+
+check "preview the short" POST /api/v1/orders/preview \
+  "{\"symbol\":\"META\",\"side\":\"sell_short\",\"type\":\"market\",\"qty\":1,\"plan_id\":\"$SHORT_PLAN\"}"
+SHORT_PREVIEW=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["preview_id"])')
+assert_body "shorting is labelled as a simulation difference" '
+import json,sys
+d=json.load(sys.stdin)
+keys=[a["key"] for a in d["advisories"]]
+assert "short_locate" in keys, keys
+print("  ",[a["plain"] for a in d["advisories"] if a["key"] == "short_locate"][0])'
+
+check "place the short" POST /api/v1/orders/submit \
+  "{\"preview_id\":\"$SHORT_PREVIEW\",\"idempotency_key\":\"smoke-short-$(date +%s)\"}"
+assert_body "the short opens a short position, matched by side and not by direction guessing" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["order"]["side"] == "sell_short", d["order"]["side"]
+print("  ",d["order"]["plain"],"|",d["fill_plain"])'
+
+check "the short position is short" GET "/api/v1/positions?status=open"
+assert_body "a short position reads as short" '
+import json,sys
+d=json.load(sys.stdin)
+shorts=[p for p in d["open"] if p["direction"] == "short"]
+assert shorts, "no short position"
+print("  ",shorts[0]["plain"])'
+
+# --- cancelling ---------------------------------------------------------------
+check "another limit away from the market, to cancel" POST /api/v1/orders/preview \
+  "{\"symbol\":\"AAPL\",\"side\":\"buy_to_open\",\"type\":\"limit\",\"qty\":1,\"limit_price\":1.5}"
+CANCEL_PREVIEW=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["preview_id"])')
+check "place it" POST /api/v1/orders/submit \
+  "{\"preview_id\":\"$CANCEL_PREVIEW\",\"idempotency_key\":\"smoke-cancel-$(date +%s)\"}"
+CANCEL_ORDER=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["order"]["id"])')
+check "cancel it" POST "/api/v1/orders/$CANCEL_ORDER/cancel"
+assert_body "cancelling says plainly that nothing was bought or sold" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["order"]["status"] == "cancelled", d["order"]["status"]
+assert "Nothing was bought or sold" in d["plain"], d["plain"]
+print("  ",d["plain"])'
+expect "a cancelled order cannot be cancelled twice" 409 POST "/api/v1/orders/$CANCEL_ORDER/cancel"
+
+# --- an expired preview -------------------------------------------------------
+check "a preview to let expire" POST /api/v1/orders/preview \
+  '{"symbol":"AAPL","side":"buy_to_open","type":"market","qty":1}'
+EXPIRE_PREVIEW=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["preview_id"])')
+curl -sS -o /dev/null -X PATCH "$SUPABASE_URL/rest/v1/orders?id=eq.$EXPIRE_PREVIEW" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  -H 'Content-Type: application/json' -H 'Prefer: return=minimal' \
+  -d '{"preview":{"expires_at":"2020-01-01T00:00:00Z","tolerance_bps":25,"blockers":[],"quote_price":1}}'
+expect "an expired preview must be looked at again" 409 POST /api/v1/orders/submit \
+  "{\"preview_id\":\"$EXPIRE_PREVIEW\",\"idempotency_key\":\"smoke-expired-$(date +%s)\"}"
+assert_body "the expiry copy explains why, without blaming the user" '
+import json,sys
+e=json.load(sys.stdin)["error"]
+assert e["code"] == "PREVIEW_EXPIRED", e["code"]
+print("  ",e["message_plain"])'
+
+check "the decision chain survived all of it" GET "/api/v1/symbols/META"
+assert_body "discovery -> alert -> plan -> order -> position -> review is still linked" '
+import json,sys
+d=json.load(sys.stdin)
+kinds={h["kind"] for h in d["history"]}
+for k in ("plan","order","position"):
+    assert k in kinds, "the chain lost %s: %r" % (k,kinds)
+print("  chain:",[(h["kind"],h["plain"][:48]) for h in d["history"][:8]])'
+
 hr
 echo "passed: $PASS   failed: $FAIL"
 hr

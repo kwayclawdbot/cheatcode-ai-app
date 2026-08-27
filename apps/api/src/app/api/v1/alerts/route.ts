@@ -1,22 +1,40 @@
 /**
- * GET /api/v1/alerts → {needs_attention, watching, resolved}
+ * GET /api/v1/alerts?filter=  →  Attention · Monitoring · History (V5 A1)
  *
- * Drafts appear under Watching as "draft — activate" (BUILD-BRIEF, Alerts stub).
+ * Five internal states collapse into three sections and one row of type FILTERS
+ * (audit §6). "Active Trades" is gone: positions live in Trade, and what
+ * surfaces here is only the monitoring condition attached to them — there is no
+ * second place to manage a position.
+ *
+ * The round-2 keys (`needs_attention`, `watching`, `resolved`) are still
+ * present and still mean the same thing; this payload is a superset.
  */
 import type { NextRequest } from 'next/server';
 import {
-  AlertsResponse,
+  AlertsV5Query,
+  AlertsV5Response,
   AlertActivateRequest,
   AlertActivateResponse,
   MONITORING_PLAIN,
+  type AlertTypeFilter,
 } from '@shared/api';
-import { authed, ok, parseBody, type Ctx } from '@/lib/http';
+import { authed, ok, parseBody, parseQuery, type Ctx } from '@/lib/http';
 import { serviceClient } from '@/lib/db';
 import { ApiError } from '@/lib/errors';
 import { emitUserEvent } from '@/lib/events';
 import { loadEntitlements, numericFlag, entitlementRequired } from '@/lib/entitlements';
 import { notify } from '@/lib/notify';
+import { getSnapshot } from '@/lib/market/polygon';
+import { loadOpenPositions } from '@/lib/execution/positions-view';
+import { ensureDevTicker } from '@/lib/execution/tick-dev';
 import { alertRow, monitoringFor } from './shape';
+import {
+  buildFilters,
+  positionMonitoringRows,
+  toAttentionRow,
+  toHistoryRow,
+  toMonitoringRow,
+} from './v5';
 
 const COLUMNS =
   'id,status,natural_language,condition,data_dependency,frequency,expires_at,refs,created_at';
@@ -25,22 +43,83 @@ export const dynamic = 'force-dynamic';
 
 const EMPTY_COPY = "Kai isn't watching anything for you yet.";
 
-export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
+export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
+  ensureDevTicker();
+  const q = parseQuery(req, AlertsV5Query);
   const db = serviceClient();
-  const { data, error } = await db
-    .from('alerts')
-    .select(COLUMNS)
-    .eq('user_id', ctx.user.id)
-    .order('created_at', { ascending: false });
-  if (error) throw new ApiError('INTERNAL', 'We could not load your alerts. Please try again.', { detail: error.message });
 
-  const rows = (data ?? []).map((r) => alertRow(r as Record<string, unknown>));
+  const [alertsRes, positions] = await Promise.all([
+    db.from('alerts').select(COLUMNS).eq('user_id', ctx.user.id).order('created_at', { ascending: false }),
+    loadOpenPositions({ userId: ctx.user.id }),
+  ]);
+  if (alertsRes.error) {
+    throw new ApiError('INTERNAL', 'We could not load your alerts. Please try again.', {
+      detail: alertsRes.error.message,
+    });
+  }
+
+  const rows = (alertsRes.data ?? []).map((r) => alertRow(r as Record<string, unknown>));
+
+  // Live values for the monitoring rows. One grouped call covers every symbol,
+  // so a long watchlist costs the same as a short one.
+  const watched = rows.filter((r) => r.status === 'active' || r.status === 'paused' || r.status === 'draft');
+  const symbols = [
+    ...new Set(
+      watched
+        .map((r) => (r.refs as Record<string, unknown> | null)?.symbol)
+        .filter((s): s is string => typeof s === 'string')
+    ),
+  ];
+  const priceBy = new Map<string, string>();
+  if (symbols.length) {
+    const snap = await getSnapshot(symbols);
+    for (const quote of snap.quotes) {
+      priceBy.set(
+        quote.symbol,
+        quote.price === null ? 'no current price' : `now $${quote.price} · ${quote.freshness}`
+      );
+    }
+  }
+
+  const attention = rows.filter((r) => r.status === 'triggered').map(toAttentionRow);
+  const monitoring = [
+    ...watched.map((r) => {
+      const sym = (r.refs as Record<string, unknown> | null)?.symbol;
+      return toMonitoringRow(r, typeof sym === 'string' ? (priceBy.get(sym) ?? null) : null);
+    }),
+    ...positionMonitoringRows(positions.rows),
+  ];
+  const history = rows.filter((r) => r.status === 'expired' || r.status === 'cancelled').map(toHistoryRow);
+
+  const allTypes: AlertTypeFilter[] = [
+    ...attention.map((a) => a.type),
+    ...monitoring.map((m) => m.type),
+    ...history.map((h) => h.type),
+  ];
+  const keep = <T extends { type: AlertTypeFilter }>(items: T[]) =>
+    q.filter === 'all' ? items : items.filter((i) => i.type === q.filter);
+
   return ok(
-    AlertsResponse.parse({
+    AlertsV5Response.parse({
+      // round-2 keys, unchanged
       needs_attention: rows.filter((r) => r.status === 'triggered'),
-      watching: rows.filter((r) => r.status === 'draft' || r.status === 'active' || r.status === 'paused'),
+      watching: watched,
       resolved: rows.filter((r) => r.status === 'expired' || r.status === 'cancelled'),
       empty_copy: EMPTY_COPY,
+      // V5
+      attention: keep(attention),
+      monitoring: keep(monitoring),
+      history: keep(history),
+      filters: buildFilters(allTypes),
+      filter: q.filter,
+      composer: {
+        placeholder: 'Tell me when…',
+        examples: [
+          'Tell me when TSLA drops below 170',
+          'Tell me if META closes under its 20-day average',
+          'Tell me when NVDA gets back to 900',
+        ],
+      },
     })
   );
 });

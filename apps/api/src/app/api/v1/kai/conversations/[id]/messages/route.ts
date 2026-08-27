@@ -7,7 +7,13 @@
  * setups for the mode. Kai has no mutating tools in this slice.
  */
 import type { NextRequest } from 'next/server';
-import { PostMessageRequest, SETUP_CAPS, type AppMode, type KaiObjectEnvelope } from '@shared/api';
+import {
+  PostMessageRequest,
+  SETUP_CAPS,
+  type AppMode,
+  type KaiObjectEnvelope,
+  type KaiSheetContext,
+} from '@shared/api';
 import { requireUser } from '@/lib/auth';
 import { serviceClient } from '@/lib/db';
 import { ApiError, errorResponse } from '@/lib/errors';
@@ -15,6 +21,7 @@ import { log, newRequestId } from '@/lib/log';
 import { emitUserEvent } from '@/lib/events';
 import { assembleContext, contextNumbers, renderContext } from '@/lib/kai/context';
 import { buildSystemPrompt } from '@/lib/kai/system-prompt';
+import { SHEET_ACTION_PROTOCOL, loadSheetContext } from '@/lib/kai/sheet-context';
 import {
   FenceSplitter,
   SseWriter,
@@ -29,7 +36,12 @@ import {
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-type ConversationRow = { id: string; user_id: string; mode: AppMode | null; context: { pinned?: { setup_ids?: string[] } } | null };
+type ConversationRow = {
+  id: string;
+  user_id: string;
+  mode: AppMode | null;
+  context: { pinned?: { setup_ids?: string[] }; sheet?: KaiSheetContext | null } | null;
+};
 
 async function nextSeq(conversationId: string): Promise<number> {
   const db = serviceClient();
@@ -96,16 +108,21 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
       cap: SETUP_CAPS[mode],
     });
 
+    // The contextual sheet: the object it was opened over is loaded from the
+    // database and put in the prompt as facts, so Kai answers about THAT order,
+    // position, alert, setup or room rather than about the symbol in general.
+    const sheet = await loadSheetContext(user.id, conv.context?.sheet ?? undefined);
+
     const system = `${buildSystemPrompt({
       displayName: kctx.profile.display_name,
       experience: kctx.profile.experience,
       involvement: kctx.profile.involvement,
       explanationLevel: kctx.profile.explanation_level,
       mode,
-    })}
+    })}${sheet.prompt_block ? `\n\n${SHEET_ACTION_PROTOCOL}` : ''}
 
 CONTEXT (facts you may use — nothing outside this is known to you)
-${renderContext(kctx)}`;
+${renderContext(kctx)}${sheet.prompt_block ? `\n\n${sheet.prompt_block}` : ''}`;
 
     const history: KaiTurn[] = kctx.turns
       .filter((t) => t.seq !== userSeq)

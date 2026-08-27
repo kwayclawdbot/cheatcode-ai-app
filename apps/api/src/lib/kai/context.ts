@@ -200,7 +200,10 @@ export function normalizeTargets(raw: unknown): { price: number; label?: string 
     if (typeof t === 'number' && Number.isFinite(t)) out.push({ price: t });
     else if (t && typeof t === 'object') {
       const o = t as Record<string, unknown>;
-      const price = Number(o.price ?? o.value ?? o.target);
+      // `level` is 0020's normalised target shape ([{label, level}]); `price`
+      // is the setups/plan shape this app writes. Both are read here so a plan
+      // round-tripped through `create_plan` never loses its targets.
+      const price = Number(o.price ?? o.level ?? o.value ?? o.target);
       if (Number.isFinite(price)) out.push({ price, ...(typeof o.label === 'string' ? { label: o.label } : {}) });
     }
   }
