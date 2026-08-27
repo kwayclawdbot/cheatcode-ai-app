@@ -4,6 +4,7 @@ import type {
 } from '@cheatcode/shared';
 import { env, offlineMode } from './env';
 import { supabase } from './supabase';
+import { getAccessToken, recoverSession, SESSION_EXPIRED_COPY } from './auth-token';
 import { streamSSE, SSEHandlers } from './sse';
 import {
   adaptAlertDetail, adaptAlertLifecycle, adaptAlertPreview, adaptAlerts, adaptCandles,
@@ -24,14 +25,13 @@ export class ApiError extends Error {
   }
 }
 
-async function authHeaders(): Promise<Record<string, string>> {
+async function authHeaders(token?: string | null): Promise<Record<string, string>> {
   if (!supabase) return {};
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const t = token ?? (await getAccessToken());
+  return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
   if (!env.hasApi) throw new ApiError('NO_API', 'The service is not connected yet.');
   let res: Response;
   try {
@@ -41,6 +41,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     });
   } catch {
     throw new ApiError('NETWORK', "I couldn't reach the service just now. Check your connection and try again.");
+  }
+  // Expired/invalid token: refresh once and retry; if the refresh token is dead
+  // too, recoverSession() signs out and the route gate shows sign-in.
+  if (res.status === 401 && !retried && supabase) {
+    const fresh = await recoverSession();
+    if (fresh) return request<T>(path, init, true);
+    throw new ApiError('UNAUTHENTICATED', SESSION_EXPIRED_COPY);
   }
   const text = await res.text();
   // A route the API lane has not deployed yet answers with Next's HTML 404,

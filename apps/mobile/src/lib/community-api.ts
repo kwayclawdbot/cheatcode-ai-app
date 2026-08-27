@@ -16,6 +16,7 @@
  */
 import { env, offlineMode } from './env';
 import { supabase } from './supabase';
+import { getAccessToken, recoverSession, SESSION_EXPIRED_COPY } from './auth-token';
 import type {
   ContributorProfile, KaiCommand, KaiRoomObject, PositionDisclosure, Room,
   RoomMessage, RoomSetup, StructuredIdea,
@@ -38,12 +39,11 @@ export type Source = 'api' | 'supabase' | 'fixtures';
 
 async function authHeaders(): Promise<Record<string, string>> {
   if (!supabase) return {};
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const t = await getAccessToken();
+  return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
   if (!env.hasApi) throw new CommunityApiError('NO_API', 'The service is not connected yet.');
   const res = await fetch(`${env.apiBase}/api/v1${path}`, {
     ...init,
@@ -52,6 +52,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const text = await res.text();
   let json: any = null;
   try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+  if (res.status === 401 && !retried && supabase) {
+    const fresh = await recoverSession();
+    if (fresh) return request<T>(path, init, true);
+    throw new CommunityApiError('UNAUTHENTICATED', SESSION_EXPIRED_COPY);
+  }
   if (!res.ok) {
     const err = json?.error ?? {};
     throw new CommunityApiError(

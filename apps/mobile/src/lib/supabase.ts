@@ -1,5 +1,5 @@
 import 'react-native-url-polyfill/auto';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -66,6 +66,19 @@ export const supabase: SupabaseClient | null = env.hasSupabase
       },
     })
   : null;
+
+/**
+ * supabase-js only runs its token-refresh timer on React Native while
+ * `startAutoRefresh()` is active — without this hook the access token silently
+ * dies after an hour and every API call answers 401 ("session expired").
+ */
+if (supabase && Platform.OS !== 'web') {
+  supabase.auth.startAutoRefresh();
+  AppState.addEventListener('change', (state) => {
+    if (state === 'active') supabase.auth.startAutoRefresh();
+    else supabase.auth.stopAutoRefresh();
+  });
+}
 
 /** Auth errors, in plain English (UX spec: never show a raw provider string). */
 export function plainAuthError(message?: string | null): string {
