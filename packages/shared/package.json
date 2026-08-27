@@ -1,0 +1,11 @@
+{
+  "name": "@cheatcode/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared API contract (zod schemas + TS types) and generated DB types. Plain .ts, no build step.",
+  "main": "api.ts",
+  "types": "api.ts",
+  "dependencies": {
+    "zod": "^4.0.0"
+  }
+}
