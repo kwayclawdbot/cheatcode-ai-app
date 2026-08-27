@@ -12,6 +12,15 @@
  *   - A CAN read its own rows (so we know the assertions above are meaningful)
  *   - a direct client insert into `messages` is rejected (api-app writes only)
  *
+ * Round 3 (0020) adds:
+ *   - the paper-execution objects (trade_plans / orders / order_events / fills /
+ *     positions) are owner-isolated in BOTH directions
+ *   - no client may INSERT into orders or positions
+ *   - create_plan / plan_action / submit_paper_order / apply_paper_tick /
+ *     close_position_prepare are NOT executable by a client JWT (the function
+ *     grant floor, SCHEMA-NOTES gap 2.7), but work as service_role
+ *   - daily_risk_v returns exactly the caller's own row
+ *
  * Round 2 (0017/0018) adds:
  *   - watchlists/watchlist_items are owner-isolated in BOTH directions, while
  *     the owner keeps client-direct insert/update/delete (01 §13 row 1)
@@ -147,7 +156,7 @@ async function serviceRpc(fn, args) {
   return { status: res.status, body: await jsonOrText(res) };
 }
 
-// temp rooms from a crashed previous run would break the "19 core rooms" and
+// temp rooms from a crashed previous run would break the "3 core rooms" and
 // "no message row" assertions below.
 async function sweepTempRooms() {
   const rooms = await serviceGet('rooms?slug=like.rls-tmp-%25&select=id');
@@ -249,9 +258,9 @@ try {
 
   console.log('\nmessages are api-app write only:');
   {
-    const room = await serviceGet('rooms?slug=eq.dt-beginner-questions&select=id');
+    const room = await serviceGet('rooms?slug=eq.day-trade&select=id');
     const roomId = room[0]?.id;
-    if (!roomId) throw new Error('seed room dt-beginner-questions missing');
+    if (!roomId) throw new Error('core room day-trade missing');
 
     const r = await asA('messages', {
       method: 'POST',
@@ -269,7 +278,7 @@ try {
     const s = await asA('setups?select=symbol&order=score.desc');
     assert(Array.isArray(s.body) && s.body.length === 4, 'A reads the 4 seed setups', JSON.stringify(s.body));
     const rooms = await asA('rooms?select=slug&type=eq.core');
-    assert(Array.isArray(rooms.body) && rooms.body.length === 19, 'A reads the 19 core rooms', `n=${rooms.body?.length}`);
+    assert(Array.isArray(rooms.body) && rooms.body.length === 3, 'A reads the 3 core rooms', `n=${rooms.body?.length}`);
     const flags = await asA('entitlement_flags?select=tier,flag');
     assert(Array.isArray(flags.body) && flags.body.length === 12, 'A reads entitlement flags', `n=${flags.body?.length}`);
   }
@@ -473,12 +482,223 @@ try {
     assert(muteOther.status >= 400, "B cannot change A's room mute", `status ${muteOther.status} body ${JSON.stringify(muteOther.body)}`);
   }
 
+  // ================================================= paper execution (0020)
+  console.log('\npaper execution objects are owner-isolated (0020):');
+  const paper = {};
+  {
+    for (const u of [A, B]) {
+      const accounts = await serviceGet(`accounts?user_id=eq.${u.id}&kind=eq.paper&select=id`);
+      const accountId = accounts?.[0]?.id;
+      if (!accountId) throw new Error(`no paper account for ${u.email}`);
+
+      const plan = await serviceRpc('create_plan', {
+        p_user_id: u.id,
+        p_patch: {
+          mode: 'day_trade',
+          symbol: 'META',
+          intent: 'buy_to_open',
+          entry: 100,
+          stop: 95,
+          targets: [110],
+        },
+      });
+      if (plan.status !== 200) throw new Error(`create_plan failed: ${JSON.stringify(plan.body)}`);
+
+      const order = await serviceInsert('orders', {
+        user_id: u.id,
+        account_id: accountId,
+        plan_id: plan.body.id,
+        symbol: 'META',
+        side: 'buy_to_open',
+        type: 'market',
+        qty: 3,
+        status: 'previewed',
+        idempotency_key: `rls-${u.id}-${stamp}`,
+        driver: 'paper',
+      });
+
+      const submitted = await serviceRpc('submit_paper_order', {
+        p_user_id: u.id,
+        p_order_id: order.id,
+        p_idempotency_key: `rls-${u.id}-${stamp}`,
+        p_fill: {
+          fill_price: 100.5,
+          fill_qty: 3,
+          resting: false,
+          quote: { price: 100.5, freshness: 'delayed' },
+          bracket: { stop: 95, target: 110, exit_style: 'auto' },
+        },
+      });
+      if (submitted.status !== 200) {
+        throw new Error(`submit_paper_order failed: ${JSON.stringify(submitted.body)}`);
+      }
+      paper[u.id] = {
+        accountId,
+        planId: plan.body.id,
+        orderId: order.id,
+        positionId: submitted.body?.position?.id,
+      };
+    }
+
+    assert(
+      paper[A.id].positionId && paper[B.id].positionId,
+      'submit_paper_order (service role) opened a position for each user',
+      JSON.stringify(paper),
+    );
+
+    // control: each user sees exactly its own execution rows
+    for (const [u, other] of [[A, B], [B, A]]) {
+      const as = rest(u.token);
+      const plans = await as('trade_plans?select=id,user_id');
+      assert(
+        Array.isArray(plans.body) && plans.body.length === 1 && plans.body[0].user_id === u.id,
+        `${u === A ? 'A' : 'B'} sees exactly its own trade_plans row`,
+        JSON.stringify(plans.body),
+      );
+
+      // 1 entry + 2 bracket legs
+      const orders = await as('orders?select=id,user_id,leg');
+      assert(
+        Array.isArray(orders.body) && orders.body.length === 3 &&
+          orders.body.every((o) => o.user_id === u.id),
+        `${u === A ? 'A' : 'B'} sees exactly its own 3 orders (entry + 2 legs)`,
+        JSON.stringify(orders.body),
+      );
+
+      const positions = await as('positions?select=id,user_id');
+      assert(
+        Array.isArray(positions.body) && positions.body.length === 1 &&
+          positions.body[0].user_id === u.id,
+        `${u === A ? 'A' : 'B'} sees exactly its own positions row`,
+        JSON.stringify(positions.body),
+      );
+
+      const fills = await as('fills?select=id');
+      assert(
+        Array.isArray(fills.body) && fills.body.length === 1,
+        `${u === A ? 'A' : 'B'} sees exactly its own fill`,
+        JSON.stringify(fills.body),
+      );
+
+      // and nothing of the other user's, even asked for by id
+      for (const [path, label] of [
+        [`trade_plans?id=eq.${paper[other.id].planId}&select=*`, 'trade_plans'],
+        [`orders?id=eq.${paper[other.id].orderId}&select=*`, 'orders'],
+        [`positions?id=eq.${paper[other.id].positionId}&select=*`, 'positions'],
+        [`order_events?order_id=eq.${paper[other.id].orderId}&select=*`, 'order_events'],
+        [`fills?order_id=eq.${paper[other.id].orderId}&select=*`, 'fills'],
+        [`plan_events?plan_id=eq.${paper[other.id].planId}&select=*`, 'plan_events'],
+      ]) {
+        const r = await as(path);
+        assert(
+          Array.isArray(r.body) && r.body.length === 0,
+          `${u === A ? 'A' : 'B'} gets 0 rows from ${label} belonging to ${other === A ? 'A' : 'B'}`,
+          `status ${r.status} body ${JSON.stringify(r.body)}`,
+        );
+      }
+    }
+  }
+
+  console.log('\nexecution tables are api-app write only:');
+  {
+    const o = await asA('orders', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        user_id: A.id, account_id: paper[A.id].accountId, symbol: 'META',
+        side: 'buy_to_open', type: 'market', qty: 1, status: 'filled',
+        idempotency_key: `hijack-${stamp}`, driver: 'paper',
+      }),
+    });
+    assert(o.status >= 400, 'a client cannot insert into orders', `status ${o.status} body ${JSON.stringify(o.body)}`);
+
+    const p = await asA('positions', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        user_id: A.id, account_id: paper[A.id].accountId, symbol: 'META',
+        direction: 'long', qty: 999, avg_cost: 1, opened_at: new Date().toISOString(),
+        mode: 'day_trade',
+      }),
+    });
+    assert(p.status >= 400, 'a client cannot insert into positions', `status ${p.status} body ${JSON.stringify(p.body)}`);
+
+    const u = await asA(`positions?id=eq.${paper[A.id].positionId}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ realized_pnl: 999999 }),
+    });
+    const changed = Array.isArray(u.body) && u.body.length > 0;
+    assert(!changed, 'a client cannot rewrite its own realized_pnl', `status ${u.status} body ${JSON.stringify(u.body)}`);
+  }
+
+  console.log('\npaper-execution RPCs are closed to client JWTs (grant floor):');
+  {
+    const calls = [
+      ['create_plan', { p_user_id: A.id, p_patch: { mode: 'day_trade', symbol: 'META', intent: 'buy_to_open', entry: 100, stop: 95, targets: [110] } }],
+      ['plan_action', { p_user_id: A.id, p_plan_id: paper[A.id].planId, p_action: 'cancel', p_payload: {} }],
+      ['submit_paper_order', { p_user_id: A.id, p_order_id: paper[A.id].orderId, p_idempotency_key: `client-${stamp}`, p_fill: { fill_price: 1, fill_qty: 1 } }],
+      ['apply_paper_tick', { p_user_id: A.id, p_symbol: 'META', p_quote: { price: 110, freshness: 'delayed' } }],
+      ['close_position_prepare', { p_user_id: A.id, p_position_id: paper[A.id].positionId }],
+      ['paper_apply_fill', { p_order_id: paper[A.id].orderId, p_price: 1, p_qty: 1, p_reason: 'client' }],
+      ['paper_recompute_account', { p_account_id: paper[A.id].accountId, p_cash_delta: 1000000 }],
+    ];
+    for (const [fn, args] of calls) {
+      const r = await asA(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) });
+      assert(r.status >= 400, `${fn} is not executable by a client JWT`, `status ${r.status} body ${JSON.stringify(r.body)}`);
+    }
+
+    // ...and A cannot drive B's execution even through the service-shaped args
+    const forOther = await asB('rpc/submit_paper_order', {
+      method: 'POST',
+      body: JSON.stringify({ p_user_id: A.id, p_order_id: paper[A.id].orderId, p_idempotency_key: `x-${stamp}`, p_fill: {} }),
+    });
+    assert(forOther.status >= 400, "B cannot submit A's order", `status ${forOther.status} body ${JSON.stringify(forOther.body)}`);
+
+    const stillFilled = await serviceGet(`orders?id=eq.${paper[A.id].orderId}&select=status,filled_qty`);
+    assert(
+      stillFilled?.[0]?.status === 'filled' && Number(stillFilled[0].filled_qty) === 3,
+      "A's order is untouched after the client attempts",
+      JSON.stringify(stillFilled),
+    );
+  }
+
+  console.log('\ndaily_risk_v shows only the caller\'s own row:');
+  {
+    const mine = await asA('daily_risk_v?select=user_id,day,realized_loss,open_risk,used,cap');
+    assert(
+      Array.isArray(mine.body) && mine.body.length === 1 && mine.body[0].user_id === A.id,
+      'A sees exactly one daily_risk_v row, its own',
+      JSON.stringify(mine.body),
+    );
+    assert(
+      Number(mine.body?.[0]?.open_risk) === 16.5 && Number(mine.body?.[0]?.used) === 16.5,
+      'open_risk = qty x |avg_cost - stop| (3 x 5.50 = 16.50)',
+      JSON.stringify(mine.body),
+    );
+    assert(Number(mine.body?.[0]?.cap) === 60, 'cap comes from risk_policies.daily_loss_cap_usd', JSON.stringify(mine.body));
+
+    const other = await asA(`daily_risk_v?user_id=eq.${B.id}&select=*`);
+    assert(Array.isArray(other.body) && other.body.length === 0, "A gets 0 rows from daily_risk_v filtered to B", JSON.stringify(other.body));
+
+    const anon = await fetch(`${URL_BASE}/rest/v1/daily_risk_v?select=*`, {
+      headers: { apikey: ANON, Authorization: `Bearer ${ANON}` },
+    });
+    assert(anon.status >= 400, 'anon cannot read daily_risk_v at all', `status ${anon.status}`);
+  }
+
 } catch (err) {
   failures++;
   console.error(`\n  ERROR ${err.message}`);
 } finally {
   await dropRoom(tmpCoreRoom?.id);
   await dropRoom(tmpSetupRoom?.id);
+  // positions / debriefs have no FK to profiles (SCHEMA-NOTES gap 2.9) and
+  // positions.origin_plan_id would otherwise block the trade_plans cascade.
+  for (const id of createdIds) {
+    await serviceDelete(`debriefs?user_id=eq.${id}`);
+    await serviceDelete(`positions?user_id=eq.${id}`);
+  }
   for (const id of createdIds) await deleteUser(id);
 }
 

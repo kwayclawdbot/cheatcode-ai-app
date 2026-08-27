@@ -9,9 +9,10 @@ Companion to `docs/01_DATA_MODEL.md`. Two kinds of entry, written per round:
    column or default was invented to "fix" them. The owner decides.
 
 Sections 1 and 2 cover the v1 slice (`0001…0016`); sections 3 and 4 cover round 2
-(`0017`, `0018`) and continue the same numbering.
+(`0017`, `0018`); sections 5 and 6 cover round 3 (`0020`, paper execution) and
+continue the same numbering.
 
-Migrations live in `supabase/migrations/0001…0018`, applied in filename order.
+Migrations live in `supabase/migrations/0001…0020`, applied in filename order.
 
 ---
 
@@ -474,3 +475,321 @@ become real columns when the moderation surface lands.
 The brief's `position int` orders a user's lists. Nothing stops two lists sharing
 a position or a gap appearing after a delete; the client is expected to sort by
 `(position, created_at)`. Fine while every user has exactly one list.
+
+---
+
+## 5. Round 3 — interpretations (migration `0020_paper_execution.sql`)
+
+Round 3 is the paper-execution arc: `create_plan`, `plan_action`,
+`submit_paper_order`, `apply_paper_tick`, `close_position_prepare` and the
+`daily_risk_v` view. The dividing line the whole migration is built on: **the
+API owns the fill model, the database owns atomicity.** Nothing in SQL decides
+what a fill price should be, how big a position should be, or whether a quote is
+fresh enough — those are API/round-3-brief concerns. SQL decides that an order
+transition, its `order_events` row, its `fills` row, the position mutation, the
+account mutation and the `user_events` outbox rows either all happen or none do.
+
+### 1.31 `create_plan` validates orientation and computes nothing else
+01 §7 gives `trade_plans` columns but no rules. The brief asks for exactly one
+validation: side/entry/stop/targets orientation. Implemented as
+
+- `intent = 'buy_to_open'` (long) → `stop < entry`, and every target `> entry`
+- `intent = 'sell_short'`  (short) → `stop > entry`, and every target `< entry`
+
+`intent` is restricted to those two values (`plan_intent_invalid`): a plan
+describes how a position is **opened**; a close is an order, not a plan.
+`entry` is read from `p_patch.entry`, falling back to
+`p_patch.entry_condition.level`; `stop` is **required** (there is no plan without
+an invalidation level), `targets` are **optional** but validated when present —
+a "run it until it breaks" plan is legal, an upside-down one is not.
+`targets` accept either `[110, 120]` or `[{label, level}]` and are always stored
+normalised as `[{label, level}]`.
+`size` and `scenarios` are stored verbatim from the patch: the risk maths lives
+in the API/`packages/shared` so the client and server agree on it, exactly as
+`complete_onboarding` (1.x) already does for the onboarding maths.
+`mode` comes from the patch and is immutable thereafter — the 0013 trigger
+already enforces that; 0020 adds nothing.
+
+### 1.32 The plan state machine, and what `activate` means
+`plan_status` (0001) is `draft, planned, active, exiting, closed, cancelled,
+invalidated`. The brief names the path `draft → planned → active → exiting →
+closed` and says "cancel from draft/planned only; invalidated terminal".
+Split between the two writers:
+
+- **`plan_action` (user intent)** — `activate` moves `draft → planned` only
+  (idempotent when already `planned`), `cancel` moves `draft|planned →
+  cancelled` and cancels every still-working order of the plan.
+- **`paper_apply_fill` (market reality)** — an entry fill moves the plan to
+  `active`, a partial close to `exiting`, a full close to `closed`. A plan never
+  becomes `active` because a human pressed a button; it becomes active because
+  shares changed hands.
+
+`closed`, `cancelled` and `invalidated` refuse **every** action
+(`plan_state_invalid`), which is how "invalidated is terminal" is enforced.
+Nothing in 0020 writes `invalidated` — that is the scanner's transition
+(03 Unit 2) and has no writer in v1.
+
+### 1.33 `orders.exec_meta` — a new envelope, not an overloaded one
+The paper driver needs per-order state that 01 §7 has no column for: is this
+order resting, which `exit_style` governs this leg, what bracket is parked
+waiting for the entry to fill, has an `alert_assisted` leg been triggered, which
+quote was last seen, why was it cancelled. `preview` is the preview contract the
+client renders and `origin` is provenance (1.26), so neither was overloaded.
+`orders.exec_meta jsonb not null default '{}'` carries
+`{resting, exit_style, bracket, level, triggered, triggered_at, trigger_price,
+last_quote, cancel_reason, cancelled_at, close_of_position_id, driver}`.
+The brief's "mark the leg `triggered` in payload" is
+`exec_meta.triggered = true` plus an `order_events` row with
+`payload.event = 'leg_triggered'`.
+
+### 1.34 `submit_paper_order` idempotency is decided before anything is written
+Two ways a resubmit is caught, both returning `{deduplicated:true, order}` with
+zero writes:
+
+1. `p_idempotency_key` already belongs to a **different** order row → that row is
+   returned (someone replayed with a key that was already spent).
+2. the target order has already moved past `previewed` → it is returned as-is.
+
+Only `draft` and `previewed` orders are submittable. If the caller passes a key
+that differs from the one already on the row, the row's key is updated first so
+the *next* replay dedups on rule 1. The API's `IDEMPOTENT_REPLAY` envelope maps
+straight onto `deduplicated`.
+
+### 1.35 Position matching, the open-position key, and `positions.status`
+Matching is on `side` (position_effect) exactly as 01 §7 requires — never
+inferred from a bare buy/sell:
+
+| side | direction | effect |
+|---|---|---|
+| `buy_to_open` | long | opens, or adds with a weighted-average `avg_cost` |
+| `sell_to_close` | long | reduces; `realized_pnl += (price − avg_cost) × qty` |
+| `sell_short` | short | opens/adds short |
+| `buy_to_cover` | short | reduces; `realized_pnl += (avg_cost − price) × qty` |
+
+Closing more than the position holds raises `position_insufficient_qty` rather
+than clamping — a paper account that silently absorbs an over-close teaches the
+wrong thing. `qty` reaching zero sets `closed_at`.
+
+A partial unique index `positions_open_uniq (account_id, symbol,
+coalesce(occ_symbol,''), direction) where closed_at is null` makes
+"one open position per instrument per direction" a database fact, so the upsert
+key in the brief cannot be violated by a concurrent tick and a submit.
+`occ_symbol` is in the key so a v1.1 option position and its underlying never
+collide.
+
+`positions.status` is a **generated stored column**
+(`case when closed_at is null then 'open' else 'closed' end`) rather than a
+maintained one. The brief offered the choice; generated wins because `closed_at`
+is already the source of truth and a maintained copy can drift. The
+`check (status in ('open','closed'))` from the brief is still written out. The
+client filters `?status=eq.open` exactly as it would on a plain column; it just
+cannot be written.
+
+### 1.36 The paper fill model that lives in SQL
+The API computes market-order fill prices. Two fill decisions unavoidably live in
+`apply_paper_tick`, because only the tick knows the crossing:
+
+- **Resting entry limits** fill at **their own limit price**, never better.
+  Price improvement is not simulated: the data is delayed (Polygon entitlement),
+  and a paper engine that hands out improvement on a 60-second-old print is
+  lying in the user's favour. Crossing is `limit ≥ price` for a buy,
+  `limit ≤ price` for a sell, per the brief.
+- **Stop and target legs** fill at the level, *or at the tick price when the
+  print gapped through it*. Written as
+  `stop:   sell → least(level, price)   / buy → greatest(level, price)`
+  `target: sell → greatest(level, price) / buy → least(level, price)`
+  i.e. the protective leg eats the gap and the target leg keeps it. With a
+  single delayed print these both reduce to "fill at the tick price", which is
+  the honest answer; the formula is written out so it stays correct if a future
+  caller passes a level that has only just been touched.
+
+`fills.liquidity = 'paper'` on everything this migration writes (0018 uses
+`'simulated'` for the dev-tool trade; the two are deliberately distinguishable).
+
+### 1.37 Child-row delete rules
+0007 left every execution-history FK at `NO ACTION`, so deleting an `auth.users`
+row cascaded `profiles → orders / trade_plans` and then **failed** on the
+`fills`, `order_events`, `plan_events`, `orders.plan_id` and
+`positions.origin_plan_id` rows pointing at them. `scripts/rls-test.mjs` now
+creates real orders and positions, so the teardown path exposed it. 0020 sets:
+
+- `fills.order_id`, `order_events.order_id`, `plan_events.plan_id`,
+  `orders.parent_order_id` → **cascade** (a history row or bracket leg whose
+  parent no longer exists is unreachable garbage)
+- `orders.plan_id`, `positions.origin_plan_id`, `debriefs.plan_id` → **set null**
+  (an order or position can legitimately outlive its plan)
+- `debriefs.position_id` → **cascade**
+
+Referential actions run as the table owner with the privilege check skipped, so
+the append-only `revoke update, delete … from service_role` (1.14) does not block
+them and the append-only guarantee for *clients and service paths* is unchanged.
+
+### 1.38 `apply_paper_tick` ordering, and why marks are not outbox events
+One user, one symbol, one transaction, in this order:
+
+1. resting entry limits that crossed,
+2. stop/target legs that crossed — over a **snapshot of the leg ids taken before
+   step 1**, so a bracket raised by an entry filling on this very tick cannot
+   also fire on it,
+3. mark every open position (`mark_price`, `mark_ts`, `unrealized_pnl`) and
+   recompute the account.
+
+Marking writes **no `user_events` row**. Everything else in the paper path does
+(order transitions, fills, position opens/reduces/closes, leg cancels, leg
+triggers), but the tick runs every 60 seconds against every symbol with an open
+position: a mark event per position per minute would bury the replay backbone
+(01 §3) under noise it can already read off `positions`. The brief's
+"all with order_events/user_events" is honoured for every *transition*; a
+mark is not a transition.
+
+`exit_style = 'auto'` legs execute; `alert_assisted` legs only set
+`exec_meta.triggered` and land in `needs_attention[]`, and the API turns that
+into the Attention alert + notification. A triggered `alert_assisted` leg is
+never re-flagged on later ticks. An `auto` leg that finds no open position left
+(closed by something else) cancels itself instead of filling.
+
+### 1.39 `daily_risk_v`
+`security_invoker = true`, so it needs no `auth.uid()` predicate of its own:
+`risk_policies` and `positions` are already owner-select under RLS (0014), a
+client JWT therefore sees exactly one row, and `service_role` (BYPASSRLS) sees
+every user. `anon` is revoked explicitly.
+
+- `day` = today in **America/New_York** (the market's day, not the server's).
+- `realized_loss` = `Σ greatest(0, −realized_pnl)` over positions **closed
+  today**. Only losing trades count: a daily *loss* cap that a morning winner
+  could refill is not a loss cap.
+- `open_risk` = `Σ qty × |avg_cost − stop|` over positions still open that were
+  **opened today** and carry a stop.
+- `used` = `realized_loss + open_risk`; `cap` = `risk_policies.daily_loss_cap_usd`.
+
+### 1.40 The close flow contract
+`close_position_prepare` is **read-only**. It returns the opposite-side order
+draft (`side` = `sell_to_close` for a long, `buy_to_cover` for a short, plus qty,
+symbol, account, plan, marks, levels) together with the position's resting legs,
+and a `close_of_position_id`. The API previews and submits that order, passing
+`p_fill.close_of_position_id`; `submit_paper_order` then cancels those resting
+legs **inside the same transaction, before the closing fill**, so an automatic
+stop can never act on shares a manual exit is already closing. A full close also
+cancels any remaining legs on its own, so the two mechanisms are idempotent with
+each other.
+
+### 1.41 The paper account model
+Paper only, v1: `cash −= price × qty` on `buy_to_open`/`buy_to_cover`,
+`cash += price × qty` on `sell_to_close`/`sell_short`; `buying_power = cash`
+(per the brief — no margin, no shorting requirement); `equity = cash +
+Σ (long: +1 / short: −1) × qty × coalesce(mark_price, avg_cost)`. A short's
+proceeds are in cash and its liability is the negative term, so equity is
+correct on both sides. Equity is recomputed on every fill and every mark.
+
+### 1.42 `scripts/rls-test.mjs` — round 3, and a stale round-2 assertion
+Added: `create_plan` + `submit_paper_order` (as `service_role`) really open a
+position for each of A and B; A and B each see exactly their own
+`trade_plans` / `orders` (entry + 2 bracket legs) / `positions` / `fills`, and
+**zero** rows of the other's `trade_plans`, `orders`, `positions`,
+`order_events`, `fills`, `plan_events` even when asked for by id; a client can
+insert into neither `orders` nor `positions` and cannot PATCH its own
+`realized_pnl`; `create_plan`, `plan_action`, `submit_paper_order`,
+`apply_paper_tick`, `close_position_prepare` and the internal
+`paper_apply_fill` / `paper_recompute_account` are all closed to a client JWT
+while A's order stays untouched; `daily_risk_v` returns exactly one row (the
+caller's own) with `open_risk` arithmetically checked, nothing for another user,
+and nothing at all for `anon`.
+
+Two fixes to existing assertions, both stale since `0019` consolidated the
+community to three rooms: the seed room is now `day-trade` (was
+`dt-beginner-questions`) and the core-room count is **3** (was 19). The test was
+failing before this round for that reason alone.
+
+Teardown deletes each user's `positions` and `debriefs` explicitly before the
+`auth.users` delete, because those two tables still carry no FK to `profiles`
+(gap 2.9) while everything else now cascades (1.37).
+
+`scripts/paper-exec-smoke.sql` is the psql end-to-end proof, run inside a
+transaction that is rolled back: long plan → market buy with bracket → tick hits
+the target → position closed with the arithmetically expected realized P/L;
+the short mirror; a resting limit that only fills once the tick crosses it;
+`alert_assisted` legs that flag instead of exiting; `close_position_prepare` →
+close with leg cancellation; `plan_action adjust_stop`/`adjust_target`
+repricing the live legs and the position; three refused orientation cases; a
+partial fill; the outbox; and `daily_risk_v`.
+
+---
+
+## 6. Round 3 — known gaps (owner decides)
+
+### 2.12 `exit_style` is copied onto the leg, not enforced against the plan
+Each bracket leg carries its own `exec_meta.exit_style`, seeded from
+`p_fill.bracket.exit_style` (which the API takes from the plan).
+`plan_action set_exit_style` rewrites the live legs, but nothing stops the API
+submitting a bracket whose `exit_style` disagrees with
+`trade_plans.exit_style`, and a bracket with no plan behind it has no plan to
+disagree with. 03 Unit 4 also says a live connection without native bracket
+support **forces** `alert_assisted`; there is no live driver in v1, so nothing
+forces anything yet.
+
+### 2.13 `apply_paper_tick` is per user **and** per symbol
+The signature the brief fixes is `(p_user_id, p_symbol, p_quote)`, so a tick that
+should evaluate every user holding every symbol is N×M calls fanned out by the
+API, each its own transaction. Consequences: no cross-symbol atomicity (a
+portfolio-level rule could see a half-applied tick), and the per-call overhead
+grows linearly with users. Fine at v1 volume behind a 60-second interval;
+a `apply_paper_tick_batch(jsonb)` taking `{symbol: quote}` for all users at once
+is the obvious next step if it stops being fine.
+
+### 2.14 "Today's realized losses" counts only losing trades
+`daily_risk_v.realized_loss` sums `greatest(0, −realized_pnl)`, so a +$300
+winner does not refill a cap spent by a −$200 loser. That is the reading that
+makes a *loss* cap mean something, but the brief says only "today's realized
+losses" and a net-P/L reading is defensible. One `sum()` to change.
+
+### 2.15 `open_risk` only counts positions opened **today**
+The brief's view spec says `qty × |avg_cost − stop|`; its narrative says "on
+today's positions". Implemented as today's, because the alternative makes a
+swing position held for three weeks with a 10% stop permanently occupy a
+day-mode daily cap and block every preview. The consequence is real and should
+be named: **risk carried overnight is invisible to `daily_risk_v`.** A separate
+`open_risk_total` column, or a mode-aware cap, is the honest fix.
+
+### 2.16 `order_status` has no `triggered` value
+An `alert_assisted` stop that has been hit is still `accepted` at the database
+level; "triggered" lives in `exec_meta.triggered`. Adding an enum value is a
+migration the round-2 rule ("no enum migrations ever", 03 Unit 2) argues
+against, and every consumer would have to learn it. The cost is that
+`?status=eq.triggered` does not exist — clients must read `exec_meta`.
+
+### 2.17 A partial fill leaves the remainder with no re-fill path
+`submit_paper_order` with `partial:true` sets `partially_filled` and leaves
+`qty − filled_qty` working, exactly as 03 Unit 4 requires ("accepted ≠ filled
+everywhere"). But `apply_paper_tick` only re-fills **limit** orders, so the
+remainder of a partially filled *market* order never completes on its own.
+Either the API tops it up with a second `paper_apply_fill`-shaped call, or the
+tick learns to complete working market orders. Nothing does it today.
+
+### 2.18 No market-hours or session gate anywhere in SQL
+03 Unit 4 says "regular hours only; queued market orders → opening-auction fills
+with gap-risk narration". `market_sessions` exists (0004) and neither
+`submit_paper_order` nor `apply_paper_tick` consults it: a fill at 3am is
+accepted without comment. The gate is assumed to live in the API's preview
+pipeline (`MARKET_CLOSED`), which means the RPCs are only as safe as their
+caller.
+
+### 2.19 Fees, slippage and shortability are all zero/absent
+Paper fees are $0 by the round-3 brief, slippage is the API's business, and a
+short is always locatable. 03 Unit 4 calls the last one "a labelled simulation
+difference"; there is no column carrying that label, so the honesty has to be
+copy in the client.
+
+### 2.20 `positions.user_id` / `debriefs.user_id` still have no FK
+Gap 2.9 stands. 1.37 fixed everything that *does* have an FK, which makes the
+absence more visible: deleting an `auth.users` row now cleanly removes plans,
+orders, events and fills and leaves the positions and debriefs behind as
+orphans. `scripts/rls-test.mjs` deletes them by hand. Adding
+`references profiles on delete cascade` is a one-line migration whenever the
+owner decides account deletion is a real surface.
+
+### 2.21 `buying_power = cash` understates nothing but models nothing
+No margin, no short-sale proceeds restriction, no PDT counter. A user can short
+$50k of stock in a $10k paper account and the only thing that notices is
+`equity`. The risk policy (`max_position_pct`, `max_open_positions`) is enforced
+in the API's preview, not here, so an RPC caller that skips preview skips the
+limits too.

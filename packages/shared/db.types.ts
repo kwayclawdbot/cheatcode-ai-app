@@ -1523,18 +1523,25 @@ export type Database = {
       }
       orders: {
         Row: {
+          accepted_at: string | null
           account_id: string
+          avg_fill_price: number | null
           bracket_group: string | null
           created_at: string
           driver: string
           duration: string | null
+          exec_meta: Json
           external_ref: string | null
+          filled_at: string | null
+          filled_qty: number
           id: string
           idempotency_key: string
           instrument_kind: Database["public"]["Enums"]["instrument_kind"]
+          leg: string | null
           limit_price: number | null
           occ_symbol: string | null
           origin: Json
+          parent_order_id: string | null
           plan_id: string | null
           preview: Json | null
           qty: number
@@ -1543,24 +1550,32 @@ export type Database = {
           side: Database["public"]["Enums"]["position_effect"]
           status: Database["public"]["Enums"]["order_status"]
           stop_price: number | null
+          submitted_at: string | null
           symbol: string
           type: Database["public"]["Enums"]["order_type"]
           updated_at: string | null
           user_id: string
         }
         Insert: {
+          accepted_at?: string | null
           account_id: string
+          avg_fill_price?: number | null
           bracket_group?: string | null
           created_at?: string
           driver?: string
           duration?: string | null
+          exec_meta?: Json
           external_ref?: string | null
+          filled_at?: string | null
+          filled_qty?: number
           id?: string
           idempotency_key: string
           instrument_kind?: Database["public"]["Enums"]["instrument_kind"]
+          leg?: string | null
           limit_price?: number | null
           occ_symbol?: string | null
           origin?: Json
+          parent_order_id?: string | null
           plan_id?: string | null
           preview?: Json | null
           qty: number
@@ -1569,24 +1584,32 @@ export type Database = {
           side: Database["public"]["Enums"]["position_effect"]
           status?: Database["public"]["Enums"]["order_status"]
           stop_price?: number | null
+          submitted_at?: string | null
           symbol: string
           type: Database["public"]["Enums"]["order_type"]
           updated_at?: string | null
           user_id: string
         }
         Update: {
+          accepted_at?: string | null
           account_id?: string
+          avg_fill_price?: number | null
           bracket_group?: string | null
           created_at?: string
           driver?: string
           duration?: string | null
+          exec_meta?: Json
           external_ref?: string | null
+          filled_at?: string | null
+          filled_qty?: number
           id?: string
           idempotency_key?: string
           instrument_kind?: Database["public"]["Enums"]["instrument_kind"]
+          leg?: string | null
           limit_price?: number | null
           occ_symbol?: string | null
           origin?: Json
+          parent_order_id?: string | null
           plan_id?: string | null
           preview?: Json | null
           qty?: number
@@ -1595,6 +1618,7 @@ export type Database = {
           side?: Database["public"]["Enums"]["position_effect"]
           status?: Database["public"]["Enums"]["order_status"]
           stop_price?: number | null
+          submitted_at?: string | null
           symbol?: string
           type?: Database["public"]["Enums"]["order_type"]
           updated_at?: string | null
@@ -1614,6 +1638,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "option_contracts"
             referencedColumns: ["occ_symbol"]
+          },
+          {
+            foreignKeyName: "orders_parent_order_id_fkey"
+            columns: ["parent_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "orders_plan_id_fkey"
@@ -1685,6 +1716,8 @@ export type Database = {
           direction: string
           id: string
           instrument_kind: Database["public"]["Enums"]["instrument_kind"]
+          mark_price: number | null
+          mark_ts: string | null
           mode: Database["public"]["Enums"]["app_mode"]
           occ_symbol: string | null
           opened_at: string
@@ -1695,7 +1728,11 @@ export type Database = {
           qty: number
           realized_pnl: number | null
           source: string
+          status: string | null
+          stop: number | null
           symbol: string
+          target: number | null
+          unrealized_pnl: number
           updated_at: string | null
           user_id: string
         }
@@ -1707,6 +1744,8 @@ export type Database = {
           direction: string
           id?: string
           instrument_kind?: Database["public"]["Enums"]["instrument_kind"]
+          mark_price?: number | null
+          mark_ts?: string | null
           mode: Database["public"]["Enums"]["app_mode"]
           occ_symbol?: string | null
           opened_at: string
@@ -1717,7 +1756,11 @@ export type Database = {
           qty: number
           realized_pnl?: number | null
           source?: string
+          status?: string | null
+          stop?: number | null
           symbol: string
+          target?: number | null
+          unrealized_pnl?: number
           updated_at?: string | null
           user_id: string
         }
@@ -1729,6 +1772,8 @@ export type Database = {
           direction?: string
           id?: string
           instrument_kind?: Database["public"]["Enums"]["instrument_kind"]
+          mark_price?: number | null
+          mark_ts?: string | null
           mode?: Database["public"]["Enums"]["app_mode"]
           occ_symbol?: string | null
           opened_at?: string
@@ -1739,7 +1784,11 @@ export type Database = {
           qty?: number
           realized_pnl?: number | null
           source?: string
+          status?: string | null
+          stop?: number | null
           symbol?: string
+          target?: number | null
+          unrealized_pnl?: number
           updated_at?: string | null
           user_id?: string
         }
@@ -2720,6 +2769,32 @@ export type Database = {
       }
     }
     Views: {
+      daily_risk_v: {
+        Row: {
+          cap: number | null
+          day: string | null
+          open_risk: number | null
+          realized_loss: number | null
+          used: number | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "risk_policies_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "risk_policies_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles_public"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       messages_moderation: {
         Row: {
           body: string | null
@@ -2903,9 +2978,47 @@ export type Database = {
         }
         Returns: number
       }
+      apply_paper_tick: {
+        Args: { p_quote: Json; p_symbol: string; p_user_id: string }
+        Returns: Json
+      }
+      close_position_prepare: {
+        Args: { p_position_id: string; p_user_id: string }
+        Returns: Json
+      }
       complete_onboarding: {
         Args: { p_patch: Json; p_user_id: string }
         Returns: Json
+      }
+      create_plan: {
+        Args: { p_patch: Json; p_user_id: string }
+        Returns: {
+          created_at: string | null
+          entry_condition: Json | null
+          exit_style: string
+          id: string
+          instrument_kind: Database["public"]["Enums"]["instrument_kind"]
+          intent: Database["public"]["Enums"]["position_effect"]
+          invalidation: Json | null
+          mode: Database["public"]["Enums"]["app_mode"]
+          occ_symbol: string | null
+          origin: Json
+          scenarios: Json | null
+          setup_id: string | null
+          size: Json | null
+          status: Database["public"]["Enums"]["plan_status"]
+          stop: number | null
+          symbol: string
+          targets: Json | null
+          updated_at: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "trade_plans"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       is_room_member: { Args: { p_room: string }; Returns: boolean }
       join_core_room: {
@@ -2945,6 +3058,105 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "notifications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      paper_apply_fill: {
+        Args: {
+          p_bracket?: Json
+          p_order_id: string
+          p_price: number
+          p_qty: number
+          p_quote?: Json
+          p_reason: string
+        }
+        Returns: Json
+      }
+      paper_cancel_resting_legs: {
+        Args: {
+          p_bracket_group?: string
+          p_except_order_id?: string
+          p_position_id: string
+          p_reason?: string
+        }
+        Returns: string[]
+      }
+      paper_close_side: {
+        Args: { p_direction: string }
+        Returns: Database["public"]["Enums"]["position_effect"]
+      }
+      paper_normalize_targets: { Args: { p_targets: Json }; Returns: Json }
+      paper_recompute_account: {
+        Args: { p_account_id: string; p_cash_delta?: number }
+        Returns: {
+          broker_connection_id: string | null
+          buying_power: number | null
+          cash: number | null
+          created_at: string
+          currency: string | null
+          equity: number | null
+          id: string
+          kind: Database["public"]["Enums"]["account_kind"]
+          last_reset_at: string | null
+          name: string
+          options_level: number | null
+          reset_count: number | null
+          starting_balance: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "accounts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      paper_side_direction: {
+        Args: { p_side: Database["public"]["Enums"]["position_effect"] }
+        Returns: string
+      }
+      paper_side_is_debit: {
+        Args: { p_side: Database["public"]["Enums"]["position_effect"] }
+        Returns: boolean
+      }
+      paper_side_is_open: {
+        Args: { p_side: Database["public"]["Enums"]["position_effect"] }
+        Returns: boolean
+      }
+      paper_target_levels: { Args: { p_targets: Json }; Returns: number[] }
+      plan_action: {
+        Args: {
+          p_action: string
+          p_payload?: Json
+          p_plan_id: string
+          p_user_id: string
+        }
+        Returns: {
+          created_at: string | null
+          entry_condition: Json | null
+          exit_style: string
+          id: string
+          instrument_kind: Database["public"]["Enums"]["instrument_kind"]
+          intent: Database["public"]["Enums"]["position_effect"]
+          invalidation: Json | null
+          mode: Database["public"]["Enums"]["app_mode"]
+          occ_symbol: string | null
+          origin: Json
+          scenarios: Json | null
+          setup_id: string | null
+          size: Json | null
+          status: Database["public"]["Enums"]["plan_status"]
+          stop: number | null
+          symbol: string
+          targets: Json | null
+          updated_at: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "trade_plans"
           isOneToOne: true
           isSetofReturn: false
         }
@@ -3064,6 +3276,15 @@ export type Database = {
           p_exit?: number
           p_qty?: number
           p_symbol?: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      submit_paper_order: {
+        Args: {
+          p_fill: Json
+          p_idempotency_key: string
+          p_order_id: string
           p_user_id: string
         }
         Returns: Json
