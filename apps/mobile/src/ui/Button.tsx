@@ -4,7 +4,7 @@ import { alpha, color, radius } from './tokens';
 import { T } from './Text';
 import { ArrowRight } from './Icons';
 
-export type ButtonKind = 'volt' | 'outline' | 'kai' | 'ghost';
+export type ButtonKind = 'volt' | 'voltGhost' | 'outline' | 'kai' | 'ghost';
 
 /**
  * Volt = user action (primary). Violet = Kai action. Never swapped.
@@ -46,13 +46,21 @@ export function Button({
   const skin: ViewStyle =
     kind === 'volt'
       ? { backgroundColor: color.volt }
+      // A user action inside a LIST is still volt, but never a filled pill —
+      // a screen keeps exactly one filled primary (07 §2 one dominant action).
+      : kind === 'voltGhost'
+      ? { borderWidth: 1, borderColor: alpha.volt55, backgroundColor: alpha.volt10 }
       : kind === 'kai'
       ? { borderWidth: 0.5, borderColor: alpha.violet50, backgroundColor: alpha.violet08 }
       : kind === 'outline'
       ? { borderWidth: 0.5, borderColor: alpha.ivory24 }
       : {};
 
-  const fg = kind === 'volt' ? color.bg : kind === 'kai' ? color.violetLight : color.muted;
+  const fg =
+    kind === 'volt' ? color.bg
+      : kind === 'voltGhost' ? color.volt
+      : kind === 'kai' ? color.violetLight
+      : color.muted;
   const weight = kind === 'volt' ? 'bold' : 'semibold';
 
   return (

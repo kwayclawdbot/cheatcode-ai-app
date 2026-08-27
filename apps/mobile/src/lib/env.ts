@@ -5,6 +5,7 @@ const raw = {
   supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
   apiBase: process.env.EXPO_PUBLIC_API_BASE ?? '',
   fixtures: process.env.EXPO_PUBLIC_FIXTURES ?? '',
+  devTools: process.env.EXPO_PUBLIC_DEV_TOOLS ?? '',
 };
 
 export const env = {
@@ -14,6 +15,8 @@ export const env = {
   /** No Supabase configured yet (SCHEMA lane hasn't published .env values). */
   hasSupabase: !!raw.supabaseUrl && !!raw.supabaseAnonKey,
   hasApi: !!raw.apiBase,
+  /** EXPO_PUBLIC_DEV_TOOLS=1 → the account screen shows the simulate-trade button. */
+  DEV_TOOLS: raw.devTools === '1' || raw.devTools === 'true',
   isWeb: Platform.OS === 'web',
 };
 

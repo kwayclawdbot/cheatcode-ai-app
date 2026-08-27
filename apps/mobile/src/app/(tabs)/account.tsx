@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Screen } from '../../ui/Screen';
@@ -7,51 +7,102 @@ import { T, Num, Eyebrow } from '../../ui/Text';
 import { ObjectCard, RowList, Row } from '../../ui/Panel';
 import { Button } from '../../ui/Button';
 import { Toggle } from '../../ui/Toggle';
+import { Sheet } from '../../ui/Sheet';
 import { KaiOrb } from '../../ui/KaiOrb';
-import { Plus } from '../../ui/Icons';
+import { ArrowRight, Plus, Gear, Bell, Lock, Bars, Calendar } from '../../ui/Icons';
+import { NotConnected, ScreenLoading } from '../../ui/Loading';
 import { alpha, color, gradient, gradientAngle, radius } from '../../ui/tokens';
-import { supabase } from '../../lib/supabase';
+import { api } from '../../lib/api';
 import { env } from '../../lib/env';
-import { fixtureRiskPolicy } from '../../lib/fixtures';
 import { useSession } from '../../lib/session';
-import type { GoalMode, RiskPolicy } from '../../lib/types';
+import { useMe } from '../../features/account/useAccount';
+import type { GoalMode } from '../../lib/types';
 
 const MODE_LABEL: Record<GoalMode, string> = { day_trade: 'Day Trade', swing: 'Swing', invest: 'Invest' };
 const INVOLVEMENT_LABEL = { hands_on: 'I confirm every action', guided: 'Kai prepares, I approve' } as const;
 
-/** V3-AC1-Account.html — rules, brokers, Kai involvement. */
+function NavRow({
+  icon, label, value, onPress, last = false, testID,
+}: { icon: React.ReactNode; label: string; value?: string | null; onPress: () => void; last?: boolean; testID?: string }) {
+  return (
+    <Row last={last}>
+      <Pressable
+        testID={testID}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        onPress={onPress}
+        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11, minHeight: 44 }}
+      >
+        <View style={{ width: 28, height: 28, borderRadius: 8, borderWidth: 0.5, borderColor: alpha.ivory14, backgroundColor: alpha.ivory06, alignItems: 'center', justifyContent: 'center' }}>
+          {icon}
+        </View>
+        <T size={13.5} style={{ flex: 1 }}>{label}</T>
+        {value ? <T size={12} c={color.muted}>{value}</T> : null}
+        <ArrowRight size={12} color={color.muted} />
+      </Pressable>
+    </Row>
+  );
+}
+
+/**
+ * Account — V3-AC1-Account.html, completed.
+ * The rules you set, everything Kai holds about you, and the honest state of
+ * money: paper only, no broker, upgrades not open yet.
+ */
 export default function Account() {
   const router = useRouter();
   const { profile, session, signOut, patchProfile } = useSession();
-  const [policy, setPolicy] = useState<RiskPolicy | null>(env.FIXTURES || !supabase ? fixtureRiskPolicy : null);
+  const { data, loading, isFixture, notAvailable, reload } = useMe();
   const [memory, setMemory] = useState<boolean>(profile?.memory_enabled ?? true);
+  const [simulating, setSimulating] = useState(false);
+  const [simResult, setSimResult] = useState<string | null>(null);
 
-  useEffect(() => { setMemory(profile?.memory_enabled ?? true); }, [profile?.memory_enabled]);
+  React.useEffect(() => {
+    setMemory(data?.memory_enabled ?? profile?.memory_enabled ?? true);
+  }, [data?.memory_enabled, profile?.memory_enabled]);
 
-  useEffect(() => {
-    let alive = true;
-    if (env.FIXTURES || !supabase || !session) return;
-    supabase.from('risk_policies').select('daily_loss_cap_usd, max_position_pct').maybeSingle()
-      .then(({ data }) => {
-        if (!alive || !data) return;
-        const d = data as { daily_loss_cap_usd: number | null; max_position_pct: number | null };
-        setPolicy({
-          daily_loss_cap: d.daily_loss_cap_usd ?? 0,
-          max_position_pct: d.max_position_pct ?? 0,
-          involvement: (profile?.involvement as 'hands_on' | 'guided') ?? 'hands_on',
-        });
-      });
-    return () => { alive = false; };
-  }, [session, profile?.involvement]);
-
-  const name = profile?.display_name ?? session?.user.email?.split('@')[0] ?? 'You';
-  const mode = (profile?.primary_mode as GoalMode) ?? 'day_trade';
-  const involvement = policy?.involvement ?? profile?.involvement ?? 'hands_on';
+  /** No display name yet: use the readable part of the email, without the
+   *  `+tag` a test or alias address carries. */
+  const emailName = session?.user.email?.split('@')[0]?.split('+')[0];
+  const name = data?.profile.display_name ?? profile?.display_name ?? (emailName || 'You');
+  const mode = (data?.profile.primary_mode ?? profile?.primary_mode ?? 'day_trade') as GoalMode;
+  const involvement = (data?.risk_policy.involvement ?? profile?.involvement ?? 'hands_on') as 'hands_on' | 'guided';
+  const policy = data?.risk_policy ?? null;
+  const tier = data?.subscription.tier ?? 'free';
 
   const toggleMemory = async (v: boolean) => {
     setMemory(v);
     await patchProfile({ memory_enabled: v });
+    if (api.available()) {
+      try { await api.putMemorySettings(v); } catch { /* profile write already carried it */ }
+    }
   };
+
+  const simulate = async () => {
+    setSimulating(true);
+    setSimResult(null);
+    try {
+      if (api.available()) {
+        await api.simulateClosedTrade();
+        setSimResult('A closed paper trade was created. Open Debriefs to have Kai review it.');
+      } else {
+        setSimResult('Fixtures mode — connect the api-app with DEV_TOOLS=1 to create a real simulated trade.');
+      }
+      reload();
+    } catch (e) {
+      setSimResult(e instanceof Error ? e.message : 'That did not work.');
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  if (!data && loading) {
+    return (
+      <Screen variant="corner" layout="tab" testID="screen-account">
+        <ScreenLoading />
+      </Screen>
+    );
+  }
 
   return (
     <Screen variant="corner" layout="tab" testID="screen-account">
@@ -70,13 +121,16 @@ export default function Account() {
             <T size={22} weight="bold">{name.slice(0, 1).toUpperCase()}</T>
           </LinearGradient>
           <View style={{ flex: 1 }}>
-            <T size={20} weight="bold">{name}</T>
+            <T size={20} weight="bold" numberOfLines={1}>{name}</T>
             <View style={{ flexDirection: 'row', gap: 5, marginTop: 4 }}>
               <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: alpha.volt50 }}>
                 <T size={10} c={color.volt}>{MODE_LABEL[mode]}</T>
               </View>
               <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: alpha.cyan40 }}>
                 <T size={10} c={color.cyan}>Paper</T>
+              </View>
+              <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: tier === 'premium' ? alpha.gold40 : alpha.ivory14 }}>
+                <T size={10} c={tier === 'premium' ? color.gold : color.muted}>{tier === 'premium' ? 'Premium' : 'Free'}</T>
               </View>
             </View>
           </View>
@@ -94,7 +148,7 @@ export default function Account() {
           </Row>
           <Row>
             <T size={13} style={{ flex: 1 }}>Kai involvement</T>
-            <T size={12} c={color.violetLight}>{INVOLVEMENT_LABEL[involvement as 'hands_on' | 'guided']}</T>
+            <T size={12} c={color.violetLight}>{INVOLVEMENT_LABEL[involvement]}</T>
           </Row>
           <Row last>
             <T size={13} style={{ flex: 1 }}>Paper trading</T>
@@ -104,6 +158,16 @@ export default function Account() {
         <T size={10} c={color.muted} style={{ marginTop: -4 }}>
           Paper is the only mode in this release — real money needs a broker, which comes later.
         </T>
+
+        <Eyebrow>SETTINGS</Eyebrow>
+        <RowList>
+          <NavRow testID="nav-settings" icon={<Gear size={14} color={color.muted} />} label="How Kai talks to you" onPress={() => router.push('/account/settings')} />
+          <NavRow testID="nav-notifications" icon={<Bell size={14} color={color.muted} />} label="Notifications" onPress={() => router.push('/account/notifications')} />
+          <NavRow testID="nav-memory" icon={<KaiOrb size={14} glow={false} />} label="What Kai remembers" onPress={() => router.push('/account/memory')} />
+          <NavRow testID="nav-paper" icon={<Bars size={14} color={color.muted} />} label="Paper account" value={data?.paper ? `$${Math.round(data.paper.equity).toLocaleString('en-US')}` : null} onPress={() => router.push('/account/paper')} />
+          <NavRow testID="nav-debriefs" icon={<Calendar size={14} color={color.muted} />} label="Trade debriefs" onPress={() => router.push('/debrief')} />
+          <NavRow testID="nav-subscription" icon={<Lock size={14} color={color.muted} />} label="Plan" value={tier === 'premium' ? 'Premium' : 'Free'} onPress={() => router.push('/account/subscription')} last />
+        </RowList>
 
         <Eyebrow>CONNECTED</Eyebrow>
         <RowList>
@@ -125,6 +189,20 @@ export default function Account() {
           <Toggle testID="toggle-memory" value={memory} onChange={toggleMemory} label="Kai memory" />
         </ObjectCard>
 
+        {env.DEV_TOOLS ? (
+          <>
+            <Eyebrow c={color.gold}>DEVELOPER</Eyebrow>
+            <Button
+              testID="cta-simulate-trade"
+              label="Simulate a closed paper trade (dev)"
+              kind="outline"
+              height={46}
+              loading={simulating}
+              onPress={simulate}
+            />
+          </>
+        ) : null}
+
         <Button
           testID="cta-sign-out"
           label="Sign out"
@@ -133,7 +211,15 @@ export default function Account() {
           onPress={async () => { await signOut(); router.replace('/welcome'); }}
           style={{ marginTop: 8 }}
         />
+
+        {notAvailable ? <NotConnected what="Your account details" /> : null}
+        {isFixture ? <T size={10} c={color.dim} align="center">Sample account — the account service is not connected here.</T> : null}
       </ScrollView>
+
+      <Sheet visible={!!simResult} onClose={() => setSimResult(null)} title="Simulated trade" testID="sheet-simulate">
+        <T size={13} lh={20} c={color.muted}>{simResult}</T>
+        <Button label="Open debriefs" kind="volt" height={48} onPress={() => { setSimResult(null); router.push('/debrief'); }} />
+      </Sheet>
     </Screen>
   );
 }

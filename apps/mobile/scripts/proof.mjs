@@ -79,10 +79,53 @@ async function captureApp(browser) {
   await settle(page, 4200);               await shot(page, '13-home-streamed-reply');
   await open(page, '/alerts');            await shot(page, '14-alerts');
   await open(page, '/community');         await shot(page, '15-community');
-  await page.getByTestId('room-market-open').click();
-  await settle(page, 500);                await shot(page, '16-community-sheet');
+  // Community is the other mobile lane's screen and has its own proof run
+  // (scripts/proof-b.mjs). Shoot whatever it renders, but never fail this run
+  // because its internals moved.
+  try {
+    await page.getByTestId('room-market-open').click({ timeout: 4000 });
+    await settle(page, 500);              await shot(page, '16-community-room');
+  } catch {
+    console.log('  · community room tap skipped (owned by MOBILE-B)');
+  }
   await open(page, '/trade');             await shot(page, '17-trade');
   await open(page, '/account');           await shot(page, '18-account');
+
+  console.log('[4] setup detail');
+  await open(page, '/setup/seed-meta');   await shot(page, '19-setup-live');
+  await page.getByTestId('setup-view-plan').click();
+  await settle(page, 500);                await shot(page, '20-setup-plan');
+  await page.getByTestId('setup-view-learn').click();
+  await settle(page, 500);                await shot(page, '21-setup-learn');
+  await page.getByTestId('explain-level-advanced').click();
+  await page.getByTestId('quiz-option-0').click();
+  await settle(page, 400);                await shot(page, '22-setup-learn-answered');
+
+  console.log('[5] alerts lifecycle');
+  await open(page, '/alert/a2');           await shot(page, '23-alert-detail');
+  await page.getByTestId('alert-logic-toggle').click();
+  await settle(page, 400);                 await shot(page, '24-alert-detail-logic');
+  await open(page, '/alert/new');          await shot(page, '25-alert-new');
+  await page.getByTestId('alert-nl-input').fill('Watch META for a break above 504');
+  await page.getByTestId('cta-read-it').click();
+  await settle(page, 700);                 await shot(page, '26-alert-new-preview');
+
+  console.log('[6] trade + symbol');
+  await open(page, '/symbol/search');      await shot(page, '27-symbol-search');
+  await page.getByTestId('search-input').fill('META');
+  await settle(page, 900);                 await shot(page, '28-symbol-search-results');
+  await open(page, '/symbol/META');        await shot(page, '29-symbol-detail');
+  await page.getByTestId('tf-1M').click();
+  await settle(page, 700);                 await shot(page, '30-symbol-detail-1m');
+
+  console.log('[7] account sub-screens');
+  await open(page, '/account/settings');      await shot(page, '31-account-settings');
+  await open(page, '/account/notifications'); await shot(page, '32-account-notifications');
+  await open(page, '/account/memory');        await shot(page, '33-account-memory');
+  await open(page, '/account/paper');         await shot(page, '34-account-paper');
+  await open(page, '/account/subscription');  await shot(page, '35-account-subscription');
+  await page.getByTestId('cta-upgrade').click();
+  await settle(page, 600);                    await shot(page, '36-account-billing-sheet');
 
   await ctx.close();
 }
@@ -139,7 +182,7 @@ const main = async () => {
   const browser = await chromium.launch();
   try {
     await captureApp(browser);
-    console.log('\n[4] artboards + compare');
+    console.log('\n[8] artboards + compare');
     await captureArtboard(browser, 'V3-H1-Glance-home.html', 'ab-home');
     await captureArtboard(browser, 'V3-O0-Conversational-onboarding.html', 'ab-onboarding-kai');
     // the artboard draws a conversation in progress, so compare against the same state

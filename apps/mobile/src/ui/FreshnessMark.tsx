@@ -2,6 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { color } from './tokens';
 import { T } from './Text';
+import type { DelayReason } from '../lib/types';
 
 export type Freshness = 'live' | 'delayed' | 'stale' | 'closed' | 'unknown';
 
@@ -35,18 +36,34 @@ export function FreshnessDot({ freshness, size = 6 }: { freshness: Freshness; si
   return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: s.c }} />;
 }
 
+/**
+ * Round-2 rule (build brief): when the plan/entitlement is the only reason a
+ * price is not live, the server sends freshness 'delayed' with
+ * delay_reason:'entitlement'. That must read as "Delayed 15m" — never as
+ * stale — and it must never disable an action.
+ */
+export function resolveFreshness(freshness: Freshness | undefined, reason?: DelayReason | null): {
+  freshness: Freshness; label: string;
+} {
+  if (reason === 'entitlement') return { freshness: 'delayed', label: 'Delayed 15m' };
+  const f = freshness ?? 'unknown';
+  return { freshness: f, label: SPEC[f].label };
+}
+
 export function FreshnessMark({
-  freshness, label, size = 11, testID,
-}: { freshness: Freshness; label?: string; size?: number; testID?: string }) {
-  const s = SPEC[freshness];
+  freshness, label, size = 11, testID, delayReason,
+}: { freshness: Freshness; label?: string; size?: number; testID?: string; delayReason?: DelayReason | null }) {
+  const resolved = resolveFreshness(freshness, delayReason);
+  const s = SPEC[resolved.freshness];
+  const text = label ?? resolved.label;
   return (
     <View
       testID={testID}
-      accessibilityLabel={`Data ${s.label.toLowerCase()}`}
+      accessibilityLabel={`Data ${text.toLowerCase()}`}
       style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
     >
-      <FreshnessDot freshness={freshness} />
-      <T size={size} c={s.c}>{label ?? s.label}</T>
+      <FreshnessDot freshness={resolved.freshness} />
+      <T size={size} c={s.c}>{text}</T>
     </View>
   );
 }

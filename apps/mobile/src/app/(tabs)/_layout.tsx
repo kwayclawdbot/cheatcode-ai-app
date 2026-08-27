@@ -3,16 +3,19 @@ import { Tabs } from 'expo-router';
 import { TabBar } from '../../ui/TabBar';
 import { color } from '../../ui/tokens';
 import { api } from '../../lib/api';
-import { fixtureAlerts } from '../../lib/fixtures';
+import { fixtureAlertLifecycle } from '../../lib/fixtures';
 
 /** L6 nav: Home · Alerts · Community · Trade · Account (owner-confirmed). */
 export default function TabsLayout() {
-  const [needsAttention, setNeedsAttention] = useState(!api.available() && fixtureAlerts.needs_attention.length > 0);
+  // The badge is a real count of alerts that need a decision — never decorative.
+  const [needsAttention, setNeedsAttention] = useState(
+    !api.available() && fixtureAlertLifecycle.needs_attention.length > 0,
+  );
 
   useEffect(() => {
     let alive = true;
     if (!api.available()) return;
-    api.alerts()
+    api.alertsLifecycle()
       .then((d) => { if (alive) setNeedsAttention(d.needs_attention.length > 0); })
       .catch(() => {});
     return () => { alive = false; };

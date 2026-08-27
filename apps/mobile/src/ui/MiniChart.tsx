@@ -3,6 +3,7 @@ import { View, Pressable } from 'react-native';
 import Svg, { Circle, Line, Polyline, Rect } from 'react-native-svg';
 import { alpha, color, radius } from './tokens';
 import { T, Num } from './Text';
+import type { Candle } from '../lib/types';
 
 /**
  * V2-O1's teaching chart — polyline + the shaded band where buyers step in.
@@ -110,5 +111,197 @@ export function Sparkline({ up, points }: { up: boolean; points: string }) {
     <Svg viewBox="0 0 60 20" width={60} height={20}>
       <Polyline points={points} fill="none" stroke={up ? color.green : color.red} strokeWidth={1.4} />
     </Svg>
+  );
+}
+
+/* ==================================================================== */
+/* CandleChart — real OHLC bars from GET /market/candles.                */
+/* Setup-detail.html + V4-TR2 geometry: candle body 7–8px wide with a     */
+/* 1.5px wick, level lines dashed across the full width, volume strip     */
+/* along the bottom. Semantic colours only: cyan = market/entry,          */
+/* green = target, red = invalidation, gold = the delayed price tag.      */
+/* ==================================================================== */
+
+export type ChartLevel = {
+  price: number;
+  label: string;
+  c: string;
+  weight?: number;
+  /** Which margin the tag hangs in. The artboard alternates so a tag never
+   *  sits on top of the most recent candles (which are always on the right). */
+  side?: 'left' | 'right';
+};
+
+export function CandleChart({
+  candles,
+  levels = [],
+  height = 200,
+  showVolume = true,
+  footerLeft,
+  footerRight,
+  testID,
+}: {
+  candles: Candle[];
+  levels?: ChartLevel[];
+  height?: number;
+  showVolume?: boolean;
+  footerLeft?: string;
+  footerRight?: string;
+  testID?: string;
+}) {
+  const W = 330;
+  const volH = showVolume ? Math.round(height * 0.16) : 0;
+  const priceH = height - volH - (showVolume ? 6 : 0);
+
+  // No bars is a real answer, not a blank. The plan's levels still draw, so the
+  // user sees where the idea lives — we just never invent price action to sit
+  // underneath them.
+  if (!candles.length) {
+    const sorted = [...levels].sort((a, b) => b.price - a.price);
+    return (
+      <View
+        testID={testID}
+        style={{
+          height,
+          borderRadius: radius.xl,
+          borderWidth: 0.5,
+          borderColor: alpha.ivory12,
+          backgroundColor: color.surface3,
+          paddingHorizontal: 12,
+          paddingVertical: 14,
+          justifyContent: 'space-between',
+        }}
+      >
+        {sorted.length ? (
+          <View style={{ gap: 10 }}>
+            {sorted.map((l) => (
+              <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ flex: 1, height: 1, backgroundColor: `${l.c}66` }} />
+                <Num size={10} weight="medium" c={l.c}>{l.label}</Num>
+              </View>
+            ))}
+          </View>
+        ) : null}
+        <View style={{ gap: 3 }}>
+          <T size={12.5} c={color.muted}>No price bars for this range yet</T>
+          <T size={11} c={color.dim} lh={16}>
+            Kai draws the chart as soon as the market-data service has them. The levels above are real.
+          </T>
+        </View>
+      </View>
+    );
+  }
+
+  const lows = candles.map((c) => c.l);
+  const highs = candles.map((c) => c.h);
+  let min = Math.min(...lows, ...levels.map((l) => l.price));
+  let max = Math.max(...highs, ...levels.map((l) => l.price));
+  if (max === min) { max += 1; min -= 1; }
+  const pad = (max - min) * 0.06;
+  min -= pad;
+  max += pad;
+
+  const y = (p: number) => ((max - p) / (max - min)) * priceH;
+  const slot = W / candles.length;
+  const bodyW = Math.max(1.5, Math.min(8, slot * 0.62));
+
+  const maxVol = Math.max(1, ...candles.map((c) => c.v ?? 0));
+  const last = candles[candles.length - 1];
+
+  return (
+    <View
+      testID={testID}
+      style={{
+        borderRadius: radius.xl,
+        borderWidth: 0.5,
+        borderColor: alpha.ivory12,
+        backgroundColor: color.surface3,
+        paddingHorizontal: 10,
+        paddingTop: 10,
+        paddingBottom: 6,
+      }}
+    >
+      <View>
+        <Svg
+          viewBox={`0 0 ${W} ${height}`}
+          width="100%"
+          height={height}
+          accessibilityLabel={`${candles.length} price bars, last ${last.c.toFixed(2)}`}
+        >
+          {levels.map((l) => (
+            <Line
+              key={l.label}
+              x1={0}
+              y1={y(l.price)}
+              x2={W}
+              y2={y(l.price)}
+              stroke={l.c}
+              strokeWidth={l.weight ?? 1}
+              strokeDasharray="5 4"
+              opacity={0.7}
+            />
+          ))}
+
+          {candles.map((c, i) => {
+            const up = c.c >= c.o;
+            const col = up ? color.green : color.red;
+            const cx = i * slot + slot / 2;
+            const bodyTop = y(Math.max(c.o, c.c));
+            const bodyH = Math.max(1, Math.abs(y(c.o) - y(c.c)));
+            return (
+              <React.Fragment key={c.t || i}>
+                <Line x1={cx} y1={y(c.h)} x2={cx} y2={y(c.l)} stroke={col} strokeWidth={1.2} />
+                <Rect x={cx - bodyW / 2} y={bodyTop} width={bodyW} height={bodyH} rx={1.2} fill={col} />
+              </React.Fragment>
+            );
+          })}
+
+          {showVolume
+            ? candles.map((c, i) => {
+                const h = ((c.v ?? 0) / maxVol) * volH;
+                const cx = i * slot + slot / 2;
+                return (
+                  <Rect
+                    key={`v${c.t || i}`}
+                    x={cx - bodyW / 2}
+                    y={height - h}
+                    width={bodyW}
+                    height={h}
+                    fill={alpha.cyan14}
+                  />
+                );
+              })
+            : null}
+        </Svg>
+
+        {/* Level tags sit outside the SVG so they use the app's type ramp. */}
+        {levels.map((l) => (
+          <View
+            key={`t${l.label}`}
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              ...(l.side === 'left' ? { left: 0 } : { right: 0 }),
+              top: (y(l.price) / height) * height - 8,
+              paddingHorizontal: 5,
+              paddingVertical: 1,
+              borderRadius: radius.sm,
+              backgroundColor: color.surface3,
+              borderWidth: 0.5,
+              borderColor: `${l.c}66`,
+            }}
+          >
+            <Num size={9} weight="medium" c={l.c}>{l.label}</Num>
+          </View>
+        ))}
+      </View>
+
+      {footerLeft || footerRight ? (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+          <Num size={10} weight="regular" c={color.dim}>{footerLeft ?? ''}</Num>
+          <Num size={10} weight="regular" c={color.dim}>{footerRight ?? ''}</Num>
+        </View>
+      ) : null}
+    </View>
   );
 }

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { alpha, color, radius } from './tokens';
 import { T, Num } from './Text';
 import { ObjectCard } from './Panel';
@@ -38,6 +39,11 @@ export function SetupObject({
 }: { setup: GradedSetup; onOpen?: () => void; onWhy?: () => void; compact?: boolean; testID?: string }) {
   const st = STATE[setup.state] ?? STATE.watching;
   const fresh = setup.quote?.freshness ?? 'unknown';
+  const router = useRouter();
+  /** Default destinations: the object IS the link to its detail, and "Why?"
+   *  lands directly on the Learn view (round-2 brief, Setup detail §1). */
+  const open = onOpen ?? (() => router.push(`/setup/${encodeURIComponent(setup.id)}`));
+  const why = onWhy ?? (() => router.push(`/setup/${encodeURIComponent(setup.id)}?view=learn`));
 
   return (
     <ObjectCard
@@ -53,7 +59,7 @@ export function SetupObject({
         {/* Non-negotiable: no price on screen without its freshness. It sits in
             the header so the artboard's single-line risk row is preserved. */}
         <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-          <FreshnessMark freshness={fresh} testID={`freshness-${setup.symbol}`} />
+          <FreshnessMark freshness={fresh} delayReason={setup.quote?.delay_reason} testID={`freshness-${setup.symbol}`} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: st.c }} />
             <T size={11} c={st.c}>{setup.state_label ?? st.label}</T>
@@ -80,10 +86,10 @@ export function SetupObject({
             kind="volt"
             height={42}
             arrow
-            onPress={onOpen}
+            onPress={open}
             style={{ flex: 1 }}
           />
-          <Button testID="why" label="Why?" kind="kai" height={42} full={false} onPress={onWhy} />
+          <Button testID="why" label="Why?" kind="kai" height={42} full={false} onPress={why} />
         </View>
       )}
     </ObjectCard>

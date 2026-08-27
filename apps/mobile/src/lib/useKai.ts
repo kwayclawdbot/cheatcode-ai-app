@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { api } from './api';
 import { env } from './env';
 import { fixtureReply, fixtureSetups } from './fixtures';
@@ -23,6 +24,18 @@ export function useKaiWall(mode: GoalMode, seed: WallItem[]) {
   const convoId = useRef<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /**
+   * Pinned entry (round 2): "Ask Kai about this" on a setup routes to
+   *   /home?ask=<question>&setup_id=<id>
+   * The setup id is pinned onto the conversation so Kai answers about THAT
+   * object, and the question is sent once — a re-render must not re-ask it.
+   */
+  const params = useLocalSearchParams<{ ask?: string; setup_id?: string; symbol?: string }>();
+  const askText = typeof params.ask === 'string' ? params.ask : '';
+  const pinnedSetupId = typeof params.setup_id === 'string' ? params.setup_id : '';
+  const pinnedSymbol = typeof params.symbol === 'string' ? params.symbol : '';
+  const asked = useRef<string>('');
 
   useEffect(() => { setItems(seed); }, [seed]);
   useEffect(() => () => {
@@ -73,7 +86,14 @@ export function useKaiWall(mode: GoalMode, seed: WallItem[]) {
     // --- real stream
     try {
       if (!convoId.current) {
-        const c = await api.createConversation(mode);
+        const pinned =
+          pinnedSetupId || pinnedSymbol
+            ? {
+                ...(pinnedSetupId ? { setup_ids: [pinnedSetupId] } : null),
+                ...(pinnedSymbol ? { symbols: [pinnedSymbol] } : null),
+              }
+            : undefined;
+        const c = await api.createConversation(mode, pinned);
         convoId.current = c.id;
       }
       abort.current = new AbortController();
@@ -110,9 +130,18 @@ export function useKaiWall(mode: GoalMode, seed: WallItem[]) {
       patchText(replyId, e instanceof Error ? e.message : "I couldn't answer that just now. Try again in a moment.");
       finish();
     }
-  }, [mode, streaming, patchText]);
+  }, [mode, streaming, patchText, pinnedSetupId, pinnedSymbol]);
 
-  return { items, send, streaming };
+  // Fire the pinned question once the seeded wall exists, so Kai's answer
+  // lands under the briefing rather than replacing it.
+  useEffect(() => {
+    if (!askText || asked.current === askText) return;
+    asked.current = askText;
+    const t = setTimeout(() => { void send(askText); }, 400);
+    return () => clearTimeout(t);
+  }, [askText, send]);
+
+  return { items, send, streaming, pinnedSetupId: pinnedSetupId || null };
 }
 
 export const wallId = nextId;
