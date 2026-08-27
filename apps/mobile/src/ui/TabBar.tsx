@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { BottomTabBarProps } from 'expo-router/build/layouts/Tabs';
+import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { alpha, chrome, color } from './tokens';
 import { T } from './Text';
 import { HomeGlyph, Bell, Users, TradeGlyph, AccountGlyph } from './Icons';
