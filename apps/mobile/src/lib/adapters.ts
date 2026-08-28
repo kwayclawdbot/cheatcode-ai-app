@@ -923,3 +923,401 @@ export function adaptActionPreview(env: KaiObjectEnvelope | null): KaiActionPrev
     args: (p.args && typeof p.args === 'object' ? p.args : {}) as Record<string, unknown>,
   };
 }
+
+/* ==================================================================== */
+/* Round 4 adapters — alerts as trade objects, conversations, ticker     */
+/* page, Kai profile. Written against packages/shared/api.ts (API-4) but */
+/* tolerant: every field falls back rather than throwing, so an older or */
+/* partially-deployed API still renders.                                 */
+/* ==================================================================== */
+import type {
+  AlertCard, AlertCardState, AlertScoreComponent, AlertsRound4, ConversationRow,
+  ConversationsPayload, Experience, FocusKey, KaiProfile, RuleAdherence,
+  TickerMeter, TickerPage,
+} from './types';
+
+type R4Obj = Record<string, unknown>;
+const r4obj = (v: unknown): R4Obj => (v && typeof v === 'object' ? (v as R4Obj) : {});
+const r4arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const r4str = (v: unknown, fallback = ''): string => (typeof v === 'string' && v ? v : fallback);
+const r4nul = (v: unknown): string | null =>
+  typeof v === 'string' && v ? v : typeof v === 'number' && Number.isFinite(v) ? String(v) : null;
+const r4num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const r4bool = (v: unknown): boolean => v === true;
+/**
+ * A level cell is a NUMBER slot. When the server has only a sentence for it
+ * ("No entry level is defined on this one yet."), the cell shows nothing and
+ * the sentence moves to the note under the strip — a paragraph crammed into a
+ * 70px cell is unreadable and hides the three levels that do have numbers.
+ */
+const r4short = (v: unknown, max = 14): string | null => {
+  const t = typeof v === 'string' ? v.trim() : null;
+  if (!t) return null;
+  return t.length <= max ? t : null;
+};
+
+/** Levels are numbers on the wire; the card always shows them in mono. */
+const r4price = (v: unknown): string | null => {
+  const n = r4num(v);
+  if (n == null) return r4nul(v);
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+};
+
+/** spec §5 — state → the ONE primary action label (client-side fallback). */
+const PRIMARY_ACTION: Record<AlertCardState, string> = {
+  watching: 'Open chart',
+  forming: 'Keep watching',
+  ready: 'Review trade',
+  entry_reached: 'Open Trade Portal',
+  planned: 'Prepare order',
+  order_pending: 'Manage order',
+  position_active: 'Manage trade',
+  invalidated: 'See what changed',
+  closed: 'Review outcome',
+};
+
+/** spec §1 — which of the three top-level states a card lives in. */
+const STATE_TAB: Record<AlertCardState, 'active' | 'watching' | 'history'> = {
+  watching: 'watching',
+  forming: 'watching',
+  ready: 'active',
+  entry_reached: 'active',
+  planned: 'active',
+  order_pending: 'active',
+  position_active: 'active',
+  invalidated: 'active',
+  closed: 'history',
+};
+
+const CARD_STATES = new Set<string>(Object.keys(PRIMARY_ACTION));
+
+export function alertCardState(v: unknown): AlertCardState {
+  const s = r4str(v).toLowerCase().replace(/[\s-]+/g, '_');
+  if (CARD_STATES.has(s)) return s as AlertCardState;
+  if (s === 'triggered' || s === 'entry') return 'entry_reached';
+  if (s === 'executed' || s === 'resolved' || s === 'expired' || s === 'missed') return 'closed';
+  if (s === 'active') return 'ready';
+  if (s === 'monitoring') return 'watching';
+  return 'watching';
+}
+
+export function primaryActionLabel(state: AlertCardState): string {
+  return PRIMARY_ACTION[state];
+}
+
+/**
+ * One scorecard row. `strength` is 0–5 SEGMENTS. If a legacy build ever sends
+ * points, they are folded into segments HERE so no fraction can reach a screen
+ * (spec §4 "Never display component fractions such as 18/20").
+ */
+function adaptScoreComponent(raw: unknown, i: number): AlertScoreComponent {
+  const o = r4obj(raw);
+  let strength = r4num(o.strength);
+  if (strength == null) {
+    const points = r4num(o.points);
+    const max = r4num(o.max);
+    strength = points != null && max != null && max > 0 ? Math.round((points / max) * 5) : 3;
+  }
+  const evidence = r4arr(o.evidence).map((e) => r4str(e)).filter(Boolean);
+  return {
+    key: r4str(o.key, `c${i}`),
+    label: r4str(o.label, 'Component'),
+    status: r4str(o.status, 'Neutral'),
+    strength: Math.max(0, Math.min(5, Math.round(strength))),
+    explanation: r4nul(o.explanation) ?? (evidence.length ? evidence.join(' · ') : null),
+  };
+}
+
+/** `AlertCard` (packages/shared) → the card the screen draws. */
+export function adaptAlertCard(raw: unknown, i = 0): AlertCard {
+  const o = r4obj(raw);
+  const identity = r4obj(o.identity);
+  const grade = r4obj(o.grade);
+  const event = r4obj(o.event);
+  const quote = r4obj(o.quote);
+  const plan = r4obj(o.trade_plan ?? o.trade);
+  const fit = r4obj(o.fit);
+  const community = r4obj(o.community);
+  const action = r4obj(o.primary_action);
+  const state = alertCardState(o.state ?? o.status);
+  const targets = r4arr(plan.targets);
+  const firstTarget = targets.length ? r4obj(targets[0]) : {};
+
+  const symbol = r4str(identity.symbol ?? o.symbol, '—');
+  const riskUsd = r4num(fit.est_risk_usd);
+  const conflicts = r4arr(fit.conflicts).map((c) => r4str(c)).filter(Boolean);
+  const sample = r4num(community.sample_size ?? community.sample);
+  const sentiment = r4nul(community.sentiment);
+  const bullish = sentiment ? Number((sentiment.match(/(\d{1,3})\s*%/) ?? [])[1] ?? NaN) : NaN;
+
+  return {
+    id: r4str(o.id, `alert-${i}`),
+    symbol,
+    company: r4str(identity.company_name ?? o.company, symbol),
+    mode_label: r4str(identity.mode_label ?? o.mode_label, 'Day Trade'),
+    direction_label: r4str(identity.direction ?? o.direction_label, 'Long'),
+    instrument_label: r4nul(identity.instrument ?? o.instrument_label),
+    alert_id: r4nul(o.alert_id) ?? r4nul(o.id),
+    grade: r4str(grade.display ?? o.grade_display ?? o.grade, '—'),
+    score: r4num(grade.score ?? o.score),
+    state,
+    state_label: r4str(o.state_label, state === 'watching' || state === 'forming' ? 'Watching' : 'Triggered'),
+    triggered_at_label: r4nul(event.at_plain ?? o.triggered_at_label),
+    headline: r4str(event.headline ?? o.headline ?? o.title, ''),
+    what_changed: r4str(event.what_changed ?? o.what_changed ?? o.detail, ''),
+    company_summary: r4nul(o.company_summary),
+    trade: {
+      direction: r4nul(plan.direction_plain ?? plan.direction ?? o.direction),
+      current: r4price(quote.price ?? r4obj(o.quote).price),
+      entry: r4price(plan.entry) ?? r4short(plan.entry_condition_plain),
+      stop: r4price(plan.stop),
+      target: r4price(firstTarget.price ?? plan.target),
+      rr: r4num(plan.rr) != null ? `${(r4num(plan.rr) as number).toFixed(1)}:1` : r4short(plan.rr_plain, 10),
+      hold: r4short(plan.expected_hold ?? plan.hold, 28),
+      expires: r4short(plan.expires_plain ?? plan.expires, 20),
+      note: [
+        r4price(plan.entry) == null ? r4nul(plan.entry_condition_plain) : null,
+        r4price(plan.stop) == null ? r4nul(plan.invalidation_plain) : null,
+      ].filter(Boolean).join(' ') || null,
+    },
+    score_components: r4arr(o.score_components).map(adaptScoreComponent),
+    kai_interpretation: r4nul(o.kai_interpretation ?? o.interpretation),
+    fit: Object.keys(fit).length
+      ? {
+          risk_amount: riskUsd != null ? `$${Math.round(riskUsd).toLocaleString('en-US')}` : r4nul(fit.risk_amount),
+          cap_line: fit.fits_cap === true ? 'fits daily cap' : fit.fits_cap === false ? 'over your daily cap' : r4nul(fit.cap_line),
+          conflicts: conflicts.length ? conflicts.join(' · ') : 'No conflicts',
+        }
+      : null,
+    community: Object.keys(community).length
+      ? {
+          sample: sample,
+          bullish_pct: Number.isFinite(bullish) ? bullish : r4num(community.bullish_pct),
+          common_level: r4price(community.common_level),
+          verification: community.verified === true ? 'verified' : community.verified === false ? 'unverified' : r4nul(community.verification),
+        }
+      : null,
+    progress: (() => {
+      const p = r4obj(o.progress);
+      const pct = r4num(p.pct);
+      return pct != null ? { pct, label: r4str(p.label, '') } : null;
+    })(),
+    primary_action: { label: r4str(action.label, PRIMARY_ACTION[state]), kind: state },
+    freshness_line: r4nul(quote.label_plain ?? o.freshness_line),
+    outcome: (() => {
+      const out = r4obj(o.outcome);
+      return out.label ? { label: r4str(out.label, 'Outcome'), value: r4nul(out.value), tone: (r4str(out.tone, 'neutral') as 'good' | 'bad' | 'neutral') } : null;
+    })(),
+    resolved_label: r4nul(o.resolved_label ?? o.resolved_at_label),
+  };
+}
+
+/**
+ * `GET /alerts?tab=` answers with the requested tab's `cards` plus the counts
+ * for all three tabs. Older builds answer with the whole grouped payload, so
+ * both are folded into the same three lists here.
+ */
+export function adaptAlertsRound4(raw: unknown): AlertsRound4 {
+  const o = r4obj(raw);
+  const out: AlertsRound4 = {
+    active: [], watching: [], history: [],
+    counts: { active: 0, watching: 0, history: 0 },
+    empty_copy: r4nul(o.card_empty_copy ?? o.empty_copy)
+      ?? 'Nothing here yet. Kai will put an alert here the moment something changes.',
+  };
+
+  if (Array.isArray(o.cards)) {
+    (o.cards as unknown[]).map(adaptAlertCard).forEach((c, i) => {
+      const declared = r4str(r4obj((o.cards as unknown[])[i]).tab) as 'active' | 'watching' | 'history' | '';
+      const tab = declared === 'active' || declared === 'watching' || declared === 'history' ? declared : STATE_TAB[c.state];
+      out[tab].push(c);
+    });
+  } else {
+    const pick = (...keys: string[]): unknown[] => {
+      for (const k of keys) if (Array.isArray(o[k])) return o[k] as unknown[];
+      return [];
+    };
+    out.active = pick('active', 'needs_attention', 'attention').map(adaptAlertCard);
+    out.watching = pick('watching', 'monitoring').map(adaptAlertCard);
+    out.history = pick('history', 'resolved').map(adaptAlertCard);
+  }
+
+  out.counts = { active: out.active.length, watching: out.watching.length, history: out.history.length };
+  r4arr(o.tabs).forEach((t) => {
+    const chip = r4obj(t);
+    const key = r4str(chip.key);
+    const count = r4num(chip.count);
+    if ((key === 'active' || key === 'watching' || key === 'history') && count != null) out.counts[key] = count;
+  });
+  const counts = r4obj(o.counts);
+  (['active', 'watching', 'history'] as const).forEach((k) => {
+    const n = r4num(counts[k]);
+    if (n != null) out.counts[k] = n;
+  });
+  return out;
+}
+
+/** Merge a per-tab response into the lists already held (see useAlertsRound4). */
+export function mergeAlertsTab(base: AlertsRound4, incoming: AlertsRound4, tab: 'active' | 'watching' | 'history'): AlertsRound4 {
+  return {
+    ...base,
+    [tab]: incoming[tab],
+    counts: incoming.counts,
+    empty_copy: incoming.empty_copy ?? base.empty_copy,
+  };
+}
+
+function adaptConversationRow(raw: unknown, i: number): ConversationRow {
+  const o = r4obj(raw);
+  return {
+    id: r4str(o.id, `conv-${i}`),
+    title: r4str(o.title, 'Untitled conversation'),
+    pinned: r4bool(o.pinned),
+    last_message_at: r4nul(o.last_message_at ?? o.updated_at ?? o.created_at),
+  };
+}
+
+export function adaptConversations(raw: unknown): ConversationsPayload {
+  const o = r4obj(raw);
+  const pinnedList = r4arr(o.pinned).map(adaptConversationRow);
+  const recentList = r4arr(o.recent).map(adaptConversationRow);
+  if (pinnedList.length || recentList.length) return { pinned: pinnedList, recent: recentList };
+  const flat = r4arr(o.conversations ?? o.items ?? raw).map(adaptConversationRow);
+  return { pinned: flat.filter((c) => c.pinned), recent: flat.filter((c) => !c.pinned) };
+}
+
+/** `QualitativeMeter` → the ticker page's meter row. */
+function adaptMeter(raw: unknown, label: string): TickerMeter {
+  const o = r4obj(raw);
+  return {
+    label: r4str(o.label, label),
+    status: r4str(o.status, 'Neutral'),
+    strength: Math.max(0, Math.min(5, Math.round(r4num(o.strength) ?? 3))),
+  };
+}
+
+/** The first level in a `PriceLevel[]`, as "Support 498". */
+function adaptLevel(raw: unknown, prefix: string): string | null {
+  const list = r4arr(raw);
+  if (!list.length) {
+    const one = r4price(raw);
+    return one ? `${prefix} ${one}` : null;
+  }
+  const first = r4obj(list[0]);
+  const price = r4price(first.price);
+  return price ? `${prefix} ${price}` : null;
+}
+
+export function adaptTickerPage(raw: unknown, symbol: string): TickerPage {
+  const o = r4obj(raw);
+  const identity = r4obj(o.identity);
+  const company = r4obj(o.company);
+  const quote = r4obj(o.quote);
+  const market = r4obj(o.market);
+  const overview = r4obj(o.ticker_overview ?? o.overview);
+  const technicals = r4obj(o.technicals);
+  const kai = r4obj(o.kai_view);
+  const community = r4obj(o.ticker_community ?? o.community);
+  const alert = r4obj(o.active_alert);
+  const circle = r4obj(community.circle);
+  const timeframes = r4arr(o.chart_timeframes).map((t) => r4str(r4obj(t).label ?? r4obj(t).key)).filter(Boolean);
+
+  return {
+    symbol: r4str(identity.symbol ?? o.symbol, symbol),
+    company: r4str(company.name ?? identity.name ?? o.company, symbol),
+    quote: adaptQuoteLoose(Object.keys(quote).length ? quote : o.quote),
+    market_label: r4str(market.label ?? o.market_label, 'market closed').toLowerCase(),
+    starred: r4bool(identity.watchlisted ?? o.starred),
+    chart: {
+      points: r4arr(r4obj(o.chart_config ?? o.chart).points).filter((p): p is number => typeof p === 'number'),
+      timeframes: timeframes.length ? timeframes : ['1D', '1W', '1M', '1Y'],
+      selected: timeframes[0] ?? '1D',
+    },
+    kai_view: {
+      take: r4str(kai.take ?? kai.text, ''),
+      actions: (() => {
+        const list = r4arr(kai.actions).map((a) => (typeof a === 'string' ? a : r4str(r4obj(a).label))).filter(Boolean);
+        return list.length ? list : ['Ask Kai', 'Explain the chart', 'Compare'];
+      })(),
+    },
+    overview: {
+      summary: r4str(overview.summary ?? company.summary, ''),
+      market_cap: r4nul(overview.market_cap_plain ?? company.market_cap_plain ?? overview.market_cap),
+      next_earnings: r4nul(overview.next_earnings ?? company.next_earnings),
+      pe: r4nul(overview.pe ?? company.pe),
+      sector: r4nul(overview.sector ?? company.sector),
+    },
+    technicals: {
+      meters: [
+        adaptMeter(technicals.trend, 'Trend'),
+        adaptMeter(technicals.momentum, 'Momentum'),
+        adaptMeter(technicals.volatility, 'Volatility'),
+      ],
+      support: adaptLevel(technicals.support, 'Support'),
+      resistance: adaptLevel(technicals.resistance, 'Resistance'),
+    },
+    community: {
+      common_level: r4price(community.most_mentioned_level ?? community.common_level),
+      posts_today: r4num(community.posts_today),
+      bullish_pct: (() => {
+        const sentiment = r4nul(community.sentiment);
+        const m = sentiment ? Number((sentiment.match(/(\d{1,3})\s*%/) ?? [])[1] ?? NaN) : NaN;
+        return Number.isFinite(m) ? m : r4num(community.bullish_pct);
+      })(),
+      sample: r4num(community.posts_today ?? community.sample),
+      circle: circle.id
+        ? { id: r4str(circle.id), label: `Open ${r4str(circle.name, `${symbol} circle`)}` }
+        : null,
+    },
+    active_alert: alert.card_id || alert.alert_id || alert.id
+      ? {
+          id: r4str(alert.alert_id ?? alert.card_id ?? alert.id),
+          grade: r4str(r4obj(alert.grade).display ?? alert.grade, '—'),
+          score: r4num(r4obj(alert.grade).score),
+          line: r4str(alert.plain ?? alert.line, 'One active alert'),
+        }
+      : null,
+  };
+}
+
+const FOCUS_KEYS = new Set<string>(['tech', 'ai', 'energy', 'etf', 'crypto', 'earnings']);
+
+export function adaptFocus(raw: unknown): FocusKey[] {
+  // The API sends a FocusSummary object; older builds sent a plain array.
+  const keys = Array.isArray(raw) ? raw : r4arr(r4obj(raw).keys);
+  return keys.map((f) => r4str(f)).filter((f) => FOCUS_KEYS.has(f)) as FocusKey[];
+}
+
+export function adaptExperience(raw: unknown): Experience {
+  const s = r4str(raw);
+  if (s === 'pro' || s === 'advanced') return 'pro';
+  if (s === 'some' || s === 'intermediate') return 'some';
+  return 'new';
+}
+
+export function adaptKaiProfile(
+  raw: unknown,
+  fallbackMode: GoalMode,
+): { mode: GoalMode; experience: Experience; focus: FocusKey[]; voice_line?: string } {
+  const o = r4obj(raw);
+  const mode = r4str(o.mode) as GoalMode;
+  return {
+    mode: mode === 'day_trade' || mode === 'swing' || mode === 'invest' ? mode : fallbackMode,
+    experience: adaptExperience(o.experience ?? o.experience_level),
+    focus: adaptFocus(o.focus),
+    voice_line: r4nul(o.voice_line) ?? undefined,
+  };
+}
+
+/**
+ * `show:false` under three sessions — a ratio out of one or two is noise, so
+ * the Account board simply does not draw the line (brief item 10).
+ */
+export function adaptRuleAdherence(raw: unknown): RuleAdherence | null {
+  const o = r4obj(raw);
+  const sessions = r4num(o.sessions);
+  const followed = r4num(o.followed);
+  if (sessions == null || followed == null) return null;
+  if (o.show === false) return { sessions: 0, followed: 0 };
+  return { sessions, followed };
+}

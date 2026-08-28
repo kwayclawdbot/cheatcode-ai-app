@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase, plainAuthError } from './supabase';
 import { env } from './env';
 import { fixtureProfile } from './fixtures';
-import type { GoalMode, Involvement, Profile, RiskAnswer, FundingChoice } from './types';
+import type { Experience, FocusKey, GoalMode, Involvement, Profile, RiskAnswer, FundingChoice } from './types';
 
 type AuthResult = { ok: boolean; error?: string; needsConfirmation?: boolean };
 
@@ -28,7 +28,10 @@ export type OnboardingDraft = {
   funding: FundingChoice | null;
   risk_answer: RiskAnswer | null;
   involvement: Involvement | null;
-  experience: 'beginner' | 'intermediate' | 'advanced';
+  /** Round 4 "How much have you traded?" — drives Kai's voice, not just a label. */
+  experience: Experience;
+  /** Round 4 "What should Kai watch?" chips. */
+  focus: FocusKey[];
   starting_balance: number;
 };
 /**
@@ -53,7 +56,7 @@ export function clampBalance(n: number): number {
 
 const DEFAULT_DRAFT: OnboardingDraft = {
   goal_mode: null, funding: null, risk_answer: null, involvement: null,
-  experience: 'beginner', starting_balance: DEFAULT_BALANCE,
+  experience: 'new', focus: ['tech', 'ai'], starting_balance: DEFAULT_BALANCE,
 };
 
 type DraftValue = { draft: OnboardingDraft; set: (p: Partial<OnboardingDraft>) => void; reset: () => void };
@@ -96,7 +99,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     loading,
     session,
     profile,
-    onboardingDone: env.FIXTURES ? true : profile?.onboarding?.completed === true,
+    /**
+     * The SERVER decides this: `complete_onboarding` (0016) stamps
+     * `onboarding.completed_at`. The older client-side `completed:true` flag is
+     * still honoured so accounts created before round 4 keep working — but it
+     * is never written any more, because patching `onboarding` wholesale would
+     * wipe the answers (focus, experience, starting balance) stored beside it.
+     */
+    onboardingDone: env.FIXTURES
+      ? true
+      : profile?.onboarding?.completed === true || !!profile?.onboarding?.completed_at,
 
     signUp: async (email, password) => {
       if (!supabase) return { ok: false, error: 'Sign up is not available yet — the service is still being set up.' };

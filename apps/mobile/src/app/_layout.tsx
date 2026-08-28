@@ -20,6 +20,7 @@ const STACK_GROUPS = new Set([
   'setup', 'alert', 'symbol', 'account',       // this lane
   'room', 'debrief', 'contributor',            // MOBILE-B round 2
   'order', 'plan', 'position',                 // MOBILE-B round 3 (paper execution)
+  'trade', 'circle',                           // MOBILE-B round 4 (portal + circles)
 ]);
 
 /**
@@ -45,7 +46,7 @@ function Gate({ children }: { children: React.ReactNode }) {
     if (!session) {
       if (!inAuth) router.replace('/welcome');
     } else if (!onboardingDone) {
-      if (!inOnboarding) router.replace('/kai');
+      if (!inOnboarding) router.replace('/goal');
     } else if (inAuth || inOnboarding || (!inTabs && !inStack)) {
       router.replace('/home');
     }
@@ -80,6 +81,9 @@ export default function RootLayout() {
                 <Stack.Screen name="alert/new" options={{ animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="symbol/[symbol]" options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="symbol/search" options={{ animation: 'slide_from_bottom' }} />
+                <Stack.Screen name="trade/[symbol]" options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="circle/[id]" options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="order/confirmed" options={{ animation: 'slide_from_bottom' }} />
               </Stack>
               {/* Kai's contextual sheet lives above every route: it opens OVER
                   the current screen and never navigates the user away (audit §5). */}

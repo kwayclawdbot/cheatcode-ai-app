@@ -107,7 +107,9 @@ export type Profile = {
   involvement?: Involvement | null;
   experience?: string | null;
   memory_enabled?: boolean | null;
-  onboarding?: { completed?: boolean } | null;
+  /** `completed_at` is the server's stamp (0016 complete_onboarding); the
+   *  boolean is the pre-round-4 client flag, still read, never written. */
+  onboarding?: { completed?: boolean; completed_at?: string; focus?: string[]; experience?: string } | null;
 };
 
 export type RiskPolicy = { daily_loss_cap: number; max_position_pct: number; involvement: Involvement };
@@ -544,3 +546,160 @@ export type AlertsSimple = {
   history: AlertRow[];
   empty_copy: string;
 };
+
+/* ==================================================================== */
+/* Round 4 — prototype boards: personalize onboarding, conversations     */
+/* drawer, ticker page, alerts as complete trade objects, Kai profile.   */
+/* Contracts: docs/10_ALERTS_TRADE_PORTAL_SPEC_extracted.md §1–§6, §9.   */
+/* ==================================================================== */
+
+/** Onboarding "How much have you traded?" — drives Kai's voice. */
+export type Experience = 'new' | 'some' | 'pro';
+
+/** "What should Kai watch?" chips. */
+export type FocusKey = 'tech' | 'ai' | 'energy' | 'etf' | 'crypto' | 'earnings';
+
+/** Alerts IA — exactly three top-level states (spec §1). */
+export type AlertTab = 'active' | 'watching' | 'history';
+
+/** Card lifecycle → the ONE state-driven primary action (spec §5). */
+export type AlertCardState =
+  | 'watching' | 'forming' | 'ready' | 'entry_reached' | 'planned'
+  | 'order_pending' | 'position_active' | 'invalidated' | 'closed';
+
+/**
+ * A scorecard component. `strength` is 0–5 SEGMENTS, never points, and the
+ * card must never render it as a fraction (spec §4).
+ */
+export type AlertScoreComponent = {
+  key: string;
+  label: string;
+  status: string;        // Strong · Confirmed · Healthy · Forming · Waiting · Favorable · Supportive · Neutral
+  strength: number;      // 0–5
+  explanation?: string | null;
+};
+
+export type AlertTradePlanStrip = {
+  direction?: string | null;        // Long · Short · Call · Put · Accumulate …
+  current?: string | null;
+  entry?: string | null;
+  stop?: string | null;
+  target?: string | null;
+  rr?: string | null;               // "2.4:1"
+  hold?: string | null;             // "intraday"
+  expires?: string | null;          // "4:00 PM ET"
+  /** Plain sentence shown under the strip when a level has no number yet. */
+  note?: string | null;
+};
+
+export type AlertFit = {
+  risk_amount?: string | null;      // "$58"
+  cap_line?: string | null;         // "fits daily cap"
+  conflicts?: string | null;        // "No conflicts"
+};
+
+export type AlertCommunity = {
+  sample?: number | null;
+  bullish_pct?: number | null;
+  common_level?: string | null;
+  verification?: string | null;     // "verified"
+};
+
+export type AlertProgress = { pct: number; label: string } | null;
+
+export type AlertOutcome = { label: string; value?: string | null; tone?: 'good' | 'bad' | 'neutral' };
+
+/** The standard actionable alert card (spec §2 / §3 / §9). */
+export type AlertCard = {
+  id: string;
+  /** The underlying alert row. The card id may be "alert:<uuid>". */
+  alert_id?: string | null;
+  symbol: string;
+  company: string;
+  mode_label: string;               // "Day Trade"
+  direction_label: string;          // "Long"
+  instrument_label?: string | null; // "equity" | "call" | "ETF"
+  grade: string;                    // "A−"
+  /** null when the object has never been graded — the medallion stays blank. */
+  score: number | null;             // 0–100
+  state: AlertCardState;
+  state_label: string;              // "Triggered" · "Watching" · "Grade changed"
+  triggered_at_label?: string | null;
+  headline: string;
+  what_changed: string;
+  company_summary?: string | null;  // <= 2 sentences
+  trade: AlertTradePlanStrip;
+  score_components: AlertScoreComponent[];
+  kai_interpretation?: string | null;
+  fit?: AlertFit | null;
+  community?: AlertCommunity | null;
+  progress?: AlertProgress;
+  primary_action: { label: string; kind: AlertCardState };
+  freshness_line?: string | null;   // "Quote 9:41:02 ET · live · received 8s ago"
+  outcome?: AlertOutcome | null;    // History only
+  resolved_label?: string | null;   // History only ("Yesterday")
+};
+
+export type AlertsRound4 = {
+  active: AlertCard[];
+  watching: AlertCard[];
+  history: AlertCard[];
+  counts: { active: number; watching: number; history: number };
+  empty_copy?: string | null;
+};
+
+/** Conversations drawer (prototype "Home" board). */
+export type ConversationRow = {
+  id: string;
+  title: string;
+  pinned: boolean;
+  last_message_at?: string | null;
+};
+
+export type ConversationsPayload = { pinned: ConversationRow[]; recent: ConversationRow[] };
+
+/** Ticker page (`/symbol/[symbol]`) — the research overview board. */
+export type TickerMeter = { label: string; status: string; strength: number };
+
+export type TickerPage = {
+  symbol: string;
+  company: string;
+  quote: Quote | null;
+  market_label: string;             // "market open"
+  starred: boolean;
+  chart: { points: number[]; timeframes: string[]; selected: string };
+  kai_view: { take: string; actions: string[] };
+  overview: {
+    summary: string;
+    market_cap?: string | null;
+    next_earnings?: string | null;
+    pe?: string | null;
+    sector?: string | null;
+  };
+  technicals: {
+    meters: TickerMeter[];
+    support?: string | null;
+    resistance?: string | null;
+  };
+  community: {
+    common_level?: string | null;
+    posts_today?: number | null;
+    bullish_pct?: number | null;
+    sample?: number | null;
+    circle?: { id: string; label: string } | null;
+  };
+  active_alert?: { id: string; grade: string; score?: number | null; line: string } | null;
+};
+
+/** Account board — YOUR KAI PROFILE. */
+export type KaiProfile = {
+  mode: GoalMode;
+  mode_label: string;
+  experience: Experience;
+  experience_label: string;         // "New to this"
+  focus: FocusKey[];
+  focus_short: string;              // "big tech and AI & semis"
+  voice_line: string;               // "I explain every term the first time it appears."
+};
+
+export type RuleAdherence = { sessions: number; followed: number };

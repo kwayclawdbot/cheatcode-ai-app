@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, ScrollView } from 'react-native';
+import { View, ScrollView, Pressable } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { Screen } from '../../ui/Screen';
 import { T } from '../../ui/Text';
 import { KaiOrb } from '../../ui/KaiOrb';
@@ -11,10 +12,44 @@ import { ObjectCard } from '../../ui/Panel';
 import { Composer } from '../../ui/Composer';
 import { FreshnessMark } from '../../ui/FreshnessMark';
 import { color, radius } from '../../ui/tokens';
-import { AlsoWatching, ModeControl, PriorityObject, useHomeV5, usePriorityCandles } from '../../features/home';
+import {
+  AlsoWatching, ConversationsDrawer, PriorityObject, useConversations, useHomeV5, usePriorityCandles,
+} from '../../features/home';
+import { MODE_LABEL } from '../../features/account/profile';
 import { useSession } from '../../lib/session';
 import { useKaiWall } from '../../lib/useKai';
-import type { GoalMode, WallItem } from '../../lib/types';
+import { alpha } from '../../ui/tokens';
+import type { ConversationRow, GoalMode, WallItem } from '../../lib/types';
+
+const Hamburger = ({ onPress }: { onPress: () => void }) => (
+  <Pressable
+    onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel="Conversations"
+    testID="home-threads-open"
+    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+  >
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path d="M4 6h16M4 12h16M4 18h10" stroke={color.text} strokeWidth={2} />
+    </Svg>
+  </Pressable>
+);
+
+const NewThread = ({ onPress }: { onPress: () => void }) => (
+  <Pressable
+    onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel="New conversation"
+    testID="home-thread-new"
+    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+  >
+    <Svg width={19} height={19} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 5v14M5 12h14" stroke={color.volt} strokeWidth={2} />
+    </Svg>
+  </Pressable>
+);
 
 /**
  * Home — V5-H1-Home-priority.html.
@@ -31,9 +66,16 @@ import type { GoalMode, WallItem } from '../../lib/types';
  */
 export default function Home() {
   const { profile } = useSession();
-  const [modeOverride, setModeOverride] = useState<GoalMode | null>(null);
-  const mode: GoalMode = modeOverride ?? (profile?.primary_mode as GoalMode) ?? 'day_trade';
+  /** Mode is set in onboarding and changed on the Account board (Kai profile). */
+  const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? 'day_trade';
   const { data, error, isFixture } = useHomeV5(mode);
+  const threads = useConversations();
+  const [threadsOpen, setThreadsOpen] = useState(false);
+  /** Which conversation the workspace is showing. 'today' carries the
+   *  priority object as its opening object; the others do not. */
+  const [thread, setThread] = useState<{ kind: 'today' } | { kind: 'new' } | { kind: 'saved'; row: ConversationRow }>({ kind: 'today' });
+  const [threadNonce, setThreadNonce] = useState(0);
+  const activeThread = thread.kind === 'saved' ? thread.row : null;
   const priorityCandles = usePriorityCandles(data?.priority?.symbol, data?.priority?.candles ?? []);
   const scroller = useRef<ScrollView | null>(null);
 
@@ -43,6 +85,14 @@ export default function Home() {
    * the wall it always was.
    */
   const seed = useMemo<WallItem[]>(() => {
+    // Opening an older conversation replaces today's opening object with that
+    // thread — Kai picks it up rather than pretending it is this morning.
+    if (thread.kind === 'saved') {
+      return [{ kind: 'notice', id: `thread-${thread.row.id}-${threadNonce}`, text: `Picking up “${thread.row.title}”. Ask me anything about it.` }];
+    }
+    if (thread.kind === 'new') {
+      return [{ kind: 'notice', id: `thread-new-${threadNonce}`, text: 'New conversation. Ask me about a symbol, a setup or your rules.' }];
+    }
     if (!data) return [];
     const out: WallItem[] = [];
     if (data.briefing) out.push({ kind: 'briefing', id: 'seed-briefing', briefing: data.briefing });
@@ -61,7 +111,7 @@ export default function Home() {
       });
     }
     return out;
-  }, [data, mode]);
+  }, [data, mode, thread, threadNonce]);
 
   const { items, send, streaming } = useKaiWall(mode, seed);
 
@@ -74,17 +124,48 @@ export default function Home() {
 
   const market = data?.market;
 
+  /** The daily conversation is titled by the API; this is the local fallback. */
+  const todayTitle = useMemo(
+    () => `Morning Briefing · ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+    [],
+  );
+
+  const newThread = () => {
+    setThread({ kind: 'new' });
+    setThreadNonce((n) => n + 1);
+    setThreadsOpen(false);
+  };
+
+  const openThread = (row: ConversationRow) => {
+    setThread(row.title === todayTitle ? { kind: 'today' } : { kind: 'saved', row });
+    setThreadNonce((n) => n + 1);
+    setThreadsOpen(false);
+  };
+
   return (
     <Screen variant="corner" layout="tab" testID="screen-home">
-      {/* 1 — mode is visible global context (audit §10) */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, paddingHorizontal: 16, paddingBottom: 6 }}>
-        <ModeControl mode={mode} onChanged={setModeOverride} />
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: market?.status === 'open' ? color.green : color.muted }} />
-          <T size={12} c={color.muted}>{market?.label ?? 'Checking the market…'}</T>
-          {market ? <T size={12} c={color.dim}>·</T> : null}
-          {market ? <FreshnessMark freshness={market.freshness} size={12} testID="market-freshness" /> : null}
+      {/* 1 — the conversation's own header: drawer · title · new thread */}
+      <View
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 11,
+          paddingTop: 8, paddingHorizontal: 16, paddingBottom: 8,
+          borderBottomWidth: 1, borderBottomColor: alpha.ivory07,
+        }}
+      >
+        <Hamburger onPress={() => setThreadsOpen(true)} />
+        <View style={{ flex: 1, minWidth: 0, alignItems: 'center' }}>
+          <T size={14} weight="semibold" numberOfLines={1} testID="home-thread-title">
+            {thread.kind === 'saved' ? thread.row.title : thread.kind === 'new' ? 'New conversation' : todayTitle}
+          </T>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: market?.status === 'open' ? color.cyan : color.muted }} />
+            <T size={10} c={color.muted}>{market?.label ?? 'Checking the market…'}</T>
+            <T size={10} c={color.dim}>·</T>
+            <T size={10} weight="semibold" c={color.volt} testID="home-mode">{MODE_LABEL[mode]}</T>
+            {market ? <FreshnessMark freshness={market.freshness} size={10} testID="market-freshness" /> : null}
+          </View>
         </View>
+        <NewThread onPress={newThread} />
       </View>
 
       <ScrollView
@@ -96,17 +177,19 @@ export default function Home() {
         keyboardShouldPersistTaps="handled"
       >
         {/* 2 — Kai's opening line */}
+        {thread.kind === 'today' ? (
         <View style={{ flexDirection: 'row', gap: 11, alignItems: 'flex-start' }}>
           <KaiOrb size={32} />
           <T size={19} weight="semibold" lh={26} ls={-0.2} style={{ flex: 1, paddingTop: 2 }} testID="opening-line">
             {data?.opening_line ?? 'Reading the tape…'}
           </T>
         </View>
+        ) : null}
 
-        {/* 3 + 4 — the one object and the one action */}
-        {data?.priority ? (
+        {/* 3 + 4 — the one object and the one action (today's thread only) */}
+        {thread.kind === 'today' && data?.priority ? (
           <PriorityObject priority={data.priority} candles={priorityCandles} />
-        ) : data ? (
+        ) : thread.kind === 'today' && data ? (
           <ObjectCard r={radius.xxl} style={{ padding: 16, gap: 6 }} testID="home-priority-empty">
             <T size={15} weight="bold">Nothing needs a decision right now.</T>
             <T size={13} lh={19} c={color.muted}>
@@ -116,7 +199,7 @@ export default function Home() {
         ) : null}
 
         {/* 5 — secondary rows, no card weight */}
-        {data ? <AlsoWatching rows={data.also_watching} /> : null}
+        {thread.kind === 'today' && data ? <AlsoWatching rows={data.also_watching} /> : null}
 
         {/* the conversation: the briefing detail and every answer since */}
         {items.map((it, i) => {
@@ -160,8 +243,22 @@ export default function Home() {
 
       {/* 6 — the composer never moves */}
       <View style={{ paddingTop: 10, paddingHorizontal: 16, paddingBottom: 6 }}>
-        <Composer placeholder="Ask Kai anything…" onSend={send} disabled={streaming} />
+        <Composer placeholder="Message Kai…" onSend={send} disabled={streaming} />
       </View>
+
+      <ConversationsDrawer
+        visible={threadsOpen}
+        onClose={() => setThreadsOpen(false)}
+        pinned={threads.data.pinned}
+        recent={threads.data.recent}
+        q={threads.q}
+        onQuery={threads.setQ}
+        activeId={activeThread?.id ?? null}
+        onOpen={openThread}
+        onPin={(row) => { void threads.togglePin(row.id); }}
+        onNew={newThread}
+        loading={threads.loading}
+      />
     </Screen>
   );
 }

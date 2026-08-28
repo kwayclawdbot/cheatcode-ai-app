@@ -30,12 +30,12 @@ export default function SignUp() {
     if (!email.includes('@')) { setError("That doesn't look like an email address."); return; }
     if (password.length < 6) { setError('Use at least 6 characters for your password.'); return; }
     setBusy(true);
-    if (env.FIXTURES) { setBusy(false); router.push('/kai'); return; }
+    if (env.FIXTURES) { setBusy(false); router.push('/goal'); return; }
     const r = await signUp(email, password);
     setBusy(false);
     if (!r.ok) { setError(r.error ?? 'Something went wrong. Please try again.'); return; }
     if (r.needsConfirmation) { setSent(true); return; }
-    router.replace('/kai');
+    router.replace('/goal');
   };
 
   return (

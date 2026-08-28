@@ -7,19 +7,22 @@ import {
   SpaceGrotesk_700Bold,
 } from '@expo-google-fonts/space-grotesk';
 import {
-  IBMPlexMono_400Regular,
-  IBMPlexMono_500Medium,
-  IBMPlexMono_600SemiBold,
-} from '@expo-google-fonts/ibm-plex-mono';
+  JetBrainsMono_400Regular,
+  JetBrainsMono_500Medium,
+  JetBrainsMono_600SemiBold,
+  JetBrainsMono_700Bold,
+} from '@expo-google-fonts/jetbrains-mono';
 
+/** Round 4: mono is JetBrains Mono app-wide (was IBM Plex Mono). */
 export const family = {
   regular: 'SpaceGrotesk_400Regular',
   medium: 'SpaceGrotesk_500Medium',
   semibold: 'SpaceGrotesk_600SemiBold',
   bold: 'SpaceGrotesk_700Bold',
-  mono: 'IBMPlexMono_400Regular',
-  monoMedium: 'IBMPlexMono_500Medium',
-  monoSemibold: 'IBMPlexMono_600SemiBold',
+  mono: 'JetBrainsMono_400Regular',
+  monoMedium: 'JetBrainsMono_500Medium',
+  monoSemibold: 'JetBrainsMono_600SemiBold',
+  monoBold: 'JetBrainsMono_700Bold',
 } as const;
 
 export type Weight = 'regular' | 'medium' | 'semibold' | 'bold';
@@ -36,9 +39,10 @@ export function useAppFonts(): { ready: boolean; blocking: boolean } {
     SpaceGrotesk_500Medium,
     SpaceGrotesk_600SemiBold,
     SpaceGrotesk_700Bold,
-    IBMPlexMono_400Regular,
-    IBMPlexMono_500Medium,
-    IBMPlexMono_600SemiBold,
+    JetBrainsMono_400Regular,
+    JetBrainsMono_500Medium,
+    JetBrainsMono_600SemiBold,
+    JetBrainsMono_700Bold,
   });
   const ready = loaded || !!error;
   return { ready, blocking: Platform.OS !== 'web' && !ready };

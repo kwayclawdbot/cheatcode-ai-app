@@ -15,10 +15,11 @@ import { alpha, color, gradient, gradientAngle, radius } from '../../ui/tokens';
 import { api } from '../../lib/api';
 import { env } from '../../lib/env';
 import { useSession } from '../../lib/session';
-import { useMe } from '../../features/account/useAccount';
+import { useKaiProfile, useMe } from '../../features/account/useAccount';
+import { FOCUS_CHIP, FOCUS_ORDER } from '../../features/account/profile';
 import { ModeSheet, MODE_LABEL } from '../../features/trade/ModeSheet';
-import { PaperChip, money } from '../../features/trade/components';
-import type { GoalMode } from '../../lib/types';
+import { PaperChip } from '../../features/trade/components';
+import type { FocusKey, GoalMode } from '../../lib/types';
 const INVOLVEMENT_LABEL = { hands_on: 'I confirm every action', guided: 'Kai prepares, I approve' } as const;
 
 function NavRow({
@@ -57,6 +58,7 @@ export default function Account() {
   const [simulating, setSimulating] = useState(false);
   const [simResult, setSimResult] = useState<string | null>(null);
   const [modeOpen, setModeOpen] = useState(false);
+  const [focusOpen, setFocusOpen] = useState(false);
 
   React.useEffect(() => {
     setMemory(data?.memory_enabled ?? profile?.memory_enabled ?? true);
@@ -70,6 +72,7 @@ export default function Account() {
   const involvement = (data?.risk_policy.involvement ?? profile?.involvement ?? 'hands_on') as 'hands_on' | 'guided';
   const policy = data?.risk_policy ?? null;
   const tier = data?.subscription.tier ?? 'free';
+  const kai = useKaiProfile(mode);
 
   const toggleMemory = async (v: boolean) => {
     setMemory(v);
@@ -129,12 +132,12 @@ export default function Account() {
               <Pressable
                 testID="mode-chip"
                 accessibilityRole="button"
-                accessibilityLabel={`Mode: ${MODE_LABEL[mode]}. Change it.`}
+                accessibilityLabel={`Mode: ${kai.modeLabel}. Change it.`}
                 onPress={() => setModeOpen(true)}
                 hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
                 style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: alpha.volt50 }}
               >
-                <T size={10} c={color.volt}>{MODE_LABEL[mode]}</T>
+                <T size={10} c={color.volt}>{kai.modeLabel}</T>
               </Pressable>
               <PaperChip />
               <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: tier === 'premium' ? alpha.gold40 : alpha.ivory14 }}>
@@ -144,30 +147,63 @@ export default function Account() {
           </View>
         </View>
 
-        {/* Paper strip — the same account Trade opens on, stated the same way. */}
-        <Pressable
-          testID="paper-strip"
-          accessibilityRole="button"
-          accessibilityLabel="Practice account. Open your positions."
-          onPress={() => router.push('/position')}
-        >
-          <ObjectCard r={radius.xl} style={{ paddingVertical: 13, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={{ flex: 1 }}>
-              <T size={10} c={color.muted}>Practice balance</T>
-              <Num size={19} weight="semibold" style={{ marginTop: 3 }}>
-                {data?.paper ? money(data.paper.equity) : '—'}
-              </Num>
-              <T size={10} c={color.muted} style={{ marginTop: 3 }}>Not real money — nothing here can be withdrawn.</T>
-            </View>
-            {data?.paper?.buying_power != null ? (
-              <View style={{ alignItems: 'flex-end' }}>
-                <T size={10} c={color.muted}>Buying power</T>
-                <Num size={13} style={{ marginTop: 3 }}>{money(data.paper.buying_power, 0)}</Num>
-              </View>
-            ) : null}
-          </ObjectCard>
-        </Pressable>
+        {/* YOUR KAI PROFILE — the three answers that shape how Kai works.
+            Tapping a row changes it and writes PUT /settings. */}
+        <Eyebrow>YOUR KAI PROFILE</Eyebrow>
+        <T size={11.5} c={color.muted} lh={17} style={{ marginTop: -4 }}>
+          Set during onboarding. Changing these changes how Kai scans, writes and warns you.
+        </T>
+        <RowList testID="kai-profile">
+          <Pressable
+            testID="kai-profile-mode"
+            accessibilityRole="button"
+            accessibilityLabel={`Trading mode: ${kai.modeLabel}. Change it.`}
+            onPress={kai.cycleMode}
+          >
+            <Row>
+              <T size={13} style={{ flex: 1 }}>Trading mode</T>
+              <T size={12.5} weight="semibold" c={color.volt}>{kai.modeLabel}</T>
+              <ArrowRight size={12} color={color.muted} />
+            </Row>
+          </Pressable>
+          <Pressable
+            testID="kai-profile-experience"
+            accessibilityRole="button"
+            accessibilityLabel={`Experience level: ${kai.experienceLabel}. Change it.`}
+            onPress={kai.cycleExperience}
+          >
+            <Row>
+              <T size={13} style={{ flex: 1 }}>Experience level</T>
+              <T size={12.5} c={color.muted}>{kai.experienceLabel}</T>
+              <ArrowRight size={12} color={color.muted} />
+            </Row>
+          </Pressable>
+          <Pressable
+            testID="kai-profile-focus"
+            accessibilityRole="button"
+            accessibilityLabel={`Kai watches ${kai.focusShort}. Change it.`}
+            onPress={() => setFocusOpen(true)}
+          >
+            <Row last>
+              <T size={13}>Kai watches</T>
+              <T size={12.5} c={color.muted} align="right" style={{ flex: 1 }}>{kai.focusShort}</T>
+              <ArrowRight size={12} color={color.muted} />
+            </Row>
+          </Pressable>
+        </RowList>
 
+        {/* Kai's own voice line, in Kai's colour, said in the first person. */}
+        <View
+          testID="kai-voice-line"
+          style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start', paddingVertical: 11, paddingHorizontal: 13, borderRadius: 14, backgroundColor: alpha.violet10, borderLeftWidth: 2, borderLeftColor: color.violet }}
+        >
+          <KaiOrb size={18} glow={false} />
+          <T size={12} lh={17.5} c={color.muted} style={{ flex: 1 }}>{kai.voiceLine}</T>
+        </View>
+
+        {/* The board goes straight from Kai's voice line to the rules — the
+            practice balance already lives on the "Paper account" row below, so
+            a second card saying the same number is one card too many (audit). */}
         <Eyebrow>MY RULES</Eyebrow>
         <RowList>
           <Row>
@@ -207,7 +243,7 @@ export default function Account() {
             <View style={{ width: 28, height: 28, borderRadius: 8, borderWidth: 0.5, borderColor: alpha.ivory14, backgroundColor: alpha.ivory06, alignItems: 'center', justifyContent: 'center' }}>
               <Plus size={13} color={color.muted} />
             </View>
-            <T size={13} c={color.muted} style={{ flex: 1 }}>None — add a broker (later release)</T>
+            <T size={13} c={color.muted} style={{ flex: 1 }}>None — add a broker later</T>
           </Row>
         </RowList>
 
@@ -235,6 +271,22 @@ export default function Account() {
           </>
         ) : null}
 
+        {/* Rule adherence — a receipt from real debriefs, shown only once there
+            are enough sessions for the number to mean anything (>= 3). */}
+        {kai.adherence && kai.adherence.sessions >= 3 ? (
+          <ObjectCard tone="kai" r={radius.xl} style={{ paddingVertical: 13, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10 }} testID="rule-adherence">
+            <KaiOrb size={24} />
+            <T size={13} lh={18} style={{ flex: 1 }}>
+              You've followed your rules{' '}
+              <T size={13} weight="bold">{`${kai.adherence.followed} of the last ${kai.adherence.sessions}`}</T>
+              {' '}sessions.
+            </T>
+            <Pressable onPress={() => router.push('/debrief')} accessibilityRole="button" testID="rule-adherence-details">
+              <T size={11} weight="semibold" c={color.violetLight}>Details</T>
+            </Pressable>
+          </ObjectCard>
+        ) : null}
+
         <Button
           testID="cta-sign-out"
           label="Sign out"
@@ -249,6 +301,34 @@ export default function Account() {
       </ScrollView>
 
       <ModeSheet visible={modeOpen} mode={mode} onClose={() => setModeOpen(false)} />
+
+      <Sheet visible={focusOpen} onClose={() => setFocusOpen(false)} title="What should Kai watch?" testID="sheet-focus">
+        <T size={12.5} lh={18} c={color.muted}>Kai scans these first. Everything else still gets graded, just later.</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {FOCUS_ORDER.map((k: FocusKey) => {
+            const on = kai.focus.includes(k);
+            return (
+              <Pressable
+                key={k}
+                testID={`focus-chip-${k}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={`${FOCUS_CHIP[k]}${on ? ', selected' : ''}`}
+                onPress={() => kai.toggleFocus(k)}
+                style={{
+                  paddingVertical: 9, paddingHorizontal: 15, borderRadius: radius.pill, borderWidth: 0.5,
+                  borderColor: on ? alpha.volt55 : alpha.ivory20,
+                  backgroundColor: on ? alpha.volt10 : 'transparent',
+                }}
+              >
+                <T size={13} c={on ? color.volt : color.muted}>{FOCUS_CHIP[k]}</T>
+              </Pressable>
+            );
+          })}
+        </View>
+        <T size={11.5} c={color.muted}>{kai.focus.length ? `Kai will scan ${kai.focusShort} first.` : 'Pick at least one, or Kai scans everything.'}</T>
+        <Button label="Done" kind="volt" height={48} onPress={() => setFocusOpen(false)} />
+      </Sheet>
 
       <Sheet visible={!!simResult} onClose={() => setSimResult(null)} title="Simulated trade" testID="sheet-simulate">
         <T size={13} lh={20} c={color.muted}>{simResult}</T>

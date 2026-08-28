@@ -1,42 +1,85 @@
-import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { ScrollView, View, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen } from '../../ui/Screen';
-import { T, Num, Eyebrow } from '../../ui/Text';
+import { T } from '../../ui/Text';
 import { ObjectCard } from '../../ui/Panel';
 import { Button } from '../../ui/Button';
 import { Sheet } from '../../ui/Sheet';
 import { ScreenLoading } from '../../ui/Loading';
-import { Bell, Check } from '../../ui/Icons';
+import { Num } from '../../ui/Text';
 import { alpha, color, radius } from '../../ui/tokens';
 import {
-  AlertComposer, AttentionCard, FilterPills, MonitoringList,
-  useAlertActions, useAlertBuilder, useAlertsSimple,
+  AlertComposer, AlertsEmpty, HistoryAlertRow, StandardAlertCard,
+  useAlertActions, useAlertBuilder, useAlertsRound4,
 } from '../../features/alerts';
-import type { AlertFilterKey } from '../../lib/types';
+import type { AlertTab } from '../../lib/types';
 
 /**
- * Alerts — V5-A1-Alerts-simple.html.
+ * Alerts — prototype board "Alerts" + docs/10 §1–§5.
  *
- * Three buckets, not five sections (audit §6): Attention · Monitoring ·
- * History, chosen with filter pills. The attention card is the only strong
- * card on the screen; monitoring is rows; the composer at the bottom takes a
- * plain sentence, shows what Kai understood, and activates it inline.
+ * Alerts are COMPLETE TRADE OBJECTS, not notifications. Three top-level
+ * states — Active · Watching · History — and one standard card grammar across
+ * all three: grade medallion, qualitative scorecard (never fractions),
+ * expandable evidence and ONE state-driven primary action that routes into
+ * the Trade Portal with the alert context (`/trade/[symbol]?alert=&ctx=alert`).
+ * There is no alert-detail destination between the card and the portal.
+ * The natural-language composer stays.
  */
+
+const TABS: { key: AlertTab; label: string }[] = [
+  { key: 'active', label: 'Active' },
+  { key: 'watching', label: 'Watching' },
+  { key: 'history', label: 'History' },
+];
+
+function TabBar({ value, onChange, counts }: {
+  value: AlertTab; onChange: (t: AlertTab) => void; counts: Record<AlertTab, number>;
+}) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 26, borderBottomWidth: 1, borderBottomColor: alpha.ivory08 }} testID="alerts-tabs">
+      {TABS.map((t) => {
+        const on = value === t.key;
+        return (
+          <Pressable
+            key={t.key}
+            onPress={() => onChange(t.key)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={`${t.label}, ${counts[t.key]} alerts`}
+            testID={`alerts-tab-${t.key}`}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 7,
+              paddingBottom: 9, marginBottom: -1,
+              borderBottomWidth: 2, borderBottomColor: on ? color.volt : 'transparent',
+            }}
+          >
+            <T size={13.5} weight="bold" c={on ? color.text : color.muted}>{t.label}</T>
+            {t.key === 'active' && counts.active ? (
+              <View style={{ minWidth: 17, height: 17, borderRadius: 9, backgroundColor: color.volt, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
+                <T size={9.5} weight="bold" c={color.bg}>{counts.active}</T>
+              </View>
+            ) : counts[t.key] ? (
+              <T size={12} c={color.muted}>{counts[t.key]}</T>
+            ) : null}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export default function Alerts() {
   const router = useRouter();
-  const { data, loading, error, isFixture, reload } = useAlertsSimple();
+  const { data, loading, error, isFixture, reload, tab, setTab } = useAlertsRound4();
   const actions = useAlertActions(reload);
   const builder = useAlertBuilder();
-  const [filter, setFilter] = useState<AlertFilterKey>('attention');
 
-  const counts = useMemo(() => ({
-    attention: data?.attention.length ?? 0,
-    monitoring: data?.monitoring.length ?? 0,
-    history: data?.history.length ?? 0,
+  const counts = useMemo<Record<AlertTab, number>>(() => ({
+    active: data?.counts.active ?? data?.active.length ?? 0,
+    watching: data?.counts.watching ?? data?.watching.length ?? 0,
+    history: data?.counts.history ?? data?.history.length ?? 0,
   }), [data]);
-
-  const empty = !!data && !counts.attention && !counts.monitoring && !counts.history;
 
   if (!data && loading) {
     return (
@@ -52,96 +95,46 @@ export default function Alerts() {
     builder.clear();
   };
 
+  const list = data ? data[tab] : [];
+
   return (
     <Screen variant="corner" layout="tab" testID="screen-alerts">
+      <View style={{ paddingTop: 8, paddingHorizontal: 16, paddingBottom: 6, gap: 10 }}>
+        <T size={28} weight="bold">Alerts</T>
+        <TabBar value={tab} onChange={setTab} counts={counts} />
+      </View>
+
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingTop: 8, paddingHorizontal: 16, gap: 11, paddingBottom: 12 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 10, gap: 11 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        testID={`alerts-list-${tab}`}
       >
-        <T size={28} weight="bold">Alerts</T>
-
-        <FilterPills value={filter} onChange={setFilter} counts={counts} />
-
-        {empty ? (
-          <ObjectCard r={radius.xxl} style={{ padding: 20, gap: 10, alignItems: 'center', marginTop: 20 }}>
-            <Bell size={22} color={color.muted} />
-            <T size={15} weight="bold" align="center">{data?.empty_copy ?? "Kai isn't watching anything for you yet."}</T>
-            <T size={13} c={color.muted} align="center" lh={19}>
-              Tell him what matters in your own words — &ldquo;tell me when TSLA drops below 170&rdquo; — and he will watch it.
-            </T>
-          </ObjectCard>
-        ) : null}
-
-        {/* ---------------- ATTENTION ---------------- */}
-        {filter === 'attention' ? (
-          counts.attention ? (
-            <View testID="attention-list" style={{ gap: 11 }}>
-              {data!.attention.map((a) => <AttentionCard key={a.id} a={a} />)}
-            </View>
-          ) : !empty ? (
-            <T testID="attention-empty" size={12.5} lh={18} c={color.muted} style={{ paddingVertical: 8 }}>
-              Nothing needs a decision right now. {counts.monitoring} {counts.monitoring === 1 ? 'condition is' : 'conditions are'} being watched.
-            </T>
-          ) : null
-        ) : null}
-
-        {/* Attention keeps the monitoring list visible underneath — the artboard
-            shows both, and hiding it would make the screen feel emptier than
-            the account actually is. */}
-        {filter === 'attention' && counts.monitoring ? (
-          <>
-            <Eyebrow c={color.dim} style={{ paddingTop: 4 }}>MONITORING</Eyebrow>
-            <MonitoringList rows={data!.monitoring} />
-          </>
-        ) : null}
-
-        {/* ---------------- MONITORING ---------------- */}
-        {filter === 'monitoring' ? <MonitoringList rows={data?.monitoring ?? []} /> : null}
-
-        {/* ---------------- HISTORY ---------------- */}
-        {filter === 'history' ? (
-          counts.history ? (
-            <View testID="history-list">
-              {data!.history.map((r, i) => (
-                <Pressable
-                  key={r.id}
-                  testID={`history-${r.id}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={r.title}
-                  onPress={() => router.push(`/alert/${encodeURIComponent(r.id)}`)}
-                  style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}
-                >
-                  <View
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 10,
-                      paddingVertical: 12, paddingHorizontal: 2,
-                      borderTopWidth: 0.5, borderTopColor: alpha.ivory08,
-                      borderBottomWidth: i === data!.history.length - 1 ? 0.5 : 0,
-                      borderBottomColor: alpha.ivory08,
-                    }}
-                  >
-                    <Check size={13} color={color.green} strokeWidth={2.4} />
-                    <T size={13} lh={18} style={{ flex: 1 }} c={color.muted}>{r.title}</T>
-                    {r.value ? <Num size={11} weight="regular" c={color.green}>{r.value}</Num> : null}
-                  </View>
-                </Pressable>
-              ))}
-            </View>
+        {tab === 'history' ? (
+          list.length ? (
+            list.map((a) => <HistoryAlertRow key={a.id} alert={a} />)
           ) : (
-            <T testID="history-empty" size={12.5} lh={18} c={color.muted} style={{ paddingVertical: 8 }}>
-              Nothing has finished yet. Triggered and cancelled alerts land here.
-            </T>
+            <AlertsEmpty copy="Nothing has finished yet. Executed, closed and invalidated alerts land here." />
           )
-        ) : null}
+        ) : list.length ? (
+          list.map((a) => <StandardAlertCard key={a.id} alert={a} />)
+        ) : (
+          <AlertsEmpty
+            copy={
+              tab === 'active'
+                ? "Nothing needs a decision right now. Kai moves an alert here the moment a verified event happens."
+                : (data?.empty_copy ?? "Kai isn't monitoring anything for you yet.")
+            }
+          />
+        )}
 
         {error ? <T size={11} c={color.muted} align="center">{error}</T> : null}
         {actions.error ? <T size={11} c={color.red} align="center">{actions.error}</T> : null}
         {isFixture ? <T size={10} c={color.dim} align="center">Sample alerts — the alerts service is not connected here.</T> : null}
       </ScrollView>
 
-      {/* preview → activate, in place */}
+      {/* NL composer preview → activate, in place */}
       {builder.preview ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <ObjectCard tone="kai" r={radius.xl} style={{ padding: 14, gap: 10 }} testID="alert-preview">

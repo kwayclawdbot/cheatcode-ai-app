@@ -1,8 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { useResource } from '../../lib/useResource';
-import { fixtureAlertDetail, fixtureAlertLifecycle, fixtureAlertsSimple } from '../../lib/fixtures';
-import type { AlertDetail, AlertDraftPreview, AlertLifecycle, AlertMonitoring, AlertsSimple } from '../../lib/types';
+import { fixtureAlertDetail, fixtureAlertLifecycle, fixtureAlertsRound4, fixtureAlertsSimple } from '../../lib/fixtures';
+import { mergeAlertsTab } from '../../lib/adapters';
+import type { AlertDetail, AlertDraftPreview, AlertLifecycle, AlertMonitoring, AlertsRound4, AlertsSimple, AlertTab } from '../../lib/types';
 
 /** GET /alerts, grouped into the five lifecycle sections. */
 export function useAlertsLifecycle() {
@@ -75,6 +76,20 @@ export function useAlertBuilder() {
   const build = useCallback(async (text: string, refs: { symbol?: string; setup_id?: string; level?: number } = {}) => {
     setPending(true);
     setError(null);
+    // The composer has no symbol context of its own, so anything the SENTENCE
+    // names is passed as a known reference. The server still parses the
+    // sentence authoritatively — this only makes sure the alert it writes is
+    // attached to a symbol, which is what every downstream object keys on.
+    const hinted = { ...refs };
+    if (!hinted.symbol) {
+      const sym = (text.match(/\$([A-Za-z]{1,5})\b/) ?? text.match(/\b([A-Z]{2,5})\b/) ?? [])[1];
+      if (sym) hinted.symbol = sym.toUpperCase();
+    }
+    if (hinted.level === undefined) {
+      const lvl = Number((text.match(/(\d+(?:\.\d+)?)/) ?? [])[1] ?? NaN);
+      if (Number.isFinite(lvl)) hinted.level = lvl;
+    }
+    refs = hinted;
     if (!api.available()) {
       // Fixtures: parse the sentence locally so the preview is real, not canned.
       const symbol = (text.match(/\b[A-Z]{1,5}\b/) ?? [''])[0];
@@ -123,4 +138,50 @@ export function useAlertBuilder() {
  */
 export function useAlertsSimple() {
   return useResource<AlertsSimple>(() => api.alertsSimple(), fixtureAlertsSimple, []);
+}
+
+/* ==================================================================== */
+/* Round 4 — alerts are complete trade objects (docs/10 §1)             */
+/* ==================================================================== */
+
+/**
+ * `GET /alerts?tab=` → Active · Watching · History.
+ *
+ * The API answers with the requested tab's cards plus the counts for all
+ * three, so the hook keeps the three lists it has already seen and refreshes
+ * one at a time. Switching tabs therefore never blanks the screen.
+ */
+export function useAlertsRound4() {
+  const offline = !api.available();
+  const [tab, setTab] = useState<AlertTab>('active');
+  const [data, setData] = useState<AlertsRound4 | null>(offline ? fixtureAlertsRound4 : null);
+  const [loading, setLoading] = useState(!offline);
+  const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    if (offline) { setData(fixtureAlertsRound4); setLoading(false); return; }
+    let alive = true;
+    setLoading(true);
+    api.alertsRound4(tab)
+      .then((incoming) => {
+        if (!alive) return;
+        setData((prev) => (prev ? mergeAlertsTab(prev, incoming, tab) : incoming));
+        setError(null);
+      })
+      .catch((e: unknown) => {
+        if (!alive) return;
+        setError(e instanceof ApiError && e.code === 'NOT_FOUND'
+          ? "That part of the service isn't live yet."
+          : e instanceof Error ? e.message : 'Something went wrong. Please try again.');
+      })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [offline, tab, tick]);
+
+  return {
+    data, loading, error, tab, setTab,
+    isFixture: offline,
+    reload: () => setTick((t) => t + 1),
+  };
 }

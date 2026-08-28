@@ -544,3 +544,294 @@ export const fixtureAlertsSimple: AlertsSimple = {
   history: fixtureAlerts.resolved,
   empty_copy: "Kai isn't watching anything for you yet.",
 };
+
+/* ==================================================================== */
+/* Round 4 fixtures — the prototype boards, verbatim copy.               */
+/* ==================================================================== */
+
+import type {
+  AlertCard, AlertsRound4, ConversationsPayload, Experience, FocusKey,
+  KaiProfile, RuleAdherence, TickerPage,
+} from './types';
+import { EXPERIENCE_LABEL, EXPERIENCE_VOICE, MODE_LABEL, focusList, kaiVoice } from '../features/account/profile';
+
+const DAY_COMPONENTS = [
+  { key: 'trend', label: 'Trend', status: 'Strong', strength: 4, explanation: '20 and 50 EMA both rising on the 5-minute; higher lows since 9:32.' },
+  { key: 'structure', label: 'Structure', status: 'Confirmed', strength: 4, explanation: 'Three closes above the 504 shelf that capped price twice yesterday.' },
+  { key: 'volume', label: 'Volume', status: 'Healthy', strength: 3, explanation: '1.6× the 20-day average at this time of day.' },
+  { key: 'rr', label: 'Risk / Reward', status: 'Favorable', strength: 4, explanation: 'Stop 498 against a 520 first target from a 504–507 entry.' },
+  { key: 'market', label: 'Market', status: 'Neutral', strength: 3, explanation: 'SPY is up but CPI at 10:00 keeps the tape undecided.' },
+];
+
+const SWING_COMPONENTS = [
+  { key: 'trend', label: 'Trend', status: 'Strong', strength: 4, explanation: 'Daily trend up since the July base.' },
+  { key: 'entry', label: 'Entry quality', status: 'Forming', strength: 3, explanation: 'Price is still inside the 934 decision area.' },
+  { key: 'catalyst', label: 'Catalyst risk', status: 'Waiting', strength: 2, explanation: 'Earnings land inside the intended hold window.' },
+  { key: 'rr', label: 'Risk / Reward', status: 'Favorable', strength: 4, explanation: '912 stop against a 988 first target.' },
+  { key: 'market', label: 'Market', status: 'Supportive', strength: 3, explanation: 'Semis leading the index over the last five sessions.' },
+];
+
+export const fixtureAlertCards: AlertCard[] = [
+  {
+    id: 'alert-meta-1',
+    symbol: 'META',
+    company: 'Meta Platforms',
+    mode_label: 'Day Trade',
+    direction_label: 'Long',
+    instrument_label: 'equity',
+    grade: 'A−',
+    score: 87,
+    state: 'entry_reached',
+    state_label: 'Triggered',
+    triggered_at_label: '9:38 AM',
+    headline: 'Breakout confirmation detected',
+    what_changed: 'META reclaimed $504 with 1.6× volume across three five-minute candles.',
+    company_summary: 'Meta Platforms owns Facebook, Instagram and WhatsApp. Shares are trading with elevated volume after buyers reclaimed a major intraday level.',
+    trade: { direction: 'Long', current: '506.12', entry: '504–507', stop: '498', target: '520', rr: '2.4:1', hold: 'intraday', expires: '4:00 PM ET' },
+    score_components: DAY_COMPONENTS,
+    kai_interpretation: "Volume is the piece that was missing this morning. It fails if price closes back under 498 — that's your exit, not a suggestion.",
+    fit: { risk_amount: '$58', cap_line: 'fits daily cap', conflicts: 'No conflicts' },
+    community: { sample: 41, bullish_pct: 62, common_level: '504', verification: 'verified' },
+    primary_action: { label: 'Open Trade Portal', kind: 'entry_reached' },
+    freshness_line: 'Quote 9:41:02 ET · live · received 8s ago',
+  },
+  {
+    id: 'alert-tsla-1',
+    symbol: 'TSLA',
+    company: 'Tesla',
+    mode_label: 'Day Trade',
+    direction_label: 'Long',
+    instrument_label: 'equity',
+    grade: 'B+',
+    score: 82,
+    state: 'ready',
+    state_label: 'Triggered',
+    triggered_at_label: '9:22 AM',
+    headline: 'Entry zone reached',
+    what_changed: 'Pulled back into 242–245 on lighter selling. Invalidates below 238.',
+    company_summary: 'Tesla builds electric vehicles and energy storage. Volume is thin into the pullback, which is what Kai wanted to see.',
+    trade: { direction: 'Long', current: '243.60', entry: '242–245', stop: '238', target: '256', rr: '2.1:1', hold: 'intraday', expires: '4:00 PM ET' },
+    score_components: DAY_COMPONENTS.map((c) => (c.key === 'volume' ? { ...c, status: 'Forming', strength: 2 } : c)),
+    kai_interpretation: 'The pullback is orderly. Below 238 the idea is wrong and Kai drops it.',
+    fit: { risk_amount: '$44', cap_line: 'fits daily cap', conflicts: 'No conflicts' },
+    community: { sample: 26, bullish_pct: 55, common_level: '242', verification: 'unverified' },
+    primary_action: { label: 'Review trade', kind: 'ready' },
+    freshness_line: 'Quote 9:41:02 ET · live · received 8s ago',
+  },
+  {
+    id: 'alert-amd-1',
+    symbol: 'AMD',
+    company: 'Advanced Micro',
+    mode_label: 'Swing',
+    direction_label: 'Long',
+    instrument_label: 'equity',
+    grade: 'C+',
+    score: 64,
+    state: 'invalidated',
+    state_label: 'Grade changed',
+    triggered_at_label: '9:05 AM',
+    headline: 'Downgraded from B−',
+    what_changed: 'Volume faded through the morning and the market turned neutral.',
+    company_summary: 'Advanced Micro Devices designs processors and AI accelerators. The move that earned the higher grade lost its participation.',
+    trade: { direction: 'Long', current: '148.90', entry: '152–154', stop: '146', target: '167', rr: '1.4:1', hold: 'days', expires: 'Sep 4' },
+    score_components: SWING_COMPONENTS.map((c) => (c.key === 'market' ? { ...c, status: 'Neutral', strength: 2 } : c)),
+    kai_interpretation: 'The thesis is not dead, but the edge that made it a B− is gone until volume returns.',
+    fit: { risk_amount: '$31', cap_line: 'fits daily cap', conflicts: 'No conflicts' },
+    community: { sample: 18, bullish_pct: 44, common_level: '152', verification: 'unverified' },
+    primary_action: { label: 'See what changed', kind: 'invalidated' },
+    freshness_line: 'Quote 9:41:02 ET · delayed 15m',
+  },
+];
+
+export const fixtureWatchingCards: AlertCard[] = [
+  {
+    id: 'alert-nvda-1',
+    symbol: 'NVDA',
+    company: 'NVIDIA',
+    mode_label: 'Swing',
+    direction_label: 'Long',
+    instrument_label: 'equity',
+    grade: 'B',
+    score: 74,
+    state: 'forming',
+    state_label: 'Watching',
+    triggered_at_label: '8:58 AM',
+    headline: 'Waiting for support to hold',
+    what_changed: 'Needs a defended close above 934 with volume. Invalidates at 912.',
+    company_summary: 'NVIDIA sells the accelerators most AI training runs on. The level Kai wants defended is the base of the July advance.',
+    trade: { direction: 'Long', current: '921.00', entry: '> 934', stop: '912', target: '988', rr: '2.5:1', hold: 'days', expires: 'Sep 5' },
+    score_components: SWING_COMPONENTS,
+    kai_interpretation: 'Kai needs a defended close above 934 with participation. Grade lifts to B+ if volume returns.',
+    fit: { risk_amount: '$52', cap_line: 'fits daily cap', conflicts: 'No conflicts' },
+    community: { sample: 63, bullish_pct: 58, common_level: '934', verification: 'verified' },
+    progress: { pct: 38, label: '1.4% away' },
+    primary_action: { label: 'Keep watching', kind: 'forming' },
+    freshness_line: 'Quote 9:41:02 ET · live · received 8s ago',
+  },
+  {
+    id: 'alert-aapl-1',
+    symbol: 'AAPL',
+    company: 'Apple',
+    mode_label: 'Swing',
+    direction_label: 'Long',
+    instrument_label: 'equity',
+    grade: 'B−',
+    score: 71,
+    state: 'watching',
+    state_label: 'Watching',
+    triggered_at_label: '8:41 AM',
+    headline: 'Waiting on the earnings catalyst',
+    what_changed: 'Range-bound until the Oct 29 print. Kai wants a base above 191 first.',
+    company_summary: 'Apple sells iPhones, services and wearables. Nothing in the tape changes before the print.',
+    trade: { direction: 'Long', current: '188.42', entry: '> 191', stop: '183', target: '204', rr: '1.9:1', hold: 'weeks', expires: 'Oct 29' },
+    score_components: SWING_COMPONENTS.map((c) => (c.key === 'catalyst' ? { ...c, status: 'Waiting', strength: 1 } : c)),
+    kai_interpretation: 'Nothing to do until a base forms above 191.',
+    fit: { risk_amount: '$38', cap_line: 'fits daily cap', conflicts: 'No conflicts' },
+    community: { sample: 22, bullish_pct: 51, common_level: '191', verification: 'unverified' },
+    primary_action: { label: 'Open chart', kind: 'watching' },
+    freshness_line: 'Quote 9:41:02 ET · live · received 8s ago',
+  },
+  {
+    id: 'alert-spy-1',
+    symbol: 'SPY',
+    company: 'S&P 500 ETF',
+    mode_label: 'Day Trade',
+    direction_label: 'Neutral',
+    instrument_label: 'ETF',
+    grade: 'C+',
+    score: 63,
+    state: 'watching',
+    state_label: 'Watching',
+    triggered_at_label: '8:30 AM',
+    headline: 'Holding for the CPI print',
+    what_changed: 'Market direction is undecided into 10:00. Kai is sitting out until the reaction.',
+    company_summary: 'SPY tracks the S&P 500. It is the market itself, so the CPI reaction sets the day.',
+    trade: { direction: 'Neutral', current: '562.18', entry: 'after 10:00', stop: '558', target: '568', rr: '1.2:1', hold: 'intraday', expires: '4:00 PM ET' },
+    score_components: DAY_COMPONENTS.map((c) => ({ ...c, status: c.key === 'market' ? 'Waiting' : 'Neutral', strength: 2 })),
+    kai_interpretation: 'No edge before the print. Kai will re-grade at 10:05.',
+    fit: { risk_amount: '$0', cap_line: 'nothing at risk yet', conflicts: 'No conflicts' },
+    community: { sample: 88, bullish_pct: 49, common_level: '562', verification: 'verified' },
+    primary_action: { label: 'Open chart', kind: 'watching' },
+    freshness_line: 'Quote 9:41:02 ET · live · received 8s ago',
+  },
+];
+
+export const fixtureHistoryCards: AlertCard[] = [
+  {
+    id: 'alert-tsla-hist',
+    symbol: 'TSLA',
+    company: 'Tesla',
+    mode_label: 'Day Trade',
+    direction_label: 'Long',
+    instrument_label: 'equity',
+    grade: 'B+',
+    score: 82,
+    state: 'closed',
+    state_label: 'Executed',
+    headline: 'Breakout held. Exited at first target after 3h 12m.',
+    what_changed: 'Breakout held. Exited at first target after 3h 12m.',
+    trade: {},
+    score_components: [],
+    primary_action: { label: 'Review outcome', kind: 'closed' },
+    outcome: { label: 'Outcome', value: '+$112.40', tone: 'good' },
+    resolved_label: 'Yesterday',
+  },
+  {
+    id: 'alert-amd-hist',
+    symbol: 'AMD',
+    company: 'Advanced Micro',
+    mode_label: 'Swing',
+    direction_label: 'Long',
+    instrument_label: 'equity',
+    grade: 'C+',
+    score: 64,
+    state: 'invalidated',
+    state_label: 'Invalidated',
+    headline: 'Closed below 148 before entry triggered. Never taken.',
+    what_changed: 'Closed below 148 before entry triggered. Never taken.',
+    trade: {},
+    score_components: [],
+    primary_action: { label: 'See what changed', kind: 'invalidated' },
+    resolved_label: 'Aug 26',
+  },
+];
+
+export const fixtureAlertsRound4: AlertsRound4 = {
+  active: fixtureAlertCards,
+  watching: fixtureWatchingCards,
+  history: fixtureHistoryCards,
+  counts: { active: 3, watching: 3, history: 2 },
+  empty_copy: 'Nothing here yet. Kai will put an alert here the moment something changes.',
+};
+
+export const fixtureConversations: ConversationsPayload = {
+  pinned: [{ id: 'conv-pinned-1', title: 'Long-Term AI Portfolio', pinned: true, last_message_at: '2026-08-27T20:10:00.000Z' }],
+  recent: [
+    { id: 'conv-today', title: 'Morning Briefing · Aug 28', pinned: false, last_message_at: '2026-08-28T13:41:00.000Z' },
+    { id: 'conv-2', title: 'META Day Trade', pinned: false, last_message_at: '2026-08-28T13:12:00.000Z' },
+    { id: 'conv-3', title: 'Review My Positions', pinned: false, last_message_at: '2026-08-27T19:02:00.000Z' },
+    { id: 'conv-4', title: 'NVIDIA Earnings Research', pinned: false, last_message_at: '2026-08-27T15:44:00.000Z' },
+    { id: 'conv-5', title: 'Explain Options to Me', pinned: false, last_message_at: '2026-08-26T18:20:00.000Z' },
+    { id: 'conv-6', title: 'Weekly Swing Ideas', pinned: false, last_message_at: '2026-08-25T14:05:00.000Z' },
+  ],
+};
+
+export const fixtureTickerPage: TickerPage = {
+  symbol: 'META',
+  company: 'Meta Platforms',
+  quote: { symbol: 'META', price: 506.12, change_pct: 1.24, freshness: 'delayed', source_ts: SOURCE_TS },
+  market_label: 'market open',
+  starred: true,
+  chart: { points: [42, 46, 41, 38, 35, 33, 30, 28, 24, 22, 19, 16], timeframes: ['1D', '1W', '1M', '1Y'], selected: '1D' },
+  kai_view: {
+    take: "Short-term trend is bullish and the breakout confirmed. One active A− alert plus a longer-term thesis on ad revenue.",
+    actions: ['Ask Kai', 'Explain the chart', 'Compare'],
+  },
+  overview: {
+    summary: 'Meta Platforms owns Facebook, Instagram and WhatsApp. Revenue is dominated by advertising, so ad pricing and engagement drive the story.',
+    market_cap: '$1.29T',
+    next_earnings: 'Oct 29',
+    pe: '27.4',
+    sector: 'Communication',
+  },
+  technicals: {
+    meters: [
+      { label: 'Trend', status: 'Strong', strength: 4 },
+      { label: 'Momentum', status: 'Healthy', strength: 3 },
+      { label: 'Volatility', status: 'Neutral', strength: 2 },
+    ],
+    support: 'Support 498',
+    resistance: 'Resistance 520',
+  },
+  community: {
+    common_level: '504',
+    posts_today: 41,
+    bullish_pct: 62,
+    sample: 41,
+    circle: { id: 'circle-meta-breakout', label: 'Open META Breakout circle' },
+  },
+  active_alert: { id: 'alert-meta-1', grade: 'A−', score: 87, line: 'One active alert · triggered 9:38' },
+};
+
+export function fixtureKaiProfile(experience: Experience = 'new', focus: FocusKey[] = ['tech', 'ai']): KaiProfile {
+  return {
+    mode: 'day_trade',
+    mode_label: MODE_LABEL.day_trade,
+    experience,
+    experience_label: EXPERIENCE_LABEL[experience],
+    focus,
+    focus_short: focusList(focus),
+    voice_line: EXPERIENCE_VOICE[experience],
+  };
+}
+
+export const fixtureRuleAdherence: RuleAdherence = { sessions: 10, followed: 9 };
+
+/** Kai's opening line for Home, shaped by experience so the voice is visible. */
+export function fixtureOpeningLine(experience: Experience): string {
+  return kaiVoice(
+    "Good morning, Kway. Futures are slightly higher, technology is leading premarket, and CPI is scheduled for 10:00 AM. I'm monitoring four intraday setups. META is the strongest and has just confirmed.",
+    experience,
+    'confirmed',
+  );
+}

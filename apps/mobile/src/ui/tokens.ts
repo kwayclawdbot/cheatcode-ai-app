@@ -35,6 +35,8 @@ export const color = {
   redTint: '#2E1517',
 
   gold: '#FFC857',
+  /** A-family grade medallion gold — prototype board value (Alerts.html). */
+  gradeGold: '#FFD75E',
   dangerDeep: '#B00020',
 } as const;
 
@@ -109,6 +111,36 @@ export const alpha = {
   gold40: 'rgba(255,200,87,0.40)',
   gold50: 'rgba(255,200,87,0.50)',
   gold60: 'rgba(255,200,87,0.60)',
+
+  gradeGold03: 'rgba(255,215,94,0.03)',
+  gradeGold07: 'rgba(255,215,94,0.07)',
+  gradeGold12: 'rgba(255,215,94,0.12)',
+  gradeGold14: 'rgba(255,215,94,0.14)',
+  gradeGold16: 'rgba(255,215,94,0.16)',
+  gradeGold20: 'rgba(255,215,94,0.20)',
+  gradeGold22: 'rgba(255,215,94,0.22)',
+  gradeGold55: 'rgba(255,215,94,0.55)',
+
+  violet05: 'rgba(139,77,255,0.05)',
+  violet06: 'rgba(139,77,255,0.06)',
+  violet09: 'rgba(139,77,255,0.09)',
+  violet10: 'rgba(139,77,255,0.10)',
+  violet18: 'rgba(139,77,255,0.18)',
+  violetLight14: 'rgba(203,178,255,0.14)',
+
+  gold08: 'rgba(255,200,87,0.08)',
+  gold12: 'rgba(255,200,87,0.12)',
+  gold16: 'rgba(255,200,87,0.16)',
+
+  ivory035: 'rgba(255,247,232,0.035)',
+  ivory04: 'rgba(255,247,232,0.04)',
+  ivory05: 'rgba(255,247,232,0.05)',
+  surface70: 'rgba(23,23,28,0.70)',
+  surface95: 'rgba(23,23,28,0.95)',
+  red06: 'rgba(255,90,95,0.06)',
+  red35: 'rgba(255,90,95,0.35)',
+  green50: 'rgba(53,208,127,0.50)',
+  violetLight50: 'rgba(203,178,255,0.50)',
 
   black22: 'rgba(0,0,0,0.22)',
   black40: 'rgba(0,0,0,0.40)',

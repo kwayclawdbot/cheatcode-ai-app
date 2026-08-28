@@ -18,6 +18,6 @@ export default function Index() {
     );
   }
   if (!session) return <Redirect href="/welcome" />;
-  if (!onboardingDone) return <Redirect href="/kai" />;
+  if (!onboardingDone) return <Redirect href="/goal" />;
   return <Redirect href="/home" />;
 }

@@ -18,7 +18,7 @@ const monoFor: Record<Weight, string> = {
   regular: family.mono,
   medium: family.monoMedium,
   semibold: family.monoSemibold,
-  bold: family.monoSemibold, // IBM Plex Mono ships 400/500/600 only
+  bold: family.monoBold, // JetBrains Mono ships 400/500/600/700
 };
 
 /** Every text in the app goes through here so the two families are the only ones used. */

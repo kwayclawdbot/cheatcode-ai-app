@@ -12,10 +12,15 @@ import {
   adaptSetupCard, adaptSetupDetail, adaptSymbolDetail, adaptTradeLanding,
 } from './adapters';
 import { adaptAlertsSimple, adaptHomeV5, adaptWorkspace, mergeSetupDetail } from './v5';
+import {
+  adaptAlertsRound4, adaptConversations, adaptExperience, adaptFocus, adaptKaiProfile,
+  adaptRuleAdherence, adaptTickerPage,
+} from './adapters';
 import type {
-  AlertDetail, AlertDraftPreview, AlertLifecycle, AlertsPayload, AlertsSimple, Candle,
-  ExplainLevel, GoalMode, GradedSetup, HomePayload, HomeV5, Me, MemoryRow,
-  NotificationRow, Quote, SearchResult, SetupDetail, SymbolDetail, SymbolWorkspace,
+  AlertDetail, AlertDraftPreview, AlertLifecycle, AlertsPayload, AlertsRound4, AlertsSimple,
+  AlertTab, Candle, ConversationsPayload, Experience, ExplainLevel, FocusKey, GoalMode,
+  GradedSetup, HomePayload, HomeV5, KaiProfile, Me, MemoryRow, NotificationRow, Quote,
+  RuleAdherence, SearchResult, SetupDetail, SymbolDetail, SymbolWorkspace, TickerPage,
   TradeLanding,
 } from './types';
 
@@ -247,6 +252,49 @@ export const api = {
     const raw = await request<unknown>('/alerts');
     return adaptAlertsSimple(raw, adaptAlertLifecycle(raw));
   },
+
+  /* ---------------- Round 4 · alerts as trade objects ---------------- */
+
+  /**
+   * `GET /alerts?tab=` → the three top-level states (spec §1). A build that
+   * does not know the tab param still answers the whole payload, which the
+   * adapter splits, so this works against both API generations.
+   */
+  alertsRound4: async (tab?: AlertTab): Promise<AlertsRound4> =>
+    adaptAlertsRound4(await request<unknown>(`/alerts${tab ? `?tab=${tab}` : ''}`)),
+
+  /** `GET /kai/conversations?q=` — the Home drawer's search / pinned / recent. */
+  conversations: async (q?: string): Promise<ConversationsPayload> =>
+    adaptConversations(await request<unknown>(`/kai/conversations${q ? `?q=${encodeURIComponent(q)}` : ''}`)),
+
+  /** `PATCH /kai/conversations/:id` — rename or pin. */
+  patchConversation: (id: string, body: { title?: string; pinned?: boolean }) =>
+    request<unknown>(`/kai/conversations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  /** `GET /symbols/:symbol` → the ticker-page research payload (round-4 board). */
+  tickerPage: async (symbol: string, mode: GoalMode): Promise<TickerPage> =>
+    adaptTickerPage(await request<unknown>(`/symbols/${encodeURIComponent(symbol)}?mode=${mode}&view=ticker`), symbol),
+
+  /** `GET /me` → the Account board's Kai profile + rule adherence. */
+  kaiProfile: async (fallbackMode: GoalMode): Promise<{ profile: ReturnType<typeof adaptKaiProfile>; adherence: RuleAdherence | null }> => {
+    const raw = await request<Record<string, unknown>>('/me');
+    return {
+      profile: adaptKaiProfile(raw.kai_profile ?? raw, fallbackMode),
+      adherence: adaptRuleAdherence(raw.rule_adherence),
+    };
+  },
+
+  /**
+   * `POST /onboarding/complete` — round 4 adds `experience` (new|some|pro) and
+   * `focus[]`. The server maps experience onto experience_level /
+   * explanation_level, so Kai's voice follows the same answer.
+   */
+  completeOnboardingRound4: (body: Omit<OnboardingCompleteRequest, 'experience'> & { experience: Experience; focus: FocusKey[] }) =>
+    request<OnboardingCompleteResponse>('/onboarding/complete', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** `PUT /settings` accepts experience + focus (round-4 personalize). */
+  putKaiProfile: (body: { experience?: Experience; focus?: FocusKey[]; mode?: GoalMode }) =>
+    request<unknown>('/settings', { method: 'PUT', body: JSON.stringify(body) }),
 
   /** DEV_TOOLS=1 on the api-app only. */
   simulateClosedTrade: (symbol?: string) =>

@@ -1,8 +1,11 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { useResource } from '../../lib/useResource';
-import { fixtureMe, fixtureMemory, fixtureNotifications } from '../../lib/fixtures';
-import type { Me, MemoryRow, NotificationRow } from '../../lib/types';
+import { fixtureKaiProfile, fixtureMe, fixtureMemory, fixtureNotifications, fixtureRuleAdherence } from '../../lib/fixtures';
+import {
+  EXPERIENCE_LABEL, EXPERIENCE_VOICE, MODE_LABEL, focusList, nextExperience, nextMode,
+} from './profile';
+import type { Experience, FocusKey, GoalMode, Me, MemoryRow, NotificationRow, RuleAdherence } from '../../lib/types';
 
 export function useMe() {
   return useResource<Me>(() => api.me(), fixtureMe, []);
@@ -68,4 +71,83 @@ export function useCheckout() {
   }, []);
 
   return { ...state, start, dismiss: () => setState({ url: null, message: null, busy: false }) };
+}
+
+/* ==================================================================== */
+/* Round 4 — YOUR KAI PROFILE (prototype "Account" board)               */
+/* ==================================================================== */
+
+/**
+ * Trading mode · Experience level · Kai watches, plus the voice line those
+ * three produce and the rule-adherence receipt.
+ *
+ * Changing any row writes `PUT /settings` and updates the local profile at
+ * once — these three settings change how Kai scans, writes and warns, so the
+ * screen must never lag behind what the user just chose.
+ */
+export function useKaiProfile(fallbackMode: GoalMode) {
+  const [experience, setExperience] = useState<Experience>('new');
+  const [focus, setFocus] = useState<FocusKey[]>(['tech', 'ai']);
+  const [mode, setMode] = useState<GoalMode>(fallbackMode);
+  const [adherence, setAdherence] = useState<RuleAdherence | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    if (!api.available()) {
+      const f = fixtureKaiProfile();
+      setExperience(f.experience);
+      setFocus(f.focus);
+      setMode(f.mode);
+      setAdherence(fixtureRuleAdherence);
+      setLoaded(true);
+      return;
+    }
+    (async () => {
+      try {
+        const r = await api.kaiProfile(fallbackMode);
+        if (!alive) return;
+        setExperience(r.profile.experience);
+        setFocus(r.profile.focus);
+        setMode(r.profile.mode);
+        setAdherence(r.adherence);
+      } catch (e) {
+        if (alive) setError(e instanceof Error ? e.message : null);
+      } finally {
+        if (alive) setLoaded(true);
+      }
+    })();
+    return () => { alive = false; };
+  }, [fallbackMode]);
+
+  const persist = useCallback(async (patch: { experience?: Experience; focus?: FocusKey[]; mode?: GoalMode }) => {
+    if (!api.available()) return;
+    try { await api.putKaiProfile(patch); } catch { /* the row already moved; the next load reconciles */ }
+  }, []);
+
+  const cycleMode = useCallback(() => {
+    setMode((m) => { const next = nextMode(m); void persist({ mode: next }); return next; });
+  }, [persist]);
+
+  const cycleExperience = useCallback(() => {
+    setExperience((e) => { const next = nextExperience(e); void persist({ experience: next }); return next; });
+  }, [persist]);
+
+  const toggleFocus = useCallback((k: FocusKey) => {
+    setFocus((f) => {
+      const next = f.includes(k) ? f.filter((x) => x !== k) : [...f, k];
+      void persist({ focus: next });
+      return next;
+    });
+  }, [persist]);
+
+  return {
+    mode, experience, focus, adherence, loaded, error,
+    modeLabel: MODE_LABEL[mode],
+    experienceLabel: EXPERIENCE_LABEL[experience],
+    focusShort: focusList(focus),
+    voiceLine: EXPERIENCE_VOICE[experience],
+    cycleMode, cycleExperience, toggleFocus,
+  };
 }

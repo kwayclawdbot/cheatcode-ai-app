@@ -55,8 +55,8 @@ export function ObjectCard({
 }
 
 /** Row list container: `padding:4px 15px` with hairline dividers between rows. */
-export function RowList({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
-  return <ObjectCard style={[{ paddingHorizontal: 15, paddingVertical: 4 }, style]}>{children}</ObjectCard>;
+export function RowList({ children, style, testID }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; testID?: string }) {
+  return <ObjectCard testID={testID} style={[{ paddingHorizontal: 15, paddingVertical: 4 }, style]}>{children}</ObjectCard>;
 }
 
 export function Row({ children, last = false, style }: { children: React.ReactNode; last?: boolean; style?: StyleProp<ViewStyle> }) {

@@ -1,66 +1,61 @@
 import React from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
+import Svg, { Path } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Screen } from '../../ui/Screen';
 import { T } from '../../ui/Text';
 import { KaiOrb } from '../../ui/KaiOrb';
-import { KaiBubble } from '../../ui/Bubble';
-import { ObjectCard } from '../../ui/Panel';
 import { Button } from '../../ui/Button';
-import { BandChart } from '../../ui/MiniChart';
-import { Info } from '../../ui/Icons';
-import { color, type } from '../../ui/tokens';
+import { alpha, color, gradientAngle, radius } from '../../ui/tokens';
 
 /**
- * Welcome / first run — V2-O1-First-run.html.
- * The artboard is step 2 of the walkthrough; the brief maps it to the pre-auth
- * entry, so the header rhythm, Kai bubble, teaching panel and the volt/outline
- * button pair are lifted verbatim and only the copy + actions are the entry's.
+ * Welcome — prototype board "Welcome".
+ * Mark, name, one promise, one line from Kai, and the two ways in. Nothing
+ * else: the first screen's job is to say what this is and let the person move.
  */
 export default function Welcome() {
   const router = useRouter();
 
   return (
-    <Screen variant="dome" layout="stack" testID="screen-welcome">
-      <T size={type.eyebrowHero.size} weight="bold" ls={1.1} c={color.violetLight}>
-        CHEAT CODE AI · PAPER MONEY FIRST
-      </T>
-      <T size={type.heroTitle.size} weight="bold" ls={-0.4} lh={31} style={{ marginTop: 10 }}>
-        An AI that watches the market with you
-      </T>
-      <T size={14} c={color.muted} style={{ marginTop: 8 }}>
-        Kai grades setups before you look, shows the risk first, and never moves money without you.
-      </T>
-
-      <View style={{ gap: 11, marginTop: 22, flex: 1 }}>
-        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
-          <KaiOrb size={30} />
-          <KaiBubble style={{ flex: 1 }}>
-            <T size={14} lh={20}>
-              I'm Kai. I'll show you what I look at — <T size={14} lh={20} weight="bold">a level, the volume, and what would prove me wrong</T>. Nothing here spends real money.
-            </T>
-          </KaiBubble>
+    <Screen variant="dome" layout="stack" testID="screen-welcome" style={{ paddingTop: 120, paddingHorizontal: 24, paddingBottom: 48 }}>
+      <View style={{ flex: 1, alignItems: 'center', gap: 18 }}>
+        <View
+          style={{
+            width: 76, height: 76, borderRadius: 22, backgroundColor: color.volt,
+            alignItems: 'center', justifyContent: 'center',
+            shadowColor: color.volt, shadowOpacity: 0.35, shadowRadius: 25, shadowOffset: { width: 0, height: 0 },
+          }}
+        >
+          <Svg width={38} height={38} viewBox="0 0 24 24" fill="none">
+            <Path d="M13 3 4 14h6l-1 7 9-11h-6l1-7z" stroke={color.bg} strokeWidth={2.4} />
+          </Svg>
         </View>
 
-        <ObjectCard style={{ paddingVertical: 13, paddingHorizontal: 15, gap: 9 }}>
-          <BandChart />
-          <T size={13} lh={20}>
-            <T size={13} lh={20} weight="bold" c={color.cyan}>The shaded band</T> is where buyers keep stepping in. Price is above it — that's a good sign, not a guarantee.
-          </T>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-            <Info size={11} color={color.muted} />
-            <T size={11} c={color.muted} style={{ flex: 1 }}>
-              “Level” means a price where lots of people tend to buy or sell.
-            </T>
-          </View>
-        </ObjectCard>
+        <T size={32} weight="bold" ls={-0.5}>Cheat Code AI</T>
 
-        <View style={{ flex: 1 }} />
+        <T size={15} c={color.muted} align="center" lh={22}>
+          Trade with Kai — an AI that grades setups, watches your risk, and never spends a dollar without you.
+        </T>
 
-        <View style={{ gap: 8 }}>
-          <Button testID="cta-get-started" label="Get started" height={46} arrow onPress={() => router.push('/sign-up')} />
-          <Button testID="cta-sign-in" label="I have an account" kind="outline" height={42} onPress={() => router.push('/sign-in')} />
-        </View>
+        <LinearGradient
+          colors={[alpha.violet20, alpha.violet06]}
+          start={gradientAngle.start}
+          end={gradientAngle.end}
+          style={{
+            flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 12,
+            paddingVertical: 12, paddingHorizontal: 16, borderRadius: radius.xl,
+            borderWidth: 0.5, borderColor: alpha.violet50,
+          }}
+        >
+          <KaiOrb size={28} />
+          <T size={13} lh={18}>“I'll show you one real setup in the first minute.”</T>
+        </LinearGradient>
+      </View>
+
+      <View style={{ gap: 10 }}>
+        <Button testID="cta-get-started" label="Create account" height={52} arrow onPress={() => router.push('/sign-up')} />
+        <Button testID="cta-sign-in" label="Log in" kind="outline" height={46} onPress={() => router.push('/sign-in')} />
       </View>
     </Screen>
   );
