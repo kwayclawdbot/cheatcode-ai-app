@@ -186,3 +186,112 @@ on conflict (session_date) do nothing;
 insert into system_status (component, healthy, detail, updated_at) values
   ('database', true, '{"note": "local seed"}', now())
 on conflict (component) do update set healthy = excluded.healthy, updated_at = now();
+
+-- =====================================================================
+-- instruments.meta — company profiles (round 4 / SCHEMA-4)
+--
+-- Shape is documented in migration 0021 section 1 and SCHEMA-NOTES 1.43:
+--   meta.profile = {description, sector, industry, market_cap, next_earnings,
+--                   pe, employees, homepage, source, as_of}
+-- Every row here carries source:'seed'. The API's weekly refresh
+-- (lib/market/profile.ts, Polygon /v3/reference/tickers/{sym}) overwrites the
+-- object wholesale with source:'polygon' — a client that sees 'seed' is looking
+-- at approximate figures, and that is the point of the field.
+--
+-- `description` is at most two sentences (spec §3: "The default summary is two
+-- sentences maximum. It explains what the company does and why it is relevant
+-- to the current event.").
+-- =====================================================================
+update instruments i
+   set meta = coalesce(i.meta, '{}'::jsonb) || jsonb_build_object('profile', p.profile),
+       updated_at = now()
+  from (values
+    ('SPY',  jsonb_build_object(
+      'description', 'SPY is the oldest and largest US exchange-traded fund, holding the 500 companies of the S&P 500 in proportion to their market value. It is the reference for "the market" in almost every setup here, so a name moving against SPY is fighting the tape.',
+      'sector', 'Index ETF', 'industry', 'Large-cap blend',
+      'market_cap', 640000000000::numeric, 'next_earnings', null, 'pe', 27.4,
+      'employees', null, 'homepage', 'https://www.ssga.com')),
+    ('QQQ',  jsonb_build_object(
+      'description', 'QQQ holds the 100 largest non-financial companies listed on the Nasdaq, which makes it roughly half big tech and semiconductors. It is the cleanest read on whether the growth side of the market is leading or lagging.',
+      'sector', 'Index ETF', 'industry', 'Large-cap growth',
+      'market_cap', 340000000000::numeric, 'next_earnings', null, 'pe', 32.1,
+      'employees', null, 'homepage', 'https://www.invesco.com')),
+    ('META', jsonb_build_object(
+      'description', 'Meta Platforms owns Facebook, Instagram, WhatsApp and Threads, and earns nearly all of its money selling advertising against that attention. Its spending on AI infrastructure is what the market currently argues about.',
+      'sector', 'Communication Services', 'industry', 'Interactive Media & Services',
+      'market_cap', 1450000000000::numeric, 'next_earnings', '2026-10-28', 'pe', 24.6,
+      'employees', 76000, 'homepage', 'https://investor.atmeta.com')),
+    ('NVDA', jsonb_build_object(
+      'description', 'Nvidia designs the graphics and data-centre processors that most AI models are trained and run on, and sells the software stack that locks developers to them. Its results set the tone for the whole semiconductor complex.',
+      'sector', 'Information Technology', 'industry', 'Semiconductors',
+      'market_cap', 5100000000000::numeric, 'next_earnings', '2026-11-18', 'pe', 43.2,
+      'employees', 36000, 'homepage', 'https://investor.nvidia.com')),
+    ('AAPL', jsonb_build_object(
+      'description', 'Apple sells the iPhone, Mac, iPad and Watch, plus a services business — App Store, iCloud, payments — that now carries most of the profit growth. Its size means it moves the index as much as the index moves it.',
+      'sector', 'Information Technology', 'industry', 'Technology Hardware',
+      'market_cap', 3800000000000::numeric, 'next_earnings', '2026-10-29', 'pe', 33.8,
+      'employees', 164000, 'homepage', 'https://investor.apple.com')),
+    ('TSLA', jsonb_build_object(
+      'description', 'Tesla builds electric vehicles, battery storage and the software that runs them, and is valued on the autonomy and energy businesses more than on cars sold. It is the most volatile large-cap on this list, which changes how a stop has to be placed.',
+      'sector', 'Consumer Discretionary', 'industry', 'Automobiles',
+      'market_cap', 1150000000000::numeric, 'next_earnings', '2026-10-21', 'pe', 71.5,
+      'employees', 125000, 'homepage', 'https://ir.tesla.com')),
+    ('AMD',  jsonb_build_object(
+      'description', 'AMD makes processors and AI accelerators for data centres, PCs and gaming consoles, and is the only credible second source to Nvidia in AI compute. It trades as the high-beta expression of the same demand story.',
+      'sector', 'Information Technology', 'industry', 'Semiconductors',
+      'market_cap', 780000000000::numeric, 'next_earnings', '2026-11-04', 'pe', 48.9,
+      'employees', 28000, 'homepage', 'https://ir.amd.com')),
+    ('CRM',  jsonb_build_object(
+      'description', 'Salesforce sells the software companies use to run sales, service and marketing, billed as a subscription. Its results are read as a gauge of how freely other companies are spending on software.',
+      'sector', 'Information Technology', 'industry', 'Application Software',
+      'market_cap', 245000000000::numeric, 'next_earnings', '2026-12-03', 'pe', 29.7,
+      'employees', 76000, 'homepage', 'https://investor.salesforce.com')),
+    ('MSFT', jsonb_build_object(
+      'description', 'Microsoft sells Windows, Office and — the part that matters to the tape — Azure, the cloud platform it rents to companies running AI workloads. Azure growth is the number the market trades on.',
+      'sector', 'Information Technology', 'industry', 'Systems Software',
+      'market_cap', 3600000000000::numeric, 'next_earnings', '2026-10-27', 'pe', 34.5,
+      'employees', 228000, 'homepage', 'https://www.microsoft.com/investor')),
+    ('AMZN', jsonb_build_object(
+      'description', 'Amazon runs the largest western online store and AWS, the cloud business that produces most of its operating profit. Retail margins and AWS growth pull the stock in different directions, which is why it often ranges.',
+      'sector', 'Consumer Discretionary', 'industry', 'Broadline Retail',
+      'market_cap', 2450000000000::numeric, 'next_earnings', '2026-10-30', 'pe', 36.2,
+      'employees', 1550000, 'homepage', 'https://ir.aboutamazon.com'))
+  ) as p(symbol, profile)
+ where i.symbol = p.symbol;
+
+-- provenance + as_of on every seeded profile, in one place so no row can forget
+update instruments
+   set meta = jsonb_set(
+                jsonb_set(meta, '{profile,source}', '"seed"'::jsonb, true),
+                '{profile,as_of}', to_jsonb(now()), true)
+ where meta ? 'profile'
+   and coalesce(meta -> 'profile' ->> 'source', 'seed') = 'seed';
+
+-- =====================================================================
+-- entitlement_flags — circles_create (round 4)
+-- The "+ Create" circle sheet is real but gated (brief §8). The API reads this
+-- flag; the create_circle RPC itself does not gate.
+-- =====================================================================
+insert into entitlement_flags (tier, flag, value) values
+  ('free',    'circles_create', 'false'),
+  ('premium', 'circles_create', 'true')
+on conflict (tier, flag) do update set value = excluded.value;
+
+-- =====================================================================
+-- circles (round 4) — two time-boxed setup rooms, opened through the RPC so the
+-- seed and the API take exactly the same path (name, slug, expiry, counters,
+-- setups.discussion_room_id back-fill).
+--
+-- The pattern the room is named after lives in setups.annotations.pattern; the
+-- two lead seed setups get one so the circles read "META Breakout" /
+-- "NVDA Breakout" rather than "META Setup".
+-- =====================================================================
+update setups
+   set annotations = coalesce(annotations, '{}'::jsonb) || '{"pattern":"breakout","seed":true}'::jsonb
+ where id in (
+   '11111111-1111-4111-8111-000000000001',   -- META
+   '11111111-1111-4111-8111-000000000002'    -- NVDA
+ );
+
+select open_setup_circle('11111111-1111-4111-8111-000000000001'::uuid, interval '3 days');
+select open_setup_circle('11111111-1111-4111-8111-000000000002'::uuid, interval '3 days');

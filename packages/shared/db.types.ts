@@ -110,6 +110,53 @@ export type Database = {
           },
         ]
       }
+      alert_events: {
+        Row: {
+          alert_id: string
+          created_at: string
+          from_state: string | null
+          id: number
+          payload: Json
+          seq: number
+          source: string
+          to_state: string | null
+          type: string
+          version: number | null
+        }
+        Insert: {
+          alert_id: string
+          created_at?: string
+          from_state?: string | null
+          id?: number
+          payload?: Json
+          seq: number
+          source?: string
+          to_state?: string | null
+          type: string
+          version?: number | null
+        }
+        Update: {
+          alert_id?: string
+          created_at?: string
+          from_state?: string | null
+          id?: number
+          payload?: Json
+          seq?: number
+          source?: string
+          to_state?: string | null
+          type?: string
+          version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_events_alert_id_fkey"
+            columns: ["alert_id"]
+            isOneToOne: false
+            referencedRelation: "alerts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       alert_triggers: {
         Row: {
           alert_id: string
@@ -151,47 +198,129 @@ export type Database = {
       alerts: {
         Row: {
           channels: Database["public"]["Enums"]["notif_channel"][]
+          chart_context: Json | null
           condition: Json
           created_at: string | null
           data_dependency: Json
+          direction: string | null
+          event: Json | null
           expires_at: string | null
           frequency: string | null
+          grade_snapshot: Json | null
           id: string
+          instrument_kind: Database["public"]["Enums"]["instrument_kind"]
+          last_evaluated_at: string | null
+          lifecycle_state: string
+          mode: Database["public"]["Enums"]["app_mode"] | null
           natural_language: string | null
+          plan_id: string | null
+          position_id: string | null
           refs: Json | null
+          score_snapshot: Json | null
+          setup_id: string | null
+          state_changed_at: string | null
           status: Database["public"]["Enums"]["alert_status"]
+          symbol: string | null
+          tab: string | null
+          thesis_snapshot: Json | null
+          trade_plan: Json | null
           updated_at: string | null
           user_id: string
+          version: number
         }
         Insert: {
           channels?: Database["public"]["Enums"]["notif_channel"][]
+          chart_context?: Json | null
           condition: Json
           created_at?: string | null
           data_dependency: Json
+          direction?: string | null
+          event?: Json | null
           expires_at?: string | null
           frequency?: string | null
+          grade_snapshot?: Json | null
           id?: string
+          instrument_kind?: Database["public"]["Enums"]["instrument_kind"]
+          last_evaluated_at?: string | null
+          lifecycle_state?: string
+          mode?: Database["public"]["Enums"]["app_mode"] | null
           natural_language?: string | null
+          plan_id?: string | null
+          position_id?: string | null
           refs?: Json | null
+          score_snapshot?: Json | null
+          setup_id?: string | null
+          state_changed_at?: string | null
           status?: Database["public"]["Enums"]["alert_status"]
+          symbol?: string | null
+          tab?: string | null
+          thesis_snapshot?: Json | null
+          trade_plan?: Json | null
           updated_at?: string | null
           user_id: string
+          version?: number
         }
         Update: {
           channels?: Database["public"]["Enums"]["notif_channel"][]
+          chart_context?: Json | null
           condition?: Json
           created_at?: string | null
           data_dependency?: Json
+          direction?: string | null
+          event?: Json | null
           expires_at?: string | null
           frequency?: string | null
+          grade_snapshot?: Json | null
           id?: string
+          instrument_kind?: Database["public"]["Enums"]["instrument_kind"]
+          last_evaluated_at?: string | null
+          lifecycle_state?: string
+          mode?: Database["public"]["Enums"]["app_mode"] | null
           natural_language?: string | null
+          plan_id?: string | null
+          position_id?: string | null
           refs?: Json | null
+          score_snapshot?: Json | null
+          setup_id?: string | null
+          state_changed_at?: string | null
           status?: Database["public"]["Enums"]["alert_status"]
+          symbol?: string | null
+          tab?: string | null
+          thesis_snapshot?: Json | null
+          trade_plan?: Json | null
           updated_at?: string | null
           user_id?: string
+          version?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "alerts_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "trade_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alerts_position_id_fkey"
+            columns: ["position_id"]
+            isOneToOne: false
+            referencedRelation: "positions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alerts_setup_id_fkey"
+            columns: ["setup_id"]
+            isOneToOne: false
+            referencedRelation: "setups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alerts_symbol_fkey"
+            columns: ["symbol"]
+            isOneToOne: false
+            referencedRelation: "instruments"
+            referencedColumns: ["symbol"]
+          },
           {
             foreignKeyName: "alerts_user_id_fkey"
             columns: ["user_id"]
@@ -363,6 +492,112 @@ export type Database = {
           },
         ]
       }
+      chart_annotations: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          price: number | null
+          price2: number | null
+          provenance: string
+          reason: string | null
+          source_alert_id: string | null
+          source_plan_id: string | null
+          source_setup_id: string | null
+          status: string
+          symbol: string
+          text: string | null
+          timeframe: string
+          ts_from: string | null
+          ts_to: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          price?: number | null
+          price2?: number | null
+          provenance?: string
+          reason?: string | null
+          source_alert_id?: string | null
+          source_plan_id?: string | null
+          source_setup_id?: string | null
+          status?: string
+          symbol: string
+          text?: string | null
+          timeframe?: string
+          ts_from?: string | null
+          ts_to?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          price?: number | null
+          price2?: number | null
+          provenance?: string
+          reason?: string | null
+          source_alert_id?: string | null
+          source_plan_id?: string | null
+          source_setup_id?: string | null
+          status?: string
+          symbol?: string
+          text?: string | null
+          timeframe?: string
+          ts_from?: string | null
+          ts_to?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chart_annotations_source_alert_id_fkey"
+            columns: ["source_alert_id"]
+            isOneToOne: false
+            referencedRelation: "alerts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chart_annotations_source_plan_id_fkey"
+            columns: ["source_plan_id"]
+            isOneToOne: false
+            referencedRelation: "trade_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chart_annotations_source_setup_id_fkey"
+            columns: ["source_setup_id"]
+            isOneToOne: false
+            referencedRelation: "setups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chart_annotations_symbol_fkey"
+            columns: ["symbol"]
+            isOneToOne: false
+            referencedRelation: "instruments"
+            referencedColumns: ["symbol"]
+          },
+          {
+            foreignKeyName: "chart_annotations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "chart_annotations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       community_signals: {
         Row: {
           catalysts: Json | null
@@ -505,7 +740,9 @@ export type Database = {
           context: Json | null
           created_at: string | null
           id: string
+          last_message_at: string | null
           mode: Database["public"]["Enums"]["app_mode"] | null
+          pinned: boolean
           title: string | null
           updated_at: string | null
           user_id: string
@@ -514,7 +751,9 @@ export type Database = {
           context?: Json | null
           created_at?: string | null
           id?: string
+          last_message_at?: string | null
           mode?: Database["public"]["Enums"]["app_mode"] | null
+          pinned?: boolean
           title?: string | null
           updated_at?: string | null
           user_id: string
@@ -523,7 +762,9 @@ export type Database = {
           context?: Json | null
           created_at?: string | null
           id?: string
+          last_message_at?: string | null
           mode?: Database["public"]["Enums"]["app_mode"] | null
+          pinned?: boolean
           title?: string | null
           updated_at?: string | null
           user_id?: string
@@ -2068,6 +2309,7 @@ export type Database = {
           config: Json
           created_at: string
           description: string | null
+          expires_at: string | null
           id: string
           mode: Database["public"]["Enums"]["app_mode"] | null
           name: string
@@ -2081,6 +2323,7 @@ export type Database = {
           config?: Json
           created_at?: string
           description?: string | null
+          expires_at?: string | null
           id?: string
           mode?: Database["public"]["Enums"]["app_mode"] | null
           name: string
@@ -2094,6 +2337,7 @@ export type Database = {
           config?: Json
           created_at?: string
           description?: string | null
+          expires_at?: string | null
           id?: string
           mode?: Database["public"]["Enums"]["app_mode"] | null
           name?: string
@@ -2966,6 +3210,14 @@ export type Database = {
         }
         Relationships: []
       }
+      rule_adherence_v: {
+        Row: {
+          followed: number | null
+          sessions: number | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       append_user_event: {
@@ -2982,6 +3234,7 @@ export type Database = {
         Args: { p_quote: Json; p_symbol: string; p_user_id: string }
         Returns: Json
       }
+      close_expired_circles: { Args: never; Returns: string[] }
       close_position_prepare: {
         Args: { p_position_id: string; p_user_id: string }
         Returns: Json
@@ -2989,6 +3242,29 @@ export type Database = {
       complete_onboarding: {
         Args: { p_patch: Json; p_user_id: string }
         Returns: Json
+      }
+      create_circle: {
+        Args: { p_symbol: string; p_ttl?: string; p_user_id: string }
+        Returns: {
+          config: Json
+          created_at: string
+          description: string | null
+          expires_at: string | null
+          id: string
+          mode: Database["public"]["Enums"]["app_mode"] | null
+          name: string
+          pinned: Json
+          setup_id: string | null
+          slug: string | null
+          type: Database["public"]["Enums"]["room_type"]
+          updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "rooms"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       create_plan: {
         Args: { p_patch: Json; p_user_id: string }
@@ -3058,6 +3334,29 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "notifications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      open_setup_circle: {
+        Args: { p_setup_id: string; p_ttl?: string }
+        Returns: {
+          config: Json
+          created_at: string
+          description: string | null
+          expires_at: string | null
+          id: string
+          mode: Database["public"]["Enums"]["app_mode"] | null
+          name: string
+          pinned: Json
+          setup_id: string | null
+          slug: string | null
+          type: Database["public"]["Enums"]["room_type"]
+          updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "rooms"
           isOneToOne: true
           isSetofReturn: false
         }

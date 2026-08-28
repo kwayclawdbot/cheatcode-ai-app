@@ -9,10 +9,12 @@ Companion to `docs/01_DATA_MODEL.md`. Two kinds of entry, written per round:
    column or default was invented to "fix" them. The owner decides.
 
 Sections 1 and 2 cover the v1 slice (`0001…0016`); sections 3 and 4 cover round 2
-(`0017`, `0018`); sections 5 and 6 cover round 3 (`0020`, paper execution) and
-continue the same numbering.
+(`0017`, `0018`); sections 5 and 6 cover round 3 (`0020`, paper execution);
+sections 7 and 8 cover round 4 (`0021`, the Prototype: alerts as trade objects,
+chart annotations, circles, conversation drawer). All continue the same
+numbering.
 
-Migrations live in `supabase/migrations/0001…0020`, applied in filename order.
+Migrations live in `supabase/migrations/0001…0021`, applied in filename order.
 
 ---
 
@@ -793,3 +795,329 @@ $50k of stock in a $10k paper account and the only thing that notices is
 `equity`. The risk policy (`max_position_pct`, `max_open_positions`) is enforced
 in the API's preview, not here, so an RPC caller that skips preview skips the
 limits too.
+
+---
+
+## 7. Round 4 — interpretations (migration `0021_prototype_round4.sql`)
+
+Round 4 implements `docs/BUILD-BRIEF-round-4.md` "SCHEMA-4" against
+`docs/10_ALERTS_TRADE_PORTAL_SPEC_extracted.md` (§3 card content, §4 grade and
+scorecard, §6 route context, §7 portal, §9 data contracts). The migration's
+header block is the signature contract the API lane reads; this section is the
+reasoning behind it.
+
+### 1.43 Company profiles live in `instruments.meta.profile`, not in columns
+01 §4 gives `instruments` a `meta jsonb` and no profile fields. The ticker page
+(Overview: company summary, market cap, next earnings, P/E, sector) and the
+alert card's two-sentence company summary need six of them. They went into
+`meta` rather than into six new columns because the object is a **cache of a
+third-party reference endpoint** (Polygon `/v3/reference/tickers/{sym}`),
+refreshed wholesale on a weekly cadence; none of it is ever a filter, a join key
+or a sort key; and the upstream payload gains fields faster than a migration
+can. The shape is fixed and documented so the API and the client agree:
+
+```
+instruments.meta = { "profile": {
+  "description":   text,          -- <= 2 sentences (spec §3)
+  "sector":        text,
+  "industry":      text|null,
+  "market_cap":    number|null,   -- USD, approximate
+  "next_earnings": "YYYY-MM-DD"|null,
+  "pe":            number|null,
+  "employees":     number|null,
+  "homepage":      text|null,
+  "source":        "seed"|"polygon",
+  "as_of":         timestamptz
+}}
+```
+
+`instruments.name` stays the canonical display name; `description` never repeats
+it. `source` is always present, so a client can tell an approximate seed profile
+from a refreshed one without a second lookup. The column carries a `comment on
+column` saying the same thing, so `\d+ instruments` is enough.
+
+### 1.44 Circles are **discoverable** rooms; the thread is still members-only
+0014 let an authenticated user select a room only when `type = 'core'` or they
+were a member (1.10). The Community board (brief §8) shows the circles row —
+"META · 2d left", "NVDA · 4d left", member counts — *before* anyone joins, so
+the policy now also admits `type = 'setup' and expires_at is not null`. Two
+consequences worth stating plainly:
+
+- a setup room **with a clock** is a public directory entry (id, name,
+  description, member count, expiry) for every signed-in user;
+- a setup room **without** a clock keeps the round-2 behaviour (members only),
+  which is why `scripts/rls-test.mjs`'s temp setup room still behaves as it did.
+
+`messages` is untouched: reading the thread still requires membership through
+`is_room_member()`, and `messages_public` inherits that. A non-member sees that
+a circle exists and what it is about; they do not see what was said in it.
+
+### 1.45 `chart_annotations.user_id` is the **owner**, not the author
+The brief's table sketch says "user_id nullable (Kai = null)" and its SCHEMA-4
+line says the column is "the *owner* even for Kai-provenance rows — document the
+choice". The second reading was implemented, and the column is `not null`:
+
+- annotations are drawn **into one user's workspace**, from that user's alert,
+  plan or Kai turn. A nullable owner would make every Kai level either globally
+  visible or globally invisible, and neither matches "Kai marked the trigger,
+  entry area, stop and first target on *the chart you opened*" (spec §6);
+- the user may hide or delete any annotation on their chart (spec §7:
+  "the user can inspect/hide/delete"). With a null owner, "hidden by A but not
+  by B" needs a second per-user table for what is one boolean;
+- **authorship is `provenance`** (`kai | user | community | plan`), which is what
+  the UI actually labels ("Kai marked this"), and it is a separate axis from
+  scope.
+
+So: `(user_id = A, provenance = 'kai')` is a Kai level on A's chart, and A is the
+only person who can see it. RLS is then a plain `user_id = auth.uid()` — no
+`or user_id is null` clause that would have leaked one user's Kai levels to
+everyone.
+
+### 1.46 A client may change one column of one row: `chart_annotations.status`
+Two locks, because one of them is a grant and grants are easy to widen by
+accident later:
+
+1. **Column-level grant** — `grant update (status) on chart_annotations to
+   authenticated`. A PATCH that names any other column is refused by PostgreSQL
+   before RLS is consulted.
+2. **Trigger** `chart_annotations_client_update_guard` — for
+   `current_user in ('authenticated','anon')` it refuses a status that is not
+   `hidden` or `deleted` (a client may not resurrect a level to `valid`, or mark
+   one `invalidated` — that is a market fact, not a preference), and it compares
+   `to_jsonb(new) - 'status' - 'updated_at'` with the same slice of `old` to
+   refuse anything smuggled alongside. `current_user` is the role PostgREST
+   `SET ROLE`s into, so `service_role` and the migration owner pass straight
+   through.
+
+The RLS policy's `with check (user_id = auth.uid() and status in
+('hidden','deleted'))` says the same thing a third time. Deletion is soft
+(`status = 'deleted'`) so the "Kai drew this, and why" audit survives the user
+tidying their chart.
+
+### 1.47 `alerts` became a trade object: `lifecycle_state`, a generated `tab`, and history
+Spec §9 says an alert card carries "identity, company_summary, mode, direction,
+grade, score, score_components, state, event, thesis, quote, trade_plan, fit,
+community, timestamps". 0008's `alerts` carried a monitoring condition and a
+delivery channel list. What was added, and why each one is a column rather than
+a join:
+
+- `symbol`, `mode`, `direction`, `instrument_kind` — the card's identity row.
+  This also closes gap **2.2** (`alerts` had no `mode`).
+- `setup_id`, `plan_id`, `position_id` — the execution references spec §6 needs
+  restored when the card routes into the Trade Portal.
+- `trade_plan jsonb`, `thesis_snapshot jsonb`, `event jsonb`,
+  `chart_context jsonb` — a **Watching** card is "a complete trade idea,
+  including preliminary entry, stop, targets and expiration" *before* any
+  `trade_plans` row exists, and History must render the card as it was even
+  after the setup expired. Joining to a live setup would rewrite history; these
+  are the snapshots that stop it.
+- `grade_snapshot`, `score_snapshot`, `version` — "a later grade change creates
+  a new version rather than rewriting history" (spec §9).
+- `state_changed_at`, `last_evaluated_at` — the monitoring line ("last
+  evaluation") and sort orders.
+
+`lifecycle_state text` is **not** `alerts.status`. `status` is an enum
+(`draft|active|triggered|paused|expired|cancelled`) owned by the alert engine,
+and 03 Unit 2's "no enum migrations" rule stands; `lifecycle_state` is the card
+state machine from spec §9 (`watching | active | planned | order_pending |
+position_active | invalidated | closed | expired | dismissed | cancelled |
+missed`), constrained by a `check`, which is a one-line change when the machine
+grows.
+
+`tab` is a **stored generated column** over `lifecycle_state`
+(`watching → watching`; `active|planned|order_pending|position_active → active`;
+everything else → `history`). The brief offered "a derived view or API-side";
+a generated column beats both — PostgREST filters and indexes it
+(`?tab=eq.active`), it cannot drift from `lifecycle_state`, and no two consumers
+can disagree about what "History" means.
+
+`alert_events` is the append-only timeline (spec §9 "Event history: state
+transition, timestamp, source, data snapshot and user/Kai action"): one row per
+transition or grade version, `unique (alert_id, seq)` with the seq assigned by a
+BEFORE-INSERT trigger under a `for update` lock on the parent alert (the same
+shape as `user_events_assign_seq`, so the API does not have to pass a number and
+two writers cannot claim one). `update`/`delete` are revoked from
+`service_role` too, exactly like the other append-only tables (1.14).
+
+### 1.48 `conversations`: pinned + recency in the database, titles still API writes
+`title` already existed (0011). Added: `pinned boolean not null default false`
+and `last_message_at timestamptz`.
+
+- `last_message_at` is maintained by an AFTER INSERT trigger on
+  `conversation_messages`, not by the writer. Every path that appends a turn
+  (streamed Kai reply, morning briefing, portal panel) gets correct recency for
+  free, and none of them can forget.
+- The drawer's exact order is one index:
+  `(user_id, pinned desc, coalesce(last_message_at, created_at) desc)`.
+- "Search conversations" is `?title=ilike.*meta*`. A leading wildcard cannot use
+  a b-tree, so `pg_trgm` is enabled (in the `extensions` schema, like `vector`)
+  and the index is
+  `gin (title extensions.gin_trgm_ops)`.
+- **No client UPDATE grant was added.** 01 §13 row 7 makes `conversations`
+  owner-select, api-app-write, and round 4's pin/rename is a
+  `PATCH /kai/conversations/:id` in the API-4 contract. Granting the client
+  `update (title, pinned)` would have been convenient and is the obvious future
+  change; it is not this round's, because the same grant is what an auto-title
+  worker and a future sharing flow would have to reason about.
+  `scripts/rls-test.mjs` asserts the closed behaviour, so widening it is a
+  visible decision rather than a silent drift.
+
+### 1.49 Circles: three functions, one clock, no deletion
+`rooms.expires_at` is the clock; `rooms.config.posting_restricted` is the close.
+Nothing is deleted when a circle ends, because History has to stay readable.
+
+- `open_setup_circle(p_setup_id, p_ttl default '3 days')` is idempotent, and the
+  guarantee is a **unique partial index on `rooms(setup_id)`**, not a polite
+  caller: the insert carries `on conflict (setup_id) … do nothing` and re-reads
+  on a lost race. The name is `'<SYM> ' || initcap(pattern)` where the pattern is
+  looked for in `setups.annotations->>'pattern'`, then `catalyst`,
+  `score_components`, `entry_condition`, falling back to `'<SYM> Setup'` — the
+  brief's "<pattern-or-'setup'>". It seeds `room_seq_counters` (so the first
+  post does not have to) and back-fills `setups.discussion_room_id`.
+- `create_circle(p_user_id, p_symbol, p_ttl)` inserts the creator as a
+  `moderator` member and writes a `user_events` row. The `circles_create`
+  entitlement is **not** checked here: the database creates, the API gates
+  (the same split as every other premium surface).
+- `close_expired_circles()` sets `config.posting_restricted = true` (which
+  `post_room_message` already honours for non-moderators, 1.23) plus
+  `config.closed_at`, and returns **only the ids it actually flipped**, so the
+  API tick can narrate each closure exactly once.
+
+All three are `service_role` only.
+
+### 1.50 `rule_adherence_v` reads both receipt shapes, and has no row for no sessions
+Account shows "You've followed your rules N of the last M sessions". A session is
+a debrief; `followed` means the process receipt exists and every item on it is
+ok. `record_debrief` (0018) is called with
+`p_process_review = {payload: {…}, process_receipt: [{label, ok, detail_plain}]}`
+and the API's fallback path writes the same shape, so the view reads
+`process_review->'process_receipt'` and falls back to
+`process_review->'payload'->'process_receipt'`. Items carrying
+`{"status":"ok"}` instead of `{"ok":true}` are accepted, and the whole predicate
+is `coalesce(…, false)` with a `jsonb_typeof` guard — no cast that can throw on a
+stray value, and a receipt item with neither key counts as *not* ok rather than
+disappearing into a NULL predicate (it did, in the first draft; the rls-test
+caught it).
+
+The view is `security_invoker` over `debriefs` (owner-select), so a client JWT
+sees exactly its own row and `service_role` sees everyone. It **inlines** the
+receipt test instead of calling a helper function on purpose: the function grant
+floor (2.7) would revoke EXECUTE from `authenticated` and make the view
+unreadable to the client that needs it. A user with no debriefs has **no row**
+— the API renders `{sessions: 0, followed: 0}` — which is also why the brief's
+"show only when ≥ 3 sessions exist" is a client rule and not a filter here.
+
+### 1.51 Seed additions
+`supabase/seed.sql` gained three things, in the round-4 lane's scope:
+
+- a `meta.profile` for all ten seed instruments (1.43), every one stamped
+  `source: 'seed'` and `as_of: now()` by a single follow-up statement so no row
+  can forget its provenance;
+- the two circles the prototype's Community board shows, opened through
+  `open_setup_circle(...)` with a 3-day TTL rather than by direct insert — the
+  seed and the API therefore take the identical path (name, slug, counters,
+  `discussion_room_id` back-fill). The META and NVDA seed setups get
+  `annotations.pattern = 'breakout'` so the rooms read **META Breakout** /
+  **NVDA Breakout** as the board does, instead of "META Setup";
+- `entitlement_flags` rows for `circles_create` (`free` false, `premium` true).
+  Strictly this is outside the brief's "instruments.meta + circles seed only",
+  but the "+ Create circle" sheet is gated on a flag that no other lane owns a
+  file to seed, and a missing flag reads as "denied" in a way nobody could
+  debug. Called out here rather than done quietly.
+
+### 1.52 `scripts/rls-test.mjs` — round 4
+124 assertions, all green against a clean `supabase db reset`. New coverage:
+
+- **annotations** — A sees exactly its own row *including* the Kai-provenance one
+  (1.45); B sees none of A's and vice versa; a client INSERT is refused; A can
+  set `hidden` and `deleted` on its own row but cannot set `valid`, cannot
+  rewrite `price`, and cannot smuggle `reason` in beside `status`; B cannot
+  touch A's row; the geometry and reason survive every attempt.
+- **circles** — the two seeded circles are visible to a **non-member**, while the
+  thread is not; `open_setup_circle` on the AMD seed setup produces the
+  `'AMD Setup'` fallback name and is idempotent without extending the clock;
+  `create_circle` upper-cases the symbol, names it `'MSFT Circle'`, makes the
+  creator a moderator and refuses an unknown symbol; `close_expired_circles`
+  restricts posting and reports the id once only; none of the three is callable
+  with a client JWT.
+- **conversations** — title/pin are owner-visible, the ilike search never crosses
+  users, a client PATCH of the title is refused, and the `last_message_at`
+  trigger fires on an inserted turn.
+- **alerts** — a graded alert lands in `tab = 'active'` with its snapshot and
+  version, a closed one in `history`, a client cannot move the state machine,
+  `alert_events` numbers itself per alert and is append-only for `service_role`.
+- **rule_adherence_v** — 2 sessions / 1 followed across both receipt shapes, no
+  row for the other user, nothing for `anon`.
+
+Teardown nulls `setups.discussion_room_id` before dropping the circles it
+opened (the FK is deferrable but not `on delete`), and the entitlement-flag
+count assertion moved 12 → 14 (1.51).
+
+---
+
+## 8. Round 4 — known gaps (owner decides)
+
+### 2.22 A circle's existence is public to every signed-in user
+1.44 is a deliberate privacy trade: name, description, member count and expiry of
+every time-boxed setup room are readable by any authenticated user, member or
+not. That is what a discoverable circles row means, and it is fine while circles
+are opened by the setup lifecycle or by a premium member for a public ticker. It
+stops being fine the moment a circle can be private or invite-only — there is no
+`rooms.visibility` column, so "private circle" has no representation today.
+
+### 2.23 `close_expired_circles()` closes on the clock only
+The brief says circles are "closable by the setup's lifecycle". Nothing in SQL
+closes a circle because its setup was invalidated or expired — only
+`expires_at <= now()` does. An invalidated A-grade setup keeps a live circle
+until its TTL runs out. The fix is either a second predicate in the function
+(join `setups` and close on `state in ('invalidated','expired')`) or an API
+decision to shorten `expires_at` on invalidation; neither was invented here.
+
+### 2.24 `open_setup_circle` never extends the clock and never re-opens
+A second call returns the existing room **unchanged**, even when the caller
+passes a longer TTL and even when the circle is already closed. That is the safe
+reading of "idempotent" (a retry cannot silently resurrect a closed room or hand
+a setup a fresh 7 days), but it also means there is **no supported way to extend
+a circle** — the API would have to `update rooms` directly, which no RPC
+sanctions. If "extend by 24h" becomes a product action it needs its own function.
+
+### 2.25 `alerts.lifecycle_state` is a `check`, not a state machine
+Any `service_role` writer can move an alert from `closed` straight back to
+`watching`, or to `position_active` with no position attached. Spec §9's
+transition table is enforced in the API, not here — unlike `trade_plans`, whose
+transitions live in `plan_action` (1.32). The reason is that the alert engine's
+transitions are driven by market evaluation the database cannot see; the cost is
+that `alert_events` can record a history the state machine forbids. An
+`alert_action(p_user_id, p_alert_id, p_action, p_payload)` RPC in the shape of
+`plan_action` is the obvious symmetry whenever the owner wants it.
+
+### 2.26 `alert_events` has no writer function, so the transaction boundary is the API's
+The API inserts the event row and updates `alerts` as two PostgREST calls. A
+crash between them leaves an alert whose `lifecycle_state` and `version`
+disagree with its history — exactly the split that `create_plan`/`plan_action`
+exist to prevent for plans. Acceptable while the alert engine is a single
+serialized tick; not acceptable once two writers (tick and user action) can race.
+
+### 2.27 `rule_adherence_v` is all-time, not "the last M sessions"
+The Account line reads "the last M sessions"; the view returns every debrief the
+user has ever written. A 40-session user with a bad week still shows their
+lifetime ratio. A windowed version needs either a parameter (a function, which
+then collides with the grant floor — see 1.50) or a fixed window baked into the
+view (`created_at > now() - interval '90 days'`, or a `row_number()` cut at 20).
+Left all-time because inventing the window silently would have been worse.
+
+### 2.28 The seeded company profiles are approximations, not market data
+Market caps, P/Es and next-earnings dates in `supabase/seed.sql` are plausible
+round numbers for a local database, stamped `source: 'seed'`. They are not
+sourced from a data vendor and must not be shown as though they were —
+API-4's weekly Polygon refresh replaces the whole object with
+`source: 'polygon'`, and any client copy that quotes a number should key off
+that field. Nothing in the schema *stops* a seed profile being rendered as fact.
+
+### 2.29 `chart_annotations` validates its vocabulary, not its geometry
+`kind`, `provenance` and `status` are constrained; `price`, `price2`, `ts_from`
+and `ts_to` are not. Nothing requires a price on a `trigger`, forbids
+`price2 < price` on a zone, checks that a `target` sits on the correct side of an
+`entry` for the direction, or caps how many annotations one chart may carry. A
+buggy Kai turn can therefore draw an impossible level, and the client has to
+render whatever it is handed.

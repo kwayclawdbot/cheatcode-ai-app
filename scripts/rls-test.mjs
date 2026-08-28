@@ -12,6 +12,19 @@
  *   - A CAN read its own rows (so we know the assertions above are meaningful)
  *   - a direct client insert into `messages` is rejected (api-app writes only)
  *
+ * Round 4 (0021) adds:
+ *   - chart_annotations: owner-scoped (Kai-provenance rows included), client
+ *     INSERT refused, client UPDATE limited to status hidden/deleted on own rows
+ *   - circles: the seeded setup rooms are DISCOVERABLE by a non-member while the
+ *     thread stays members-only; open_setup_circle is idempotent; create_circle
+ *     makes the creator a moderator; close_expired_circles restricts posting and
+ *     reports each id once; none of the three is client-callable
+ *   - conversations: title/pinned/last_message_at are owner-read, api-app-write,
+ *     and the ilike search never crosses users
+ *   - alerts: lifecycle_state drives the generated `tab`, snapshots and version
+ *     are readable by the owner only, alert_events is append-only
+ *   - rule_adherence_v returns exactly the caller's own sessions/followed counts
+ *
  * Round 3 (0020) adds:
  *   - the paper-execution objects (trade_plans / orders / order_events / fills /
  *     positions) are owner-isolated in BOTH directions
@@ -179,6 +192,12 @@ const B = { email: `rls-b-${stamp}@example.com`, password: `pw-b-${stamp}!B1` };
 let createdIds = [];
 let tmpCoreRoom = null;
 let tmpSetupRoom = null;
+let amdCircle = null;      // opened by open_setup_circle during the run
+let userCircle = null;     // opened by create_circle during the run
+
+// the AMD seed setup carries no annotations.pattern, so its circle is the
+// '<SYM> Setup' fallback name; META/NVDA are already opened by the seed.
+const AMD_SETUP = '11111111-1111-4111-8111-000000000003';
 
 try {
   console.log(`RLS test against ${URL_BASE}\n`);
@@ -280,7 +299,7 @@ try {
     const rooms = await asA('rooms?select=slug&type=eq.core');
     assert(Array.isArray(rooms.body) && rooms.body.length === 3, 'A reads the 3 core rooms', `n=${rooms.body?.length}`);
     const flags = await asA('entitlement_flags?select=tier,flag');
-    assert(Array.isArray(flags.body) && flags.body.length === 12, 'A reads entitlement flags', `n=${flags.body?.length}`);
+    assert(Array.isArray(flags.body) && flags.body.length === 14, 'A reads entitlement flags (12 + the two circles_create rows)', `n=${flags.body?.length}`);
   }
 
   console.log('\nrisk_policies are owner-read / api-app-write:');
@@ -687,12 +706,359 @@ try {
     assert(anon.status >= 400, 'anon cannot read daily_risk_v at all', `status ${anon.status}`);
   }
 
+
+  // =========================================== chart annotations (0021)
+  console.log('\nchart_annotations are owner-scoped (Kai rows included):');
+  const annotations = {};
+  {
+    for (const u of [A, B]) {
+      annotations[u.id] = await serviceInsert('chart_annotations', {
+        user_id: u.id,
+        symbol: 'META',
+        timeframe: '5m',
+        kind: 'trigger',
+        price: 504,
+        text: 'Trigger 504',
+        reason: 'The level the alert fired on.',
+        provenance: 'kai',
+        status: 'valid',
+      });
+    }
+
+    const mine = await asA('chart_annotations?select=id,user_id,provenance,status');
+    assert(
+      Array.isArray(mine.body) && mine.body.length === 1 && mine.body[0].user_id === A.id &&
+        mine.body[0].provenance === 'kai',
+      'A sees exactly its own annotation, and it is a Kai-provenance row',
+      JSON.stringify(mine.body),
+    );
+
+    const other = await asA(`chart_annotations?id=eq.${annotations[B.id].id}&select=*`);
+    assert(Array.isArray(other.body) && other.body.length === 0,
+      "A gets 0 rows from B's annotations", JSON.stringify(other.body));
+
+    const bOther = await asB(`chart_annotations?id=eq.${annotations[A.id].id}&select=*`);
+    assert(Array.isArray(bOther.body) && bOther.body.length === 0,
+      "B gets 0 rows from A's annotations (symmetric)", JSON.stringify(bOther.body));
+
+    const ins = await asA('chart_annotations', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ user_id: A.id, symbol: 'META', kind: 'note', text: 'client drew this' }),
+    });
+    assert(ins.status >= 400, 'a client cannot insert an annotation', `status ${ins.status} body ${JSON.stringify(ins.body)}`);
+  }
+
+  console.log('\nannotation client writes are status-only (hidden/deleted):');
+  {
+    const hide = await asA(`chart_annotations?id=eq.${annotations[A.id].id}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ status: 'hidden' }),
+    });
+    assert(hide.status === 200 && hide.body?.[0]?.status === 'hidden',
+      'A can hide its own annotation', `status ${hide.status} body ${JSON.stringify(hide.body)}`);
+
+    const revalidate = await asA(`chart_annotations?id=eq.${annotations[A.id].id}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ status: 'valid' }),
+    });
+    assert(revalidate.status >= 400, "A cannot set an annotation back to 'valid'",
+      `status ${revalidate.status} body ${JSON.stringify(revalidate.body)}`);
+
+    const reprice = await asA(`chart_annotations?id=eq.${annotations[A.id].id}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ price: 1 }),
+    });
+    assert(reprice.status >= 400, "A cannot rewrite an annotation's price",
+      `status ${reprice.status} body ${JSON.stringify(reprice.body)}`);
+
+    const retext = await asA(`chart_annotations?id=eq.${annotations[A.id].id}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ status: 'deleted', reason: 'rewritten' }),
+    });
+    assert(retext.status >= 400, 'A cannot smuggle another column in beside status',
+      `status ${retext.status} body ${JSON.stringify(retext.body)}`);
+
+    const still = await serviceGet(`chart_annotations?id=eq.${annotations[A.id].id}&select=price,status,reason`);
+    assert(
+      Number(still?.[0]?.price) === 504 && still?.[0]?.status === 'hidden' &&
+        still?.[0]?.reason === 'The level the alert fired on.',
+      'the annotation still holds its Kai-written geometry and reason',
+      JSON.stringify(still),
+    );
+
+    const hijack = await asB(`chart_annotations?id=eq.${annotations[A.id].id}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ status: 'deleted' }),
+    });
+    const hijacked = Array.isArray(hijack.body) && hijack.body.length > 0;
+    assert(!hijacked, "B cannot hide or delete A's annotation", `status ${hijack.status} body ${JSON.stringify(hijack.body)}`);
+
+    const softDelete = await asA(`chart_annotations?id=eq.${annotations[A.id].id}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ status: 'deleted' }),
+    });
+    assert(softDelete.status === 200 && softDelete.body?.[0]?.status === 'deleted',
+      'A can delete its own annotation (soft, status only)',
+      `status ${softDelete.status} body ${JSON.stringify(softDelete.body)}`);
+  }
+
+  // ==================================================== circles (0021)
+  console.log('\ncircles are time-boxed setup rooms:');
+  {
+    const seeded = await asA('rooms?type=eq.setup&expires_at=not.is.null&select=id,name,slug,expires_at&order=name');
+    assert(
+      Array.isArray(seeded.body) && seeded.body.length === 2 &&
+        seeded.body.map((r) => r.name).join(',') === 'META Breakout,NVDA Breakout',
+      'A (a non-member) can discover the two seeded circles',
+      JSON.stringify(seeded.body),
+    );
+
+    const opened = await serviceRpc('open_setup_circle', { p_setup_id: AMD_SETUP, p_ttl: '1 day' });
+    assert(
+      opened.status === 200 && opened.body?.type === 'setup' && opened.body?.name === 'AMD Setup' &&
+        opened.body?.expires_at,
+      "open_setup_circle names an unpatterned setup '<SYM> Setup' and sets the clock",
+      `status ${opened.status} body ${JSON.stringify(opened.body)}`,
+    );
+    amdCircle = opened.body?.id ?? null;
+
+    const again = await serviceRpc('open_setup_circle', { p_setup_id: AMD_SETUP, p_ttl: '7 days' });
+    assert(
+      again.status === 200 && again.body?.id === amdCircle && again.body?.expires_at === opened.body?.expires_at,
+      'open_setup_circle is idempotent and does not extend the clock',
+      `status ${again.status} body ${JSON.stringify(again.body)}`,
+    );
+
+    const linked = await serviceGet(`setups?id=eq.${AMD_SETUP}&select=discussion_room_id`);
+    assert(linked?.[0]?.discussion_room_id === amdCircle, 'the setup now points at its circle', JSON.stringify(linked));
+
+    // discoverable, but the thread is still members-only
+    await serviceRpc('post_kai_message', { p_room_id: amdCircle, p_kai_object_id: null, p_body: 'Circle opened.' });
+    const visible = await asA(`rooms?id=eq.${amdCircle}&select=id,name`);
+    assert(Array.isArray(visible.body) && visible.body.length === 1, 'A can see the circle in the directory', JSON.stringify(visible.body));
+    const thread = await asA(`messages_public?room_id=eq.${amdCircle}&select=seq`);
+    assert(Array.isArray(thread.body) && thread.body.length === 0,
+      'A cannot read the circle thread without joining', JSON.stringify(thread.body));
+
+    const created = await serviceRpc('create_circle', { p_user_id: A.id, p_symbol: 'msft', p_ttl: '7 days' });
+    assert(
+      created.status === 200 && created.body?.name === 'MSFT Circle' && created.body?.type === 'setup',
+      "create_circle makes '<SYM> Circle' from a lower-case symbol",
+      `status ${created.status} body ${JSON.stringify(created.body)}`,
+    );
+    userCircle = created.body?.id ?? null;
+
+    const mods = await serviceGet(`room_members?room_id=eq.${userCircle}&select=user_id,role`);
+    assert(
+      Array.isArray(mods) && mods.length === 1 && mods[0].user_id === A.id && mods[0].role === 'moderator',
+      'the creator is the circle moderator',
+      JSON.stringify(mods),
+    );
+
+    const unknown = await serviceRpc('create_circle', { p_user_id: A.id, p_symbol: 'ZZZZ', p_ttl: '1 day' });
+    assert(
+      unknown.status >= 400 && JSON.stringify(unknown.body).includes('symbol_unknown'),
+      'create_circle refuses a symbol with no instrument row',
+      `status ${unknown.status} body ${JSON.stringify(unknown.body)}`,
+    );
+
+    // expiry -> posting_restricted, returned once
+    await fetch(`${URL_BASE}/rest/v1/rooms?id=eq.${amdCircle}`, {
+      method: 'PATCH',
+      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expires_at: new Date(Date.now() - 3600_000).toISOString() }),
+    });
+    const closed = await serviceRpc('close_expired_circles', {});
+    assert(
+      Array.isArray(closed.body) && closed.body.includes(amdCircle),
+      'close_expired_circles returns the id it closed',
+      JSON.stringify(closed.body),
+    );
+    const closedRoom = await serviceGet(`rooms?id=eq.${amdCircle}&select=config`);
+    assert(closedRoom?.[0]?.config?.posting_restricted === true,
+      'the expired circle is posting_restricted (readable, not writable)', JSON.stringify(closedRoom));
+    const twice = await serviceRpc('close_expired_circles', {});
+    assert(Array.isArray(twice.body) && !twice.body.includes(amdCircle),
+      'a circle is only reported closed once', JSON.stringify(twice.body));
+
+    for (const [fn, args] of [
+      ['open_setup_circle', { p_setup_id: AMD_SETUP, p_ttl: '1 day' }],
+      ['create_circle', { p_user_id: A.id, p_symbol: 'META', p_ttl: '1 day' }],
+      ['close_expired_circles', {}],
+    ]) {
+      const r = await asA(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) });
+      assert(r.status >= 400, `${fn} is not executable by a client JWT`, `status ${r.status} body ${JSON.stringify(r.body)}`);
+    }
+  }
+
+  // ============================================== conversations (0021)
+  console.log('\nconversations carry title/pinned/last_message_at, owner-only:');
+  {
+    const aConv = await serviceInsert('conversations', {
+      user_id: A.id, mode: 'day_trade', title: 'Morning Briefing · Aug 28', pinned: true,
+    });
+    await serviceInsert('conversations', {
+      user_id: B.id, mode: 'day_trade', title: 'NVDA Swing Review', pinned: false,
+    });
+
+    const mine = await asA('conversations?select=id,title,pinned,last_message_at');
+    assert(
+      Array.isArray(mine.body) && mine.body.length === 1 && mine.body[0].pinned === true &&
+        mine.body[0].title === 'Morning Briefing · Aug 28',
+      'A sees exactly its own conversation, with title and pin',
+      JSON.stringify(mine.body),
+    );
+
+    const found = await asA('conversations?title=ilike.*morning*&select=id');
+    assert(Array.isArray(found.body) && found.body.length === 1, 'A can search its own titles (ilike)', JSON.stringify(found.body));
+    const foundOther = await asA('conversations?title=ilike.*NVDA*&select=id');
+    assert(Array.isArray(foundOther.body) && foundOther.body.length === 0,
+      "the search never reaches B's threads", JSON.stringify(foundOther.body));
+
+    const rename = await asA(`conversations?id=eq.${aConv.id}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ title: 'renamed by the client' }),
+    });
+    assert(rename.status >= 400, 'title/pin stay api-app writes (no client UPDATE grant)',
+      `status ${rename.status} body ${JSON.stringify(rename.body)}`);
+
+    await serviceInsert('conversation_messages', {
+      conversation_id: aConv.id, seq: 1, role: 'user', content: { text: 'what is META doing' },
+    });
+    const touched = await asA(`conversations?id=eq.${aConv.id}&select=last_message_at`);
+    assert(touched.body?.[0]?.last_message_at, 'last_message_at is maintained by the database trigger',
+      JSON.stringify(touched.body));
+  }
+
+  // ==================================== alerts as trade objects (0021)
+  console.log('\nalerts carry the card state, snapshots and an event history:');
+  {
+    const aAlert = (await serviceGet(`alerts?user_id=eq.${A.id}&select=id`))?.[0];
+    const bAlert = (await serviceGet(`alerts?user_id=eq.${B.id}&select=id`))?.[0];
+
+    await fetch(`${URL_BASE}/rest/v1/alerts?id=eq.${aAlert.id}`, {
+      method: 'PATCH',
+      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        symbol: 'META', mode: 'day_trade', direction: 'long', lifecycle_state: 'active',
+        version: 2, grade_snapshot: { display: 'A-', band: 'A' }, score_snapshot: { score: 87 },
+      }),
+    });
+    await fetch(`${URL_BASE}/rest/v1/alerts?id=eq.${bAlert.id}`, {
+      method: 'PATCH',
+      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lifecycle_state: 'closed' }),
+    });
+
+    const active = await asA('alerts?tab=eq.active&select=id,tab,lifecycle_state,version,grade_snapshot');
+    assert(
+      Array.isArray(active.body) && active.body.length === 1 && active.body[0].tab === 'active' &&
+        active.body[0].version === 2 && active.body[0].grade_snapshot?.display === 'A-',
+      "A's alert lands in the Active tab with its graded snapshot",
+      JSON.stringify(active.body),
+    );
+    const history = await serviceGet(`alerts?id=eq.${bAlert.id}&select=tab`);
+    assert(history?.[0]?.tab === 'history', "a closed alert's generated tab is history", JSON.stringify(history));
+
+    const noWrite = await asA(`alerts?id=eq.${aAlert.id}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ lifecycle_state: 'position_active' }),
+    });
+    const moved = Array.isArray(noWrite.body) && noWrite.body.length > 0;
+    assert(!moved, 'a client cannot move its own alert through the state machine',
+      `status ${noWrite.status} body ${JSON.stringify(noWrite.body)}`);
+
+    for (const ev of [
+      { alert_id: aAlert.id, type: 'created', to_state: 'watching', source: 'system', version: 1 },
+      { alert_id: aAlert.id, type: 'graded', from_state: 'watching', to_state: 'active', source: 'kai', version: 2,
+        payload: { grade: 'A-', score: 87 } },
+    ]) {
+      await serviceInsert('alert_events', ev);
+    }
+    await serviceInsert('alert_events', { alert_id: bAlert.id, type: 'created', to_state: 'watching', source: 'system' });
+
+    const events = await asA('alert_events?select=seq,type,to_state&order=seq');
+    assert(
+      Array.isArray(events.body) && events.body.length === 2 &&
+        events.body[0].seq === 1 && events.body[1].seq === 2,
+      'alert_events assigns a per-alert monotonic seq and A sees only its own',
+      JSON.stringify(events.body),
+    );
+
+    const insEvent = await asA('alert_events', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ alert_id: aAlert.id, type: 'note', source: 'user' }),
+    });
+    assert(insEvent.status >= 400, 'a client cannot append to alert_events', `status ${insEvent.status} body ${JSON.stringify(insEvent.body)}`);
+
+    const delEvent = await serviceDelete(`alert_events?alert_id=eq.${aAlert.id}`);
+    assert(delEvent.status >= 400, 'alert_events is append-only even for service_role', `status ${delEvent.status}`);
+  }
+
+  // ============================================ rule_adherence_v (0021)
+  console.log('\nrule_adherence_v counts a user\'s own sessions only:');
+  {
+    await serviceInsert('debriefs', {
+      user_id: A.id,
+      outcome: { realized_pnl: 42 },
+      process_review: { process_receipt: [{ label: 'Waited for the trigger', ok: true }, { label: 'Sized to the cap', ok: true }] },
+    });
+    await serviceInsert('debriefs', {
+      user_id: A.id,
+      outcome: { realized_pnl: -18 },
+      process_review: { payload: { process_receipt: [{ label: 'Waited for the trigger', ok: false }] } },
+    });
+    await serviceInsert('debriefs', {
+      user_id: B.id,
+      outcome: { realized_pnl: 5 },
+      process_review: { process_receipt: [{ label: 'Followed the plan', ok: true }] },
+    });
+
+    const mine = await asA('rule_adherence_v?select=user_id,sessions,followed');
+    assert(
+      Array.isArray(mine.body) && mine.body.length === 1 && mine.body[0].user_id === A.id &&
+        mine.body[0].sessions === 2 && mine.body[0].followed === 1,
+      'A sees 2 sessions, 1 followed (both receipt shapes are read)',
+      JSON.stringify(mine.body),
+    );
+
+    const other = await asA(`rule_adherence_v?user_id=eq.${B.id}&select=*`);
+    assert(Array.isArray(other.body) && other.body.length === 0,
+      "A gets 0 rows from rule_adherence_v filtered to B", JSON.stringify(other.body));
+
+    const anon = await fetch(`${URL_BASE}/rest/v1/rule_adherence_v?select=*`, {
+      headers: { apikey: ANON, Authorization: `Bearer ${ANON}` },
+    });
+    assert(anon.status >= 400, 'anon cannot read rule_adherence_v at all', `status ${anon.status}`);
+  }
+
 } catch (err) {
   failures++;
   console.error(`\n  ERROR ${err.message}`);
 } finally {
   await dropRoom(tmpCoreRoom?.id);
   await dropRoom(tmpSetupRoom?.id);
+  // setups.discussion_room_id points at the circle 0021 opened, and the FK is
+  // deferrable but not ON DELETE - let go of it before the room is removed.
+  if (amdCircle) {
+    await fetch(`${URL_BASE}/rest/v1/setups?discussion_room_id=eq.${amdCircle}`, {
+      method: 'PATCH',
+      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ discussion_room_id: null }),
+    }).catch(() => {});
+  }
+  await dropRoom(amdCircle);
+  await dropRoom(userCircle);
   // positions / debriefs have no FK to profiles (SCHEMA-NOTES gap 2.9) and
   // positions.origin_plan_id would otherwise block the trade_plans cascade.
   for (const id of createdIds) {
