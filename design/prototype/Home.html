@@ -1,0 +1,104 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#050507;padding:24px}</style></head><body>
+<helmet>
+<meta name="theme-color" content="#0B0B0E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root { --surface-market-info:#0F2733; --surface-positive:#122A1E; --surface-risk:#2E1517; }
+body { margin:0; background:#060608; }
+a { color:#C8FF00; text-decoration:none; }
+a:hover { color:#DEFF66; }
+</style>
+</helmet><div data-screen-label="Home" style="height:100%; background:radial-gradient(420px 320px at 20% -5%, rgba(139,92,246,0.14), transparent 60%), #0B0B0E; display:flex; flex-direction:column; box-sizing:border-box; padding-top:62px; padding-bottom:78px; position:relative;">
+        <div style="display:flex; align-items:center; gap:11px; padding:8px 16px 8px; border-bottom:1px solid rgba(255,247,232,0.07);">
+          <svg onClick="{{ openThreads }}" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFF7E8" stroke-width="2" style="cursor:pointer; flex-shrink:0;"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>
+          <div style="flex:1; min-width:0; text-align:center;">
+            <div style="font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Morning Briefing · Aug 28</div>
+            <div style="display:flex; align-items:center; justify-content:center; gap:5px; font-size:10px; color:#918A82;"><span style="width:5px; height:5px; border-radius:50%; background:#32D6FF;"></span>Market open · <span style="color:#C8FF00; font-weight:600;">{{ modeLabel }}</span></div>
+          </div>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#C8FF00" stroke-width="2" style="cursor:pointer; flex-shrink:0;"><path d="M12 5v14M5 12h14"></path></svg>
+        </div>
+        <div style="flex:1; min-height:0; overflow-y:auto; padding:14px 16px 0; display:flex; flex-direction:column; gap:16px;">
+          <div style="display:flex; gap:10px; align-items:flex-start;">
+            <div style="width:26px; height:26px; border-radius:50%; flex-shrink:0; margin-top:1px; background:radial-gradient(circle at 35% 35%, #C4B5FD, #8B5CF6 55%, #6D28D9);"></div>
+            <div style="flex:1; display:flex; flex-direction:column; gap:9px;">
+              <div style="font-size:14.5px; line-height:1.55; text-wrap:pretty;">{{ briefing }}</div>
+              <div style="display:flex; gap:8px;">
+                <div style="flex:1; padding:8px 10px; border-radius:11px; background:rgba(255,247,232,0.04); display:flex; flex-direction:column; gap:1px;">
+                  <div style="display:flex; align-items:baseline; gap:5px;"><span style="font-size:11px; font-weight:700;">SPY</span><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#35D07F;">+0.32%</span></div>
+                  <div style="display:flex; align-items:flex-end; gap:5px;"><span style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#918A82;">562.18</span><svg viewBox="0 0 40 14" style="width:40px; height:14px; margin-left:auto;"><polyline points="0,11 8,9 16,10 24,6 32,7 40,3" fill="none" stroke="#35D07F" stroke-width="1.3"></polyline></svg></div>
+                </div>
+                <div style="flex:1; padding:8px 10px; border-radius:11px; background:rgba(255,247,232,0.04); display:flex; flex-direction:column; gap:1px;">
+                  <div style="display:flex; align-items:baseline; gap:5px;"><span style="font-size:11px; font-weight:700;">QQQ</span><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#35D07F;">+0.45%</span></div>
+                  <div style="display:flex; align-items:flex-end; gap:5px;"><span style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#918A82;">474.91</span><svg viewBox="0 0 40 14" style="width:40px; height:14px; margin-left:auto;"><polyline points="0,10 8,11 16,7 24,8 32,5 40,2" fill="none" stroke="#35D07F" stroke-width="1.3"></polyline></svg></div>
+                </div>
+                <div style="flex:1; padding:8px 10px; border-radius:11px; background:rgba(255,247,232,0.04); display:flex; flex-direction:column; gap:1px;">
+                  <div style="display:flex; align-items:baseline; gap:5px;"><span style="font-size:11px; font-weight:700;">VIX</span><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#FF5A5F;">−2.31%</span></div>
+                  <div style="display:flex; align-items:flex-end; gap:5px;"><span style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#918A82;">14.32</span><svg viewBox="0 0 40 14" style="width:40px; height:14px; margin-left:auto;"><polyline points="0,3 8,5 16,4 24,8 32,7 40,11" fill="none" stroke="#FF5A5F" stroke-width="1.3"></polyline></svg></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; gap:10px; align-items:flex-start;">
+            <div style="width:26px; height:26px; flex-shrink:0;"></div>
+            <div onClick="{{ openFromAlert }}" style="flex:1; border-radius:16px; padding:13px 14px; background:linear-gradient(160deg, rgba(255,215,94,0.09), rgba(23,23,28,0.75)); border:1px solid rgba(255,215,94,0.5); display:flex; flex-direction:column; gap:9px; cursor:pointer;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span onClick="{{ goTicker }}" style="font-size:15px; font-weight:700; cursor:pointer;">META</span>
+                <span style="font-size:12px; font-weight:700; color:#FFD75E;">A−</span>
+                <span style="font-size:11px; color:#35D07F;">Ready</span>
+                <span style="margin-left:auto; font-size:10px; color:#918A82;">{{ modeLabel }} · 9:38</span>
+              </div>
+              <div style="font-size:13px; color:#B9B0A8; line-height:1.45;">{{ artifactLine }}</div>
+              <div style="display:flex; gap:14px; font-family:'JetBrains Mono',monospace; font-size:11px;"><span style="color:#32D6FF;">Entry 504–507</span><span style="color:#FF5A5F;">Stop 498</span><span style="color:#35D07F;">Target 520</span></div>
+              <div style="display:flex; gap:16px; padding-top:2px;">
+                <span onClick="{{ goAlerts }}" style="font-size:12.5px; font-weight:700; color:#C8FF00; cursor:pointer;">Open alert</span>
+                <span onClick="{{ openFromAlert }}" style="font-size:12.5px; font-weight:700; color:#B9B0A8; cursor:pointer;">Open chart</span>
+              </div>
+            </div>
+          </div>
+          <div style="align-self:flex-end; max-width:82%; padding:9px 14px; border-radius:16px 16px 4px 16px; background:rgba(200,255,0,0.12); border:0.5px solid rgba(200,255,0,0.4); font-size:14px; line-height:1.45;">Why is META the strongest?</div>
+          <div style="display:flex; gap:10px; align-items:flex-start;">
+            <div style="width:26px; height:26px; border-radius:50%; flex-shrink:0; margin-top:1px; background:radial-gradient(circle at 35% 35%, #C4B5FD, #8B5CF6 55%, #6D28D9);"></div>
+            <div style="flex:1; font-size:14.5px; line-height:1.55; text-wrap:pretty;">{{ whyStrongest }}</div>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px; padding-left:36px; padding-bottom:4px;">
+            <span onClick="{{ goTicker }}" style="font-size:12.5px; color:#C4B5FD; cursor:pointer;">Research $META ›</span>
+            <span style="font-size:12.5px; color:#C4B5FD;">Find something less risky ›</span>
+            <span style="font-size:12.5px; color:#C4B5FD;">How does CPI affect this? ›</span>
+          </div>
+        </div>
+        <div style="padding:10px 16px 6px;">
+          <div style="display:flex; align-items:center; gap:8px; height:52px; padding:0 6px 0 14px; border-radius:999px; background:linear-gradient(160deg, rgba(255,247,232,0.07), rgba(23,23,28,0.6)); border:0.5px solid rgba(255,247,232,0.2); box-shadow:inset 0 1px 0 rgba(255,247,232,0.16);">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#B9B0A8" stroke-width="2" style="flex-shrink:0;"><path d="M21 15V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v13l4-4h5"></path><path d="M17 17v4M15 19h4"></path></svg>
+            <div style="flex:1; font-size:14px; color:#B9B0A8;">Message Kai…</div>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#B9B0A8" stroke-width="2" style="flex-shrink:0;"><path d="M12 3v12M8 7l4-4 4 4M5 21h14"></path></svg>
+            <div style="width:40px; height:40px; border-radius:50%; background:#C8FF00; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B0B0E" stroke-width="2.2"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 19v3"></path></svg></div>
+          </div>
+        </div>
+        <sc-if value="{{ threadsOpen }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ closeThreads }}" style="position:absolute; inset:0; background:rgba(0,0,0,0.6); z-index:80; cursor:pointer;"></div>
+          <div style="position:absolute; top:0; bottom:0; left:0; width:300px; z-index:81; background:#121216; border-right:1px solid rgba(255,247,232,0.1); box-shadow:24px 0 60px rgba(0,0,0,0.6); display:flex; flex-direction:column; box-sizing:border-box; padding:66px 14px 24px;">
+            <div style="display:flex; align-items:center; gap:9px; height:42px; padding:0 13px; border-radius:12px; background:rgba(255,247,232,0.05); border:0.5px solid rgba(255,247,232,0.14);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#918A82" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+              <span style="font-size:13px; color:#918A82;">Search conversations</span>
+            </div>
+            <div onClick="{{ closeThreads }}" style="display:flex; align-items:center; gap:9px; height:42px; margin-top:9px; padding:0 13px; border-radius:12px; background:rgba(200,255,0,0.10); border:0.5px solid rgba(200,255,0,0.45); color:#C8FF00; font-size:13px; font-weight:700; cursor:pointer;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C8FF00" stroke-width="2.4"><path d="M12 5v14M5 12h14"></path></svg>New conversation</div>
+            <div style="font-size:10px; font-weight:700; letter-spacing:0.08em; color:#918A82; margin:18px 0 7px 4px;">PINNED</div>
+            <div onClick="{{ closeThreads }}" style="display:flex; align-items:center; gap:9px; padding:10px 12px; border-radius:11px; background:rgba(139,92,246,0.12); border:0.5px solid rgba(139,92,246,0.4); cursor:pointer;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#C4B5FD" stroke-width="2" style="flex-shrink:0;"><path d="M12 17v5M9 3h6l1 7 3 2H5l3-2 1-7z"></path></svg><span style="font-size:13px; font-weight:600;">Long-Term AI Portfolio</span></div>
+            <div style="font-size:10px; font-weight:700; letter-spacing:0.08em; color:#918A82; margin:18px 0 7px 4px;">RECENT</div>
+            <div onClick="{{ closeThreads }}" style="display:flex; flex-direction:column; cursor:pointer;">
+              <div style="padding:10px 12px; border-radius:11px; background:rgba(255,247,232,0.06); border:0.5px solid rgba(255,247,232,0.14); font-size:13px; font-weight:600;">Morning Briefing · Aug 28</div>
+              <div style="padding:10px 12px; font-size:13px; color:#B9B0A8;">META Day Trade</div>
+              <div style="padding:10px 12px; font-size:13px; color:#B9B0A8;">Review My Positions</div>
+              <div style="padding:10px 12px; font-size:13px; color:#B9B0A8;">NVIDIA Earnings Research</div>
+              <div style="padding:10px 12px; font-size:13px; color:#B9B0A8;">Explain Options to Me</div>
+              <div style="padding:10px 12px; font-size:13px; color:#B9B0A8;">Weekly Swing Ideas</div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+<!-- TICKER PAGE -->
+    <sc-if value="{{ sTicker }}" hint-placeholder-val="{{ false }}">
+      </body></html>

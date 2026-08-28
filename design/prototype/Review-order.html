@@ -1,0 +1,61 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#050507;padding:24px}</style></head><body>
+<helmet>
+<meta name="theme-color" content="#0B0B0E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root { --surface-market-info:#0F2733; --surface-positive:#122A1E; --surface-risk:#2E1517; }
+body { margin:0; background:#060608; }
+a { color:#C8FF00; text-decoration:none; }
+a:hover { color:#DEFF66; }
+</style>
+</helmet><div data-screen-label="Review order" style="height:100%; background:radial-gradient(420px 320px at 20% -5%, rgba(139,92,246,0.12), transparent 60%), #0B0B0E; display:flex; flex-direction:column; box-sizing:border-box; padding-top:62px;">
+        <div style="display:flex; align-items:center; gap:10px; padding:6px 16px 8px;">
+          <svg onClick="{{ goAsset }}" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFF7E8" stroke-width="2.2" style="cursor:pointer;"><path d="M15 5l-7 7 7 7"></path></svg>
+          <div style="font-size:17px; font-weight:700;">Review order</div>
+        </div>
+        <div style="flex:1; min-height:0; overflow-y:auto; padding:2px 16px 8px; display:flex; flex-direction:column; gap:9px;">
+          <div style="display:flex; align-items:center; gap:11px; padding:10px 15px; border-radius:14px; background:linear-gradient(160deg, rgba(255,247,232,0.06), rgba(23,23,28,0.6)); border:0.5px solid rgba(255,247,232,0.16); box-shadow:inset 0 1px 0 rgba(255,247,232,0.12);">
+            <div style="width:30px; height:30px; border-radius:8px; background:rgba(53,208,127,0.10); border:0.5px solid rgba(53,208,127,0.4); box-sizing:border-box; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#35D07F;">R</div>
+            <div style="flex:1;"><div style="font-size:10px; color:#B9B0A8;">Account</div><div style="font-size:13px; font-weight:600;">Robinhood · Individual</div></div>
+            <span style="font-size:10px; padding:3px 8px; border-radius:999px; border:0.5px solid rgba(50,214,255,0.4); color:#32D6FF; background:rgba(50,214,255,0.08);">Paper</span>
+          </div>
+          <div style="background:linear-gradient(160deg, rgba(255,247,232,0.06), rgba(23,23,28,0.7)); border:0.5px solid rgba(255,247,232,0.16); box-shadow:inset 0 1px 0 rgba(255,247,232,0.16); border-radius:18px; padding:4px 16px; display:flex; flex-direction:column;">
+            <div style="padding:10px 0; border-bottom:0.5px solid rgba(255,247,232,0.08);">
+              <div style="font-size:18px; font-weight:700;">Buy META <span style="font-size:11px; font-weight:700; letter-spacing:0.08em; color:#C8FF00; padding:2px 8px; border-radius:5px; background:rgba(200,255,0,0.10); border:0.5px solid rgba(200,255,0,0.4);">BUY</span></div>
+              <div style="font-size:11px; color:#B9B0A8; margin-top:2px;">Meta Platforms · NASDAQ · <span style="font-family:'JetBrains Mono',monospace;">{{ liveTickPrice }} <span style="color:{{ liveTickColor }};">{{ liveTickPct }}</span></span></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:0.5px solid rgba(255,247,232,0.08); font-size:13px;"><span style="color:#B9B0A8;">Quantity</span><span style="font-family:'JetBrains Mono',monospace; font-weight:600;">1.29 shares</span></div>
+            <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:0.5px solid rgba(255,247,232,0.08); font-size:13px;"><span style="color:#B9B0A8;">Order type</span><span style="font-weight:600;">Limit · $504.00</span></div>
+            <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:0.5px solid rgba(255,247,232,0.08); font-size:13px;"><span style="color:#B9B0A8;">Duration</span><span style="font-weight:600;">Day</span></div>
+            <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:0.5px solid rgba(255,247,232,0.08); font-size:13px;"><span style="color:#B9B0A8;">Estimated cost</span><span style="font-family:'JetBrains Mono',monospace; font-weight:600;">$650.16</span></div>
+            <div style="display:flex; justify-content:space-between; padding:8px 0; font-size:13px;"><span style="color:#B9B0A8;">Buying power after</span><span style="font-family:'JetBrains Mono',monospace; font-weight:600;">$2,769.84</span></div>
+          </div>
+          <div style="border-radius:18px; padding:12px 15px; background:linear-gradient(160deg, rgba(139,92,246,0.22), rgba(139,92,246,0.08)); border:0.5px solid rgba(139,92,246,0.5); box-shadow:inset 0 1px 0 rgba(196,181,253,0.18); display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div style="width:20px; height:20px; border-radius:50%; background:radial-gradient(circle at 35% 35%, #C4B5FD, #8B5CF6 55%, #6D28D9); box-shadow:0 0 10px rgba(139,92,246,0.5);"></div>
+              <div style="font-size:12px; font-weight:700; color:#C4B5FD;">Kai risk check</div>
+              <span style="margin-left:auto; display:flex; align-items:center; gap:4px; font-size:10px; color:#35D07F;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#35D07F" stroke-width="3"><path d="M20 6 9 17l-5-5"></path></svg>Passes</span>
+            </div>
+            <div style="font-size:13px; line-height:1.45;">Fits your {{ capLabel }} daily-risk rule. Stop attaches automatically at 498.</div>
+            <div style="display:flex; flex-direction:column; gap:5px; padding-top:6px; border-top:0.5px solid rgba(196,181,253,0.2);">
+              <div style="display:flex; justify-content:space-between; font-size:12px;"><span style="color:#B9B0A8;">Stop · broker-native order</span><span style="font-family:'JetBrains Mono',monospace; font-weight:600; color:#FF5A5F;">$498.00</span></div>
+              <div style="display:flex; justify-content:space-between; font-size:12px;"><span style="color:#B9B0A8;">Target · Kai-monitored alert</span><span style="font-family:'JetBrains Mono',monospace; font-weight:600; color:#35D07F;">$520.00</span></div>
+              <div style="display:flex; justify-content:space-between; font-size:12px;"><span style="color:#B9B0A8;">Stop distance</span><span style="font-family:'JetBrains Mono',monospace; font-weight:600;">1.2%</span></div>
+              <div style="display:flex; justify-content:space-between; font-size:12px;"><span style="color:#B9B0A8;">Exposure after fill</span><span style="font-family:'JetBrains Mono',monospace; font-weight:600;">2.6% of portfolio</span></div>
+              <div style="display:flex; justify-content:space-between; font-size:12px;"><span style="color:#B9B0A8;">Maximum planned loss</span><span style="font-family:'JetBrains Mono',monospace; font-weight:600; color:#FF5A5F;">{{ riskDollar }} (8.9%)</span></div>
+            </div>
+            <div style="font-size:10px; color:#918A82;">The stop is placed with Robinhood. The target is watched by Kai — it is not a broker order. May fill partially. Kai analysis, not a guarantee.</div>
+          </div>
+        </div>
+        <div style="padding:8px 16px 40px; display:flex; flex-direction:column; gap:8px;">
+          <div style="text-align:center; font-size:11px; color:#FFC857;">You can lose up to {{ riskDollar }} on this order if the stop executes.</div>
+          <div onClick="{{ submitOrder }}" style="height:52px; border-radius:999px; background:#C8FF00; color:#0B0B0E; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:700; cursor:pointer;">Place paper order</div>
+          <div onClick="{{ goAsset }}" style="height:44px; border-radius:999px; border:0.5px solid rgba(255,247,232,0.24); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; cursor:pointer;">Cancel</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- CONFIRMED -->
+    <sc-if value="{{ sConfirmed }}" hint-placeholder-val="{{ false }}">
+      </body></html>

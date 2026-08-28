@@ -4,3 +4,6 @@
 - `core-screens-export-2026-08-27.dc.html` — raw canvas (first 256 KB via DesignSync; V2 H1 board truncated — superseded anyway).
 - `v5-sheet.png` — rendered V5 H1/W1/W2/A1 + TR3 + P1 + T1 at a glance.
 - Canvas: https://claude.ai/design/p/0edbbd6a-d547-4c55-988b-ade358efb46e — `SOURCE_OF_TRUTH.md` there: V5 supersedes V4 → V3 → V2 → S-series.
+- `prototype/` — 14 boards from `Cheat Code AI - Prototype.dc.html` (2026-08-28), standalone HTML; `{{ holes }}` are bindings — see `prototype-logic.js` for the state machine (experience → Kai voice glossary, focus chips, conversations drawer, alert tabs, portal contexts, order → pending → fill).
+- `prototype-export-2026-08-28.dc.html` — raw prototype file (complete, 241 KB). `proto-sheet-{1,2}.png` — rendered.
+- Spec pair for this round: `docs/10_ALERTS_TRADE_PORTAL_SPEC_extracted.md` (LOCKED: alerts as trade objects, chart-first Trade Portal).

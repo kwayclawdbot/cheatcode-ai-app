@@ -1,0 +1,89 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#050507;padding:24px}</style></head><body>
+<helmet>
+<meta name="theme-color" content="#0B0B0E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root { --surface-market-info:#0F2733; --surface-positive:#122A1E; --surface-risk:#2E1517; }
+body { margin:0; background:#060608; }
+a { color:#C8FF00; text-decoration:none; }
+a:hover { color:#DEFF66; }
+</style>
+</helmet><div data-screen-label="Ticker page" style="height:100%; background:radial-gradient(420px 320px at 20% -5%, rgba(139,92,246,0.12), transparent 60%), #0B0B0E; display:flex; flex-direction:column; box-sizing:border-box; padding-top:62px; padding-bottom:78px;">
+        <div style="display:flex; align-items:center; gap:10px; padding:6px 16px 8px;">
+          <svg onClick="{{ goHome }}" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFF7E8" stroke-width="2.2" style="cursor:pointer;"><path d="M15 5l-7 7 7 7"></path></svg>
+          <div style="flex:1;">
+            <div style="display:flex; align-items:baseline; gap:8px;"><span style="font-size:17px; font-weight:700;">META</span><span style="font-size:11px; color:#918A82;">Meta Platforms</span></div>
+            <div style="display:flex; align-items:baseline; gap:8px;"><span style="font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:600;">{{ liveTickPrice }}</span><span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:{{ liveTickColor }};">{{ liveTickPct }}</span><span style="font-size:10px; color:#32D6FF;">market open</span></div>
+          </div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C8FF00" stroke-width="1.6" style="cursor:pointer;"><path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9z"></path></svg>
+        </div>
+        <div style="flex:1; min-height:0; overflow-y:auto; padding:0 16px 8px; display:flex; flex-direction:column; gap:11px;">
+          <div style="border-radius:15px; padding:10px; background:linear-gradient(160deg, rgba(255,247,232,0.05), rgba(11,11,14,0.9)); border:0.5px solid rgba(255,247,232,0.12);">
+            <svg viewBox="0 0 330 92" style="width:100%; display:block;">
+              <rect x="0" y="34" width="330" height="10" fill="rgba(50,214,255,0.1)"></rect>
+              <polyline points="{{ homeTickPoints }}" fill="none" stroke="#32D6FF" stroke-width="1.8"></polyline>
+              <circle cx="330" cy="{{ homeTickY }}" r="3.5" fill="#32D6FF"></circle>
+            </svg>
+            <div style="display:flex; justify-content:space-between; align-items:center; padding-top:6px;">
+              <div style="display:flex; gap:3px;"><span style="height:22px; padding:0 9px; border-radius:6px; background:rgba(200,255,0,0.12); border:0.5px solid rgba(200,255,0,0.5); color:#C8FF00; display:flex; align-items:center; font-size:10px; font-weight:700;">1D</span><span style="height:22px; padding:0 9px; color:#918A82; display:flex; align-items:center; font-size:10px;">1W</span><span style="height:22px; padding:0 9px; color:#918A82; display:flex; align-items:center; font-size:10px;">1M</span><span style="height:22px; padding:0 9px; color:#918A82; display:flex; align-items:center; font-size:10px;">1Y</span></div>
+              <span onClick="{{ openFromAlert }}" style="font-size:11px; font-weight:600; color:#C8FF00; cursor:pointer;">Open in Trade ›</span>
+            </div>
+          </div>
+          <div style="border-radius:16px; padding:13px 14px; background:linear-gradient(160deg, rgba(139,92,246,0.18), rgba(23,23,28,0.7)); border:0.5px solid rgba(139,92,246,0.45); display:flex; gap:10px; align-items:flex-start;">
+            <div style="width:22px; height:22px; border-radius:50%; flex-shrink:0; background:radial-gradient(circle at 35% 35%, #C4B5FD, #8B5CF6 55%, #6D28D9);"></div>
+            <div style="flex:1; display:flex; flex-direction:column; gap:8px;">
+              <div style="font-size:13px; line-height:1.45; text-wrap:pretty;"><span style="font-weight:700; color:#C4B5FD;">Kai's view</span> · Short-term trend is bullish and the breakout confirmed. One active A− alert plus a longer-term thesis on ad revenue.</div>
+              <div style="display:flex; gap:7px; flex-wrap:wrap;">
+                <span onClick="{{ openKai }}" style="font-size:11px; padding:6px 11px; border-radius:999px; border:0.5px solid rgba(139,92,246,0.5); background:rgba(139,92,246,0.08); color:#C4B5FD; cursor:pointer;">Ask Kai</span>
+                <span style="font-size:11px; padding:6px 11px; border-radius:999px; border:0.5px solid rgba(255,247,232,0.18); color:#B9B0A8;">Explain the chart</span>
+                <span style="font-size:11px; padding:6px 11px; border-radius:999px; border:0.5px solid rgba(255,247,232,0.18); color:#B9B0A8;">Compare</span>
+              </div>
+            </div>
+          </div>
+          <div style="background:linear-gradient(160deg, rgba(255,247,232,0.055), rgba(23,23,28,0.7)); border:0.5px solid rgba(255,247,232,0.14); border-radius:16px; padding:4px 15px; display:flex; flex-direction:column;">
+            <div onClick="{{ setTickerOverview }}" style="display:flex; align-items:center; padding:12px 0; border-bottom:0.5px solid rgba(255,247,232,0.08); cursor:pointer;"><span style="flex:1; font-size:13.5px; font-weight:600;">Overview</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#918A82" stroke-width="2" style="transform:{{ tickerOverviewChevron }};"><path d="M6 9l6 6 6-6"></path></svg></div>
+            <sc-if value="{{ tickerOverview }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:4px 0 13px; display:flex; flex-direction:column; gap:9px;">
+                <div style="font-size:12.5px; color:#B9B0A8; line-height:1.5; text-wrap:pretty;">Meta Platforms owns Facebook, Instagram and WhatsApp. Revenue is dominated by advertising, so ad pricing and engagement drive the story.</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                  <div style="padding:8px 10px; border-radius:10px; background:rgba(255,247,232,0.04);"><div style="font-size:9.5px; color:#918A82;">Market cap</div><div style="font-family:'JetBrains Mono',monospace; font-size:12.5px; font-weight:600; margin-top:2px;">$1.29T</div></div>
+                  <div style="padding:8px 10px; border-radius:10px; background:rgba(255,247,232,0.04);"><div style="font-size:9.5px; color:#918A82;">Next earnings</div><div style="font-family:'JetBrains Mono',monospace; font-size:12.5px; font-weight:600; margin-top:2px;">Oct 29</div></div>
+                  <div style="padding:8px 10px; border-radius:10px; background:rgba(255,247,232,0.04);"><div style="font-size:9.5px; color:#918A82;">P/E</div><div style="font-family:'JetBrains Mono',monospace; font-size:12.5px; font-weight:600; margin-top:2px;">27.4</div></div>
+                  <div style="padding:8px 10px; border-radius:10px; background:rgba(255,247,232,0.04);"><div style="font-size:9.5px; color:#918A82;">Sector</div><div style="font-size:12.5px; font-weight:600; margin-top:2px;">Communication</div></div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:10px; background:rgba(255,215,94,0.07); border:0.5px solid rgba(255,215,94,0.4); font-size:11.5px;"><span style="font-weight:700; color:#FFD75E;">A−</span><span style="flex:1; color:#B9B0A8;">One active alert · triggered 9:38</span><span onClick="{{ goAlerts }}" style="color:#C8FF00; font-weight:600; cursor:pointer;">View</span></div>
+              </div>
+            </sc-if>
+            <div onClick="{{ setTickerTech }}" style="display:flex; align-items:center; padding:12px 0; border-bottom:0.5px solid rgba(255,247,232,0.08); cursor:pointer;"><span style="flex:1; font-size:13.5px; font-weight:600;">Technicals</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#918A82" stroke-width="2" style="transform:{{ tickerTechChevron }};"><path d="M6 9l6 6 6-6"></path></svg></div>
+            <sc-if value="{{ tickerTech }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:4px 0 13px; display:flex; flex-direction:column; gap:8px;">
+                <div style="display:flex; align-items:center; gap:9px;"><span style="width:78px; font-size:11.5px; color:#B9B0A8;">Trend</span><span style="flex:1; height:5px; border-radius:3px; background:rgba(255,247,232,0.1); display:block;"><span style="display:block; width:82%; height:100%; border-radius:3px; background:#35D07F;"></span></span><span style="font-size:11px; color:#35D07F;">Strong</span></div>
+                <div style="display:flex; align-items:center; gap:9px;"><span style="width:78px; font-size:11.5px; color:#B9B0A8;">Momentum</span><span style="flex:1; height:5px; border-radius:3px; background:rgba(255,247,232,0.1); display:block;"><span style="display:block; width:68%; height:100%; border-radius:3px; background:#35D07F;"></span></span><span style="font-size:11px; color:#35D07F;">Healthy</span></div>
+                <div style="display:flex; align-items:center; gap:9px;"><span style="width:78px; font-size:11.5px; color:#B9B0A8;">Volatility</span><span style="flex:1; height:5px; border-radius:3px; background:rgba(255,247,232,0.1); display:block;"><span style="display:block; width:44%; height:100%; border-radius:3px; background:#FFC857;"></span></span><span style="font-size:11px; color:#FFC857;">Elevated</span></div>
+                <div style="display:flex; gap:6px; margin-top:2px;">
+                  <span style="flex:1; text-align:center; padding:7px 3px; border-radius:9px; background:var(--surface-market-info); border:0.5px solid rgba(50,214,255,0.4); font-family:'JetBrains Mono',monospace; font-size:11px; color:#32D6FF;">Support 498</span>
+                  <span style="flex:1; text-align:center; padding:7px 3px; border-radius:9px; background:var(--surface-positive); border:0.5px solid rgba(53,208,127,0.4); font-family:'JetBrains Mono',monospace; font-size:11px; color:#35D07F;">Resistance 520</span>
+                </div>
+              </div>
+            </sc-if>
+            <div onClick="{{ setTickerCommunity }}" style="display:flex; align-items:center; padding:12px 0; cursor:pointer;"><span style="flex:1; font-size:13.5px; font-weight:600;">Community</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#918A82" stroke-width="2" style="transform:{{ tickerCommunityChevron }};"><path d="M6 9l6 6 6-6"></path></svg></div>
+            <sc-if value="{{ tickerCommunity }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:0 0 13px; display:flex; flex-direction:column; gap:8px;">
+                <div style="font-size:12px; color:#B9B0A8;">Most-mentioned level <span style="font-family:'JetBrains Mono',monospace; color:#32D6FF;">504</span> · 41 posts today</div>
+                <div style="display:flex; align-items:center; gap:8px;"><span style="flex:1; height:6px; border-radius:3px; overflow:hidden; display:flex;"><span style="width:62%; background:rgba(53,208,127,0.55);"></span><span style="flex:1; background:rgba(255,90,95,0.45);"></span></span><span style="font-size:10.5px; color:#918A82;">62% bullish · sample 41</span></div>
+                <div onClick="{{ goRoom }}" style="font-size:11.5px; font-weight:600; color:#C4B5FD; cursor:pointer;">Open META Breakout circle ›</div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+        <div style="padding:8px 16px 6px; display:flex; gap:8px;">
+          <div onClick="{{ openFromAlert }}" style="flex:1; height:46px; border-radius:999px; background:#C8FF00; color:#0B0B0E; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; cursor:pointer;">Open in Trade</div>
+          <div onClick="{{ goAlerts }}" style="height:46px; padding:0 16px; border-radius:999px; border:0.5px solid rgba(255,247,232,0.24); display:flex; align-items:center; font-size:13px; font-weight:600; cursor:pointer;">Create alert</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ALERTS -->
+    <sc-if value="{{ sAlerts }}" hint-placeholder-val="{{ false }}">
+      </body></html>
