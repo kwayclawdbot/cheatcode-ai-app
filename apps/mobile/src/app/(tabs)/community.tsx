@@ -1,171 +1,193 @@
+/**
+ * Community — Community.html (round 4).
+ *
+ * The club header, a row of time-boxed CIRCLES, Kai's pinned summary, and the
+ * feed of whichever mode room you have selected. The three mode rooms stay the
+ * base of the club (owner decision 2026-08-27: Day Trade · Swing · Investing);
+ * circles sit above them because they expire and the mode rooms do not.
+ *
+ * DEVIATION, deliberate: the board shows a bare feed with no room selector,
+ * because the board is one screenshot. Three rooms exist, so the feed says
+ * which one you are reading and lets you change it. Everything else — the
+ * "N online" line, the ring clocks, `$TICKER` chips, reactions, Kai objects and
+ * the "Message Cheat Code Club… $ @Kai" composer — is the board.
+ */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, ScrollView, Pressable, RefreshControl, ActivityIndicator } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import Svg, { Circle as SvgCircle, Path } from 'react-native-svg';
 import { Screen } from '../../ui/Screen';
 import { T, Num } from '../../ui/Text';
-import { ObjectCard, RowList, Row } from '../../ui/Panel';
+import { ObjectCard } from '../../ui/Panel';
+import { Composer } from '../../ui/Composer';
+import { KaiOrb } from '../../ui/KaiOrb';
 import { alpha, color, radius } from '../../ui/tokens';
 import { useSession } from '../../lib/session';
-import { communityApi, type Source } from '../../lib/community-api';
-import type { Room } from '../../features/community/types';
+import { communityApi, circlesApi, type Source } from '../../lib/community-api';
+import { ClubMessage } from '../../features/community/ui/ClubFeed';
+import { CirclesRow } from '../../features/circles/CirclesRow';
+import { CreateCircleSheet } from '../../features/circles/CreateCircleSheet';
+import type { Circle, CircleTtl } from '../../features/circles/types';
+import type { Room, RoomMessage } from '../../features/community/types';
 
-/**
- * V3-C0 Community home.
- *
- * OWNER DECISION 2026-08-26: Community is THREE rooms — Day Trade, Swing,
- * Investing — and every member sees all three. What that removed:
- *   · the mode chip row, because there is nothing left to filter;
- *   · the SETUP ROOMS section, which is not surfaced this release.
- * The member's primary mode is still worth saying out loud, so the matching row
- * carries a quiet "your mode" label. It is a signpost, not a filter — the other
- * two rows are just as reachable.
- *
- * DEVIATION from the artboard, deliberate and unchanged: the artboard's red LIVE
- * "Market Open Desk" card is Phase 2 (08 §9 live rooms). Faking it would be a
- * promise the product cannot keep, so it is replaced by one quiet line.
- *
- * Presence and member counts render in muted, not the artboard's green/cyan:
- * the palette lock reserves green for financial semantics and cyan for market
- * data, and "36 members" is neither.
- */
-
-/** Shortest horizon first — the order the API returns and the screen re-asserts. */
 const MODE_ORDER = ['day_trade', 'swing', 'invest'];
 const rank = (mode: string | null) => {
   const i = MODE_ORDER.indexOf(String(mode));
   return i === -1 ? MODE_ORDER.length : i;
 };
 
-function CountBadge({ value }: { value: number }) {
-  return (
-    <View
-      style={{
-        minWidth: 22, height: 22, paddingHorizontal: 7, borderRadius: 11,
-        alignItems: 'center', justifyContent: 'center', backgroundColor: color.volt,
-      }}
-    >
-      <T size={11} weight="bold" c={color.bg}>{value}</T>
-    </View>
-  );
-}
-
-/**
- * One of the three. Bigger than the old directory row on purpose — with three
- * rooms instead of nineteen, each one is a destination rather than a list item.
- */
-function RoomRow({ room, yours, onPress }: { room: Room; yours: boolean; onPress: () => void }) {
-  const preview = room.preview;
-  const active = room.discussing_count ?? 0;
-  const members = room.member_count ?? 0;
-  return (
-    <Pressable
-      testID={`room-${room.slug}`}
-      accessibilityRole="button"
-      accessibilityLabel={
-        `${room.name}. ${room.description ?? ''} ` +
-        `${members} ${members === 1 ? 'member' : 'members'}. ` +
-        `${room.unread ? `${room.unread} new.` : ''}${yours ? ' Your mode.' : ''}`
-      }
-      accessibilityHint="Opens the room"
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flexDirection: 'row', alignItems: 'flex-start', gap: 11,
-        flex: 1, minHeight: 62, paddingVertical: 12, opacity: pressed ? 0.75 : 1,
-      })}
-    >
-      {/* The hash sits ON the room name's line, the way a channel list reads —
-          not floated against the middle of a three-line block. */}
-      <Num size={20} weight="regular" c={color.dim} style={{ marginTop: 1 }}>#</Num>
-
-      <View style={{ flex: 1, gap: 3 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-          <T size={17} weight="bold" numberOfLines={1} style={{ flexShrink: 1 }}>{room.name}</T>
-          {yours ? (
-            <View
-              style={{
-                paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5,
-                borderWidth: 0.5, borderColor: alpha.ivory25,
-              }}
-            >
-              <T size={9} c={color.muted}>your mode</T>
-            </View>
-          ) : null}
-        </View>
-
-        {preview ? (
-          <T size={12} c={color.muted} numberOfLines={1}>
-            {preview.who ? <T size={12} c={preview.by_kai ? color.violetLight : color.muted}>{preview.who}: </T> : null}
-            {preview.text}
-          </T>
-        ) : room.description ? (
-          <T size={12} lh={17} c={color.muted} numberOfLines={2}>{room.description}</T>
-        ) : null}
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
-          <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color.dim }} />
-          <T size={10} c={color.dim}>
-            {members} {members === 1 ? 'member' : 'members'}
-            {active ? ` · ${active} active` : ''}
-          </T>
-        </View>
-      </View>
-
-      {room.unread > 0 ? (
-        <View style={{ marginTop: 2 }}><CountBadge value={room.unread} /></View>
-      ) : null}
-    </Pressable>
-  );
-}
+const SearchIcon = () => (
+  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={color.muted} strokeWidth={2}>
+    <SvgCircle cx={11} cy={11} r={7} />
+    <Path d="M21 21l-4.3-4.3" />
+  </Svg>
+);
+const MembersIcon = () => (
+  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={color.muted} strokeWidth={2}>
+    <Path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <SvgCircle cx={9.5} cy={7} r={4} />
+    <Path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+  </Svg>
+);
 
 export default function Community() {
   const router = useRouter();
   const { profile } = useSession();
+
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [circles, setCircles] = useState<Circle[]>([]);
+  const [canCreate, setCanCreate] = useState(false);
   const [source, setSource] = useState<Source>('fixtures');
   const [note, setNote] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [joining, setJoining] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
-  // No mode argument: the directory is the same three rooms for everyone.
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<RoomMessage[]>([]);
+  const [localReactions, setLocalReactions] = useState<Record<string, string[]>>({});
+  const [reactionsAreLocal, setReactionsAreLocal] = useState(false);
+
   const load = useCallback(async () => {
-    const r = await communityApi.rooms();
+    const [r, c] = await Promise.all([communityApi.rooms(), circlesApi.list()]);
     setRooms(r.rooms);
     setSource(r.source);
     setNote(r.note);
+    setCircles(c.circles);
+    // The circles payload already answers the entitlement question; only ask
+    // separately when this stack's response did not carry it.
+    if (typeof c.can_create === 'boolean') setCanCreate(c.can_create);
+    else circlesApi.canCreate().then(setCanCreate).catch(() => setCanCreate(false));
     setLoading(false);
   }, []);
 
-  useEffect(() => { setLoading(true); load(); }, [load]);
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useEffect(() => { setLoading(true); void load(); }, [load]);
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  /**
-   * Core rooms only, shortest horizon first. Setup rooms are filtered here as
-   * well as server-side so a cached or fixture payload cannot put one back on
-   * the screen.
-   */
   const coreRooms = useMemo(
     () => rooms.filter((r) => r.type === 'core').sort((a, b) => rank(a.mode) - rank(b.mode)),
     [rooms],
   );
 
-  const open = async (room: Room) => {
-    setJoining(room.id);
+  // The room you read first is the one matching your mode.
+  useEffect(() => {
+    if (roomId || !coreRooms.length) return;
+    const mine = coreRooms.find((r) => r.mode === profile?.primary_mode);
+    setRoomId((mine ?? coreRooms[0]).id);
+  }, [coreRooms, roomId, profile?.primary_mode]);
+
+  useEffect(() => {
+    if (!roomId) return;
+    let alive = true;
+    // Reading a room requires membership. Joining a core room is idempotent and
+    // is what opening it has always meant.
+    (async () => {
+      const room = rooms.find((r) => r.id === roomId);
+      if (room && room.type === 'core' && !room.joined) await communityApi.join(roomId).catch(() => false);
+      const r = await communityApi.messages(roomId, 0, 30).catch(() => null);
+      if (alive) setMessages(r?.messages ?? []);
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, rooms.length]);
+
+  const selected = coreRooms.find((r) => r.id === roomId) ?? null;
+
+  /** Presence: only ever the numbers the server actually sent. */
+  const online = coreRooms.reduce((s, r) => s + (r.discussing_count ?? 0), 0);
+  const members = coreRooms.reduce((s, r) => s + (r.member_count ?? 0), 0);
+  const presence = online > 0
+    ? `${online.toLocaleString()} online`
+    : members > 0 ? `${members.toLocaleString()} members` : 'the club';
+
+  const kaiPinned = selected?.pinned.find((p) => p.kind === 'kai')?.text
+    ?? (circles.length
+      ? (() => {
+          const syms = circles.slice(0, 3).map((c) => c.symbol);
+          const list = syms.length > 1 ? `${syms.slice(0, -1).join(', ')} and ${syms[syms.length - 1]}` : syms[0];
+          return `${list} ${syms.length > 1 ? 'are' : 'is'} driving today’s discussion.`;
+        })()
+      : null);
+
+  const react = async (messageId: string, emoji: string) => {
+    setLocalReactions((prev) => ({ ...prev, [messageId]: [...(prev[messageId] ?? []), emoji] }));
+    const where = await circlesApi.react(messageId, emoji);
+    if (where === 'local') setReactionsAreLocal(true);
+  };
+
+  const openCircle = (c: Circle) => router.push(`/circle/${encodeURIComponent(c.id)}` as never);
+
+  const createCircle = async (symbol: string, ttl: CircleTtl) => {
+    const c = await circlesApi.create(symbol, ttl);
+    setCircles((prev) => [c, ...prev.filter((x) => x.id !== c.id)]);
+    router.push(`/circle/${encodeURIComponent(c.id)}` as never);
+  };
+
+  const post = async (text: string) => {
+    if (!roomId) return;
     try {
-      if (room.type === 'core' && !room.joined) await communityApi.join(room.id);
+      const m = await communityApi.postMessage(roomId, { body: text, kind: 'text' });
+      setMessages((prev) => [...prev, m]);
     } catch {
-      /* opening the room shows the real error — never block navigation on it */
-    } finally {
-      setJoining(null);
+      /* the room screen owns the retry; the tab never fakes a posted message */
     }
-    router.push(`/room/${room.id}`);
   };
 
   return (
     <Screen variant="corner" layout="tab" testID="screen-community">
+      <View
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16,
+          paddingTop: 8, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: alpha.ivory07,
+        }}
+      >
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <T size={16} weight="bold">Cheat Code Club</T>
+          <T size={10.5} c={color.dim} testID="club-presence">{presence}</T>
+        </View>
+        <Pressable
+          testID="club-search"
+          accessibilityRole="button"
+          accessibilityLabel="Search the club"
+          onPress={() => router.push('/symbol/search')}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <SearchIcon />
+        </Pressable>
+        <Pressable
+          testID="club-members"
+          accessibilityRole="button"
+          accessibilityLabel="Members"
+          onPress={() => selected && router.push(`/room/${encodeURIComponent(selected.id)}` as never)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <MembersIcon />
+        </Pressable>
+      </View>
+
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingTop: 8, paddingHorizontal: 16, gap: 13, paddingBottom: 28 }}
+        contentContainerStyle={{ paddingBottom: 16 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -175,51 +197,120 @@ export default function Community() {
           />
         }
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <T size={28} weight="bold">Cheat Code Club</T>
-          <T size={11} c={color.muted}>{coreRooms.length} rooms</T>
-        </View>
-
-        {/* The artboard's LIVE card is Phase 2. One honest line, not a fake. */}
-        <ObjectCard r={radius.xl} style={{ paddingVertical: 12, paddingHorizontal: 15 }}>
-          <T size={12} lh={18} c={color.muted}>
-            Live sessions arrive in a later release. Rooms, Kai summaries and structured ideas work today.
-          </T>
-        </ObjectCard>
-
-        {note ? <T size={11} c={color.gold}>{note}</T> : null}
-
         {loading ? (
           <View style={{ paddingVertical: 40, alignItems: 'center' }}>
             <ActivityIndicator color={color.violet} />
           </View>
-        ) : coreRooms.length === 0 ? (
-          <ObjectCard r={radius.xl} style={{ padding: 16 }}>
-            <T size={13} c={color.muted}>No rooms yet.</T>
-          </ObjectCard>
         ) : (
-          <RowList>
-            {coreRooms.map((r, i) => (
-              <Row key={r.id} last={i === coreRooms.length - 1}>
-                <RoomRow
-                  room={r}
-                  yours={Boolean(profile?.primary_mode) && r.mode === profile?.primary_mode}
-                  onPress={() => open(r)}
+          <>
+            {circles.length || canCreate ? (
+              <CirclesRow
+                circles={circles}
+                canCreate={canCreate}
+                onOpen={openCircle}
+                onCreate={() => setCreateOpen(true)}
+              />
+            ) : null}
+
+            {kaiPinned ? (
+              <View
+                testID="kai-pinned"
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 9, marginHorizontal: 16, marginBottom: 4,
+                  paddingVertical: 8, paddingHorizontal: 12, borderRadius: 11,
+                  backgroundColor: alpha.violet08, borderLeftWidth: 2, borderLeftColor: color.violet,
+                }}
+              >
+                <KaiOrb size={17} glow={false} />
+                <T size={11.5} lh={16} c={color.muted} style={{ flex: 1 }}>
+                  <T size={11.5} weight="bold" c={color.violetLight}>Kai</T>
+                  {` · ${kaiPinned}`}
+                </T>
+              </View>
+            ) : null}
+
+            {/* Which of the three rooms this feed is. */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 8 }}
+              testID="room-rail"
+            >
+              {coreRooms.map((r) => {
+                const on = r.id === roomId;
+                return (
+                  <Pressable
+                    key={r.id}
+                    testID={`room-${r.slug}`}
+                    accessibilityRole="tab"
+                    accessibilityLabel={r.name}
+                    accessibilityState={{ selected: on }}
+                    onPress={() => setRoomId(r.id)}
+                    style={{
+                      paddingHorizontal: 12, height: 32, borderRadius: radius.pill,
+                      alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6,
+                      backgroundColor: on ? alpha.volt14 : 'transparent',
+                      borderWidth: 0.5, borderColor: on ? alpha.volt50 : alpha.ivory12,
+                    }}
+                  >
+                    <T size={12} weight={on ? 'bold' : 'regular'} c={on ? color.volt : color.muted}>{r.name}</T>
+                    {r.unread ? <Num size={10} weight="bold" c={color.dim}>{String(r.unread)}</Num> : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <View style={{ paddingHorizontal: 16, gap: 14, paddingTop: 6 }}>
+              {messages.length ? messages.map((m) => (
+                <ClubMessage
+                  key={m.id}
+                  message={{
+                    ...m,
+                    reactions: [
+                      ...m.reactions,
+                      ...(localReactions[m.id] ?? []).map((e) => ({ label: e, count: 1, tone: 'neutral' as const })),
+                    ],
+                  }}
+                  onTicker={(s) => router.push(`/symbol/${encodeURIComponent(s)}` as never)}
+                  onReact={(e) => { void react(m.id, e); }}
+                  onOpenSetup={(s) => router.push(`/trade/${encodeURIComponent(s)}?ctx=alert` as never)}
+                  reactionsLocal={reactionsAreLocal && !!localReactions[m.id]?.length}
                 />
-              </Row>
-            ))}
-          </RowList>
+              )) : (
+                <ObjectCard r={radius.xl} style={{ padding: 16 }}>
+                  <T size={13} c={color.muted}>
+                    {selected ? 'Nothing has been posted here today.' : 'No rooms yet.'}
+                  </T>
+                </ObjectCard>
+              )}
+            </View>
+
+            {note ? <T size={11} c={color.gold} style={{ paddingHorizontal: 16, paddingTop: 10 }}>{note}</T> : null}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 12 }}>
+              <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color.dim }} />
+              <T size={10} lh={14} c={color.dim} style={{ flex: 1 }}>
+                {source === 'fixtures' ? 'Example rooms · ' : ''}Claims stay unverified until Kai checks them.
+              </T>
+            </View>
+          </>
         )}
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 2 }}>
-          <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color.dim }} />
-          <T size={10} lh={14} c={color.dim} style={{ flex: 1 }}>
-            {source === 'fixtures' ? 'Example rooms · ' : ''}Claims stay unverified until Kai checks them.
-          </T>
-        </View>
-
-        {joining ? <T size={11} c={color.muted}>Joining…</T> : null}
       </ScrollView>
+
+      <View style={{ paddingHorizontal: 16, paddingBottom: 8, paddingTop: 4 }}>
+        <Composer
+          testID="club-composer"
+          placeholder="Message Cheat Code Club… $ @Kai"
+          disabled={!roomId}
+          onSend={(t) => { void post(t); }}
+        />
+      </View>
+
+      <CreateCircleSheet
+        visible={createOpen}
+        onClose={() => setCreateOpen(false)}
+        canCreate={canCreate}
+        onCreate={createCircle}
+      />
     </Screen>
   );
 }

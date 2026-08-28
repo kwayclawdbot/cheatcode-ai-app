@@ -82,7 +82,7 @@ export function useSubmit() {
 
   useEffect(() => () => { stop.current = true; }, []);
 
-  const submit = useCallback(async (previewId: string) => {
+  const submit = useCallback(async (previewId: string, onPlaced?: (o: OrderRow) => void) => {
     setPhase('sending');
     setError(null);
     let placed: OrderRow;
@@ -94,8 +94,15 @@ export function useSubmit() {
       return null;
     }
     setOrder(placed);
+    // Round 4: the confirmed screen takes over the moment the order EXISTS, so
+    // the user sees "Placed · paper account" rather than a spinner that waits
+    // for a fill. The poll below keeps running for callers that stay here.
+    onPlaced?.(placed);
     setPhase(placed.status === 'filled' ? 'filled' : 'accepted');
-    if (TERMINAL.has(placed.status) || !placed.id) return placed;
+    // One watcher per order. When a caller took over on `onPlaced` (round 4:
+    // the confirmed screen), polling here as well would race it and eat the
+    // accepted state before the user ever sees it.
+    if (onPlaced || TERMINAL.has(placed.status) || !placed.id) return placed;
 
     // Poll GET /orders/:id — the paper tick fills resting limits between calls.
     const until = Date.now() + POLL_BUDGET_MS;

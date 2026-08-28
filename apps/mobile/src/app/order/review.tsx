@@ -146,6 +146,21 @@ export default function ReviewOrder() {
   const { secondsLeft, expired } = useExpiry(preview?.expires_at);
   const { phase, order, error: submitError, submit } = useSubmit();
 
+  /**
+   * Round 4: a placed order gets its own screen (Order-confirmed.html). The
+   * inline result below stays as the fallback for a submit that came back
+   * without an id, so a real order is never left unshown.
+   */
+  const placeOrder = async (previewId: string) => {
+    let navigated = false;
+    const placed = await submit(previewId, (o) => {
+      if (!o.id) return;
+      navigated = true;
+      router.replace(`/order/confirmed?id=${encodeURIComponent(o.id)}` as never);
+    });
+    if (!navigated && placed?.id) router.replace(`/order/confirmed?id=${encodeURIComponent(placed.id)}` as never);
+  };
+
   const back = () => (router.canGoBack() ? router.back() : router.replace('/trade'));
 
   /* ---------------- after submit: accepted, then filled ---------------- */
@@ -310,11 +325,14 @@ export default function ReviewOrder() {
         </Panel>
 
         <KaiRiskCheck risk={preview.risk} testID="kai-risk-check">
+          {/* Round 4: the board says "Stop · broker-native order". There is no
+              broker here, so both legs are named for what they are — paper legs
+              held by this stack (spec 10 §10: paper and live stay unmistakable). */}
           {preview.stop_attached != null ? (
-            <RiskLine label="Stop loss · attached" value={money(preview.stop_attached)} c={color.red} />
+            <RiskLine label="Stop · paper leg" value={money(preview.stop_attached)} c={color.red} />
           ) : null}
           {preview.first_target != null ? (
-            <RiskLine label="First target" value={money(preview.first_target)} c={color.green} />
+            <RiskLine label="Target · paper leg" value={money(preview.first_target)} c={color.green} />
           ) : null}
           {preview.max_loss != null ? (
             <RiskLine
@@ -359,7 +377,7 @@ export default function ReviewOrder() {
         ) : (
           <Button
             label={preview.confirm_label ?? (closeId ? 'Place paper exit' : 'Place paper order')}
-            onPress={() => submit(preview.preview_id)}
+            onPress={() => { void placeOrder(preview.preview_id); }}
             loading={phase === 'sending'}
             disabled={!canPlace}
             height={52}

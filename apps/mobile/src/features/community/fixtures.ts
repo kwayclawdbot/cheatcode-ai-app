@@ -122,7 +122,7 @@ export const fixtureMessages: RoomMessage[] = [
     refs: { symbol: 'META', levels: [501] }, structured_idea: null,
     position_disclosure: { holds: true, symbol: 'META', label: 'Holds META' },
     kai_object: null, deleted: false, is_claim: true,
-    reactions: [{ label: '14', count: 14, tone: 'neutral' }, { label: '9', count: 9, tone: 'market' }],
+    reactions: [{ label: '🔥', count: 14, tone: 'neutral' }, { label: '💬', count: 9, tone: 'market' }],
   },
   {
     id: 'm-2', seq: 5, kind: 'text', created_at: '2026-08-26T13:41:00Z', time_label: 'Today at 9:41',
@@ -134,7 +134,7 @@ export const fixtureMessages: RoomMessage[] = [
     id: 'm-3', seq: 6, kind: 'kai_object', created_at: '2026-08-26T13:41:30Z', time_label: 'Today at 9:41',
     author: KAI, body: null, refs: { symbol: 'META' }, structured_idea: null,
     position_disclosure: null, kai_object: VERIFICATION, deleted: false, is_claim: false,
-    reactions: [{ label: '21', count: 21, tone: 'kai' }],
+    reactions: [{ label: '✅', count: 21, tone: 'kai' }],
   },
   {
     id: 'm-4', seq: 7, kind: 'text', created_at: '2026-08-26T13:44:00Z', time_label: 'Today at 9:44',

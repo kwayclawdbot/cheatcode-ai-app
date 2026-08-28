@@ -789,3 +789,263 @@ export const debriefApi = {
     return r.position_id ?? r.id ?? null;
   },
 };
+
+/* ==================================================================== */
+/* Round 4 — circles (time-boxed setup rooms) and message reactions      */
+/*                                                                       */
+/* API-4's `GET/POST /circles` is the source. When it is not deployed the */
+/* circles are read from the room directory itself (`rooms.type='setup'`  */
+/* with `expires_at`), so a real circle still shows; fixtures appear only */
+/* in fixtures mode.                                                      */
+/* ==================================================================== */
+
+import type { Circle, CircleDetail, CircleMessage, CircleTtl } from '../features/circles/types';
+import { fixtureCircleDetail, fixtureCircles } from '../features/circles/fixtures';
+
+const MS = { h: 3600_000, d: 86_400_000 };
+
+/** "2d left" / "8h left" / "closed" — never a raw timestamp. */
+export function timeLeftPlain(expiresAt: string | null | undefined): string {
+  if (!expiresAt) return 'no end date';
+  const ms = Date.parse(expiresAt) - Date.now();
+  if (!Number.isFinite(ms)) return 'no end date';
+  if (ms <= 0) return 'closed';
+  const days = Math.floor(ms / MS.d);
+  if (days >= 1) return `${days}d left`;
+  const hours = Math.floor(ms / MS.h);
+  if (hours >= 1) return `${hours}h left`;
+  return `${Math.max(1, Math.round(ms / 60_000))}m left`;
+}
+
+const TTL_MS: Record<CircleTtl, number> = { '24h': MS.d, '3d': 3 * MS.d, '7d': 7 * MS.d };
+
+function mapCircle(raw: any, createdAt?: string | null): Circle {
+  const expires = raw?.expires_at ?? raw?.expiresAt ?? null;
+  const opened = raw?.created_at ?? createdAt ?? null;
+  const symbol = String(raw?.symbol ?? raw?.setup?.symbol ?? String(raw?.name ?? '').split(' ')[0] ?? '').toUpperCase();
+
+  /**
+   * The ring is a clock. With `created_at` we know the real span; without it
+   * (the round-4 payload does not send one) the span is inferred from the TTL
+   * the circle must have been opened with — 24h, 3d or 7d, whichever it still
+   * fits inside. It is a progress ring, not a fact about the database.
+   */
+  const leftMs = expires ? Date.parse(expires) - Date.now() : null;
+  const span = opened && expires
+    ? Date.parse(expires) - Date.parse(opened)
+    : leftMs != null
+      ? ([MS.d, 3 * MS.d, 7 * MS.d].find((t) => leftMs <= t) ?? 7 * MS.d)
+      : null;
+  const progress = span && span > 0 && leftMs != null ? Math.max(0, Math.min(1, 1 - leftMs / span)) : 0;
+
+  return {
+    id: String(raw?.id ?? ''),
+    symbol,
+    name: String(raw?.name ?? symbol),
+    pattern: raw?.pattern ? String(raw.pattern) : null,
+    time_left_plain: raw?.time_left_plain
+      ? String(raw.time_left_plain).replace(/^(\d+) days? left$/, '$1d left')
+      : timeLeftPlain(expires),
+    progress,
+    expires_at: expires ? String(expires) : null,
+    members: asNum(raw?.member_count ?? raw?.members) ?? 0,
+    unread: asNum(raw?.unread ?? raw?.unread_count ?? raw?.messages) ?? 0,
+    setup_id: raw?.setup_id ? String(raw.setup_id) : null,
+    grade_display: raw?.grade?.display ?? raw?.grade_display ?? raw?.setup?.grade_display ?? null,
+    last_activity_plain: raw?.last_activity_plain ?? raw?.preview?.text ?? null,
+    closed: Boolean(raw?.expired ?? raw?.closed) || (expires ? Date.parse(expires) <= Date.now() : false),
+  };
+}
+
+function mapCircleMessage(raw: any): CircleMessage {
+  const author = raw?.author ?? {};
+  const name = String(author.display_name ?? author.name ?? raw?.author_name ?? 'Member');
+  const kaiObj = raw?.kai_object ?? null;
+  return {
+    id: String(raw?.id ?? Math.random().toString(36).slice(2)),
+    author: name,
+    initial: initialOf(name),
+    role: (Array.isArray(author.role_labels) ? author.role_labels[0] : null) ?? null,
+    at: raw?.created_at ? timeLabel(raw.created_at) : null,
+    body: String(raw?.body ?? raw?.text ?? ''),
+    is_kai: Boolean(author.is_kai ?? raw?.is_kai),
+    verification: kaiObj && (kaiObj.type === 'verification_card' || kaiObj.claim)
+      ? {
+          title: String(kaiObj.title ?? 'Kai check'),
+          result_plain: String(kaiObj.result_plain ?? RESULT_LABEL[String(kaiObj.verified ?? '')] ?? 'Checked'),
+          body: String(kaiObj.plain ?? kaiObj.body ?? raw?.body ?? ''),
+        }
+      : null,
+    reactions: Array.isArray(raw?.reactions)
+      ? raw.reactions.map((r: any) => ({
+          emoji: /^\d+$/.test(String(r?.label ?? r?.emoji ?? '')) ? '🔥' : String(r?.emoji ?? r?.label ?? '🔥'),
+          count: asNum(r?.count) ?? 0,
+          mine: Boolean(r?.mine),
+        }))
+      : [],
+  };
+}
+
+export const circlesApi = {
+  available: live,
+
+  /** Whether this member may open a circle — entitlement `circles_create`. */
+  async canCreate(): Promise<boolean> {
+    if (!live()) return true;
+    try {
+      const r = await request<any>('/circles');
+      if (typeof r?.can_create === 'boolean') return r.can_create;
+    } catch {
+      /* fall through to the entitlement flag */
+    }
+    try {
+      const me = await request<any>('/me');
+      const flags = me?.entitlements ?? me?.entitlement_flags ?? [];
+      const flag = (Array.isArray(flags) ? flags : []).find((f: any) => String(f?.key) === 'circles_create');
+      return Boolean(flag?.included);
+    } catch {
+      return false;
+    }
+  },
+
+  async list(): Promise<{ circles: Circle[]; can_create: boolean | null; source: Source }> {
+    if (live()) {
+      try {
+        const r = await request<any>('/circles');
+        const list = Array.isArray(r) ? r : r.circles ?? [];
+        return {
+          circles: list.map((c: any) => mapCircle(c)),
+          can_create: typeof r?.can_create === 'boolean' ? r.can_create : null,
+          source: 'api',
+        };
+      } catch {
+        /* /circles is not deployed — read the setup rooms out of the directory */
+      }
+      try {
+        const r = await request<any>('/rooms');
+        const list = Array.isArray(r) ? r : [...(r.setup_rooms ?? []), ...(r.rooms ?? [])];
+        const setups = list.filter((x: any) => String(x?.type) === 'setup');
+        return { circles: setups.map((c: any) => mapCircle(c)), can_create: null, source: 'api' };
+      } catch {
+        return { circles: [], can_create: null, source: 'api' };
+      }
+    }
+    return { circles: fixtureCircles, can_create: true, source: 'fixtures' };
+  },
+
+  /** Premium: opens a circle for a symbol. The API enforces the entitlement. */
+  async create(symbol: string, ttl: CircleTtl): Promise<Circle> {
+    if (!live()) {
+      const now = Date.now();
+      const expires = new Date(now + TTL_MS[ttl]).toISOString();
+      return {
+        id: `circle-${symbol.toLowerCase()}`,
+        symbol: symbol.toUpperCase(),
+        name: `${symbol.toUpperCase()} circle`,
+        pattern: null,
+        time_left_plain: timeLeftPlain(expires),
+        progress: 0,
+        expires_at: expires,
+        members: 1,
+        unread: 0,
+        setup_id: null,
+        grade_display: null,
+        last_activity_plain: 'You opened this circle',
+        closed: false,
+      };
+    }
+    const r = await request<any>('/circles', {
+      method: 'POST',
+      body: JSON.stringify({ symbol: symbol.toUpperCase(), ttl }),
+    });
+    return mapCircle(r?.circle ?? r);
+  },
+
+  /**
+   * A circle IS a room, so its thread comes from `/rooms/:id/messages` and its
+   * levels come from the setup the room was opened for. There is no separate
+   * circle-detail endpoint to depend on.
+   */
+  async detail(id: string): Promise<{ detail: CircleDetail; source: Source }> {
+    if (!live()) return { detail: fixtureCircleDetail(id), source: 'fixtures' };
+
+    // The circle's identity comes from `/circles` — that row is readable
+    // whether or not you are a member, so the header, the clock and the levels
+    // never depend on being let into the thread.
+    const listed = await request<any>('/circles')
+      .then((r) => (Array.isArray(r) ? r : r?.circles ?? []).find((c: any) => String(c?.id) === id) ?? null)
+      .catch(() => null);
+
+    // A circle is a room you have to be IN to read, and `/rooms/:id/join`
+    // refuses setup rooms on purpose. So a 403 here is not an error to swallow
+    // — it is the state "you are not in this circle", and the room says so.
+    let locked: { plain: string } | null = null;
+    const roomRes = await request<any>(`/rooms/${id}/messages?limit=50`).catch((e: unknown) => {
+      if (e instanceof CommunityApiError && (e.code === 'FORBIDDEN' || e.code === 'ROOM_RESTRICTED')) {
+        locked = { plain: e.message };
+      }
+      return null;
+    });
+
+    const circle = listed ? mapCircle(listed) : roomRes?.room ? mapCircle(roomRes.room) : null;
+    const messages: CircleMessage[] = (roomRes?.messages ?? []).map(mapCircleMessage);
+
+    let levels: CircleDetail['levels'] = [];
+    let quote: CircleDetail['quote'] = null;
+    const setupId = circle?.setup_id ?? roomRes?.room?.setup_id ?? null;
+    if (setupId) {
+      const setup = await communityApi.roomSetup(String(setupId)).catch(() => null);
+      if (setup) {
+        const n = (v: string | null) => (v ? Number(String(v).replace(/[^0-9.]/g, '')) : null);
+        levels = [
+          { label: `${setup.target ?? ''} target`, price: n(setup.target) ?? 0, kind: 'target' as const },
+          { label: `${setup.entry ?? ''} confirm`, price: n(setup.entry) ?? 0, kind: 'entry' as const },
+          { label: `${setup.invalid ?? ''} invalid`, price: n(setup.invalid) ?? 0, kind: 'stop' as const },
+        ].filter((l) => l.price > 0);
+        quote = { price: n(setup.price), change_pct: n(setup.change_pct), freshness: setup.freshness };
+      }
+    }
+
+    return {
+      detail: {
+        locked,
+        circle: circle ?? {
+          id, symbol: '', name: 'Circle', pattern: null, time_left_plain: 'no end date',
+          progress: 0, expires_at: null, members: 0, unread: 0,
+          setup_id: setupId ? String(setupId) : null,
+          grade_display: null, last_activity_plain: null, closed: false,
+        },
+        levels,
+        quote,
+        watching: circle?.members ?? null,
+        kai_read: (roomRes?.room?.pinned ?? []).find?.((p: any) => p?.kind === 'kai')?.text ?? null,
+        messages,
+      },
+      source: 'api',
+    };
+  },
+
+  async post(circleId: string, body: string): Promise<CircleMessage | null> {
+    if (!live()) return null;
+    const r = await request<any>(`/rooms/${circleId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ kind: 'text', body }),
+    });
+    return mapCircleMessage(r?.message ?? r);
+  },
+
+  /**
+   * Reactions. There is no reactions endpoint on this stack, so the POST is
+   * attempted and a failure is reported back — the screen then keeps the
+   * reaction locally and SAYS it is local. It never pretends the room saw it.
+   */
+  async react(messageId: string, emoji: string): Promise<'saved' | 'local'> {
+    if (!live()) return 'local';
+    try {
+      await request(`/messages/${messageId}/reactions`, { method: 'POST', body: JSON.stringify({ emoji }) });
+      return 'saved';
+    } catch {
+      return 'local';
+    }
+  },
+};
