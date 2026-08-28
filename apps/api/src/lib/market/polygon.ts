@@ -623,6 +623,39 @@ export async function getNews(symbol: string, limit = 5): Promise<{ news: NewsIt
   return { news, degraded: false };
 }
 
+/* ------------------------------------------------------------------ */
+/* Reference: /v3/reference/tickers/{sym}                               */
+/* ------------------------------------------------------------------ */
+
+export type TickerReference = {
+  ticker?: string;
+  name?: string;
+  description?: string;
+  sic_description?: string;
+  market_cap?: number;
+  total_employees?: number;
+  homepage_url?: string;
+  branding?: { logo_url?: string; icon_url?: string };
+};
+
+/**
+ * The company reference row. It lives HERE, not in profile.ts, for one reason:
+ * every Polygon request in this app must go through `polyGet` so it is counted
+ * against the 5-a-minute budget. A raw `fetch` elsewhere spends the budget
+ * without telling the bucket about it, and the first thing to break is the
+ * QUOTE path — which is the one users actually notice.
+ *
+ * Returns null when the plan, the budget or the network says no. The caller
+ * falls back to what it already had rather than blocking a page load.
+ */
+export async function fetchTickerReference(symbol: string): Promise<TickerReference | null> {
+  const r = await polyGet<{ results?: TickerReference }>(
+    `/v3/reference/tickers/${encodeURIComponent(symbol.toUpperCase())}`
+  );
+  if (!r.ok) return null;
+  return r.data.results ?? null;
+}
+
 /** Test seam: drop every in-memory cache. */
 export function resetMarketCaches(): void {
   groupedCache.clear();

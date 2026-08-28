@@ -19,7 +19,7 @@
 import type { NextRequest } from 'next/server';
 import {
   HomeQuery,
-  HomeV5Response,
+  HomeRound4Response,
   PAPER_ACCOUNT_PLAIN,
   SETUP_CAPS,
   type BriefingPayload,
@@ -37,6 +37,7 @@ import { loadPaperAccount } from '@/lib/execution/engine';
 import { alsoWatching, choosePriority } from '@/lib/v5/priority';
 import { loadFollowMarks } from '@/lib/v5/attention';
 import { ensureDevTicker } from '@/lib/execution/tick-dev';
+import { briefingTitle, loadConversations, toSummary } from '@/lib/round4/conversations';
 
 export const dynamic = 'force-dynamic';
 
@@ -126,8 +127,14 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
       quote: quoteFromSnapshot(s.symbol, s.quote_snapshot),
     }));
 
+  // Round 4: Home is the Kai conversation workspace, so it names the
+  // conversation today's priority object opens into and tells the drawer where
+  // to find the rest. Nothing else on this payload changed.
+  const { rows: convRows, firstText } = await loadConversations({ userId: ctx.user.id, limit: 1 });
+  const todays = convRows[0] ? toSummary(convRows[0], firstText.get(convRows[0].id) ?? null) : null;
+
   return ok(
-    HomeV5Response.parse({
+    HomeRound4Response.parse({
       mode,
       market: marketBlock(),
       opening_line: openingLine({
@@ -151,6 +158,16 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
       degraded: briefingResult.degraded || positions.degraded,
       degraded_reason: briefingResult.reason ?? positions.degraded_reason,
       invest_mode_notice: mode === 'invest' ? INVEST_NOTICE : null,
+      conversation: {
+        id: todays?.id ?? null,
+        title: todays?.title ?? briefingTitle(),
+        pinned: todays?.pinned ?? false,
+        last_message_at: todays?.last_message_at ?? null,
+        drawer_route: '/api/v1/kai/conversations',
+        plain: todays
+          ? `You are in "${todays.title}". Your other conversations are in the drawer.`
+          : 'This is a fresh conversation. Everything you ask me is kept in the drawer.',
+      },
     })
   );
 });

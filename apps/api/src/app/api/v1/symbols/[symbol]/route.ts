@@ -18,19 +18,26 @@
  */
 import type { NextRequest } from 'next/server';
 import {
+  NOT_A_GUARANTEE_PLAIN,
   PAPER_FILL_PLAIN,
   STATE_ACTION_LABEL,
   SymbolDetailQuery,
-  SymbolWorkspaceResponse,
+  SymbolTickerResponse,
   type ChartAnnotation,
   type PlainAction,
   type SetupState,
+  type TickerAlertRow,
 } from '@shared/api';
 import { authedParams, ok, parseQuery, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
 import { serviceClient } from '@/lib/db';
 import { marketBlock } from '@/lib/market';
-import { getQuote, getNews, polygonConfigured } from '@/lib/market/polygon';
+import { getQuote, getNews, getCandles, lastTradingDate, polygonConfigured } from '@/lib/market/polygon';
+import { getCompanyProfile } from '@/lib/market/profile';
+import { computeTechnicals } from '@/lib/market/technicals';
+import { loadAlertCards } from '@/lib/round4/alerts-feed';
+import { listCircles } from '@/lib/round4/circles';
+import { speak, experienceOf } from '@/lib/kai/voice';
 import { loadProfile, loadRiskPolicy, type SetupRow } from '@/lib/kai/context';
 import { derivedEnvelope } from '@/lib/kai/objects';
 import { levels, isLong, buildConfirmations } from '@/lib/setups';
@@ -55,6 +62,20 @@ import { alertRow } from '../../alerts/shape';
 export const dynamic = 'force-dynamic';
 
 const TIMEFRAMES = ['1D', '5D', '1M', '3M', 'YTD', '1Y'];
+
+/** The prototype's ticker-page chart chips. */
+const TICKER_TIMEFRAMES = [
+  { key: '1D', label: '1D' },
+  { key: '1W', label: '1W' },
+  { key: '1M', label: '1M' },
+  { key: '1Y', label: '1Y' },
+];
+
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
 
 const SETUP_COLUMNS =
   'id,symbol,mode,intent,state,score,grade_band,grade_display,score_components,thesis_plain,thesis_technical,entry_condition,invalidation,stop,targets,catalyst,quote_snapshot,valid_until,scanner_run_id,discussion_room_id';
@@ -228,8 +249,51 @@ export const GET = authedParams<{ symbol: string }>(
         ? 'Watching · no position'
         : 'No position · not on your watchlist';
 
+    /* ---- round 4: the ticker research page --------------------------- */
+    // Company profile, deterministic technicals, Kai's short take, the
+    // community line and the "one active alert" row. Everything above is
+    // unchanged — this payload is a superset of the V5 workspace.
+    const experience = experienceOf(
+      (profile.onboarding as Record<string, unknown>)?.experience ?? profile.experience
+    );
+    const [company, candlesRes, feed, circlesRes] = await Promise.all([
+      getCompanyProfile(symbol),
+      getCandles(symbol, '1d', daysAgo(150), lastTradingDate()),
+      loadAlertCards({ userId: ctx.user.id, requestId: ctx.requestId }),
+      listCircles({ userId: ctx.user.id }),
+    ]);
+    const technicals = computeTechnicals({
+      candles: candlesRes.candles,
+      price: quote.price,
+      freshness: quote.freshness,
+    });
+
+    const liveCard = feed.cards.find((c) => c.identity.symbol === symbol && c.tab !== 'history') ?? null;
+    const activeAlert: TickerAlertRow | null = liveCard
+      ? {
+          alert_id: liveCard.alert_id,
+          card_id: liveCard.id,
+          grade: liveCard.grade,
+          state: liveCard.state,
+          plain: `${liveCard.grade.display ?? 'Ungraded'} · ${liveCard.state_label}${liveCard.event.triggered_at ? ` · ${liveCard.event.at_plain}` : ''}`,
+          triggered_at: liveCard.event.triggered_at,
+          route: liveCard.primary_action.route ?? `/trade/${symbol}`,
+        }
+      : null;
+
+    const circle = circlesRes.circles.find((c) => c.symbol === symbol || c.setup_id === current?.id) ?? null;
+    const postsToday = await countPostsToday(roomId);
+
+    // Kai's take on the ticker page is the interpretation, said in the voice
+    // this user chose. It is Kai's assessment and it is labelled as one.
+    const kaiTake = speak(
+      interpretation.conclusion_plain,
+      experience,
+      current?.state === 'ready' ? 'confirmed' : 'thesis'
+    );
+
     return ok(
-      SymbolWorkspaceResponse.parse({
+      SymbolTickerResponse.parse({
         // round-2 keys
         symbol,
         name: ((instrument.data as Record<string, unknown>).name as string) ?? null,
@@ -357,7 +421,66 @@ export const GET = authedParams<{ symbol: string }>(
         degraded: quote.price === null || positions.degraded,
         degraded_reason:
           quote.price === null ? 'I do not have a price for this one right now.' : positions.degraded_reason,
+
+        // ---- round 4: the ticker research page --------------------------
+        company,
+        ticker_overview: {
+          summary: company.summary,
+          market_cap: company.market_cap,
+          market_cap_plain: company.market_cap_plain,
+          next_earnings: company.next_earnings,
+          pe: company.pe,
+          sector: company.sector,
+          source: company.source,
+          plain:
+            company.source === 'polygon'
+              ? 'From the company filing, trimmed to two sentences.'
+              : company.source === 'seed'
+                ? 'Written by us, not taken from a filing.'
+                : 'I have no description for this one yet.',
+        },
+        technicals,
+        kai_view: {
+          take: kaiTake,
+          disclosure: NOT_A_GUARANTEE_PLAIN,
+          actions: [
+            action('ask_kai', 'Ask Kai', null, true),
+            action('explain_chart', 'Explain the chart', `/trade/${symbol}?ctx=kai`),
+            action('compare', 'Compare', `/trade/${symbol}?ctx=kai`),
+          ],
+        },
+        ticker_community: {
+          most_mentioned_level: null,
+          posts_today: postsToday,
+          sentiment: sentiment ? sentiment.label : null,
+          circle: circle
+            ? { id: circle.id, name: circle.name, route: circle.route, expires_at: circle.expires_at }
+            : null,
+          room_id: roomId,
+          plain: circle
+            ? `${circle.name} is open · ${circle.time_left_plain}.`
+            : sentiment
+              ? `${sentiment.label}. ${sentiment.caveat_plain}`
+              : 'Nobody has written down an idea about this one yet.',
+        },
+        active_alert: activeAlert,
+        chart_timeframes: TICKER_TIMEFRAMES,
+        open_in_trade: action('open_in_trade', 'Open in Trade', `/trade/${symbol}`, true),
       })
     );
   }
 );
+
+/** Structured ideas posted in this symbol's room since midnight ET. */
+async function countPostsToday(roomId: string | null): Promise<number> {
+  if (!roomId) return 0;
+  const since = new Date();
+  since.setUTCHours(0, 0, 0, 0);
+  const { count } = await serviceClient()
+    .from('messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('room_id', roomId)
+    .is('deleted_at', null)
+    .gte('created_at', since.toISOString());
+  return count ?? 0;
+}

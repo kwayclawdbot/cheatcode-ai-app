@@ -29,7 +29,7 @@
  *   alert_assisted  — the leg does NOT execute. A notification arrives with
  *                     one-tap close, and it says so.
  */
-import type { PaperTickResponse, PositionEffect } from '@shared/api';
+import type { PaperTickRound4Response, PaperTickResponse, PositionEffect } from '@shared/api';
 import { PAPER_FILL_PLAIN } from '@shared/api';
 import { serviceClient } from '../db';
 import { log } from '../log';
@@ -39,6 +39,8 @@ import { notify } from '../notify';
 import { evaluateFill, round2 } from './paper';
 import { ORDER_COLUMNS, applyFill, cancelSiblings, revalueAccount } from './engine';
 import { rpcApplyPaperTick, type TickAttention } from './adapter';
+import { armedAlertSymbols, evaluateArmedAlerts } from '../round4/alert-tick';
+import { sweepCircles } from '../round4/circles';
 
 const RESTING: string[] = ['accepted', 'submitted', 'partially_filled'];
 
@@ -51,7 +53,7 @@ export async function runPaperTick(opts: {
   requestId: string;
   overrides?: Record<string, number>;
   userId?: string;
-}): Promise<PaperTickResponse> {
+}): Promise<PaperTickRound4Response> {
   const db = serviceClient();
   const at = new Date().toISOString();
 
@@ -69,7 +71,18 @@ export async function runPaperTick(opts: {
   const positions = (posRes.data ?? []) as Record<string, unknown>[];
   const orders = (ordRes.data ?? []) as Record<string, unknown>[];
 
-  const symbols = [...new Set([...positions, ...orders].map((r) => String(r.symbol)))].sort();
+  // Round 4: an armed alert is a reason to fetch a quote even with nothing open.
+  // Watching → Active is only allowed on a VERIFIED condition (spec §9), and a
+  // condition cannot be verified against a price we never asked for.
+  const alertSymbols = await armedAlertSymbols(opts.userId);
+  const symbols = [
+    ...new Set([...positions, ...orders].map((r) => String(r.symbol)).concat(alertSymbols)),
+  ].sort();
+
+  // Circles open and close on their own clock, which has nothing to do with
+  // whether this user has a position open — so the sweep runs on every tick.
+  const swept = await sweepCircles({ requestId: opts.requestId });
+
   if (!symbols.length) {
     return {
       ticked_at: at,
@@ -82,6 +95,10 @@ export async function runPaperTick(opts: {
       degraded: false,
       degraded_reason: null,
       plain: 'Nothing is open and nothing is resting, so there was nothing to mark.',
+      alerts_evaluated: 0,
+      alerts_triggered: 0,
+      circles_opened: swept.opened,
+      circles_closed: swept.closed,
     };
   }
 
@@ -109,6 +126,13 @@ export async function runPaperTick(opts: {
     degraded = snap.degraded;
     degradedReason = snap.degraded_reason;
   }
+
+  // --- armed alerts, against the same marks -------------------------------
+  const alertEval = await evaluateArmedAlerts({
+    marks: new Map([...marks].map(([sym, m]) => [sym, { price: m.price, ts: m.ts, freshness: m.freshness }])),
+    userId: opts.userId,
+    requestId: opts.requestId,
+  });
 
   // --- per user + symbol -------------------------------------------------
   let marked = 0;
@@ -265,6 +289,10 @@ export async function runPaperTick(opts: {
     degraded,
     degraded_reason: degradedReason,
     plain: `Marked ${marked} position${marked === 1 ? '' : 's'} and filled ${filled} resting order${filled === 1 ? '' : 's'} against delayed prices. ${PAPER_FILL_PLAIN}`,
+    alerts_evaluated: alertEval.evaluated,
+    alerts_triggered: alertEval.triggered,
+    circles_opened: swept.opened,
+    circles_closed: swept.closed,
   };
 }
 

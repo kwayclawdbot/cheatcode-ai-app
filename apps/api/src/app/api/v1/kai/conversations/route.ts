@@ -13,13 +13,52 @@
  * kind `setup` also pins that setup, so both mechanisms agree.
  */
 import type { NextRequest } from 'next/server';
-import { CreateContextConversationRequest, CreateContextConversationResponse } from '@shared/api';
-import { authed, ok, parseBody, type Ctx } from '@/lib/http';
+import {
+  ConversationsQuery,
+  ConversationsResponse,
+  CreateContextConversationRequest,
+  CreateContextConversationResponse,
+} from '@shared/api';
+import { authed, ok, parseBody, parseQuery, type Ctx } from '@/lib/http';
 import { serviceClient } from '@/lib/db';
 import { ApiError } from '@/lib/errors';
 import { loadSheetContext } from '@/lib/kai/sheet-context';
+import { CONVERSATIONS_EMPTY_COPY, loadConversations, toSummary } from '@/lib/round4/conversations';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * GET /api/v1/kai/conversations?q=&limit=
+ *
+ * The Home drawer (round 4): PINNED first, then RECENT, each row already
+ * carrying the title and a subtitle. A row is never a UUID — an untitled
+ * conversation is named from what it is about (see lib/round4/conversations.ts),
+ * so the drawer is readable the moment it opens.
+ *
+ * `q` searches the title AND the first message, because "the one where I asked
+ * about volume" has no matching title at all.
+ */
+export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
+  const q = parseQuery(req, ConversationsQuery);
+  const { rows, firstText } = await loadConversations({
+    userId: ctx.user.id,
+    q: q.q ?? null,
+    limit: q.limit ?? 40,
+  });
+  const summaries = rows.map((r) => toSummary(r, firstText.get(r.id) ?? null));
+
+  return ok(
+    ConversationsResponse.parse({
+      pinned: summaries.filter((s) => s.pinned),
+      recent: summaries.filter((s) => !s.pinned),
+      q: q.q ?? null,
+      total: summaries.length,
+      empty_copy: q.q ? `Nothing matches "${q.q}".` : CONVERSATIONS_EMPTY_COPY,
+      new_conversation_label: 'New conversation',
+      search_placeholder: 'Search conversations',
+    })
+  );
+});
 
 export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
   const body = await parseBody(req, CreateContextConversationRequest);

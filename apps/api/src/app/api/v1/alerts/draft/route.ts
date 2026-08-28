@@ -13,6 +13,8 @@ import { ApiError } from '@/lib/errors';
 import { log } from '@/lib/log';
 import { emitUserEvent } from '@/lib/events';
 import { loadProfile } from '@/lib/kai/context';
+import { alertIdentity, alertWritePatch } from '@/lib/round4/alert-identity';
+import { hasAlertVersionColumns } from '@/lib/round4/schema-probe';
 import { buildSystemPrompt } from '@/lib/kai/system-prompt';
 import { anthropicConfigured, completeOnce, FenceSplitter, parseFenced } from '@/lib/kai/stream';
 import { persistKaiObject } from '@/lib/kai/objects';
@@ -43,10 +45,10 @@ export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
 
   let payload: ReturnType<typeof AlertPreviewPayload.parse> | null = null;
   let degraded = false;
+  const profile = await loadProfile(ctx.user.id);
 
   if (anthropicConfigured()) {
     try {
-      const profile = await loadProfile(ctx.user.id);
       const system = buildSystemPrompt({
         displayName: profile.display_name,
         experience: profile.experience,
@@ -108,6 +110,25 @@ Use only levels the user actually gave you. Never invent a price.`,
     throw new ApiError('KAI_UNAVAILABLE', 'Kai could not turn that into a watch just now. Try naming the symbol and the level.');
   }
 
+  // WHAT THIS WATCH IS ABOUT comes out of the PARSED CONDITION, not out of the
+  // request body. The symbol and level the user typed are extracted by Kai into
+  // `condition.atoms[]`; storing only the client's `refs` meant a watch created
+  // from plain language anywhere but one screen had no symbol on it at all, and
+  // therefore never produced an alert card. The client hint is now a fallback,
+  // not the source of truth. See lib/round4/alert-identity.ts.
+  const identity = alertIdentity({
+    condition: payload.condition,
+    dataDependency: payload.data_dependency,
+    refs: body.refs,
+  });
+  const write = await alertWritePatch({
+    identity,
+    refs: body.refs,
+    mode: profile.primary_mode,
+    hasRound4Columns: await hasAlertVersionColumns(),
+    lifecycleState: 'watching',
+  });
+
   const { data, error } = await db
     .from('alerts')
     .insert({
@@ -118,7 +139,8 @@ Use only levels the user actually gave you. Never invent a price.`,
       data_dependency: payload.data_dependency as never,
       frequency: payload.frequency,
       expires_at: payload.expires_at,
-      refs: body.refs as never,
+      refs: write.refs as never,
+      ...write.columns,
     })
     .select('id,status,natural_language,condition,data_dependency,frequency,expires_at,refs,created_at')
     .single();
@@ -130,7 +152,7 @@ Use only levels the user actually gave you. Never invent a price.`,
     type: 'alert_preview',
     payload,
     userId: ctx.user.id,
-    refs: { alert_id: (data as Record<string, unknown>).id, user_id: ctx.user.id, ...body.refs },
+    refs: { alert_id: (data as Record<string, unknown>).id, user_id: ctx.user.id, ...write.refs },
     model: degraded ? 'deterministic/v1' : undefined,
     requestId: ctx.requestId,
   });

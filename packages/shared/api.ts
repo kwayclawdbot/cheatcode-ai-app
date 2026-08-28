@@ -2659,3 +2659,959 @@ export const STATE_ACTION_LABEL: Record<string, string> = {
   invalidated: 'Review what changed',
   expired: 'Review what changed',
 };
+
+/* ================================================================== */
+/* ROUND 4 — Actionable Alerts & the chart-first Trade Portal          */
+/*                                                                     */
+/* Binding source: docs/10_ALERTS_TRADE_PORTAL_SPEC_extracted.md.      */
+/* Everything below is APPENDED. No round-1..3 export changed meaning. */
+/* ================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* Experience + focus (onboarding "Personalize")                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The onboarding word, not the database word. `experience_level` in the schema
+ * stays beginner/intermediate/advanced; this is what the user actually chose,
+ * and it is what decides Kai's VOICE.
+ */
+export const Experience = z.enum(['new', 'some', 'pro']);
+export type Experience = z.infer<typeof Experience>;
+
+export const EXPERIENCE_TO_LEVEL: Record<Experience, ExperienceLevel> = {
+  new: 'beginner',
+  some: 'intermediate',
+  pro: 'advanced',
+};
+
+export const LEVEL_TO_EXPERIENCE: Record<ExperienceLevel, Experience> = {
+  beginner: 'new',
+  intermediate: 'some',
+  advanced: 'pro',
+};
+
+/** The one-line consequence shown under each choice, and Kai's voice line. */
+export const EXPERIENCE_VOICE_LINE: Record<Experience, string> = {
+  new: 'I explain every term the first time it appears.',
+  some: 'I keep it plain but skip the basics.',
+  pro: 'I lead with levels and numbers, no preamble.',
+};
+
+export const FocusKey = z.enum(['tech', 'ai', 'energy', 'etf', 'crypto', 'earnings']);
+export type FocusKey = z.infer<typeof FocusKey>;
+
+export const FOCUS_LABELS: Record<FocusKey, string> = {
+  tech: 'big tech',
+  ai: 'AI & semis',
+  energy: 'energy',
+  etf: 'index ETFs',
+  crypto: 'crypto-linked names',
+  earnings: 'earnings plays',
+};
+
+/** The symbols each focus chip actually scans, from the seeded universe. */
+export const FOCUS_SYMBOLS: Record<FocusKey, string[]> = {
+  tech: ['META', 'AAPL', 'MSFT', 'AMZN'],
+  ai: ['NVDA', 'AMD'],
+  energy: [],
+  etf: ['SPY', 'QQQ'],
+  crypto: ['TSLA'],
+  earnings: ['CRM'],
+};
+
+/** "Kai will scan big tech and AI & semis first." — composed server-side. */
+export const FocusSummary = z.object({
+  keys: z.array(FocusKey),
+  labels: z.array(z.string()),
+  plain: z.string(),
+  symbols: z.array(z.string()),
+});
+export type FocusSummary = z.infer<typeof FocusSummary>;
+
+/**
+ * Superset of `OnboardingCompleteRequest`. `experience` still accepts the three
+ * database levels so an older client keeps working; the prototype's three words
+ * are accepted on the same field and mapped.
+ */
+export const OnboardingExperience = z.preprocess(
+  (v) => (v === 'beginner' ? 'new' : v === 'intermediate' ? 'some' : v === 'advanced' ? 'pro' : v),
+  Experience
+);
+
+export const OnboardingCompleteRound4Request = OnboardingCompleteRequest.extend({
+  experience: OnboardingExperience,
+  focus: z.array(FocusKey).max(6).optional(),
+});
+export type OnboardingCompleteRound4Request = z.infer<typeof OnboardingCompleteRound4Request>;
+
+export const SettingsRound4Request = z
+  .object({
+    explanation_level: ExperienceLevel.optional(),
+    quiet_hours: QuietHours.nullable().optional(),
+    notifications: z.object({ per_mode: z.record(z.string(), z.unknown()) }).optional(),
+    accessibility: z
+      .object({
+        reduced_motion: z.boolean().optional(),
+        text_scale: z.number().min(0.8).max(2).optional(),
+      })
+      .optional(),
+    /** Round 4: the Account tab's "Your Kai profile" rows. */
+    experience: OnboardingExperience.optional(),
+    focus: z.array(FocusKey).max(6).optional(),
+    mode: AppMode.optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'Nothing to change here yet.' });
+export type SettingsRound4Request = z.infer<typeof SettingsRound4Request>;
+
+/* ------------------------------------------------------------------ */
+/* /me additions                                                        */
+/* ------------------------------------------------------------------ */
+
+export const KaiProfile = z.object({
+  mode: AppMode,
+  mode_label: z.string(),
+  experience: Experience,
+  experience_label: z.string(),
+  focus: FocusSummary,
+  /** "I explain every term the first time it appears." */
+  voice_line: z.string(),
+});
+export type KaiProfile = z.infer<typeof KaiProfile>;
+
+/**
+ * "You've followed your rules 4 of the last 6 sessions." A session is one
+ * debrief; followed means every receipt item in `process_review` came back ok.
+ * `show:false` under three sessions — a ratio out of one or two is noise.
+ */
+export const RuleAdherence = z.object({
+  sessions: z.number(),
+  followed: z.number(),
+  show: z.boolean(),
+  plain: z.string(),
+  route: z.string().nullable(),
+});
+export type RuleAdherence = z.infer<typeof RuleAdherence>;
+
+export const MeRound4Response = MeResponse.extend({
+  rule_adherence: RuleAdherence,
+  kai_profile: KaiProfile,
+});
+export type MeRound4Response = z.infer<typeof MeRound4Response>;
+
+/* ------------------------------------------------------------------ */
+/* Company profile (Polygon /v3/reference/tickers)                      */
+/* ------------------------------------------------------------------ */
+
+export const CompanyProfile = z.object({
+  symbol: z.string(),
+  name: z.string().nullable(),
+  /** Two sentences maximum (spec §3 "Company summary"). */
+  summary: z.string().nullable(),
+  sector: z.string().nullable(),
+  market_cap: z.number().nullable(),
+  market_cap_plain: z.string().nullable(),
+  next_earnings: z.string().nullable(),
+  pe: z.number().nullable(),
+  employees: z.number().nullable(),
+  homepage: z.string().nullable(),
+  logo_url: z.string().nullable(),
+  /** 'polygon' | 'seed' | 'none' — the app never presents seed copy as live. */
+  source: z.enum(['polygon', 'seed', 'none']),
+  refreshed_at: z.string().nullable(),
+});
+export type CompanyProfile = z.infer<typeof CompanyProfile>;
+
+/* ------------------------------------------------------------------ */
+/* Technicals — computed from candles, never generated                  */
+/* ------------------------------------------------------------------ */
+
+export const MeterStatus = z.enum([
+  'Strong',
+  'Confirmed',
+  'Healthy',
+  'Forming',
+  'Waiting',
+  'Favorable',
+  'Supportive',
+  'Neutral',
+  'Weak',
+  'Elevated',
+  'Unknown',
+]);
+export type MeterStatus = z.infer<typeof MeterStatus>;
+
+/**
+ * Qualitative signal ONLY (spec §4). `strength` is 0–5 segments for a meter —
+ * it is not a score and it is never rendered as a fraction of anything.
+ */
+export const QualitativeMeter = z.object({
+  key: z.string(),
+  label: z.string(),
+  status: MeterStatus,
+  strength: z.number().int().min(0).max(5),
+  plain: z.string(),
+  /** What the number behind it actually was, for the expandable evidence. */
+  evidence_plain: z.string().nullable(),
+});
+export type QualitativeMeter = z.infer<typeof QualitativeMeter>;
+
+export const PriceLevel = z.object({
+  price: z.number(),
+  label: z.string(),
+  /** How many times the swing was tested in the window we measured. */
+  touches: z.number(),
+  plain: z.string(),
+});
+export type PriceLevel = z.infer<typeof PriceLevel>;
+
+export const Technicals = z.object({
+  trend: QualitativeMeter,
+  momentum: QualitativeMeter,
+  volatility: QualitativeMeter,
+  support: z.array(PriceLevel),
+  resistance: z.array(PriceLevel),
+  /** Bars used, timeframe, and the last bar's timestamp. Freshness, always. */
+  computed_from: z.object({
+    timeframe: z.string(),
+    bars: z.number(),
+    last_bar_ts: z.string().nullable(),
+    freshness: Freshness,
+    plain: z.string(),
+  }),
+  degraded: z.boolean(),
+  degraded_reason: z.string().nullable(),
+});
+export type Technicals = z.infer<typeof Technicals>;
+
+/* ------------------------------------------------------------------ */
+/* Grades and the qualitative scorecard (spec §4)                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The border treatment family. Grade colour expresses SETUP QUALITY only —
+ * gold never means profit, green/red never express grade (spec §4).
+ */
+export const GradeFamily = z.enum(['gold', 'gold_restrained', 'violet', 'violet_graphite', 'amber', 'neutral']);
+export type GradeFamily = z.infer<typeof GradeFamily>;
+
+export const GradeMedallion = z.object({
+  /** "A−" — the large letter. */
+  display: z.string().nullable(),
+  band: GradeBand.nullable(),
+  /** 0–100, small and supporting. Never competes with the letter (§11). */
+  score: z.number().nullable(),
+  family: GradeFamily,
+  /** Screen readers announce this, so colour is never the only channel (§10). */
+  plain: z.string(),
+});
+export type GradeMedallion = z.infer<typeof GradeMedallion>;
+
+/**
+ * One scorecard row. NO FRACTIONS EVER cross this wire: `internal_weight` is
+ * omitted deliberately — the grading engine keeps its points, the interface
+ * gets a status and a 0–5 signal (spec §4 "Never display component fractions").
+ */
+export const ScoreComponent = z.object({
+  key: z.string(),
+  label: z.string(),
+  status: MeterStatus,
+  strength: z.number().int().min(0).max(5),
+  explanation: z.string(),
+  evidence: z.array(z.string()),
+});
+export type ScoreComponent = z.infer<typeof ScoreComponent>;
+
+/* ------------------------------------------------------------------ */
+/* Alerts as complete trade objects (spec §1–§5, §9)                    */
+/* ------------------------------------------------------------------ */
+
+export const AlertTab = z.enum(['active', 'watching', 'history']);
+export type AlertTab = z.infer<typeof AlertTab>;
+
+/** The card's own state machine (spec §5 + §9), distinct from `alerts.status`. */
+export const AlertCardState = z.enum([
+  'watching',
+  'forming',
+  'ready',
+  'entry_reached',
+  'planned',
+  'order_pending',
+  'position_active',
+  'invalidated',
+  'closed',
+]);
+export type AlertCardState = z.infer<typeof AlertCardState>;
+
+/** Spec §5 "Primary actions by state" — the ONE primary action, verbatim. */
+export const ALERT_STATE_ACTION: Record<AlertCardState, { label: string; action: string; destination: string }> = {
+  watching: { label: 'Open chart', action: 'open_chart', destination: 'Trade Portal with the monitored condition marked.' },
+  forming: { label: 'Keep watching', action: 'keep_watching', destination: 'Stays monitored — edit or pause it.' },
+  ready: { label: 'Review trade', action: 'review_trade', destination: 'Trade Portal with the Alert or Plan context.' },
+  entry_reached: { label: 'Open Trade Portal', action: 'open_portal', destination: 'Chart centred on the trigger event.' },
+  planned: { label: 'Prepare order', action: 'prepare_order', destination: 'Order ticket prefilled from the reviewed plan.' },
+  order_pending: { label: 'Manage order', action: 'manage_order', destination: 'Order state and chart.' },
+  position_active: { label: 'Manage trade', action: 'manage_trade', destination: 'Position context with stop and target events.' },
+  invalidated: { label: 'See what changed', action: 'see_what_changed', destination: 'Chart replay and Kai explanation.' },
+  closed: { label: 'Review outcome', action: 'review_outcome', destination: 'Debrief against the original alert.' },
+};
+
+/**
+ * Which tab a state lives in (spec §1). Invalidated is HISTORY — spec §1's
+ * History row lists it by name, and 0021's generated `alerts.tab` column agrees,
+ * so the client, the API and the database cannot disagree about it.
+ */
+export const ALERT_STATE_TAB: Record<AlertCardState, AlertTab> = {
+  watching: 'watching',
+  forming: 'watching',
+  ready: 'active',
+  entry_reached: 'active',
+  planned: 'active',
+  order_pending: 'active',
+  position_active: 'active',
+  invalidated: 'history',
+  closed: 'history',
+};
+
+/**
+ * The card state → 0021's `alerts.lifecycle_state` check constraint. The two
+ * vocabularies differ on purpose: the card distinguishes forming from watching
+ * and ready from entry-reached because the USER acts differently on each, while
+ * the column keeps the smaller set the database indexes and generates `tab`
+ * from. This is the one place the mapping is written down.
+ */
+export const ALERT_LIFECYCLE_STATE: Record<AlertCardState, string> = {
+  watching: 'watching',
+  forming: 'watching',
+  ready: 'active',
+  entry_reached: 'active',
+  planned: 'planned',
+  order_pending: 'order_pending',
+  position_active: 'position_active',
+  invalidated: 'invalidated',
+  closed: 'closed',
+};
+
+export const AlertTradePlan = z.object({
+  direction: z.string(),
+  direction_plain: z.string(),
+  entry: z.number().nullable(),
+  entry_condition_plain: z.string(),
+  stop: z.number().nullable(),
+  invalidation_plain: z.string(),
+  targets: z.array(SetupTarget),
+  rr: z.number().nullable(),
+  rr_plain: z.string(),
+  expected_hold: z.string(),
+  expires_at: z.string().nullable(),
+  expires_plain: z.string(),
+  size: SizeSuggestion.nullable(),
+});
+export type AlertTradePlan = z.infer<typeof AlertTradePlan>;
+
+export const AlertFit = z.object({
+  est_risk_usd: z.number().nullable(),
+  fits_cap: z.boolean().nullable(),
+  concentration_plain: z.string().nullable(),
+  conflicts: z.array(z.string()),
+  plain: z.string(),
+});
+export type AlertFit = z.infer<typeof AlertFit>;
+
+/** Always secondary, always labelled, never changes the grade (spec §9). */
+export const AlertCommunity = z.object({
+  sample_size: z.number(),
+  common_level: z.number().nullable(),
+  sentiment: z.string().nullable(),
+  verified: z.boolean().nullable(),
+  room_id: z.string().nullable(),
+  plain: z.string(),
+});
+export type AlertCommunity = z.infer<typeof AlertCommunity>;
+
+export const AlertEvent = z.object({
+  at: z.string(),
+  from_state: AlertCardState.nullable(),
+  to_state: AlertCardState,
+  source: z.string(),
+  plain: z.string(),
+});
+export type AlertEvent = z.infer<typeof AlertEvent>;
+
+/**
+ * THE standard alert card (spec §2). One component across Active, Watching and
+ * History; sections may collapse but the semantics never change.
+ */
+export const AlertCard = z.object({
+  id: z.string(),
+  /** Which underlying object this card is. */
+  kind: z.enum(['alert', 'setup', 'position']),
+  alert_id: z.string().nullable(),
+  setup_id: z.string().nullable(),
+  plan_id: z.string().nullable(),
+  order_id: z.string().nullable(),
+  position_id: z.string().nullable(),
+
+  identity: z.object({
+    symbol: z.string(),
+    company_name: z.string().nullable(),
+    logo_url: z.string().nullable(),
+    mode: AppMode,
+    mode_label: z.string(),
+    direction: z.string(),
+    instrument: z.string(),
+  }),
+
+  grade: GradeMedallion,
+  /** Qualitative only. Assert on this in tests: no "/20" may ever appear. */
+  score_components: z.array(ScoreComponent),
+
+  state: AlertCardState,
+  state_label: z.string(),
+  tab: AlertTab,
+
+  event: z.object({
+    headline: z.string(),
+    what_changed: z.string(),
+    triggered_at: z.string().nullable(),
+    at_plain: z.string(),
+  }),
+
+  /** Two sentences maximum. */
+  company_summary: z.string().nullable(),
+
+  quote: Quote.extend({ label_plain: z.string() }),
+  trade_plan: AlertTradePlan,
+
+  /** One line. Labelled as analysis, never as a guarantee (spec §8). */
+  kai_interpretation: z.string(),
+  kai_disclosure: z.string(),
+
+  fit: AlertFit,
+  community: AlertCommunity,
+
+  primary_action: PlainAction,
+  secondary_actions: z.array(PlainAction),
+
+  detail: z.object({
+    thesis_plain: z.string().nullable(),
+    thesis_technical: z.string().nullable(),
+    scenarios: z.array(Scenario),
+    evidence: z.array(z.string()),
+    sources: z.array(z.object({ label: z.string(), at: z.string().nullable(), url: z.string().nullable() })),
+    event_history: z.array(AlertEvent),
+  }),
+
+  /** A grade change makes a NEW version rather than rewriting history (§9). */
+  version: z.number(),
+  graded_at: z.string().nullable(),
+  created_at: z.string(),
+});
+export type AlertCard = z.infer<typeof AlertCard>;
+
+export const AlertsRound4Query = z.object({
+  tab: AlertTab.optional(),
+  filter: AlertTypeFilter.default('all'),
+});
+export type AlertsRound4Query = z.infer<typeof AlertsRound4Query>;
+
+export const AlertTabChip = z.object({
+  key: AlertTab,
+  label: z.string(),
+  count: z.number(),
+  plain: z.string(),
+});
+export type AlertTabChip = z.infer<typeof AlertTabChip>;
+
+/** Superset of the V5 payload: every round-2 and round-3 key still present. */
+export const AlertsRound4Response = AlertsV5Response.extend({
+  tab: AlertTab,
+  tabs: z.array(AlertTabChip),
+  cards: z.array(AlertCard),
+  card_empty_copy: z.string(),
+});
+export type AlertsRound4Response = z.infer<typeof AlertsRound4Response>;
+
+/* ------------------------------------------------------------------ */
+/* Chart annotations (spec §7 "Annotation requirements")                */
+/* ------------------------------------------------------------------ */
+
+export const AnnotationKind = z.enum([
+  'trigger',
+  'entry',
+  'stop',
+  'invalidation',
+  'target',
+  'support',
+  'resistance',
+  'note',
+]);
+export type AnnotationKind = z.infer<typeof AnnotationKind>;
+
+export const AnnotationProvenance = z.enum(['kai', 'user', 'community', 'plan']);
+export type AnnotationProvenance = z.infer<typeof AnnotationProvenance>;
+
+export const AnnotationStatus = z.enum(['valid', 'invalidated', 'hidden', 'deleted']);
+export type AnnotationStatus = z.infer<typeof AnnotationStatus>;
+
+export const AnnotationRow = z.object({
+  id: z.string(),
+  symbol: z.string(),
+  timeframe: z.string(),
+  kind: AnnotationKind,
+  price: z.number().nullable(),
+  price2: z.number().nullable(),
+  ts_from: z.string().nullable(),
+  ts_to: z.string().nullable(),
+  text: z.string().nullable(),
+  /** Why Kai put it there. Required on every Kai annotation. */
+  reason: z.string().nullable(),
+  provenance: AnnotationProvenance,
+  status: AnnotationStatus,
+  source_alert_id: z.string().nullable(),
+  source_setup_id: z.string().nullable(),
+  source_plan_id: z.string().nullable(),
+  /** Semantics only — the client maps it to the palette. */
+  semantic: z.enum(['entry', 'stop', 'target', 'invalidation', 'note', 'level']),
+  editable: z.boolean(),
+  created_at: z.string(),
+  updated_at: z.string().nullable(),
+});
+export type AnnotationRow = z.infer<typeof AnnotationRow>;
+
+export const AnnotationsQuery = z.object({
+  symbol: z.string().min(1).max(12),
+  timeframe: z.string().max(8).optional(),
+  include_hidden: z.enum(['0', '1']).optional(),
+});
+export type AnnotationsQuery = z.infer<typeof AnnotationsQuery>;
+
+export const AnnotationsResponse = z.object({
+  symbol: z.string(),
+  annotations: z.array(AnnotationRow),
+  plain: z.string(),
+  degraded: z.boolean(),
+  degraded_reason: z.string().nullable(),
+});
+export type AnnotationsResponse = z.infer<typeof AnnotationsResponse>;
+
+export const CreateAnnotationRequest = z.object({
+  symbol: z.string().min(1).max(12),
+  timeframe: z.string().max(8).default('1d'),
+  kind: AnnotationKind,
+  price: z.number().nullable().optional(),
+  price2: z.number().nullable().optional(),
+  ts_from: z.string().nullable().optional(),
+  ts_to: z.string().nullable().optional(),
+  text: z.string().max(400).nullable().optional(),
+  reason: z.string().max(400).nullable().optional(),
+  provenance: AnnotationProvenance.default('user'),
+  source_alert_id: z.string().nullable().optional(),
+  source_setup_id: z.string().nullable().optional(),
+  source_plan_id: z.string().nullable().optional(),
+});
+export type CreateAnnotationRequest = z.infer<typeof CreateAnnotationRequest>;
+
+/** Hide, delete or retitle. The user controls every Kai annotation (spec §7). */
+export const PatchAnnotationRequest = z
+  .object({
+    status: z.enum(['valid', 'hidden', 'deleted']).optional(),
+    text: z.string().max(400).nullable().optional(),
+    price: z.number().nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'Nothing to change on that mark.' });
+export type PatchAnnotationRequest = z.infer<typeof PatchAnnotationRequest>;
+
+export const AnnotationResponse = z.object({
+  annotation: AnnotationRow,
+  plain: z.string(),
+});
+export type AnnotationResponse = z.infer<typeof AnnotationResponse>;
+
+/* ------------------------------------------------------------------ */
+/* Kai chart-control commands (spec §7)                                 */
+/* ------------------------------------------------------------------ */
+
+export const ChartCommandName = z.enum([
+  'mark_level',
+  'set_timeframe',
+  'show_invalidation',
+  'mark_plan',
+  'zoom_trigger',
+  'compare_prior',
+  'highlight_community',
+  'annotation_remove',
+  'annotation_explain',
+  'alert_from_level',
+  'prepare_trade',
+]);
+export type ChartCommandName = z.infer<typeof ChartCommandName>;
+
+/**
+ * A frame the client applies to the chart IN PLACE and narrates (spec §8).
+ * Payloads are resolved server-side from the setup / alert / plan / community
+ * objects — Kai names WHICH level, never the number. A command whose level
+ * cannot be resolved from a real object is dropped rather than invented.
+ */
+export const ChartCommandFrame = z.object({
+  type: z.literal('chart_command'),
+  command: ChartCommandName,
+  payload: z.record(z.string(), z.unknown()),
+  /** Annotations created or changed by this command, already persisted. */
+  annotations: z.array(AnnotationRow),
+  /** The sentence Kai says while the chart changes. */
+  narration: z.string(),
+  /** Where each number came from. Never empty when a number is present. */
+  provenance: z.string(),
+});
+export type ChartCommandFrame = z.infer<typeof ChartCommandFrame>;
+
+/* ------------------------------------------------------------------ */
+/* GET /symbols/:symbol — the ticker research page (brief item 4)       */
+/* ------------------------------------------------------------------ */
+
+export const TickerKaiView = z.object({
+  take: z.string(),
+  disclosure: z.string(),
+  actions: z.array(PlainAction),
+});
+export type TickerKaiView = z.infer<typeof TickerKaiView>;
+
+export const TickerOverview = z.object({
+  summary: z.string().nullable(),
+  market_cap: z.number().nullable(),
+  market_cap_plain: z.string().nullable(),
+  next_earnings: z.string().nullable(),
+  pe: z.number().nullable(),
+  sector: z.string().nullable(),
+  source: z.enum(['polygon', 'seed', 'none']),
+  plain: z.string(),
+});
+export type TickerOverview = z.infer<typeof TickerOverview>;
+
+export const TickerCommunityBlock = z.object({
+  most_mentioned_level: z.number().nullable(),
+  posts_today: z.number(),
+  sentiment: z.string().nullable(),
+  circle: z
+    .object({ id: z.string(), name: z.string(), route: z.string(), expires_at: z.string().nullable() })
+    .nullable(),
+  room_id: z.string().nullable(),
+  plain: z.string(),
+});
+export type TickerCommunityBlock = z.infer<typeof TickerCommunityBlock>;
+
+/** The "A− One active alert · triggered 9:38 · View" row. */
+export const TickerAlertRow = z.object({
+  alert_id: z.string().nullable(),
+  card_id: z.string(),
+  grade: GradeMedallion,
+  state: AlertCardState,
+  plain: z.string(),
+  triggered_at: z.string().nullable(),
+  route: z.string(),
+});
+export type TickerAlertRow = z.infer<typeof TickerAlertRow>;
+
+/** Superset of the V5 workspace payload. Nothing was removed. */
+export const SymbolTickerResponse = SymbolWorkspaceResponse.extend({
+  company: CompanyProfile,
+  ticker_overview: TickerOverview,
+  technicals: Technicals,
+  kai_view: TickerKaiView,
+  ticker_community: TickerCommunityBlock,
+  active_alert: TickerAlertRow.nullable(),
+  chart_timeframes: z.array(z.object({ key: z.string(), label: z.string() })),
+  open_in_trade: PlainAction,
+});
+export type SymbolTickerResponse = z.infer<typeof SymbolTickerResponse>;
+
+/* ------------------------------------------------------------------ */
+/* GET /trade/portal/:symbol — the chart-first workspace (spec §6, §7)  */
+/* ------------------------------------------------------------------ */
+
+export const PortalContextKey = z.enum(['kai', 'alert', 'plan', 'community']);
+export type PortalContextKey = z.infer<typeof PortalContextKey>;
+
+export const PortalQuery = z.object({
+  alert: z.string().optional(),
+  setup: z.string().optional(),
+  ctx: PortalContextKey.optional(),
+  timeframe: z.string().max(8).optional(),
+});
+export type PortalQuery = z.infer<typeof PortalQuery>;
+
+/**
+ * The exact opening line spec §6 requires when the Portal is opened FROM an
+ * alert. `{SYMBOL}` is the only substitution.
+ */
+export const PORTAL_OPENING_MESSAGE_TEMPLATE =
+  'This is the {SYMBOL} alert you opened. I marked the trigger, entry area, stop and first target on the chart.';
+
+export function portalOpeningMessage(symbol: string): string {
+  return PORTAL_OPENING_MESSAGE_TEMPLATE.replace('{SYMBOL}', symbol.toUpperCase());
+}
+
+export const PortalChartConfig = z.object({
+  timeframe: z.string(),
+  timeframes: z.array(z.object({ key: z.string(), label: z.string() })),
+  candles_path: z.string(),
+  /** The trigger candle's timestamp, when the portal was opened from an event. */
+  focus_ts: z.string().nullable(),
+  range: z.object({ from: z.string().nullable(), to: z.string().nullable() }),
+  plain: z.string(),
+});
+export type PortalChartConfig = z.infer<typeof PortalChartConfig>;
+
+export const PortalKaiContext = z.object({
+  conversation_id: z.string().nullable(),
+  /** Spec §6's opening message, verbatim, when opened from an alert. */
+  opening_message: z.string().nullable(),
+  placeholder: z.string(),
+  suggestions: z.array(z.string()),
+  degraded: z.boolean(),
+  degraded_reason: z.string().nullable(),
+});
+export type PortalKaiContext = z.infer<typeof PortalKaiContext>;
+
+export const PortalPlanContext = z.object({
+  existing_plan: PlanRow.nullable(),
+  suggested: SuggestedPlan.nullable(),
+  daily_risk: z.object({ cap: z.number().nullable(), used: z.number(), remaining: z.number().nullable(), currency: z.string() }),
+  actions: z.array(PlainAction),
+  plain: z.string(),
+});
+export type PortalPlanContext = z.infer<typeof PortalPlanContext>;
+
+export const PortalCommunityContext = z.object({
+  room_id: z.string().nullable(),
+  circle: z
+    .object({ id: z.string(), name: z.string(), route: z.string(), expires_at: z.string().nullable(), members: z.number() })
+    .nullable(),
+  sentiment: CommunitySentiment.nullable(),
+  verified_claims: z.array(z.object({ claim: z.string(), verdict: z.string(), plain: z.string() })),
+  most_mentioned_level: z.number().nullable(),
+  /** Community context is labelled and secondary, always (spec §8). */
+  label_plain: z.string(),
+  plain: z.string(),
+  actions: z.array(PlainAction),
+});
+export type PortalCommunityContext = z.infer<typeof PortalCommunityContext>;
+
+export const PortalExecution = z.object({
+  state: AlertCardState.nullable(),
+  primary_action: PlainAction,
+  /** Never "Submit to broker" on paper (spec §10). */
+  capability_plain: z.string(),
+  paper: z.boolean(),
+});
+export type PortalExecution = z.infer<typeof PortalExecution>;
+
+export const PortalDrawers = z.object({
+  account: z.object({
+    kind: z.literal('paper'),
+    equity: z.number().nullable(),
+    cash: z.number().nullable(),
+    buying_power: z.number().nullable(),
+    day_change: z.number().nullable(),
+    plain: z.string(),
+  }),
+  positions: z.array(OpenPositionRow),
+  open_orders: z.array(OrderRow),
+  watchlist: z.array(z.object({ symbol: z.string(), name: z.string().nullable(), price: z.number().nullable(), route: z.string() })),
+  recent: z.array(RecentSymbol),
+});
+export type PortalDrawers = z.infer<typeof PortalDrawers>;
+
+export const PortalResponse = z.object({
+  identity: WorkspaceIdentity.extend({
+    company_name: z.string().nullable(),
+    logo_url: z.string().nullable(),
+    mode: AppMode,
+    instrument: z.string(),
+  }),
+  quote: MarketQuote,
+  market: MarketBlock,
+  chart_config: PortalChartConfig,
+  annotations: z.array(AnnotationRow),
+  contexts: z.object({
+    selected: PortalContextKey,
+    kai: PortalKaiContext,
+    alert: AlertCard.nullable(),
+    plan: PortalPlanContext,
+    community: PortalCommunityContext,
+  }),
+  /** Spec §6: everything that had to survive the transition, echoed back. */
+  restored: z.object({
+    alert_id: z.string().nullable(),
+    setup_id: z.string().nullable(),
+    symbol: z.string(),
+    instrument: z.string(),
+    mode: AppMode,
+    timeframe: z.string(),
+    focus_ts: z.string().nullable(),
+    levels: z.object({
+      entry: z.number().nullable(),
+      stop: z.number().nullable(),
+      invalidation: z.number().nullable(),
+      targets: z.array(z.number()),
+      community: z.array(z.number()),
+    }),
+    grade_snapshot: GradeMedallion.nullable(),
+    thesis_plain: z.string().nullable(),
+    monitoring: z.object({
+      condition_plain: z.string(),
+      progress_plain: z.string(),
+      last_evaluated_at: z.string().nullable(),
+    }),
+    execution: z.object({ plan_id: z.string().nullable(), order_id: z.string().nullable(), position_id: z.string().nullable() }),
+    community: z.object({ room_id: z.string().nullable(), circle_id: z.string().nullable() }),
+    plain: z.string(),
+  }),
+  execution: PortalExecution,
+  drawers: PortalDrawers,
+  paper_plain: z.string(),
+  degraded: z.boolean(),
+  degraded_reason: z.string().nullable(),
+});
+export type PortalResponse = z.infer<typeof PortalResponse>;
+
+/* ------------------------------------------------------------------ */
+/* Conversations drawer                                                 */
+/* ------------------------------------------------------------------ */
+
+export const ConversationSummary = z.object({
+  id: z.string(),
+  title: z.string(),
+  mode: AppMode.nullable(),
+  pinned: z.boolean(),
+  /** "Morning Briefing · Aug 28" style rows come back already composed. */
+  subtitle: z.string(),
+  last_message_at: z.string().nullable(),
+  message_count: z.number(),
+  route: z.string(),
+  kind: z.enum(['briefing', 'symbol', 'general']),
+});
+export type ConversationSummary = z.infer<typeof ConversationSummary>;
+
+export const ConversationsQuery = z.object({
+  q: z.string().max(120).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+export type ConversationsQuery = z.infer<typeof ConversationsQuery>;
+
+export const ConversationsResponse = z.object({
+  pinned: z.array(ConversationSummary),
+  recent: z.array(ConversationSummary),
+  q: z.string().nullable(),
+  total: z.number(),
+  empty_copy: z.string(),
+  new_conversation_label: z.string(),
+  search_placeholder: z.string(),
+});
+export type ConversationsResponse = z.infer<typeof ConversationsResponse>;
+
+export const PatchConversationRequest = z
+  .object({
+    title: z.string().min(1).max(200).optional(),
+    pinned: z.boolean().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'Nothing to change on that conversation.' });
+export type PatchConversationRequest = z.infer<typeof PatchConversationRequest>;
+
+export const PatchConversationResponse = z.object({
+  conversation: ConversationSummary,
+  plain: z.string(),
+});
+export type PatchConversationResponse = z.infer<typeof PatchConversationResponse>;
+
+/** Home tells the drawer which conversation today's workspace is. */
+export const HomeConversationMeta = z.object({
+  id: z.string().nullable(),
+  title: z.string(),
+  pinned: z.boolean(),
+  last_message_at: z.string().nullable(),
+  drawer_route: z.string(),
+  plain: z.string(),
+});
+export type HomeConversationMeta = z.infer<typeof HomeConversationMeta>;
+
+export const HomeRound4Response = HomeV5Response.extend({
+  conversation: HomeConversationMeta,
+});
+export type HomeRound4Response = z.infer<typeof HomeRound4Response>;
+
+/* ------------------------------------------------------------------ */
+/* Circles — time-boxed setup rooms                                     */
+/* ------------------------------------------------------------------ */
+
+export const CircleRow = z.object({
+  id: z.string(),
+  symbol: z.string().nullable(),
+  name: z.string(),
+  setup_id: z.string().nullable(),
+  members: z.number(),
+  messages: z.number(),
+  joined: z.boolean(),
+  expires_at: z.string().nullable(),
+  /** "2 days left" / "6h left" / "Closed". */
+  time_left_plain: z.string(),
+  expired: z.boolean(),
+  last_activity_at: z.string().nullable(),
+  route: z.string(),
+  grade: GradeMedallion.nullable(),
+});
+export type CircleRow = z.infer<typeof CircleRow>;
+
+export const CirclesResponse = z.object({
+  circles: z.array(CircleRow),
+  can_create: z.boolean(),
+  create_hint: z.string(),
+  create_label: z.string(),
+  ttl_options: z.array(z.object({ key: z.string(), label: z.string(), hours: z.number() })),
+  empty_copy: z.string(),
+  degraded: z.boolean(),
+  degraded_reason: z.string().nullable(),
+});
+export type CirclesResponse = z.infer<typeof CirclesResponse>;
+
+export const CreateCircleRequest = z.object({
+  symbol: z.string().min(1).max(12),
+  ttl: z.enum(['24h', '3d', '7d']).default('3d'),
+});
+export type CreateCircleRequest = z.infer<typeof CreateCircleRequest>;
+
+export const CreateCircleResponse = z.object({
+  circle: CircleRow,
+  plain: z.string(),
+});
+export type CreateCircleResponse = z.infer<typeof CreateCircleResponse>;
+
+export const CIRCLE_TTL_HOURS: Record<'24h' | '3d' | '7d', number> = { '24h': 24, '3d': 72, '7d': 168 };
+
+/** The entitlement flag that gates circle creation. Missing = false. */
+export const CIRCLES_CREATE_FLAG = 'circles_create';
+
+/* ------------------------------------------------------------------ */
+/* Round-4 copy constants                                               */
+/* ------------------------------------------------------------------ */
+
+export const COMMUNITY_LABEL_PLAIN =
+  'Community observation — members, not Kai. It never changes the grade on its own.';
+export const PAPER_CAPABILITY_PLAIN =
+  'Practice account. There is no broker connected, so nothing here can be sent to one.';
+export const ORDER_CONFIRMED_PLAIN =
+  'Placed · paper account. Stop and target are attached.';
+
+/**
+ * The tick's round-4 additions: armed alerts are now really evaluated (spec §9
+ * "Watching → Active" requires a VERIFIED event), and circles open and close on
+ * the same pass. Superset of `PaperTickResponse`.
+ */
+export const PaperTickRound4Response = PaperTickResponse.extend({
+  alerts_evaluated: z.number(),
+  alerts_triggered: z.number(),
+  circles_opened: z.number(),
+  circles_closed: z.number(),
+});
+export type PaperTickRound4Response = z.infer<typeof PaperTickRound4Response>;

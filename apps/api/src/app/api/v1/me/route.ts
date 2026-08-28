@@ -13,7 +13,7 @@
  * `prefs` namespaces it so an onboarding rewrite cannot collide with it.
  */
 import type { NextRequest } from 'next/server';
-import { MeResponse } from '@shared/api';
+import { MeRound4Response } from '@shared/api';
 import { authed, ok, type Ctx } from '@/lib/http';
 import { serviceClient } from '@/lib/db';
 import { env } from '@/lib/env';
@@ -21,12 +21,13 @@ import { loadProfile, loadRiskPolicy } from '@/lib/kai/context';
 import { loadEntitlements } from '@/lib/entitlements';
 import { canResetPaper, resetPlain } from '@/lib/paper';
 import { readPrefs } from '@/lib/prefs';
+import { kaiProfile, ruleAdherence } from '@/lib/round4/profile-round4';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
   const db = serviceClient();
-  const [profile, risk, ent, account, notifPrefs, counts] = await Promise.all([
+  const [profile, risk, ent, account, notifPrefs, counts, adherence] = await Promise.all([
     loadProfile(ctx.user.id),
     loadRiskPolicy(ctx.user.id),
     loadEntitlements(ctx.user.id),
@@ -40,6 +41,7 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
       .maybeSingle(),
     db.from('notification_prefs').select('per_mode,quiet_hours').eq('user_id', ctx.user.id).maybeSingle(),
     countBlock(ctx.user.id),
+    ruleAdherence(ctx.user.id),
   ]);
 
   const acc = (account.data as Record<string, unknown> | null) ?? null;
@@ -49,7 +51,7 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
   const prefs = readPrefs(profile.onboarding);
 
   return ok(
-    MeResponse.parse({
+    MeRound4Response.parse({
       profile: {
         user_id: profile.user_id,
         handle: null,
@@ -96,6 +98,14 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
       broker: { connected: false, plain: 'None — add a broker (later release).' },
       dev_tools: env('DEV_TOOLS') === '1',
       counts,
+
+      // ---- round 4: the Account board's "Your Kai profile" rows ---------
+      rule_adherence: adherence,
+      kai_profile: kaiProfile({
+        mode: profile.primary_mode,
+        onboarding: profile.onboarding,
+        experienceLevel: profile.experience,
+      }),
     })
   );
 });

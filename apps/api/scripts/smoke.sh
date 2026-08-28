@@ -869,6 +869,17 @@ sb_patch() { # sb_patch <table?query> <json>
     -H 'Content-Type: application/json' -H 'Prefer: return=minimal' -d "$2"
 }
 
+sb_delete() { # sb_delete <table?query>
+  curl -sS -o /dev/null -X DELETE "$SUPABASE_URL/rest/v1/$1" \
+    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+    -H 'Prefer: return=minimal'
+}
+
+sb_get() { # sb_get <table?query>
+  curl -sS "$SUPABASE_URL/rest/v1/$1" \
+    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
+}
+
 check "V5 home — one priority, one action" GET "/api/v1/home?mode=day_trade"
 assert_body "home carries opening_line + a state-driven primary action + also_watching" '
 import json,sys
@@ -1398,6 +1409,547 @@ kinds={h["kind"] for h in d["history"]}
 for k in ("plan","order","position"):
     assert k in kinds, "the chain lost %s: %r" % (k,kinds)
 print("  chain:",[(h["kind"],h["plain"][:48]) for h in d["history"][:8]])'
+
+# =============================================================================
+# ROUND 4 — actionable alerts, the chart-first portal, annotations, circles,
+#           conversations and personalize.
+# Binding: docs/10_ALERTS_TRADE_PORTAL_SPEC_extracted.md.
+# =============================================================================
+hr; echo "ROUND 4 — alerts as trade objects · portal · annotations · circles · conversations"; hr
+
+# --- personalize: experience + focus ------------------------------------------
+# Onboarding already ran for this user with experience "beginner". The Account
+# board's Kai-profile rows are the other way in, and they must move Kai's VOICE,
+# not just a label — so the assertion is on voice_line, not on the enum.
+check "personalize — experience + focus" PUT /api/v1/settings \
+  '{"experience":"new","focus":["tech","ai"]}'
+
+check "me carries the Kai profile and rule adherence" GET /api/v1/me
+assert_body "the Kai profile reads back the words the user picked, and adherence is honest below 3 sessions" '
+import json,sys
+d=json.load(sys.stdin)
+kp=d["kai_profile"]
+assert kp["experience"] == "new", kp["experience"]
+assert kp["experience_label"] == "New to this", kp["experience_label"]
+assert kp["voice_line"] == "I explain every term the first time it appears.", kp["voice_line"]
+assert kp["focus"]["keys"] == ["tech","ai"], kp["focus"]["keys"]
+assert kp["focus"]["plain"] == "Kai will scan big tech and AI & semis first.", kp["focus"]["plain"]
+ra=d["rule_adherence"]
+assert isinstance(ra["sessions"],int) and isinstance(ra["followed"],int)
+assert ra["show"] is (ra["sessions"] >= 3), (ra["show"],ra["sessions"])
+if not ra["show"]:
+    assert "%" not in ra["plain"], ra["plain"]
+print("  kai profile:",kp["mode_label"],"|",kp["experience_label"],"|",kp["focus"]["plain"])
+print("  voice:",kp["voice_line"])
+print("  adherence:",ra["plain"],"(show",ra["show"],")")'
+
+# The explanation level follows the experience word, so the SAME row changes how
+# deep every explanation is. Asserting it separately keeps the two honest.
+assert_body "experience also moved the explanation level" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["prefs"]["explanation_level"] == "beginner", d["prefs"]["explanation_level"]
+print("  explanation level:",d["prefs"]["explanation_level"])'
+
+# --- a CLEAN symbol to build the card on --------------------------------------
+# META now carries a plan, a short position and an order history from the round-3
+# chain, so its card is legitimately "Planned" and can never read as Watching.
+# Asserting the Watching contract needs a symbol the user has nothing riding on,
+# and AMD is that symbol: a seeded `forming` setup, no plan, no position.
+# `supabase db reset` is not run between smoke runs, so a previous run's
+# arrangements are still on the AMD setup (it ends this script `ready` at grade
+# A, with a circle that was expired on purpose). Put both back the way the seed
+# left them, or the test is measuring the last run instead of this one.
+AMD_SETUP_ID='11111111-1111-4111-8111-000000000003'
+sb_patch "setups?id=eq.$AMD_SETUP_ID" '{"state":"forming","score":58,"grade_display":"C+","grade_band":"C","discussion_room_id":null}'
+AMD_OLD_CIRCLE=$(sb_get "rooms?type=eq.setup&setup_id=eq.$AMD_SETUP_ID&select=id" | python3 -c '
+import json,sys
+rows=json.load(sys.stdin)
+print(rows[0]["id"] if rows else "")' 2>/dev/null)
+if [ -n "$AMD_OLD_CIRCLE" ]; then
+  sb_delete "room_members?room_id=eq.$AMD_OLD_CIRCLE"
+  sb_delete "messages?room_id=eq.$AMD_OLD_CIRCLE"
+  sb_delete "rooms?id=eq.$AMD_OLD_CIRCLE"
+fi
+green "PASS  arranged: the AMD setup and its circle reset to the seeded state"; PASS=$((PASS+1))
+
+check "a clean symbol for the card contract" GET "/api/v1/symbols/AMD"
+R4_SETUP="$AMD_SETUP_ID"
+# The level comes from the SETUP, not from a live quote. Polygon allows five
+# requests a minute, and a smoke run that arranged its own test condition out of
+# a rate-limited price would fail for a reason that has nothing to do with the
+# code under test. The setup's entry is in the database and is always there.
+R4_ENTRY=$(printf '%s' "$BODY" | python3 -c '
+import json,sys
+d=json.load(sys.stdin); m=d["overview"]["setup_module"]
+print(m["entry"] if m and m["entry"] else 0)')
+
+# --- an armed alert to work with ----------------------------------------------
+# A level BELOW the last print so the first read is "Watching", then a synthetic
+# tick crosses it and the same card has to move itself to Active.
+R4_LEVEL="$R4_ENTRY"
+check "round 4 — a watch to promote" POST /api/v1/alerts/draft \
+  "{\"natural_language\":\"Tell me when AMD breaks above $R4_LEVEL\",\"refs\":{\"symbol\":\"AMD\",\"level\":$R4_LEVEL,\"setup_id\":\"$R4_SETUP\"}}"
+R4_DRAFT=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["alert"]["id"])')
+check "arm it" POST /api/v1/alerts "{\"draft_id\":\"$R4_DRAFT\"}"
+
+check "alerts — Watching tab" GET "/api/v1/alerts?tab=watching"
+assert_body "the standard alert card is a COMPLETE trade object, and no scorecard fraction reaches the wire" '
+import json,sys,re
+d=json.load(sys.stdin)
+assert d["tab"] == "watching", d["tab"]
+assert [t["key"] for t in d["tabs"]] == ["active","watching","history"], d["tabs"]
+cards=[c for c in d["cards"] if c["identity"]["symbol"] == "AMD"]
+assert cards, "no AMD card in Watching"
+c=cards[0]
+for k in ("identity","grade","score_components","state","event","company_summary","quote","trade_plan",
+          "kai_interpretation","fit","community","primary_action","detail","version"):
+    assert k in c, "missing "+k
+assert c["tab"] == "watching" and c["state"] in ("watching","forming"), (c["tab"],c["state"])
+# spec 5: ONE state-driven primary action, and the label comes from the table
+assert c["primary_action"]["label"] in ("Open chart","Keep watching"), c["primary_action"]["label"]
+assert c["primary_action"]["primary"] is True
+assert c["primary_action"]["route"].startswith("/trade/AMD"), c["primary_action"]["route"]
+# spec 3: the summary is one or two sentences, and it is real
+assert c["company_summary"] and c["company_summary"].count(".") <= 3, c["company_summary"]
+# spec 2/4: grade medallion carries the letter AND the 0-100 score
+g=c["grade"]
+assert g["family"] in ("gold","gold_restrained","violet","violet_graphite","amber","neutral"), g["family"]
+assert "quality" in g["plain"] or g["plain"] == "Not graded yet."
+# spec 4: qualitative only. NO fractions anywhere in the components.
+blob=json.dumps(c["score_components"])
+assert not re.search(r"\b\d+\s*/\s*\d+\b", blob), "a fraction reached the scorecard: "+blob[:200]
+assert not re.search(r"\bout of 20\b", blob), blob[:200]
+for comp in c["score_components"]:
+    assert comp["status"] in ("Strong","Confirmed","Healthy","Forming","Waiting","Favorable",
+                              "Supportive","Neutral","Weak","Elevated","Unknown"), comp["status"]
+    assert 0 <= comp["strength"] <= 5, comp["strength"]
+    assert comp["explanation"], comp
+# freshness on every price (spec 9)
+assert c["quote"]["label_plain"], c["quote"]
+assert c["quote"]["freshness"] in ("live","delayed","stale")
+# kai is labelled as analysis, community as community
+assert c["kai_disclosure"] == "Kai'"'"'s assessment — not a guarantee.", c["kai_disclosure"]
+print("  card:",c["identity"]["symbol"],c["identity"]["mode_label"],"|",g["display"],g["score"],"("+g["family"]+")","|",c["state_label"])
+print("  event:",c["event"]["headline"])
+print("  company:",c["company_summary"][:110])
+print("  plan: entry",c["trade_plan"]["entry"],"stop",c["trade_plan"]["stop"],
+      "targets",[t["price"] for t in c["trade_plan"]["targets"]],"| rr",c["trade_plan"]["rr"])
+print("  scorecard:",[(x["label"],x["status"],x["strength"]) for x in c["score_components"]])
+print("  fit:",c["fit"]["plain"])
+print("  community:",c["community"]["plain"][:90])
+print("  action:",c["primary_action"]["label"],"->",c["primary_action"]["route"])
+print("  version:",c["version"])'
+
+# --- a watch typed in plain language, with NO client hint ---------------------
+# `POST /alerts/draft` used to store `refs` verbatim, so the symbol and level Kai
+# parsed out of the sentence never reached the row — and a watch with no symbol
+# produces no card. The identity now comes from the PARSED CONDITION, so this
+# request, which carries no refs at all, has to land on the right ticker.
+check "a watch in plain language, no refs" POST /api/v1/alerts/draft \
+  '{"natural_language":"Tell me when TSLA gets back to 400"}'
+NL_DRAFT=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["alert"]["id"])')
+assert_body "the parsed symbol and level are stored on the row, not taken from the client" '
+import json,sys
+d=json.load(sys.stdin)
+refs=d["alert"]["refs"] or {}
+assert refs.get("symbol") == "TSLA", refs
+assert refs.get("level") == 400, refs
+print("  refs from the parse:",json.dumps(refs))'
+check "arm the plain-language watch" POST /api/v1/alerts "{\"draft_id\":\"$NL_DRAFT\"}"
+check "it shows up as a card on the right ticker" GET "/api/v1/alerts?tab=watching"
+assert_body "a watch created from plain language alone produces a real card" '
+import json,sys
+d=json.load(sys.stdin)
+tsla=[c for c in d["cards"] if c["identity"]["symbol"] == "TSLA" and c["alert_id"]]
+assert tsla, "a plain-language watch produced no card: %r" % ([c["identity"]["symbol"] for c in d["cards"]],)
+c=tsla[0]
+assert c["identity"]["company_name"], "and it knows the company"
+print("  card:",c["identity"]["symbol"],"|",c["identity"]["company_name"],"|",c["state_label"],
+      "->",c["primary_action"]["label"])'
+
+# --- the promotion: a VERIFIED event, not a timer -----------------------------
+R4_CROSS=$(python3 -c "print(round(float('$R4_LEVEL') + 1.0, 2))")
+R4_TICK=$(curl -sS -X POST "$API_BASE/api/v1/internal/paper/tick" \
+  -H "x-internal-secret: $INTERNAL_SECRET" -H 'Content-Type: application/json' \
+  -d "{\"quotes\":{\"AMD\":$R4_CROSS}}")
+printf '%s' "$R4_TICK" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["alerts_evaluated"] >= 1, "the tick did not evaluate the armed watch: %r" % (d,)
+assert d["alerts_triggered"] >= 1, "the condition was met and nothing fired: %r" % (d,)
+print("  tick: evaluated",d["alerts_evaluated"],"triggered",d["alerts_triggered"],
+      "| circles opened",d["circles_opened"],"closed",d["circles_closed"])'
+if [ $? -eq 0 ]; then
+  green "PASS  the tick verified the condition and moved the watch"; PASS=$((PASS+1))
+else
+  red "FAIL  the tick did not verify the armed watch"; FAIL=$((FAIL+1))
+fi
+
+check "alerts — Active tab after the tick" GET "/api/v1/alerts?tab=active"
+assert_body "the watch moved Watching -> Active on a verified event, with the state-driven action" '
+import json,sys
+d=json.load(sys.stdin)
+cards=[c for c in d["cards"] if c["identity"]["symbol"] == "AMD" and c["alert_id"]]
+assert cards, "the AMD alert did not reach Active"
+c=cards[0]
+assert c["tab"] == "active", c["tab"]
+assert c["state"] in ("entry_reached","ready","planned","order_pending","position_active"), c["state"]
+assert c["event"]["triggered_at"], "an Active card must carry the trigger timestamp"
+assert c["primary_action"]["label"] in ("Open Trade Portal","Review trade","Prepare order","Manage order","Manage trade"), c["primary_action"]["label"]
+assert c["version"] >= 1, c["version"]
+print("  promoted:",c["state_label"],"| triggered",c["event"]["at_plain"])
+print("  what changed:",c["event"]["what_changed"][:120])
+print("  action:",c["primary_action"]["label"],"->",c["primary_action"]["route"])
+print("  version:",c["version"],"graded_at",c["graded_at"])
+import pathlib; pathlib.Path("/tmp/smoke-r4-alert.json").write_text(json.dumps(c["alert_id"]))'
+R4_ALERT=$(python3 -c 'import json;print(json.load(open("/tmp/smoke-r4-alert.json")))')
+R4_VERSION_BEFORE=$(printf '%s' "$BODY" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+print([c for c in d["cards"] if c["identity"]["symbol"] == "AMD" and c["alert_id"]][0]["version"])')
+
+# --- a grade change makes a NEW version, it does not rewrite the old one -----
+sb_patch "setups?id=eq.$R4_SETUP" '{"score":61,"grade_display":"C+","grade_band":"C"}'
+check "alerts after a re-grade" GET "/api/v1/alerts?tab=active"
+assert_body "a grade change bumps the version and writes an event rather than editing history" "
+import json,sys
+d=json.load(sys.stdin)
+c=[x for x in d['cards'] if x['alert_id'] == '$R4_ALERT'][0]
+assert c['version'] > $R4_VERSION_BEFORE, ('version did not move', c['version'], $R4_VERSION_BEFORE)
+assert c['grade']['display'] == 'C+', c['grade']
+assert c['grade']['family'] == 'amber', c['grade']['family']
+hist=c['detail']['event_history']
+assert any('grade' in e['plain'].lower() and 'version' in e['plain'].lower() for e in hist), hist
+print('  version', $R4_VERSION_BEFORE, '->', c['version'], '| grade', c['grade']['display'], c['grade']['family'])
+print('  history:', [e['plain'][:70] for e in hist])"
+
+# --- alert -> Trade Portal, with the context restored -------------------------
+check "portal opened from the alert" GET "/api/v1/trade/portal/AMD?alert=$R4_ALERT&ctx=alert"
+PORTAL_CONV=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["contexts"]["kai"]["conversation_id"] or "")')
+assert_body "spec 6: the exact opening message, and every piece of context restored" "
+import json,sys
+d=json.load(sys.stdin)
+k=d['contexts']['kai']
+assert k['opening_message'] == 'This is the AMD alert you opened. I marked the trigger, entry area, stop and first target on the chart.', repr(k['opening_message'])
+assert d['contexts']['selected'] == 'alert', d['contexts']['selected']
+assert d['contexts']['alert'] is not None and d['contexts']['alert']['alert_id'] == '$R4_ALERT'
+r=d['restored']
+assert r['alert_id'] == '$R4_ALERT'
+assert r['symbol'] == 'AMD' and r['timeframe'] in ('1m','5m','15m','1h','4h','1d')
+assert r['grade_snapshot'] is not None, 'the grade snapshot must survive the transition'
+assert r['levels']['entry'] is not None and r['levels']['stop'] is not None, r['levels']
+assert r['monitoring']['condition_plain'], r['monitoring']
+assert 'execution' in r and 'community' in r
+# the chart was actually DRAWN, not just described
+kinds={a['kind'] for a in d['annotations']}
+assert 'trigger' in kinds and 'entry' in kinds and 'stop' in kinds, kinds
+assert any(a['kind'] == 'target' for a in d['annotations']), kinds
+for a in d['annotations']:
+    assert a['reason'], 'every Kai mark carries WHY it is there: '+json.dumps(a)[:120]
+    assert a['provenance'] in ('kai','user','community','plan')
+# paper is unmistakable and no broker is offered
+assert d['execution']['paper'] is True
+assert 'broker' not in d['execution']['primary_action']['label'].lower()
+# the round-3 landing content moved into drawers, it was not deleted
+for key in ('account','positions','open_orders','watchlist','recent'):
+    assert key in d['drawers'], 'drawer missing '+key
+print('  opening:', k['opening_message'])
+print('  restored: tf', r['timeframe'], '| focus', r['focus_ts'], '| entry', r['levels']['entry'],
+      'stop', r['levels']['stop'], 'targets', r['levels']['targets'])
+print('  grade snapshot:', r['grade_snapshot']['display'], r['grade_snapshot']['score'])
+print('  annotations:', [(a['kind'], a['price']) for a in d['annotations']])
+print('  execution:', d['execution']['state'], '->', d['execution']['primary_action']['label'])
+print('  capability:', d['execution']['capability_plain'])"
+
+# --- annotations CRUD ---------------------------------------------------------
+check "annotations for the symbol" GET "/api/v1/annotations?symbol=AMD"
+assert_body "Kai marks and user marks are one list, each with a reason" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["symbol"] == "AMD"
+assert d["annotations"], "the portal should have drawn the plan"
+for a in d["annotations"]:
+    assert a["editable"] is True, "the user controls every mark, including Kai'"'"'s"
+    assert a["status"] == "valid"
+print("  ",len(d["annotations"]),"marks:",[(a["kind"],a["price"],a["provenance"]) for a in d["annotations"]][:6])'
+
+check "draw a note of my own" POST /api/v1/annotations \
+  '{"symbol":"AMD","timeframe":"1d","kind":"note","price":600,"text":"my own line","provenance":"user"}'
+R4_ANNOTATION=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["annotation"]["id"])')
+assert_body "a user mark is stored with its provenance" '
+import json,sys
+a=json.load(sys.stdin)["annotation"]
+assert a["provenance"] == "user" and a["kind"] == "note" and a["price"] == 600, a
+assert a["reason"], "even a user mark records why it exists"
+print("  drew:",a["kind"],a["price"],"|",a["text"],"|",a["reason"])'
+
+check "hide it" PATCH "/api/v1/annotations/$R4_ANNOTATION" '{"status":"hidden"}'
+check "hidden marks are out of the default list" GET "/api/v1/annotations?symbol=AMD"
+assert_body "hiding removes it from the chart without deleting it" "
+import json,sys
+d=json.load(sys.stdin)
+ids=[a['id'] for a in d['annotations']]
+assert '$R4_ANNOTATION' not in ids, 'a hidden mark is still on the chart'
+print('  hidden — ', len(d['annotations']), 'marks left')"
+check "and back with include_hidden" GET "/api/v1/annotations?symbol=AMD&include_hidden=1"
+assert_body "hidden is a preference, not a deletion" "
+import json,sys
+d=json.load(sys.stdin)
+a=[x for x in d['annotations'] if x['id'] == '$R4_ANNOTATION']
+assert a and a[0]['status'] == 'hidden', 'the hidden mark is gone entirely'
+print('  still there, status', a[0]['status'])"
+
+check "delete it" PATCH "/api/v1/annotations/$R4_ANNOTATION" '{"status":"deleted"}'
+assert_body "deleting is a lifecycle state, and the copy says the record is kept" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["annotation"]["status"] == "deleted"
+assert "kept" in d["plain"], d["plain"]
+print("  ",d["plain"])'
+
+# --- a REAL chart_command out of a Kai turn -----------------------------------
+# The conversation was opened by the portal, so it carries the chart stamp and
+# Kai may issue commands against it. The frame must carry a resolved price that
+# equals the setup'"'"'s own level — Kai names the level, the server finds the number.
+if [ -n "$PORTAL_CONV" ]; then
+  CHART_SSE=$(curl -sS -N -X POST "$API_BASE/api/v1/kai/conversations/$PORTAL_CONV/messages" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
+    -d '{"content":"Mark the trigger level on the chart."}' --max-time 90)
+  printf '%s' "$CHART_SSE" | grep -c '^event: chart_command' >/dev/null
+  printf '%s\n' "$CHART_SSE" | python3 -c "
+import json,sys
+frames=[]
+text=[]
+for line in sys.stdin:
+    if line.startswith('data: '):
+        try: f=json.loads(line[6:])
+        except Exception: continue
+        if f.get('type') == 'chart_command': frames.append(f)
+        elif f.get('type') == 'text_delta': text.append(f['text'])
+assert frames, 'Kai issued no chart_command frame'
+f=frames[0]
+assert f['command'] in ('mark_level','mark_plan','zoom_trigger','show_invalidation'), f['command']
+assert f['narration'], 'a chart change must be narrated (spec 8)'
+assert f['provenance'], 'a resolved number names where it came from'
+p=f['payload']
+if f['command'] == 'mark_level':
+    assert isinstance(p.get('price'), (int,float)), p
+    assert f['annotations'], 'mark_level must persist an annotation'
+    assert f['annotations'][0]['reason'], 'and it carries its reason'
+print('  command:', f['command'], '| payload:', json.dumps(p))
+print('  narration:', f['narration'][:120])
+print('  provenance:', f['provenance'])
+print('  annotations:', [(a['kind'], a['price']) for a in f['annotations']])
+print('  said:', (''.join(text))[:140].replace(chr(10),' '))"
+  if [ $? -eq 0 ]; then
+    green "PASS  Kai turned a chart request into a resolved chart_command frame"; PASS=$((PASS+1))
+  else
+    red "FAIL  no usable chart_command frame from a real Kai turn"; FAIL=$((FAIL+1))
+  fi
+else
+  red "FAIL  the portal did not open a conversation to talk to"; FAIL=$((FAIL+1))
+fi
+
+# --- the `new` voice explains a term the first time it appears ----------------
+check "a fresh conversation for the beginner voice" POST /api/v1/kai/conversations \
+  '{"mode":"day_trade","context":{"kind":"symbol","symbol":"META"}}'
+VOICE_CONV=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+VOICE_SSE=$(curl -sS -N -X POST "$API_BASE/api/v1/kai/conversations/$VOICE_CONV/messages" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"content":"What is volume telling you about META right now?"}' --max-time 90)
+printf '%s\n' "$VOICE_SSE" | python3 -c "
+import json,sys
+text=[]
+for line in sys.stdin:
+    if line.startswith('data: '):
+        try: f=json.loads(line[6:])
+        except Exception: continue
+        if f.get('type') == 'text_delta': text.append(f['text'])
+said=''.join(text)
+# The DEFINITION, not the sentence it arrives in. The model keeps the
+# explanation and re-frames the front of it, so the assertion is on the
+# distinctive tail — no ordinary answer contains this clause by accident.
+note='more of it makes a move more believable'
+flat=' '.join(said.lower().split())
+assert note in flat, 'the beginner voice did not explain the term on first use:\n'+said[:400]
+print('  said:', said[:220].replace(chr(10),' '))
+print('  glossary note present:', note)"
+if [ $? -eq 0 ]; then
+  green "PASS  the 'new' voice explains a term the first time it appears"; PASS=$((PASS+1))
+else
+  red "FAIL  the 'new' voice skipped its glossary note"; FAIL=$((FAIL+1))
+fi
+
+# --- conversations: list, auto-title, pin, search -----------------------------
+check "conversations drawer" GET /api/v1/kai/conversations
+assert_body "every row is readable — a title, never a bare id" '
+import json,sys
+d=json.load(sys.stdin)
+rows=d["pinned"]+d["recent"]
+assert rows, "no conversations"
+for r in rows:
+    assert r["title"] and r["title"] != r["id"], r
+    assert r["subtitle"], r
+    assert r["kind"] in ("briefing","symbol","general")
+print("  ",d["total"],"conversations")
+print("  titles:",[r["title"] for r in rows][:6])'
+R4_CONV=$(printf '%s' "$BODY" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+rows=d["pinned"]+d["recent"]
+print(rows[0]["id"])')
+R4_CONV_TITLE=$(printf '%s' "$BODY" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+rows=d["pinned"]+d["recent"]
+print(rows[0]["title"])')
+
+check "pin one" PATCH "/api/v1/kai/conversations/$R4_CONV" '{"pinned":true}'
+check "it is pinned" GET /api/v1/kai/conversations
+assert_body "a pinned conversation sits in its own group" "
+import json,sys
+d=json.load(sys.stdin)
+assert any(r['id'] == '$R4_CONV' for r in d['pinned']), 'pin did not stick'
+assert all(r['id'] != '$R4_CONV' for r in d['recent'])
+print('  pinned:', [r['title'] for r in d['pinned']])"
+
+check "rename one" PATCH "/api/v1/kai/conversations/$R4_CONV" '{"title":"META breakout notes"}'
+check "search finds it by title" GET "/api/v1/kai/conversations?q=breakout"
+assert_body "search matches on the title" '
+import json,sys
+d=json.load(sys.stdin)
+rows=d["pinned"]+d["recent"]
+assert any("breakout" in r["title"].lower() for r in rows), [r["title"] for r in rows]
+assert d["q"] == "breakout"
+print("  found:",[r["title"] for r in rows])'
+check "search that matches nothing says so" GET "/api/v1/kai/conversations?q=zzzznothing"
+assert_body "an empty search is a sentence, not an empty box" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["pinned"] == [] and d["recent"] == []
+assert "zzzznothing" in d["empty_copy"], d["empty_copy"]
+print("  ",d["empty_copy"])'
+
+check "home names the conversation for the drawer" GET "/api/v1/home?mode=day_trade"
+assert_body "home carries conversation metadata without changing anything else" '
+import json,sys
+d=json.load(sys.stdin)
+c=d["conversation"]
+assert c["title"], c
+assert c["drawer_route"] == "/api/v1/kai/conversations", c
+assert "priority" in d and "opening_line" in d, "round-3 keys must survive"
+print("  conversation:",c["title"],"| pinned",c["pinned"])
+print("  ",c["plain"])'
+
+# --- circles ------------------------------------------------------------------
+# The gate first. `circles_create` is not in the seed, and a MISSING flag is
+# false — so a free account is refused with an upgrade, not a dead end.
+expect "creating a circle is gated by an entitlement" 402 POST /api/v1/circles \
+  '{"symbol":"META","ttl":"3d"}'
+assert_body "the refusal carries the tier, the price and where to upgrade" '
+import json,sys
+e=json.load(sys.stdin)["error"]
+assert e["code"] == "ENTITLEMENT_REQUIRED", e["code"]
+assert e["detail"]["tier"] == "premium" and e["detail"]["upgrade_link"]
+print("  ",e["message_plain"])'
+
+check "circles list says why the button is off" GET /api/v1/circles
+assert_body "an ungated reader still sees every open circle" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["can_create"] is False, "circles_create is not seeded, so it must read false"
+assert "Premium" in d["create_hint"] or "not switched on" in d["create_hint"], d["create_hint"]
+assert [o["key"] for o in d["ttl_options"]] == ["24h","3d","7d"], d["ttl_options"]
+print("  can_create:",d["can_create"],"|",d["create_hint"][:90])
+print("  circles:",[(c["name"],c["time_left_plain"]) for c in d["circles"]])'
+
+# A ready A-grade setup is the reason a circle exists, so the tick opens one.
+# META and NVDA already have a seeded circle, so opening one has to be proven on
+# a setup that does not: AMD.
+sb_patch "setups?id=eq.$R4_SETUP" '{"state":"ready","score":92,"grade_display":"A","grade_band":"A"}'
+R4_TICK2=$(curl -sS -X POST "$API_BASE/api/v1/internal/paper/tick" \
+  -H "x-internal-secret: $INTERNAL_SECRET" -H 'Content-Type: application/json' -d '{}')
+printf '%s' "$R4_TICK2" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["circles_opened"] >= 1, "the tick did not open a circle for the ready A setup: %r" % (d,)
+print("  tick: circles opened",d["circles_opened"],"closed",d["circles_closed"])'
+if [ $? -eq 0 ]; then
+  green "PASS  a ready A-grade setup opens a circle on the tick"; PASS=$((PASS+1))
+else
+  red "FAIL  the tick did not open a circle"; FAIL=$((FAIL+1))
+fi
+
+check "the circle is open" GET /api/v1/circles
+assert_body "a ready A-grade setup gets a time-boxed room with a clock on it" '
+import json,sys
+d=json.load(sys.stdin)
+mine=[c for c in d["circles"] if c["symbol"] == "AMD"]
+assert mine, "the tick did not open a circle for the ready A setup"
+c=mine[0]
+assert c["expires_at"], "a circle without a clock is just a room"
+assert c["expired"] is False
+assert "left" in c["time_left_plain"], c["time_left_plain"]
+assert c["route"].startswith("/circle/"), c["route"]
+print("  ",c["name"],"|",c["time_left_plain"],"|",c["members"],"members |",c["route"])
+import pathlib; pathlib.Path("/tmp/smoke-r4-circle.json").write_text(json.dumps(c["id"]))'
+R4_CIRCLE=$(python3 -c 'import json;print(json.load(open("/tmp/smoke-r4-circle.json")))')
+
+# Run the clock out and let the tick close it. Nothing is deleted.
+sb_patch "rooms?id=eq.$R4_CIRCLE" '{"expires_at":"2020-01-01T00:00:00Z"}'
+R4_TICK3=$(curl -sS -X POST "$API_BASE/api/v1/internal/paper/tick" \
+  -H "x-internal-secret: $INTERNAL_SECRET" -H 'Content-Type: application/json' -d '{}')
+printf '%s' "$R4_TICK3" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["circles_closed"] >= 1, "the expired circle was not closed by the tick"
+print("  tick closed",d["circles_closed"],"circle(s)")'
+if [ $? -eq 0 ]; then
+  green "PASS  an expired circle is closed by the tick"; PASS=$((PASS+1))
+else
+  red "FAIL  the tick left an expired circle open"; FAIL=$((FAIL+1))
+fi
+
+check "the expired circle is out of the row" GET /api/v1/circles
+assert_body "a closed circle leaves the row but the room is not deleted" "
+import json,sys
+d=json.load(sys.stdin)
+assert all(c['id'] != '$R4_CIRCLE' for c in d['circles']), 'an expired circle is still being offered'
+print('  open circles now:', [c['name'] for c in d['circles']])"
+
+# --- the ticker research page --------------------------------------------------
+check "ticker page" GET "/api/v1/symbols/META"
+assert_body "the ticker page carries the company, deterministic technicals and one alert row" '
+import json,sys,re
+d=json.load(sys.stdin)
+for k in ("company","ticker_overview","technicals","kai_view","ticker_community","chart_timeframes","open_in_trade"):
+    assert k in d, "missing "+k
+co=d["company"]
+assert co["source"] in ("polygon","seed","none"), co["source"]
+if co["summary"]:
+    assert co["summary"].count(".") <= 3, co["summary"]
+t=d["technicals"]
+for meter in (t["trend"],t["momentum"],t["volatility"]):
+    assert 0 <= meter["strength"] <= 5, meter
+    assert meter["status"] in ("Strong","Confirmed","Healthy","Forming","Waiting","Favorable",
+                               "Supportive","Neutral","Weak","Elevated","Unknown"), meter["status"]
+    assert meter["plain"], meter
+blob=json.dumps(t)
+assert not re.search(r"\b\d+\s*/\s*\d+\b", blob), "a fraction reached the technicals: "+blob[:200]
+assert t["computed_from"]["bars"] >= 0 and t["computed_from"]["freshness"] in ("live","delayed","stale")
+assert d["kai_view"]["disclosure"] == "Kai'"'"'s assessment — not a guarantee."
+assert d["open_in_trade"]["route"] == "/trade/META", d["open_in_trade"]
+assert d["lenses"] == [], "the round-3 payload must survive intact"
+print("  company:",co["name"],"|",co["source"],"|",(co["summary"] or "")[:90])
+print("  overview: cap",d["ticker_overview"]["market_cap_plain"],"| sector",d["ticker_overview"]["sector"])
+print("  technicals:",[(m["label"],m["status"],m["strength"]) for m in (t["trend"],t["momentum"],t["volatility"])])
+print("  support:",[l["price"] for l in t["support"]],"resistance:",[l["price"] for l in t["resistance"]])
+print("  bars:",t["computed_from"]["plain"])
+print("  kai view:",d["kai_view"]["take"][:120])
+if d["active_alert"]:
+    print("  alert row:",d["active_alert"]["plain"],"->",d["active_alert"]["route"])
+print("  community:",d["ticker_community"]["plain"][:90])'
 
 hr
 echo "passed: $PASS   failed: $FAIL"

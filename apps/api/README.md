@@ -171,6 +171,235 @@ execution chain was added.
 | `POST` | `/internal/paper/tick` | `x-internal-secret: $INTERNAL_SECRET`. No bearer token, no user. Without the env var set it answers **404**, exactly as if it did not exist. |
 
 
+### Round 4 — actionable alerts + the chart-first Trade Portal
+
+`docs/10_ALERTS_TRADE_PORTAL_SPEC_extracted.md` is binding for everything in
+this section. The one-line version: **an alert is a complete trade object, not a
+notification**, and **Trade opens as a working chart, not a dashboard**.
+
+**What a watch is about.** `POST /alerts/draft` used to store the request's
+`refs` verbatim, so the symbol and level Kai parses out of the sentence never
+reached the row — and a watch with no symbol produced no card at all. The
+identity now comes from the PARSED CONDITION (`lib/round4/alert-identity.ts`),
+is written into `refs` AND onto 0021's `alerts.symbol` / `mode` / `direction` /
+`lifecycle_state` on both draft and activate, and the feed reads the row rather
+than any client hint. A symbol we do not follow still goes into `refs` but not
+into the FK column. "Tell me when TSLA gets back to 400", with no refs at all,
+now lands on the right ticker — the smoke asserts exactly that.
+
+**Alerts as trade objects**
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/alerts?tab=active\|watching\|history&filter=` | `+ tab, tabs[], cards[]`. `cards` is the spec §9 contract: identity, company summary, grade medallion, qualitative `score_components`, state, event, quote with freshness, trade plan, Kai interpretation, personal fit, community, ONE state-driven `primary_action`, expandable `detail`, and a `version`. The round-2 and round-3 keys (`needs_attention` · `watching` · `resolved` · `attention` · `monitoring` · `history` · `filters`) are all still there and still mean the same thing. |
+
+Three tabs and nothing else (spec §1). Type, mode and delivery stay FILTERS.
+
+A card is built from the strongest fact available — an open position beats a
+working order beats a saved plan beats a verified trigger beats the setup's own
+state — so the card cannot drift out of sync with the books. There is no second
+copy of the state to go stale. `lib/round4/alert-cards.ts` is that table written
+as code.
+
+**No fractions.** The scanner's `score_components` are 0–100 numbers; the wire
+carries a WORD from spec §4's vocabulary and a 0–5 segment count. `18/20` cannot
+appear in the interface because it cannot appear in a payload. The smoke test
+greps every card and every technicals block for `\d+/\d+` and fails on a match.
+
+**Watching → Active is a verified event, not a timer.** Round 2 shipped alerts
+as `armed_no_feed` because there was no evaluation loop. Round 4 evaluates armed
+alerts inside the paper tick, against the same delayed marks, and records the
+evaluation whether or not it fired (`lib/round4/alert-tick.ts`). Two condition
+shapes exist in this database — `{compose, atoms[]}` from `/alerts/draft` and
+`{all:[…]}` from a position exit — and both are normalised in one place.
+
+**Versioning.** A grade change makes a NEW version and writes a `graded` row to
+0021's append-only `alert_events`; the earlier snapshot is never rewritten
+(spec §9). A state change writes a `state_change` row and does not bump the
+version — the version is about the GRADE.
+
+**Trade Portal**
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/trade/portal/:symbol?alert=&setup=&ctx=&timeframe=` | `{identity, quote, chart_config{timeframe, focus_ts, range}, annotations[], contexts{selected, kai, alert, plan, community}, restored{…}, execution{state, primary_action}, drawers{account, positions, open_orders, watchlist, recent}}`. |
+
+There is no generic alert-detail screen (spec §6). An alert card's primary action
+comes straight here, and "restored" means it: the timeframe the setup lives on,
+the trigger candle, the levels, the thesis, the grade snapshot, the monitoring
+condition and its progress, the plan/order/position refs, and the room. Opening
+from an alert also **draws the plan** — trigger, entry, stop, invalidation, first
+target — as real persisted annotations, and returns spec §6's opening message
+verbatim:
+
+> This is the META alert you opened. I marked the trigger, entry area, stop and first target on the chart.
+
+The smoke test asserts that sentence character for character.
+
+The round-3 Trade landing content was not deleted; it moved into `drawers`,
+which is what the top bar opens.
+
+**Annotations**
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/annotations?symbol=&timeframe=&include_hidden=` | Kai's marks and the user's in ONE list. |
+| `POST` | `/annotations` | `{symbol, kind, price, text?, reason?, provenance}`. |
+| `PATCH` | `/annotations/:id` | `{status: valid\|hidden\|deleted, text?, price?}`. |
+
+Every annotation carries the six things spec §7 asks for, and `reason` is never
+null on a Kai mark — a line the user cannot argue with is the thing this product
+is supposed not to be. `deleted` is a STATUS, not a row removal: the chart stops
+showing it and the record of what Kai drew, when and why survives. The user can
+hide or delete every Kai annotation.
+
+**Kai chart control**
+
+`POST /kai/conversations/:id/messages` can now emit a `chart_command` SSE frame:
+
+```
+event: chart_command
+data: {"type":"chart_command","command":"mark_level","payload":{"level":"trigger","price":604.5,"label":"Trigger","kind":"trigger","symbol":"META","timeframe":"5m"},"annotations":[…],"narration":"I marked trigger at $604.5 on the chart. …","provenance":"Entry condition on the META setup."}
+```
+
+**Kai names WHICH level; the server resolves WHAT the number is.** The model
+emits `{"command":"mark_level","args":{"level":"trigger"}}` — a symbolic
+reference, never a price — and `lib/kai/chart-commands.ts` looks it up in the
+setup, the plan, the room's most-mentioned level or the computed swing levels
+that were loaded into the context. A reference nothing defines is DROPPED, not
+filled in with a plausible number. A price written into `args` is discarded, and
+the prompt says so, because the fastest way to stop a model guessing is to tell
+it the guess will be thrown away.
+
+Commands: `mark_level` · `set_timeframe` · `show_invalidation` · `mark_plan` ·
+`zoom_trigger` · `compare_prior` · `highlight_community` · `annotation_remove` ·
+`annotation_explain` · `alert_from_level` · `prepare_trade`. The last two
+PROPOSE — Kai still never arms a watch and never places an order.
+
+Every frame carries `narration` (spec §8: chart changes are narrated, never
+silent) and `provenance` (which row the number came from). If the user clearly
+asked for a chart change and the model answered in prose without the block, ONE
+cheap classification call runs BEHIND the model — not a keyword matcher in front
+of it — and the payload is resolved from the same real objects, so the worst case
+is that nothing is drawn.
+
+The fence is split by a second `FenceSplitter` chained after the `kai_object`
+one, so a reply can carry both and neither marker leaks as visible text.
+
+**Kai's voice**
+
+`lib/kai/voice.ts`. `new` gets a glossary note the FIRST time a term appears and
+the plain word after that — the terms already spent are remembered on
+`conversations.context.explained`, because re-teaching "volume" in every answer
+is the tone of a product that thinks its user is not learning. `some` is plain
+and skips basics. `pro` loses the preamble and leads with levels. The definitions
+live in code and are appended verbatim: the model is told to USE the glossary,
+not to write one.
+
+**Circles**
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/circles` | Open setup rooms with time left, members, last activity, grade. |
+| `POST` | `/circles` | `{symbol, ttl: 24h\|3d\|7d}` — gated on the `circles_create` entitlement flag. |
+
+**A missing flag is FALSE.** `circles_create` is not in `supabase/seed.sql` and
+this lane does not own that file, so today `can_create` is `false` for everyone
+and the sheet says why. That is the safe direction for a gate to fail. To switch
+it on, one row:
+
+```sql
+insert into entitlement_flags (tier, flag, value)
+values ('premium', 'circles_create', 'true')
+on conflict (tier, flag) do update set value = excluded.value;
+```
+
+The tick opens a circle for every `ready` A/B setup that has none, and closes
+every circle whose clock has run out (0021's `close_expired_circles()`) or whose
+setup has died. Closing is read-only plus a move to History — nothing is deleted,
+because a room where the conversation vanishes teaches nobody anything.
+
+**Conversations**
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/kai/conversations?q=&limit=` | `{pinned[], recent[], q, total, …}` for the Home drawer. |
+| `PATCH` | `/kai/conversations/:id` | `{title?, pinned?}`. |
+
+Auto-titled after the first exchange: the daily briefing is named
+deterministically ("Morning Briefing · Aug 28"); anything else gets ONE short,
+cheap completion capped at six words, falling back to a derived title
+("META Day Trade") when that call fails. A row in the drawer is never a UUID.
+A user-set title is final — `autoTitle` only ever fills an empty one. Search
+matches the title AND the first message, because "the one where I asked about
+volume" has no matching title at all.
+
+`GET /home` gains `conversation` (id, title, pinned, drawer route) and nothing
+else changed.
+
+**Ticker page** — `GET /symbols/:symbol` gains `company`, `ticker_overview`,
+`technicals`, `kai_view`, `ticker_community`, `active_alert`, `chart_timeframes`
+and `open_in_trade`. Every round-3 key survives.
+
+**Company profiles** (`lib/market/profile.ts`) come from Polygon
+`/v3/reference/tickers/{sym}`, are cached in `instruments.meta.profile` and
+refresh weekly, so a symbol viewed twice in a week costs zero requests out of the
+5/minute budget. The filing description is TRIMMED to two sentences — trimmed,
+never rewritten. We do not paraphrase a company description with a language
+model; that is how a factual field becomes a generated one. The ten seeded
+symbols have hand-written summaries used when Polygon has nothing, returned with
+`source:'seed'` so the app can be honest that the copy is ours.
+
+**Technicals** (`lib/market/technicals.ts`) are ARITHMETIC, computed from the
+stored daily bars every time and never judged by a model:
+
+| Meter | What it actually is |
+|---|---|
+| Trend | EMA(20) slope over ten bars as a percent of price, plus price against EMA(20)/EMA(50) |
+| Momentum | RSI(14), read as a band |
+| Volatility | ATR(14) as a percent of price, read as a band |
+| Support / resistance | pivot highs and lows in the window, clustered at 0.75% so three touches of one shelf read as one level |
+
+Under 30 stored bars every meter is `Unknown` with strength 0 and the block is
+`degraded`. A meter that said "Strong" off six bars would be a lie with a
+progress bar attached.
+
+**Personalize** — `POST /onboarding/complete` accepts `experience: new|some|pro`
+(the three database levels still work and are mapped) plus `focus[]`.
+`PUT /settings` accepts `experience`, `focus` and `mode` so the Account board's
+Kai-profile rows can change them later; changing `experience` moves
+`explanation_level` too, because that is what the row promises. `GET /me` gains
+`kai_profile` and `rule_adherence`.
+
+**Rule adherence** is computed from `debriefs.process_review` — a session is one
+debrief, followed means every receipt item came back ok — and is HIDDEN below
+three sessions (`show:false`). A 1-of-2 is noise, and this product has no
+streaks, so a ratio that is not yet meaningful is not shown at all rather than
+shown small.
+
+**The tick** gains `alerts_evaluated`, `alerts_triggered`, `circles_opened` and
+`circles_closed`.
+
+### Round-4 schema, and running before it
+
+SCHEMA-4's `0021_prototype_round4.sql` lands on its own clock, so every round-4
+read probes for what it needs ONCE per process (`lib/round4/schema-probe.ts`)
+and has a documented fallback:
+
+| Object | Fallback when 0021 is not applied |
+|---|---|
+| `chart_annotations` | none — annotations are a first-class object with their own RLS, and hiding them in another table's jsonb would put one user's marks in a row another user can read. Missing → `degraded` with plain copy. |
+| `alerts.version` / `grade_snapshot` / `score_snapshot` / `lifecycle_state` | `alerts.refs.round4`, user-scoped jsonb that already exists |
+| `alert_events` | the timeline is empty; versioning still works |
+| `conversations.pinned` / `last_message_at` | `conversations.context.round4.pinned` and `updated_at` |
+| `rooms.expires_at` | `rooms.config.expires_at` |
+| `rule_adherence_v` | the same count computed in TypeScript over `debriefs` |
+
+Two details worth naming. `alerts.tab` is a GENERATED column and is never
+written, only read. `conversations.last_message_at` is trigger-maintained by
+0021, so `touchConversation` is a deliberate NO-OP once the column exists — two
+authors for one value is how a timestamp starts lying.
+
 ### Error envelope
 
 Every non-2xx is `{error:{code, message_plain, detail?}}` with an
@@ -472,6 +701,8 @@ src/lib/
   market/
     index.ts         America/New_York session status, freshness passthrough
     polygon.ts       aggregates, grouped snapshot, news, candles cache, token bucket
+    profile.ts       company profiles cached in instruments.meta, refreshed weekly
+    technicals.ts    EMA / RSI / ATR / swing levels — arithmetic, never generated
   entitlements.ts    tier from `subscriptions` + flags from `entitlement_flags`
   rpc.ts             SCHEMA-2 command RPCs + the documented PostgREST fallbacks
   notify.ts          in-app notification rows with deep-link routes
@@ -496,6 +727,8 @@ src/lib/
     room.ts           the @Kai commands, synchronous
     debrief.ts        computed facts + generated judgement
     sheet-context.ts  the contextual sheet: loads the real order/position/alert/room into the prompt
+    chart-commands.ts Kai names the LEVEL, the server resolves the NUMBER (spec §7)
+    voice.ts          new / some / pro, and the first-use glossary
   execution/
     paper.ts          the fill model — pure, deterministic, no database, no network
     risk.ts           daily risk budget + the advisory/blocker check builders
@@ -512,12 +745,30 @@ src/lib/
   v5/
     priority.ts       Home's one priority object and its state-driven action
     workspace.ts      the asset workspace's modules, sentiment and verified claims
+  round4/
+    schema-probe.ts   one-shot capability probes for 0021 + the documented fallbacks
+    alert-identity.ts what a watch is ABOUT, read from the parsed condition
+    grade.ts          medallion, grade families, and the QUALITATIVE scorecard (no fractions)
+    alert-cards.ts    the card contract, the state machine, versioned grade snapshots
+    alerts-feed.ts    every card in one pass — one query per table, not one per card
+    alert-tick.ts     armed alerts evaluated against the tick's marks (Watching → Active)
+    annotations.ts    chart marks CRUD + markPlanLevels (what "I marked the trigger" does)
+    chart-context.ts  the real objects a chart command may be resolved against
+    circles.ts        time-boxed setup rooms: open, list, sweep, close
+    conversations.ts  drawer list, search, pin, auto-title
+    profile-round4.ts experience + focus + Kai voice line + rule adherence
 src/proxy.ts          CORS for /api/* (Next 16 renamed `middleware.ts` → `proxy.ts`)
 src/app/api/v1/…      the routes above
 scripts/
-  smoke.sh                 end-to-end smoke against the local stack (181 assertions,
+  smoke.sh                 end-to-end smoke against the local stack (241 assertions,
                            including the whole plan → preview → submit → tick →
-                           bracket → close → debrief chain, long and short)
+                           bracket → close → debrief chain, long and short, plus
+                           round 4: a watch promoted Watching → Active on a
+                           verified tick, a grade change bumping the version,
+                           the portal's exact opening message, annotations CRUD,
+                           a real mark_level chart_command out of a Kai turn,
+                           the beginner voice's first-use glossary note, circles
+                           opening and expiring, and the conversations drawer)
   refresh-seed-setups.mjs  interim scanner — real levels onto the seeded setups
 ```
 

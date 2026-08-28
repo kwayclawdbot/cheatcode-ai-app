@@ -8,7 +8,12 @@
  * contradiction validator, persist to `kai_objects`, and emit as an envelope.
  */
 import Anthropic from '@anthropic-ai/sdk';
-import { KaiEmittedObject, type KaiObjectEnvelope, type GradedSetupPayload } from '@shared/api';
+import {
+  KaiEmittedObject,
+  type ChartCommandFrame,
+  type KaiObjectEnvelope,
+  type GradedSetupPayload,
+} from '@shared/api';
 import { env, KAI_MODEL } from '../env';
 import { log } from '../log';
 import { KAI_OBJECT_FENCE } from './system-prompt';
@@ -24,18 +29,29 @@ export function anthropicConfigured(): boolean {
   return Boolean(env('ANTHROPIC_API_KEY'));
 }
 
-const OPEN = '```' + KAI_OBJECT_FENCE;
+export const CHART_COMMAND_FENCE = 'chart_command';
 const CLOSE = '```';
 
 /**
  * Splits a token stream into visible text and fenced kai_object bodies.
- * Holds back up to OPEN.length-1 characters so a fence marker split across two
+ * Holds back up to (fence marker length - 1) characters so a fence marker split across two
  * deltas is never leaked as text.
  */
 export class FenceSplitter {
   private buf = '';
   private inFence = false;
   private fence = '';
+  private readonly open: string;
+
+  /**
+   * `name` is the fence tag. Round 4 adds a SECOND tag (`chart_command`), and
+   * two splitters chain: the object splitter runs first and its `text` output
+   * is fed to the chart-command splitter, so a reply can carry one of each and
+   * neither marker is ever leaked as visible text.
+   */
+  constructor(name: string = KAI_OBJECT_FENCE) {
+    this.open = '```' + name;
+  }
 
   push(chunk: string): { text: string; objects: string[] } {
     this.buf += chunk;
@@ -58,17 +74,17 @@ export class FenceSplitter {
     const objects: string[] = [];
     for (;;) {
       if (!this.inFence) {
-        const i = this.buf.indexOf(OPEN);
+        const i = this.buf.indexOf(this.open);
         if (i >= 0) {
           text += this.buf.slice(0, i);
-          let rest = this.buf.slice(i + OPEN.length);
+          let rest = this.buf.slice(i + this.open.length);
           if (rest.startsWith('\r\n')) rest = rest.slice(2);
           else if (rest.startsWith('\n')) rest = rest.slice(1);
           this.buf = rest;
           this.inFence = true;
           continue;
         }
-        const hold = final ? 0 : OPEN.length - 1;
+        const hold = final ? 0 : this.open.length - 1;
         if (this.buf.length > hold) {
           text += this.buf.slice(0, this.buf.length - hold);
           this.buf = this.buf.slice(this.buf.length - hold);
@@ -112,6 +128,13 @@ export class SseWriter {
   }
   object(obj: KaiObjectEnvelope) {
     this.frame('object', { type: 'object', object: obj });
+  }
+  /**
+   * Round 4: a chart change the client applies IN PLACE (spec §7). Its payload
+   * was resolved server-side from real rows — see lib/kai/chart-commands.ts.
+   */
+  chartCommand(frame: ChartCommandFrame) {
+    this.frame('chart_command', frame);
   }
   done(d: { conversation_id: string; message_id: string; seq: number; degraded: boolean }) {
     this.frame('done', { type: 'done', ...d });

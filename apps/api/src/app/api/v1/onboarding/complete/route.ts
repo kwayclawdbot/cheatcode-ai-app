@@ -15,7 +15,8 @@
  */
 import type { NextRequest } from 'next/server';
 import {
-  OnboardingCompleteRequest,
+  EXPERIENCE_TO_LEVEL,
+  OnboardingCompleteRound4Request,
   OnboardingCompleteResponse,
   RISK_ANSWER_DAILY_LOSS_PCT,
   RISK_ANSWER_MAX_POSITION_PCT,
@@ -23,6 +24,7 @@ import {
 import { authed, ok, parseBody, type Ctx } from '@/lib/http';
 import { serviceClient } from '@/lib/db';
 import { ApiError } from '@/lib/errors';
+import { writeKaiProfile } from '@/lib/round4/profile-round4';
 
 export const dynamic = 'force-dynamic';
 
@@ -103,7 +105,7 @@ function num(v: unknown): number | null {
 }
 
 export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
-  const body = await parseBody(req, OnboardingCompleteRequest);
+  const body = await parseBody(req, OnboardingCompleteRound4Request);
   const db = serviceClient();
 
   const dailyLossCap = Math.round(body.starting_balance * RISK_ANSWER_DAILY_LOSS_PCT[body.risk_answer] * 100) / 100;
@@ -114,7 +116,15 @@ export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
     p_user_id: ctx.user.id,
     p_patch: {
       goal_mode: body.goal_mode,
-      experience: body.experience,
+      // Round 4 "Personalize". `experience` reaches the RPC as the schema's
+      // level so `profiles.experience` stays a valid enum, while the word the
+      // user actually chose — new / some / pro — is kept beside it and is what
+      // decides Kai's VOICE. `focus[]` is the scanning preference from the
+      // chips; it changes what Kai looks at first, never what may be risked.
+      experience: EXPERIENCE_TO_LEVEL[body.experience],
+      experience_choice: body.experience,
+      focus: body.focus ?? [],
+      explanation_level: EXPERIENCE_TO_LEVEL[body.experience],
       involvement: body.involvement,
       risk_answer: body.risk_answer,
       practice_choice: body.practice_choice,
@@ -138,5 +148,25 @@ export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
   }
 
   const replay = Boolean((data as { idempotent_replay?: boolean } | null)?.idempotent_replay);
+
+  // `complete_onboarding` (0016) writes the columns and the onboarding answers
+  // it knows about; `experience` (the word: new / some / pro) and `focus[]` are
+  // round-4 additions the RPC has never heard of, and its signature belongs to
+  // SCHEMA. So they are merged into `profiles.onboarding` here, in the same
+  // request, right after the transaction that created the profile state.
+  //
+  // Skipped on an idempotent replay, because a second complete call changes
+  // NOTHING — that is the whole contract of this endpoint. Experience and focus
+  // stay editable afterwards through PUT /settings, which is where the Account
+  // board's Kai-profile rows write to.
+  if (!replay) {
+    const current = await loadState(ctx.user.id);
+    const written = writeKaiProfile((current.profile.onboarding as Record<string, unknown>) ?? {}, {
+      experience: body.experience,
+      focus: body.focus ?? [],
+    });
+    await db.from('profiles').update({ onboarding: written.onboarding }).eq('user_id', ctx.user.id);
+  }
+
   return ok(shape(await loadState(ctx.user.id), replay));
 });

@@ -7,26 +7,42 @@
  * this one.
  */
 import type { NextRequest } from 'next/server';
-import { SettingsRequest, SettingsResponse } from '@shared/api';
+import { EXPERIENCE_TO_LEVEL, SettingsRound4Request, SettingsResponse } from '@shared/api';
 import { authed, ok, parseBody, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
 import { serviceClient } from '@/lib/db';
 import { emitUserEvent } from '@/lib/events';
 import { loadProfile } from '@/lib/kai/context';
 import { readPrefs, writePrefs } from '@/lib/prefs';
+import { writeKaiProfile } from '@/lib/round4/profile-round4';
 
 export const dynamic = 'force-dynamic';
 
 export const PUT = authed(async (req: NextRequest, ctx: Ctx) => {
-  const body = await parseBody(req, SettingsRequest);
+  const body = await parseBody(req, SettingsRound4Request);
   const db = serviceClient();
   const profile = await loadProfile(ctx.user.id);
 
   const profilePatch: Record<string, unknown> = {};
   if (body.explanation_level) profilePatch.explanation_level = body.explanation_level;
-  if (body.accessibility) {
-    profilePatch.onboarding = writePrefs(profile.onboarding, body.accessibility);
+
+  // Round 4: the Account board's Kai-profile rows. `experience` is the word the
+  // user picked (new / some / pro); `experience_level` and `explanation_level`
+  // are the schema's mapping of it, so changing one word changes Kai's voice
+  // AND the depth of the explanations, which is what the row promises.
+  let onboarding = body.accessibility ? writePrefs(profile.onboarding, body.accessibility) : profile.onboarding;
+  if (body.experience || body.focus) {
+    const written = writeKaiProfile(onboarding, { experience: body.experience, focus: body.focus });
+    onboarding = written.onboarding;
+    if (written.explanationLevel && !body.explanation_level) {
+      profilePatch.explanation_level = written.explanationLevel;
+      profilePatch.experience = EXPERIENCE_TO_LEVEL[body.experience!];
+    }
   }
+  if (onboarding !== profile.onboarding) profilePatch.onboarding = onboarding;
+  // Mode is the one financial-adjacent field this endpoint may touch: it
+  // changes what Kai scans, not what the user is allowed to risk.
+  if (body.mode) profilePatch.primary_mode = body.mode;
 
   if (Object.keys(profilePatch).length) {
     const { error } = await db.from('profiles').update(profilePatch).eq('user_id', ctx.user.id);

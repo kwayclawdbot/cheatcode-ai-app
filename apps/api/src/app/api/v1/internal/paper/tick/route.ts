@@ -24,7 +24,7 @@
  * up in a screenshot as if it happened.
  */
 import type { NextRequest } from 'next/server';
-import { PaperTickRequest, PaperTickResponse } from '@shared/api';
+import { PaperTickRequest, PaperTickRound4Response } from '@shared/api';
 import { ApiError, errorResponse, validationError } from '@/lib/errors';
 import { env } from '@/lib/env';
 import { log, newRequestId } from '@/lib/log';
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       dev_ticker: devTickerStatus().on,
     });
 
-    return Response.json(PaperTickResponse.parse(result), {
+    return Response.json(PaperTickRound4Response.parse(result), {
       status: 200,
       headers: { 'x-request-id': requestId },
     });

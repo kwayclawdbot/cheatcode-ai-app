@@ -11,12 +11,13 @@
  */
 import type { NextRequest } from 'next/server';
 import {
-  AlertsV5Query,
-  AlertsV5Response,
+  AlertsRound4Query,
+  AlertsRound4Response,
   AlertActivateRequest,
   AlertActivateResponse,
   MONITORING_PLAIN,
   SETUP_CAPS,
+  type AlertTab,
   type AlertTypeFilter,
 } from '@shared/api';
 import { authed, ok, parseBody, parseQuery, type Ctx } from '@/lib/http';
@@ -36,6 +37,9 @@ import {
   loadFollowMarks,
   positionAttentionRow,
 } from '@/lib/v5/attention';
+import { loadAlertCards } from '@/lib/round4/alerts-feed';
+import { alertIdentity, alertWritePatch } from '@/lib/round4/alert-identity';
+import { hasAlertVersionColumns } from '@/lib/round4/schema-probe';
 import { alertRow, monitoringFor } from './shape';
 import {
   buildFilters,
@@ -54,7 +58,7 @@ const EMPTY_COPY = "Kai isn't watching anything for you yet.";
 
 export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
   ensureDevTicker();
-  const q = parseQuery(req, AlertsV5Query);
+  const q = parseQuery(req, AlertsRound4Query);
   const db = serviceClient();
 
   const [alertsRes, positions] = await Promise.all([
@@ -119,8 +123,20 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
   const keep = <T extends { type: AlertTypeFilter }>(items: T[]) =>
     q.filter === 'all' ? items : items.filter((i) => i.type === q.filter);
 
+  // ---- round 4: alerts as complete trade objects (spec §1-§5) ----------
+  // The three round-3 sections are still computed above and still returned;
+  // `cards` is the new shape and `tab` is what the app actually renders.
+  const feed = await loadAlertCards({ userId: ctx.user.id, requestId: ctx.requestId });
+  const tab: AlertTab = q.tab ?? 'active';
+  const TAB_PLAIN: Record<AlertTab, string> = {
+    active: 'Something happened that may need a decision.',
+    watching: 'Complete ideas whose condition has not triggered yet.',
+    history: 'Finished, with the original alert and what came of it.',
+  };
+  const cards = feed.cards.filter((c) => c.tab === tab);
+
   return ok(
-    AlertsV5Response.parse({
+    AlertsRound4Response.parse({
       // round-2 keys, unchanged
       needs_attention: rows.filter((r) => r.status === 'triggered'),
       watching: watched,
@@ -140,6 +156,22 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
           'Tell me when NVDA gets back to 900',
         ],
       },
+
+      // ---- round 4 ------------------------------------------------------
+      tab,
+      tabs: (['active', 'watching', 'history'] as AlertTab[]).map((key) => ({
+        key,
+        label: key === 'active' ? 'Active' : key === 'watching' ? 'Watching' : 'History',
+        count: feed.counts[key],
+        plain: TAB_PLAIN[key],
+      })),
+      cards,
+      card_empty_copy:
+        tab === 'active'
+          ? 'Nothing needs a decision right now. That is a real answer, not an empty screen.'
+          : tab === 'watching'
+            ? 'I am not watching anything for you yet. Follow a setup or tell me a condition and it lands here.'
+            : 'Nothing has finished yet.',
     })
   );
 });
@@ -203,9 +235,27 @@ export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
     );
   }
 
+  // Arming is also the moment to make sure the row knows what it is about.
+  // A draft written before the identity fix, or one whose parse improved on a
+  // retry, gets its symbol, mode, direction and lifecycle state filled in here
+  // rather than staying a row the feed cannot render.
+  const profile = await loadProfile(ctx.user.id);
+  const identity = alertIdentity({
+    condition: draft.condition,
+    dataDependency: draft.data_dependency,
+    refs: (draft.refs as { symbol?: string; level?: number; setup_id?: string } | null) ?? null,
+  });
+  const write = await alertWritePatch({
+    identity,
+    refs: (draft.refs as Record<string, unknown> | null) ?? null,
+    mode: profile.primary_mode,
+    hasRound4Columns: await hasAlertVersionColumns(),
+    lifecycleState: 'watching',
+  });
+
   const updated = await db
     .from('alerts')
-    .update({ status: 'active' })
+    .update({ status: 'active', refs: write.refs as never, ...write.columns })
     .eq('id', body.draft_id)
     .eq('user_id', ctx.user.id)
     .select(COLUMNS)
