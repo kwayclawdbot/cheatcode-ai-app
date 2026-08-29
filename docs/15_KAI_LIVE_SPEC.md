@@ -34,8 +34,8 @@ market-intelligence worker ─ setup_events (discovered / forming / ready / trig
 
 | # | Component | Where | What it is |
 |---|---|---|---|
-| L1 | **Chart engine** | `apps/mobile/src/features/chart/` | Skia-rendered candle chart: pan/zoom, 1m/5m/15m/1h/4h/D, live last-candle updates, CCA indicators, annotation layer Kai can draw on (level, zone, trendline, box/FVG, vertical, note), camera commands (focus ts, zoom to range, scroll), replaces `PortalChart`. Runs on iOS/Android/web. |
-| L2 | **CCA indicators in TS** | `packages/shared/indicators/` | Port of `~/breakout-alert-system/cheatcode_engine.py` math: RSI heatmap candle coloring, Trend Clouds, EMA cloud, Reversal Bands, Speed Bands, Squeeze, Swing. Golden-fixture tested against the Python output. Per-TF display policy: **D = clouds + EMA + bands; intraday = heatmap only**, Kai toggles layers on demand. |
+| L1 | **Chart Kai drives** | `apps/mobile/src/features/chart/` + `apps/mobile/chart-web/` | **TradingView Lightweight Charts** (owner decision 2026-08-28; not from scratch) in a WebView on native / direct on web. Brokerage-native feel (momentum scroll, pinch, crosshair). **Camera API + Kai's pointer + choreography** so every command looks like a person clicking a timeframe and scrolling/zooming — this is the priority, not indicators. Annotation layer (level, zone, trendline, box/FVG, vertical, note) as chart primitives. Replaces `PortalChart`. |
+| L2 | **CCA indicators in TS** (deferred — LIVE-1b, not a priority per owner) | `packages/shared/indicators/` | Port of `~/breakout-alert-system/cheatcode_engine.py` math: RSI heatmap candle coloring, Trend Clouds, EMA cloud, Reversal Bands, Speed Bands, Squeeze, Swing. Golden-fixture tested against the Python output. Per-TF display policy: **D = clouds + EMA + bands; intraday = heatmap only**, Kai toggles layers on demand. |
 | L3 | **LiveTimeline contract** | `packages/shared/api.ts` | `LiveFrame = ChartCommandFrame \| SayFrame \| PresentFrame \| OverlayFrame` with `t_offset_ms`, `show_id`, `seq`. `SayFrame{ voice: kai\|cohost, text, audio_url, duration_ms }`. Zod-validated; replayable; idempotent by `seq`. |
 | L4 | **kai-live worker** | `workers/kai-live/` | Director loop: source router (ready setups → subscriber requests → Kai winners → watchlist), top-down analysis prompts (Claude 5), Kai voice per experience level, TTS (OpenAI `gpt-4o-mini-tts`, ash=Kai, coral=cohost), prep buffer depth 2 so the next segment is ready before the current ends, budget cap ($/hr), health. Market-hours mode reacts to `setup_events` in real time; after-hours mode runs the review rundown. |
 | L5 | **Live screen (app)** | `apps/mobile/src/app/(tabs)/…/live` | Subscribes to the show, plays audio (`expo-audio`), applies frames to L1, "now / up next" rail, request-a-ticker composer, tap-annotation-for-reason, "Open in Trade Portal" (carries annotations), premium gate + locked preview. |
@@ -45,7 +45,7 @@ market-intelligence worker ─ setup_events (discovered / forming / ready / trig
 
 ## 4. Build order
 
-1. **LIVE-1 Chart engine + indicators (L1, L2)** — usable in the Trade Portal immediately; the foundation for everything.
+1. **LIVE-1 The chart Kai drives (L1)** — Lightweight Charts + camera/choreography; usable in the Trade Portal immediately. **LIVE-1b** indicators (L2) follows, lower priority.
 2. **LIVE-2 Timeline contract + kai-live worker after-hours mode (L3, L4)** — review show runs end-to-end in a local stage page.
 3. **LIVE-3 Live screen in app + premium gate (L5, L8)**.
 4. **LIVE-4 Market-hours mode (L4)** — the real-time setup loop off `setup_events`; requires Phase 3 scanner from `04_BUILD_PLAN.md`.

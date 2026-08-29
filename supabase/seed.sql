@@ -44,7 +44,17 @@ on conflict (slug) do nothing;
 -- entitlement_flags (02_API_CONTRACTS §11)
 -- Free: paper, 5 active alerts, community read + beginner-room posting, Kai daily budget.
 -- Premium $99/mo: full alerts, full posting, broker connect, options (v1.1), full LMS (v1.2), priority Kai budget.
--- =====================================================================
+--
+-- EVERY GATE LIVES IN THIS ONE STATEMENT. `circles_create` used to be seeded
+-- 230 lines further down, next to the circles it gates — and a seed run that
+-- stopped anywhere in between (an error in the instruments/setups block, a
+-- partial apply) left a database with the early flags and WITHOUT that one.
+-- A missing flag reads false, so the symptom was a premium feature silently
+-- switched off with nothing in the schema to say why. Gates are config, not
+-- fixtures: they belong together, before anything that can fail.
+--
+-- `do update set value = excluded.value` (never `do nothing`): re-running the
+-- seed must be able to CORRECT a flag, not just decline to insert it.
 insert into entitlement_flags (tier, flag, value) values
   ('free',    'alerts_max_active',     '5'),
   ('free',    'community_post_scope',  '"beginner_rooms"'),
@@ -52,12 +62,14 @@ insert into entitlement_flags (tier, flag, value) values
   ('free',    'options',               'false'),
   ('free',    'lms',                   'false'),
   ('free',    'kai_daily_budget',      '50'),
+  ('free',    'circles_create',        'false'),
   ('premium', 'alerts_max_active',     '"unlimited"'),
   ('premium', 'community_post_scope',  '"all"'),
   ('premium', 'broker_connect',        'true'),
   ('premium', 'options',               'true'),
   ('premium', 'lms',                   'true'),
-  ('premium', 'kai_daily_budget',      '500')
+  ('premium', 'kai_daily_budget',      '500'),
+  ('premium', 'circles_create',        'true')
 on conflict (tier, flag) do update set value = excluded.value;
 
 -- =====================================================================
@@ -269,8 +281,12 @@ update instruments
 
 -- =====================================================================
 -- entitlement_flags — circles_create (round 4)
--- The "+ Create" circle sheet is real but gated (brief §8). The API reads this
--- flag; the create_circle RPC itself does not gate.
+-- MOVED UP into the single entitlement_flags statement near the top of this
+-- file, so a seed run that dies in the middle cannot ship a database where the
+-- other gates exist and this one does not. The "+ Create" circle sheet is real
+-- but gated (brief §8): the API reads the flag, the create_circle RPC does not
+-- gate. Re-stated here as a belt-and-braces upsert for databases seeded from an
+-- older copy of this file.
 -- =====================================================================
 insert into entitlement_flags (tier, flag, value) values
   ('free',    'circles_create', 'false'),

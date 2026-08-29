@@ -880,6 +880,12 @@ sb_get() { # sb_get <table?query>
     -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
 }
 
+sb_post() { # sb_post <table> <json>   (upsert; used to arrange a tier)
+  curl -sS -o /dev/null -X POST "$SUPABASE_URL/rest/v1/$1" \
+    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+    -H 'Content-Type: application/json' -H 'Prefer: return=minimal,resolution=merge-duplicates' -d "$2"
+}
+
 check "V5 home — one priority, one action" GET "/api/v1/home?mode=day_trade"
 assert_body "home carries opening_line + a state-driven primary action + also_watching" '
 import json,sys
@@ -1843,8 +1849,9 @@ print("  conversation:",c["title"],"| pinned",c["pinned"])
 print("  ",c["plain"])'
 
 # --- circles ------------------------------------------------------------------
-# The gate first. `circles_create` is not in the seed, and a MISSING flag is
-# false — so a free account is refused with an upgrade, not a dead end.
+# The gate first. `circles_create` is seeded false for free and true for premium
+# (and a MISSING flag is false too) — so a free account is refused with an
+# upgrade, not a dead end.
 expect "creating a circle is gated by an entitlement" 402 POST /api/v1/circles \
   '{"symbol":"META","ttl":"3d"}'
 assert_body "the refusal carries the tier, the price and where to upgrade" '
@@ -1858,7 +1865,7 @@ check "circles list says why the button is off" GET /api/v1/circles
 assert_body "an ungated reader still sees every open circle" '
 import json,sys
 d=json.load(sys.stdin)
-assert d["can_create"] is False, "circles_create is not seeded, so it must read false"
+assert d["can_create"] is False, "circles_create is false for the free tier, so it must read false"
 assert "Premium" in d["create_hint"] or "not switched on" in d["create_hint"], d["create_hint"]
 assert [o["key"] for o in d["ttl_options"]] == ["24h","3d","7d"], d["ttl_options"]
 print("  can_create:",d["can_create"],"|",d["create_hint"][:90])

@@ -30,7 +30,7 @@
  * No holidays table still (README gap 2): the "last trading date" walks back
  * over weekends only, and every payload carries `holidays_known:false`.
  */
-import type { Freshness, DelayReason, MarketQuote, Candle, Timeframe, NewsItem } from '@shared/api';
+import type { Freshness, DelayReason, MarketQuote, Candle, NewsItem } from '@shared/api';
 import { env } from '../env';
 import { log } from '../log';
 import { serviceClient } from '../db';
@@ -251,17 +251,54 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-const TF_PATH: Record<Timeframe, { mult: number; span: string }> = {
-  '1d': { mult: 1, span: 'day' },
+/**
+ * The resolutions the chart offers.
+ *
+ * `Timeframe` in @shared/api is the round-1 pair ('1d' | '5m'); the trade portal
+ * rail has offered 1m/5m/15m/1h/4h/D since round 4, and every request outside
+ * that pair used to answer 400 and fall back to a coarser bar. Polygon serves
+ * all six from the SAME aggregates endpoint — only the multiplier and the
+ * timespan change — so the whole extension is this table plus a wider type.
+ *
+ * `CandleTimeframe` is a SUPERSET of `Timeframe`, so every existing caller
+ * still type-checks and nothing in packages/shared has to move.
+ * `candles.timeframe` is plain text with a (symbol, timeframe, ts) primary key,
+ * so the new keys cache exactly like the old two — no migration.
+ */
+export const CANDLE_TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'] as const;
+export type CandleTimeframe = (typeof CANDLE_TIMEFRAMES)[number];
+
+const TF_PATH: Record<CandleTimeframe, { mult: number; span: string }> = {
+  '1m': { mult: 1, span: 'minute' },
   '5m': { mult: 5, span: 'minute' },
+  '15m': { mult: 15, span: 'minute' },
+  '1h': { mult: 1, span: 'hour' },
+  '4h': { mult: 4, span: 'hour' },
+  '1d': { mult: 1, span: 'day' },
 };
+
+/** How far back a request reaches when the caller does not say. */
+export const TF_DEFAULT_SPAN_DAYS: Record<CandleTimeframe, number> = {
+  '1m': 3,
+  '5m': 5,
+  '15m': 10,
+  '1h': 45,
+  '4h': 120,
+  '1d': 180,
+};
+
+/** The bar cap for one request. Polygon's own ceiling is 50k; ours is smaller. */
+export function maxCandles(): number {
+  const n = Number(env('POLYGON_MAX_CANDLES') ?? 1500);
+  return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 50_000) : 1500;
+}
 
 export async function fetchAggregates(
   symbol: string,
-  tf: Timeframe,
+  tf: CandleTimeframe,
   from: string,
   to: string,
-  limit = Number(env('POLYGON_MAX_CANDLES') ?? 1500)
+  limit = maxCandles()
 ): Promise<PolyResult<Candle[]>> {
   const { mult, span } = TF_PATH[tf];
   const r = await polyGet<AggsBody>(
@@ -278,7 +315,7 @@ export async function fetchAggregates(
 
 export async function readCachedCandles(
   symbol: string,
-  tf: Timeframe,
+  tf: CandleTimeframe,
   from?: string,
   to?: string
 ): Promise<Candle[]> {
@@ -289,7 +326,7 @@ export async function readCachedCandles(
     .eq('symbol', symbol.toUpperCase())
     .eq('timeframe', tf)
     .order('ts', { ascending: true })
-    .limit(2000);
+    .limit(maxCandles());
   if (from) q = q.gte('ts', `${from}T00:00:00Z`);
   if (to) q = q.lte('ts', `${to}T23:59:59Z`);
   const { data, error } = await q;
@@ -310,7 +347,7 @@ export async function readCachedCandles(
   });
 }
 
-export async function writeCandles(symbol: string, tf: Timeframe, candles: Candle[]): Promise<void> {
+export async function writeCandles(symbol: string, tf: CandleTimeframe, candles: Candle[]): Promise<void> {
   if (!candles.length) return;
   const db = serviceClient();
   const rows = candles.map((c) => ({
@@ -355,7 +392,7 @@ const FAIL_PLAIN: Record<PolyFail, string> = {
  */
 export async function getCandles(
   symbol: string,
-  tf: Timeframe,
+  tf: CandleTimeframe,
   from: string,
   to: string
 ): Promise<CandlesResult> {

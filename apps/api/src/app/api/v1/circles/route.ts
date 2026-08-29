@@ -7,17 +7,16 @@
  * about is worth talking about (see lib/round4/circles.ts).
  *
  * CREATION IS GATED, AND THE GATE IS IN THE DATABASE.
- * `circles_create` is read from `entitlement_flags` for the caller's tier.
- * **A MISSING FLAG IS FALSE** — this lane cannot edit `supabase/seed.sql`
- * (SCHEMA-4 owns it), so until the flag is seeded nobody can create a circle
- * and the button comes back `can_create:false` with copy that says why. That is
- * the safe direction for a gate to fail: an ungated premium feature is a
- * revenue bug, an over-gated one is a message.
+ * `circles_create` is read from `entitlement_flags` for the caller's tier and
+ * is seeded in `supabase/seed.sql` — false for free, true for premium — inside
+ * the same statement as every other gate, so a half-applied seed cannot ship a
+ * database that has the other flags and not this one.
  *
- * To switch it on, SCHEMA-4 (or an operator) adds one row:
- *   insert into entitlement_flags (tier, flag, value)
- *   values ('premium', 'circles_create', 'true')
- *   on conflict (tier, flag) do update set value = excluded.value;
+ * **A MISSING FLAG IS STILL FALSE.** That stays the fail direction even now the
+ * row exists: an ungated premium feature is a revenue bug, an over-gated one is
+ * a message. A premium account on a database that somehow lacks the row gets
+ * `can_create:false` and copy that says the feature is not switched on, rather
+ * than a create button that 500s.
  */
 import type { NextRequest } from 'next/server';
 import {
