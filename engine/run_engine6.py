@@ -85,9 +85,16 @@ def stage_plan() -> None:
         picks = select_day(day, have, store)
         ctrl = select_day_random(day, have, store)
         cover.append((day, len(eligible), len(pool), len(have)))
+        # Where in the liquidity list a selected name sits. If the picks cluster
+        # against the bottom of the pool, the pool boundary is binding and a
+        # bigger one would change the answer; if they are spread through it, the
+        # boundary is not what decides. Free to record, and it is the first
+        # thing to read if Phase 1 misses.
+        dv_rank = {s: i + 1 for i, s in enumerate(eligible)}
         for p in picks:
             rows.append({"day": day, "symbol": p.symbol, "arm": ARM_SIP,
                          "rvol": p.rvol, "rank": p.rank,
+                         "dv_rank": dv_rank.get(p.symbol, -1),
                          "open_volume": p.open_volume, "baseline": p.baseline})
         for p in ctrl:
             rows.append({"day": day, "symbol": p.symbol, "arm": ARM_UNFILTERED,
@@ -467,6 +474,22 @@ def write_report(sel, sip, flip, unf, sip_census, unf_census,
     else:
         A("- `sip/manifest.py` has not been run against this snapshot.")
     A("")
+    A("### Where the picks sit in the liquidity list")
+    A("")
+    dvr = np.array([int(r.get("dv_rank", -1)) for r in sel["rows"]
+                    if r["arm"] == ARM_SIP and int(r.get("dv_rank", -1)) > 0])
+    if len(dvr):
+        A(f"Of {len(dvr):,} picks, ranked by 20-day average dollar volume within "
+          f"the day's eligible universe (1 = most liquid): median rank "
+          f"**{int(np.median(dvr))}**, p90 **{int(np.quantile(dvr, 0.9))}**, "
+          f"**{100.0 * float((dvr > sel['pool_n'] * 0.8).mean()):.0f}%** in the "
+          f"bottom fifth of the pool.")
+        A("")
+        A("If the picks crowd the bottom of the pool, the pool boundary is what "
+          "is deciding the selection and a larger pool would change the result. "
+          "If they are spread through it, the boundary is not the binding "
+          "constraint. This is the first number to read if Phase 1 misses.")
+        A("")
     A("## Costs and fills")
     A("")
     A(f"- ${COSTS.commission_per_share:.3f}/share/side commission, "
