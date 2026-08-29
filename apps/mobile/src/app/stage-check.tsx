@@ -21,8 +21,22 @@
  * Playwright drives it through `window.__ccStage`, not by clicking — a proof
  * that depends on hitting a button at the right moment is a proof that fails on
  * a slow machine.
+ *
+ * LIVE-2 ADDS A THIRD JOB, on the same route and behind a query parameter:
+ * `/stage-check?show=<id>&token=<jwt>` plays a REAL generated show back through
+ * this same chart. That is the point of putting it here rather than in a new
+ * screen — the acceptance question for LIVE-2 is "does the brain actually fit
+ * the chart", and the only honest way to answer it is to drive the identical
+ * component, through the identical `applyChartCommand`, from frames a worker
+ * really produced. Fixture mode and show mode share the file so they cannot
+ * drift into two different charts.
+ *
+ * The token is in the query because this is a dev harness with no session: the
+ * proof script mints a throwaway user exactly as `smoke.sh` does and hands the
+ * page its access token. Nothing here is reachable in a production build.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { Num, T } from '../ui/Text';
 import { alpha, color, radius } from '../ui/tokens';
@@ -34,6 +48,13 @@ import { fixtureAnnotations } from '../features/portal/fixtures';
 import { fixtureCandles, fixtureCandlesDaily } from '../lib/fixtures';
 import type { Annotation, PortalTimeframe } from '../features/portal/types';
 import { env } from '../lib/env';
+import {
+  LivePlayer,
+  apiTransport,
+  fetchCandles,
+  type Bar,
+} from '../features/chart/live-client';
+import type { LiveFrame, OverlayFrame, PresentFrame, SayFrame } from '@shared/live';
 
 const DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
 
@@ -102,6 +123,12 @@ const SCRIPT: {
 /* ------------------------------------------------------------------ */
 
 export default function StageCheckScreen() {
+  const params = useLocalSearchParams<{ show?: string; token?: string; pace?: string; since?: string }>();
+  if (params.show) return <LiveStage show={params.show} token={params.token ?? ''} pace={params.pace} since={params.since} />;
+  return <ChoreographyStage />;
+}
+
+function ChoreographyStage() {
   const chart = useRef<ChartHandle | null>(null);
   const [tf, setTf] = useState<PortalTimeframe>('D');
   const [shown, setShown] = useState<Annotation[]>([]);
@@ -347,3 +374,276 @@ const ALL_KINDS: Annotation[] = [
   { ...base, id: 'k-vert', kind: 'vertical', price: null, price2: null, ts_from: at(-12), text: 'Trigger bar' },
   { ...base, id: 'k-note', kind: 'note', price: 509.5, price2: null, ts_from: at(-8), text: 'Volume dried up here' },
 ];
+
+/* ------------------------------------------------------------------ */
+/* LIVE-2 — a real show, played back on the real chart                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `/stage-check?show=<id>&token=<jwt>[&pace=8][&since=N]`
+ *
+ * Every frame here came out of `workers/kai-live` and went through the database
+ * before it got here. Nothing on this screen is a fixture: the candles are the
+ * app's own candles endpoint, the annotations are rows the worker persisted, and
+ * the chart moves because `applyChartCommand` — the same function the Trade
+ * Portal calls — is being handed a `chart` frame.
+ *
+ * `since` is what proves the late-join story. Loading with `since=41` starts at
+ * frame 42 and lands in the same state as a client that watched from the
+ * beginning, because the frames are ordered and idempotent and the player
+ * refuses to apply one that would open a gap.
+ */
+function LiveStage({
+  show,
+  token,
+  pace,
+  since,
+}: {
+  show: string;
+  token: string;
+  pace?: string;
+  since?: string;
+}) {
+  const chart = useRef<ChartHandle | null>(null);
+  const player = useRef<LivePlayer | null>(null);
+  const audio = useRef<{ pause: () => void } | null>(null);
+
+  /**
+   * SYMBOL, TIMEFRAME AND BARS MOVE AS ONE VALUE, and that is a correctness fix
+   * rather than a tidiness one.
+   *
+   * They were three `useState`s, so a symbol change rendered once with the NEW
+   * ticker and the OLD bars. `ChartView` keys its `setData` on
+   * symbol|timeframe|length|firstTs|lastTs — and two daily charts of the same
+   * length over the same 125 sessions differ in none of those once the symbol
+   * has already been updated. The second render, carrying the right bars, was
+   * therefore identical by key and never reached the chart: the proof capture
+   * showed "CRM 252.05" over Invesco QQQ's candles, which is the single worst
+   * thing this product can put on a screen.
+   *
+   * One state, set twice: emptied the instant the symbol changes (so the old
+   * ticker's prices leave the screen immediately, including when the fetch then
+   * fails) and filled when its own bars arrive.
+   */
+  const [view, setView] = useState<{ symbol: string; tf: PortalTimeframe; candles: Bar[] }>({
+    symbol: '—',
+    tf: 'D',
+    candles: [],
+  });
+  const { symbol, tf, candles } = view;
+  const [headline, setHeadline] = useState<string>('');
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [line, setLine] = useState<SayFrame | null>(null);
+  const [transcript, setTranscript] = useState<SayFrame[]>([]);
+  const [rail, setRail] = useState<Record<string, unknown> | null>(null);
+  const [cursor, setCursor] = useState(Number(since ?? -1));
+  const [status, setStatus] = useState<string>('connecting');
+  const [error, setError] = useState<string | null>(null);
+
+  const apiBase = env.apiBase || 'http://localhost:3000';
+
+  /**
+   * A symbol change is the one frame the player AWAITS, because everything after
+   * it draws on top of these bars. Loading them after the first `mark_level`
+   * landed would put a level on the previous symbol's chart for a beat, which is
+   * exactly the class of thing a viewer screenshots.
+   */
+  const present = useCallback(
+    async (f: PresentFrame) => {
+      const timeframe = f.timeframe as PortalTimeframe;
+      setHeadline(f.headline);
+      setAnnotations([]);
+      // Empty first. A chart showing the last ticker's prices under this
+      // ticker's name for even one frame is worse than a chart showing nothing.
+      setView({ symbol: f.symbol, tf: timeframe, candles: [] });
+      try {
+        const bars = await fetchCandles({ apiBase, token, symbol: f.symbol, timeframe });
+        setView({ symbol: f.symbol, tf: timeframe, candles: bars });
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [apiBase, token],
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    let cancelled = false;
+
+    const p = new LivePlayer({
+      transport: apiTransport({ apiBase, token, showId: show }),
+      mode: 'replay',
+      pace: Number(pace ?? 4),
+      since: Number(since ?? -1),
+      sink: {
+        chart: () => chart.current,
+        present,
+        say: (f) => {
+          setLine(f);
+          setTranscript((prev) => [...prev.slice(-40), f]);
+          // Audio is optional by contract: a show generated while the TTS
+          // provider was unavailable carries a null url and plays as captions.
+          if (f.audio_url && typeof Audio !== 'undefined') {
+            try {
+              audio.current?.pause();
+              const el = new Audio(f.audio_url);
+              audio.current = el;
+              void el.play().catch(() => {});
+            } catch {
+              /* a browser that refuses autoplay is not a broken show */
+            }
+          }
+        },
+        overlay: (f: OverlayFrame) => {
+          if (f.overlay === 'ticker_rail') setRail(f.payload as Record<string, unknown>);
+          if (f.overlay === 'clear') setRail(null);
+        },
+        annotations: (rows) =>
+          setAnnotations((prev) => [...prev, ...rows.filter((r) => !prev.some((p) => p.id === r.id))]),
+        applied: (_f: LiveFrame, c: number) => {
+          if (!cancelled) setCursor(c);
+        },
+      },
+    });
+
+    player.current = p;
+    setStatus('playing');
+    void p.start().catch((e) => setError(e instanceof Error ? e.message : String(e)));
+
+    return () => {
+      cancelled = true;
+      p.stop();
+      audio.current?.pause();
+      player.current = null;
+    };
+  }, [apiBase, token, show, pace, since, present]);
+
+  /**
+   * The seam the proof drives.
+   *
+   * `state()` is what the late-join assertion reads: kill the page mid-segment,
+   * reload with `since=<cursor>`, and check the cursor and the on-screen symbol
+   * land in the same place.
+   */
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const w = window as unknown as Record<string, unknown>;
+    w.__ccLive = {
+      show,
+      state: () => ({
+        ...(player.current?.state() ?? { cursor, applied: 0, pending: 0, symbol: null, running: false, error: null }),
+        symbol,
+        timeframe: tf,
+        bars: candles.length,
+        annotations: annotations.length,
+        line: line?.text ?? null,
+        audio: line?.audio_url ?? null,
+        audio_state: line?.audio_state ?? null,
+        glossary: line?.glossary ?? [],
+        error,
+      }),
+      stop: () => player.current?.stop(),
+      reconcile: () => player.current?.reconcile(),
+    };
+    return () => {
+      delete w.__ccLive;
+    };
+  }, [show, cursor, symbol, tf, candles.length, annotations.length, line, error]);
+
+  if (!DEV && !env.FIXTURES) {
+    return (
+      <View style={{ flex: 1, backgroundColor: color.bg, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+        <T size={14} c={color.muted} testID="stage-check-disabled">
+          The stage harness does not run outside development.
+        </T>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: color.bg, flexDirection: 'row' }} testID="screen-live-stage">
+      <View style={{ flex: 1, padding: 24, gap: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12 }}>
+          <T size={22} weight="bold" c={color.text} testID="live-symbol">{symbol}</T>
+          {rail?.price ? <Num size={22} weight="bold" c={color.cyan}>{String(rail.price)}</Num> : null}
+          {typeof rail?.change_pct === 'number' ? (
+            <Num size={13} c={(rail.change_pct as number) >= 0 ? color.green : color.red}>
+              {`${(rail.change_pct as number) >= 0 ? '+' : ''}${rail.change_pct}%`}
+            </Num>
+          ) : null}
+          <View style={{ flex: 1 }} />
+          <Num size={11} c={color.dim} testID="live-cursor">{`seq ${cursor} · ${tf} · ${candles.length} bars`}</Num>
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <ChartView
+            testID="live-chart"
+            ref={chart}
+            symbol={symbol}
+            timeframe={tf}
+            candles={candles}
+            annotations={annotations}
+            onTimeframeChange={(next) => setView((v) => ({ ...v, tf: next }))}
+          />
+        </View>
+
+        {/* The line Kai is saying, as a lower third. LIVE-5 makes this a real
+            graphic; here it is the caption that proves the audio and the chart
+            are describing the same moment. */}
+        <View
+          style={{
+            minHeight: 92,
+            padding: 16,
+            borderRadius: radius.md,
+            backgroundColor: alpha.violet14,
+            borderLeftWidth: 2,
+            borderLeftColor: line?.voice === 'cohost' ? color.volt : color.violet,
+            gap: 6,
+          }}
+        >
+          <Num size={10} weight="bold" c={color.dim}>
+            {line ? (line.voice === 'kai' ? 'KAI' : 'HOST') : 'STANDING BY'}
+          </Num>
+          <T size={15} c={color.text} lh={22} testID="live-line">{line?.text ?? '—'}</T>
+          {line?.glossary?.length ? (
+            <T size={11.5} c={color.violetLight} lh={17} testID="live-glossary">
+              {line.glossary.map((g: { term: string; plain: string }) => g.plain).join('  ·  ')}
+            </T>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={{ width: 340, padding: 24, gap: 14, borderLeftWidth: 0.5, borderLeftColor: alpha.ivory08 }}>
+        <T size={11} weight="bold" c={color.dim} ls={1.1}>KAI LIVE — REPLAY</T>
+        <T size={12} c={color.muted} lh={18} testID="live-headline">{headline || show}</T>
+        <Num size={10.5} c={color.dim}>
+          {`${status}${error ? ` · ${error}` : ''}${line?.audio_state === 'estimated' ? ' · captions only, no audio in this show' : ''}`}
+        </Num>
+
+        {/* The rail is a horizontal scroller with an intrinsic height; inside a
+            flex column it gets squeezed to nothing by the transcript below it.
+            `flexShrink: 0` is what keeps the levels index readable. */}
+        <View style={{ flexShrink: 0 }}>
+          <AnnotationRail annotations={annotations} />
+        </View>
+
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 8 }} showsVerticalScrollIndicator={false}>
+          {transcript.slice(-14).map((s, i) => (
+            <View key={`${s.seq}-${i}`} style={{ gap: 2 }}>
+              <Num size={9.5} weight="medium" c={s.voice === 'kai' ? color.violetLight : color.volt}>
+                {s.voice === 'kai' ? 'KAI' : 'HOST'}
+              </Num>
+              <T size={11.5} c={s.seq === line?.seq ? color.text : color.muted} lh={17}>{s.text}</T>
+            </View>
+          ))}
+        </ScrollView>
+
+        <T size={10.5} c={color.dim} lh={16}>
+          Every level on this chart is a stored annotation with a reason. Anything Kai
+          could not trace to a real object was dropped before this show was written.
+        </T>
+      </View>
+    </View>
+  );
+}
