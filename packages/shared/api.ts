@@ -3971,3 +3971,638 @@ export const PushDrainResponse = z.object({
   plain: z.string(),
 });
 export type PushDrainResponse = z.infer<typeof PushDrainResponse>;
+
+/* ------------------------------------------------------------------ */
+/* Round 6 — the admin backend and the CRM (brief §§3, 6, 7, 8)         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE ADMIN CONTRACT IS THE SAME CONTRACT. Every shape below is a normal
+ * response of this API — same envelope, same `plain` sentences, same enums.
+ * There is no second protocol for staff, because a second protocol is a second
+ * place for a mistake to live.
+ *
+ * WHAT IS NOT IN THIS SECTION, deliberately:
+ *   * a message body. `AdminKaiActivity` carries counts and timestamps and
+ *     nothing else (brief §3). Reading a transcript is `AdminTranscriptRequest`
+ *     — a separate call that demands a reason and writes an audit row.
+ *   * a push handle, a token, a password, a Stripe key.
+ *   * a score that anything in this app computes. `AdminScores` is nine
+ *     nullable numbers ported from the source model, and null renders as "not
+ *     tracked yet" rather than as zero (brief §8).
+ */
+
+export const StaffRole = z.enum(['support', 'admin', 'owner']);
+export type StaffRole = z.infer<typeof StaffRole>;
+
+/** The funnel, exactly as `crm_people.status` constrains it. */
+export const CrmStatus = z.enum([
+  'lead',
+  'invited',
+  'signed_up',
+  'onboarded',
+  'activated',
+  'paying',
+  'churned',
+  'blocked',
+]);
+export type CrmStatus = z.infer<typeof CrmStatus>;
+
+export const CrmIdentityKind = z.enum([
+  'email',
+  'phone',
+  'app_user',
+  'stripe_customer',
+  'kai_user',
+  'os_user',
+  'invite_code',
+]);
+export type CrmIdentityKind = z.infer<typeof CrmIdentityKind>;
+
+export const CrmEventSource = z.enum(['app', 'kai_sms', 'stripe', 'admin', 'import']);
+export type CrmEventSource = z.infer<typeof CrmEventSource>;
+
+/** The three connectors. `app` is real this round; the other two are stubs. */
+export const SyncSourceName = z.enum(['app', 'kai_sms', 'stripe']);
+export type SyncSourceName = z.infer<typeof SyncSourceName>;
+
+/**
+ * A METRIC THAT KNOWS WHETHER IT KNOWS. `value: null` with `tracked: false` is
+ * the shape brief §8 demands — "a metric with no data source renders as 'not
+ * tracked yet', never as zero". The client must not coalesce this to 0; the two
+ * fields exist precisely so it cannot do so by accident, and `plain` already
+ * says the honest sentence for both cases.
+ */
+export const AdminMetric = z.object({
+  key: z.string(),
+  label: z.string(),
+  /** Null ONLY when `tracked` is false. A tracked metric with no rows is 0. */
+  value: z.number().nullable(),
+  tracked: z.boolean(),
+  /** 'count' | 'cents' | 'percent' — how to render `value`, not a colour. */
+  unit: z.enum(['count', 'cents', 'percent']),
+  plain: z.string(),
+});
+export type AdminMetric = z.infer<typeof AdminMetric>;
+
+export const AdminFunnelRow = z.object({
+  status: CrmStatus,
+  position: z.number(),
+  people: z.number(),
+});
+export type AdminFunnelRow = z.infer<typeof AdminFunnelRow>;
+
+export const AdminDailyRow = z.object({
+  day: z.string(),
+  signups: z.number(),
+  leads: z.number(),
+});
+export type AdminDailyRow = z.infer<typeof AdminDailyRow>;
+
+export const AdminSourceMixRow = z.object({
+  source: z.string().nullable(),
+  people: z.number(),
+});
+export type AdminSourceMixRow = z.infer<typeof AdminSourceMixRow>;
+
+export const AdminInviteTotals = z.object({
+  outstanding: z.number(),
+  redeemed: z.number(),
+  revoked: z.number(),
+  expired: z.number(),
+});
+export type AdminInviteTotals = z.infer<typeof AdminInviteTotals>;
+
+/** The last run of one connector, or null when it has never run. */
+export const AdminSyncRun = z.object({
+  id: z.string(),
+  source: SyncSourceName,
+  state: z.enum(['running', 'ok', 'failed']),
+  dry_run: z.boolean(),
+  started_at: z.string(),
+  finished_at: z.string().nullable(),
+  counts: z.object({
+    scanned: z.number(),
+    created: z.number(),
+    resolved: z.number(),
+    conflicted: z.number(),
+    skipped: z.number(),
+  }),
+  error: z.string().nullable(),
+});
+export type AdminSyncRun = z.infer<typeof AdminSyncRun>;
+
+/**
+ * A SOURCE THAT IS SWITCHED OFF IS STILL A SOURCE (brief §5). `configured:
+ * false` plus the exact `reason` is what makes the Sources screen show a
+ * connector that exists and is off, rather than a feature that is missing.
+ */
+export const AdminSourceState = z.object({
+  source: SyncSourceName,
+  configured: z.boolean(),
+  /** Null when configured. The exact sentence when not. */
+  reason: z.string().nullable(),
+  last_run: AdminSyncRun.nullable(),
+  plain: z.string(),
+});
+export type AdminSourceState = z.infer<typeof AdminSourceState>;
+
+export const AdminOverviewResponse = z.object({
+  funnel: z.array(AdminFunnelRow),
+  metrics: z.array(AdminMetric),
+  /** Newest day first, at most 30. */
+  daily: z.array(AdminDailyRow),
+  source_mix: z.array(AdminSourceMixRow),
+  invites: AdminInviteTotals,
+  sources: z.array(AdminSourceState),
+  generated_at: z.string(),
+  plain: z.string(),
+});
+export type AdminOverviewResponse = z.infer<typeof AdminOverviewResponse>;
+
+/* ---- people ------------------------------------------------------- */
+
+export const AdminPersonRow = z.object({
+  id: z.string(),
+  display_name: z.string().nullable(),
+  primary_email: z.string().nullable(),
+  primary_phone_e164: z.string().nullable(),
+  status: CrmStatus,
+  primary_tier: z.string().nullable(),
+  source: z.string().nullable(),
+  tags: z.array(z.string()),
+  first_seen_at: z.string().nullable(),
+  last_active_at: z.string().nullable(),
+  app_user_id: z.string().nullable(),
+  plain: z.string(),
+});
+export type AdminPersonRow = z.infer<typeof AdminPersonRow>;
+
+export const AdminPeopleQuery = z.object({
+  /** Name, email, phone. Never a ticker — see `AdminPeopleResponse.searched`. */
+  q: z.string().max(120).optional(),
+  status: CrmStatus.optional(),
+  tier: z.string().max(60).optional(),
+  source: z.string().max(60).optional(),
+  tag: z.string().max(60).optional(),
+  segment_id: z.string().uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  /** Opaque. Comes back as `next_cursor`; never constructed by the client. */
+  cursor: z.string().max(200).optional(),
+});
+export type AdminPeopleQuery = z.infer<typeof AdminPeopleQuery>;
+
+/**
+ * NEVER AN UNBOUNDED LIST (brief §7 — "cursor paged — never an unbounded list
+ * of 2,507"). `next_cursor` is null on the last page and is the only way to get
+ * the next one; there is no offset parameter to raise.
+ */
+export const AdminPeopleResponse = z.object({
+  people: z.array(AdminPersonRow),
+  next_cursor: z.string().nullable(),
+  /** Matching rows, capped: null means "more than we counted", not "unknown". */
+  total: z.number().nullable(),
+  /** Which fields the `q` actually searched, so the UI never claims more. */
+  searched: z.array(z.string()),
+  plain: z.string(),
+});
+export type AdminPeopleResponse = z.infer<typeof AdminPeopleResponse>;
+
+/**
+ * NINE NUMBERS THIS APP DOES NOT COMPUTE. They are ported so a connector can
+ * carry across what the K.AI side already calculated, and they are null until
+ * one does. `tracked: false` is the honest render.
+ */
+export const AdminScores = z.object({
+  engagement: z.number().nullable(),
+  buy_propensity: z.number().nullable(),
+  churn_risk: z.number().nullable(),
+  upsell_propensity: z.number().nullable(),
+  crosssell_propensity: z.number().nullable(),
+  responsiveness: z.number().nullable(),
+  predicted_ltv_cents: z.number().nullable(),
+  predicted_days_to_churn: z.number().nullable(),
+  updated_at: z.string().nullable(),
+  tracked: z.boolean(),
+  plain: z.string(),
+});
+export type AdminScores = z.infer<typeof AdminScores>;
+
+export const AdminIdentityRow = z.object({
+  id: z.string(),
+  kind: CrmIdentityKind,
+  value: z.string(),
+  source: z.string().nullable(),
+  verified: z.boolean(),
+  created_at: z.string(),
+});
+export type AdminIdentityRow = z.infer<typeof AdminIdentityRow>;
+
+export const AdminTimelineRow = z.object({
+  id: z.string(),
+  type: z.string(),
+  category: z.string().nullable(),
+  source: CrmEventSource,
+  value_cents: z.number().nullable(),
+  occurred_at: z.string(),
+  payload: z.record(z.string(), z.unknown()),
+  plain: z.string(),
+});
+export type AdminTimelineRow = z.infer<typeof AdminTimelineRow>;
+
+export const AdminNoteRow = z.object({
+  id: z.string(),
+  body: z.string(),
+  author_user_id: z.string().nullable(),
+  author_name: z.string().nullable(),
+  created_at: z.string(),
+});
+export type AdminNoteRow = z.infer<typeof AdminNoteRow>;
+
+export const AdminRedemptionRow = z.object({
+  id: z.string(),
+  invite_id: z.string(),
+  code: z.string().nullable(),
+  label: z.string().nullable(),
+  granted: z.record(z.string(), z.unknown()),
+  redeemed_at: z.string(),
+});
+export type AdminRedemptionRow = z.infer<typeof AdminRedemptionRow>;
+
+/**
+ * COUNTS AND TIMESTAMPS. There is no body here and there is not going to be
+ * one — brief §3. A staff member who needs the words asks for them by name,
+ * with a reason, through `POST /admin/people/[id]/transcript`.
+ */
+export const AdminKaiActivity = z.object({
+  conversations: z.number(),
+  messages: z.number(),
+  last_message_at: z.string().nullable(),
+  plain: z.string(),
+});
+export type AdminKaiActivity = z.infer<typeof AdminKaiActivity>;
+
+export const AdminPersonDetail = AdminPersonRow.extend({
+  source_detail: z.record(z.string(), z.unknown()),
+  custom_fields: z.record(z.string(), z.unknown()),
+  inbound_count: z.number(),
+  outbound_count: z.number(),
+  last_inbound_at: z.string().nullable(),
+  last_outbound_at: z.string().nullable(),
+  total_paid_cents: z.number().nullable(),
+  total_refunded_cents: z.number().nullable(),
+  current_mrr_cents: z.number().nullable(),
+  ltv_cents: z.number().nullable(),
+  merged_into: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string().nullable(),
+});
+export type AdminPersonDetail = z.infer<typeof AdminPersonDetail>;
+
+export const AdminPersonResponse = z.object({
+  person: AdminPersonDetail,
+  identities: z.array(AdminIdentityRow),
+  timeline: z.array(AdminTimelineRow),
+  timeline_next_cursor: z.string().nullable(),
+  notes: z.array(AdminNoteRow),
+  redemptions: z.array(AdminRedemptionRow),
+  /** The app's own subscription row. Null for a lead with no account. */
+  subscription: z.object({
+    tier: z.enum(['free', 'premium']),
+    status: z.string(),
+    current_period_end: z.string().nullable(),
+    stripe_customer_id: z.string().nullable(),
+  }).nullable(),
+  /** The flag map the user's tier actually resolves to. */
+  entitlements: z.record(z.string(), z.unknown()),
+  scores: AdminScores,
+  kai: AdminKaiActivity,
+  /** People that were merged INTO this one. */
+  merged_from: z.array(z.object({ id: z.string(), display_name: z.string().nullable() })),
+  /** `merge_conflict` events awaiting a human (brief §5). */
+  merge_conflicts: z.array(AdminTimelineRow),
+  plain: z.string(),
+});
+export type AdminPersonResponse = z.infer<typeof AdminPersonResponse>;
+
+export const AdminCreateNoteRequest = z.object({
+  body: z.string().min(1).max(4000),
+});
+export type AdminCreateNoteRequest = z.infer<typeof AdminCreateNoteRequest>;
+
+export const AdminNoteResponse = z.object({
+  note: AdminNoteRow,
+  plain: z.string(),
+});
+export type AdminNoteResponse = z.infer<typeof AdminNoteResponse>;
+
+export const AdminTagsRequest = z
+  .object({
+    add: z.array(z.string().min(1).max(60)).max(20).optional(),
+    remove: z.array(z.string().min(1).max(60)).max(20).optional(),
+  })
+  .refine((v) => (v.add?.length ?? 0) + (v.remove?.length ?? 0) > 0, {
+    message: 'Say at least one tag to add or remove.',
+  });
+export type AdminTagsRequest = z.infer<typeof AdminTagsRequest>;
+
+export const AdminTagsResponse = z.object({
+  tags: z.array(z.string()),
+  plain: z.string(),
+});
+export type AdminTagsResponse = z.infer<typeof AdminTagsResponse>;
+
+export const AdminMergeRequest = z.object({
+  winner_id: z.string().uuid(),
+  loser_id: z.string().uuid(),
+  reason: z.string().max(500).optional(),
+});
+export type AdminMergeRequest = z.infer<typeof AdminMergeRequest>;
+
+export const AdminMergeResponse = z.object({
+  winner_id: z.string(),
+  loser_id: z.string(),
+  /** Exactly what moved, which is what makes the undo real. */
+  moved: z.object({
+    identities: z.number(),
+    events: z.number(),
+    notes: z.number(),
+    redemptions: z.number(),
+  }),
+  plain: z.string(),
+});
+export type AdminMergeResponse = z.infer<typeof AdminMergeResponse>;
+
+/**
+ * READING SOMEONE'S WORDS IS AN ACT, NOT A VIEW (brief §3). The reason is
+ * required by the schema rather than by a route's `if`, and the response is the
+ * user's own view, unedited.
+ */
+export const AdminTranscriptRequest = z.object({
+  conversation_id: z.string().uuid(),
+  reason: z.string().min(8).max(500),
+});
+export type AdminTranscriptRequest = z.infer<typeof AdminTranscriptRequest>;
+
+export const AdminTranscriptResponse = z.object({
+  conversation: z.object({
+    id: z.string(),
+    title: z.string().nullable(),
+    created_at: z.string(),
+    last_message_at: z.string().nullable(),
+  }),
+  messages: z.array(
+    z.object({
+      seq: z.number(),
+      role: z.enum(['user', 'kai']),
+      content: z.record(z.string(), z.unknown()),
+      created_at: z.string().nullable(),
+    })
+  ),
+  plain: z.string(),
+});
+export type AdminTranscriptResponse = z.infer<typeof AdminTranscriptResponse>;
+
+/* ---- invites ------------------------------------------------------ */
+
+/** Derived, never stored: what the code can do RIGHT NOW. */
+export const AdminInviteState = z.enum(['open', 'revoked', 'expired', 'exhausted']);
+export type AdminInviteState = z.infer<typeof AdminInviteState>;
+
+export const AdminInviteRow = z.object({
+  id: z.string(),
+  code: z.string(),
+  label: z.string().nullable(),
+  tier: z.enum(['free', 'premium']),
+  entitlements: z.record(z.string(), z.unknown()),
+  max_redemptions: z.number().nullable(),
+  redeemed_count: z.number(),
+  expires_at: z.string().nullable(),
+  revoked_at: z.string().nullable(),
+  created_at: z.string(),
+  created_by: z.string().nullable(),
+  state: AdminInviteState,
+  /** `/join/<code>` — a path, not an absolute URL: the host is the client's. */
+  link: z.string(),
+  plain: z.string(),
+});
+export type AdminInviteRow = z.infer<typeof AdminInviteRow>;
+
+export const AdminInvitesQuery = z.object({
+  state: AdminInviteState.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z.string().max(200).optional(),
+});
+export type AdminInvitesQuery = z.infer<typeof AdminInvitesQuery>;
+
+export const AdminInvitesResponse = z.object({
+  invites: z.array(AdminInviteRow),
+  next_cursor: z.string().nullable(),
+  totals: AdminInviteTotals,
+  plain: z.string(),
+});
+export type AdminInvitesResponse = z.infer<typeof AdminInvitesResponse>;
+
+export const AdminCreateInviteRequest = z.object({
+  label: z.string().max(120).optional(),
+  tier: z.enum(['free', 'premium']).default('premium'),
+  /** Free-form. `duration_days` below is folded in here for the SQL to read. */
+  entitlements: z.record(z.string(), z.unknown()).default({}),
+  /** How long the granted tier lasts. Absent = open-ended. */
+  duration_days: z.number().int().min(1).max(3650).optional(),
+  /** Null or absent = uncapped (a public launch link). */
+  max_redemptions: z.number().int().min(1).max(100000).nullable().optional(),
+  expires_in_days: z.number().int().min(1).max(365).optional(),
+  /** A personal invite: the code becomes an identity of this person. */
+  person_id: z.string().uuid().optional(),
+  /** ≥10 glyphs, from the unambiguous alphabet. The default is 12 (~59 bits). */
+  code_length: z.number().int().min(10).max(32).optional(),
+});
+export type AdminCreateInviteRequest = z.infer<typeof AdminCreateInviteRequest>;
+
+export const AdminInviteResponse = z.object({
+  invite: AdminInviteRow,
+  plain: z.string(),
+});
+export type AdminInviteResponse = z.infer<typeof AdminInviteResponse>;
+
+export const AdminRevokeInviteRequest = z.object({
+  reason: z.string().max(500).optional(),
+});
+export type AdminRevokeInviteRequest = z.infer<typeof AdminRevokeInviteRequest>;
+
+/* ---- redeeming (public, brief §6) --------------------------------- */
+
+export const InviteRedeemRequest = z.object({
+  code: z.string().min(1).max(64),
+});
+export type InviteRedeemRequest = z.infer<typeof InviteRedeemRequest>;
+
+/**
+ * Only the SUCCESS shape. A refusal is the app's normal error envelope with a
+ * `message_plain` that names which refusal it was and a
+ * `detail.reason` of `invite_not_found | invite_revoked | invite_expired |
+ * invite_exhausted` — brief §6's "says exactly which, in plain words".
+ */
+export const InviteRedeemResponse = z.object({
+  /** True when the same user had already redeemed this code. Never a refusal. */
+  already_redeemed: z.boolean(),
+  invite_id: z.string(),
+  label: z.string().nullable(),
+  tier: z.enum(['free', 'premium']),
+  granted: z.record(z.string(), z.unknown()),
+  /** The caller's entitlements AFTER the grant, read back, not predicted. */
+  subscription: SubscriptionBlock,
+  entitlements: z.record(z.string(), z.unknown()),
+  plain: z.string(),
+});
+export type InviteRedeemResponse = z.infer<typeof InviteRedeemResponse>;
+
+/* ---- entitlements (staff grant/revoke, reason required) ----------- */
+
+export const AdminEntitlementRequest = z.object({
+  action: z.enum(['grant', 'revoke']),
+  tier: z.enum(['free', 'premium']).default('premium'),
+  duration_days: z.number().int().min(1).max(3650).nullable().optional(),
+  /** REQUIRED by brief §3. There is no default and no empty string. */
+  reason: z.string().min(8).max(500),
+});
+export type AdminEntitlementRequest = z.infer<typeof AdminEntitlementRequest>;
+
+export const AdminEntitlementResponse = z.object({
+  user_id: z.string(),
+  subscription: SubscriptionBlock,
+  entitlements: z.record(z.string(), z.unknown()),
+  plain: z.string(),
+});
+export type AdminEntitlementResponse = z.infer<typeof AdminEntitlementResponse>;
+
+/* ---- audit -------------------------------------------------------- */
+
+export const AdminAuditRow = z.object({
+  id: z.string(),
+  actor_user_id: z.string().nullable(),
+  actor_name: z.string().nullable(),
+  action: z.string(),
+  target_kind: z.string().nullable(),
+  target_id: z.string().nullable(),
+  reason: z.string().nullable(),
+  request_id: z.string().nullable(),
+  ip: z.string().nullable(),
+  created_at: z.string(),
+  plain: z.string(),
+});
+export type AdminAuditRow = z.infer<typeof AdminAuditRow>;
+
+export const AdminAuditQuery = z.object({
+  actor_user_id: z.string().uuid().optional(),
+  action: z.string().max(80).optional(),
+  target_kind: z.string().max(40).optional(),
+  target_id: z.string().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  cursor: z.string().max(200).optional(),
+});
+export type AdminAuditQuery = z.infer<typeof AdminAuditQuery>;
+
+export const AdminAuditResponse = z.object({
+  entries: z.array(AdminAuditRow),
+  next_cursor: z.string().nullable(),
+  plain: z.string(),
+});
+export type AdminAuditResponse = z.infer<typeof AdminAuditResponse>;
+
+/* ---- sources and sync --------------------------------------------- */
+
+export const AdminSyncResponse = z.object({
+  sources: z.array(AdminSourceState),
+  plain: z.string(),
+});
+export type AdminSyncResponse = z.infer<typeof AdminSyncResponse>;
+
+export const AdminSyncRunRequest = z.object({
+  source: SyncSourceName,
+  /** Report what it WOULD change, and write nothing (brief §5). */
+  dry_run: z.boolean().default(false),
+});
+export type AdminSyncRunRequest = z.infer<typeof AdminSyncRunRequest>;
+
+export const AdminSyncRunResponse = z.object({
+  run: AdminSyncRun.nullable(),
+  source: AdminSourceState,
+  plain: z.string(),
+});
+export type AdminSyncRunResponse = z.infer<typeof AdminSyncRunResponse>;
+
+/** The internal driver, same body as the admin button. */
+export const InternalCrmSyncRequest = z.object({
+  source: SyncSourceName.default('app'),
+  dry_run: z.boolean().default(false),
+});
+export type InternalCrmSyncRequest = z.infer<typeof InternalCrmSyncRequest>;
+
+export const InternalCrmSyncResponse = z.object({
+  runs: z.array(AdminSyncRun),
+  plain: z.string(),
+});
+export type InternalCrmSyncResponse = z.infer<typeof InternalCrmSyncResponse>;
+
+/* ---- segments ----------------------------------------------------- */
+
+export const AdminSegmentFilter = z.object({
+  status: CrmStatus.optional(),
+  tier: z.string().max(60).optional(),
+  source: z.string().max(60).optional(),
+  tag: z.string().max(60).optional(),
+  q: z.string().max(120).optional(),
+});
+export type AdminSegmentFilter = z.infer<typeof AdminSegmentFilter>;
+
+export const AdminSegmentRow = z.object({
+  id: z.string(),
+  name: z.string(),
+  filter: AdminSegmentFilter,
+  created_by: z.string().nullable(),
+  created_at: z.string(),
+  /** Keys in the stored filter the API does not know about — ignored, not run. */
+  ignored_keys: z.array(z.string()),
+});
+export type AdminSegmentRow = z.infer<typeof AdminSegmentRow>;
+
+export const AdminSegmentsResponse = z.object({
+  segments: z.array(AdminSegmentRow),
+  plain: z.string(),
+});
+export type AdminSegmentsResponse = z.infer<typeof AdminSegmentsResponse>;
+
+export const AdminCreateSegmentRequest = z.object({
+  name: z.string().min(1).max(80),
+  filter: AdminSegmentFilter,
+});
+export type AdminCreateSegmentRequest = z.infer<typeof AdminCreateSegmentRequest>;
+
+export const AdminSegmentResponse = z.object({
+  segment: AdminSegmentRow,
+  plain: z.string(),
+});
+export type AdminSegmentResponse = z.infer<typeof AdminSegmentResponse>;
+
+/* ---- /me learns about staff --------------------------------------- */
+
+/**
+ * THE UI HIDES ITSELF AS A COURTESY, NOT AS A CONTROL (brief §3). This block is
+ * what the Account tab reads to decide whether to draw the operator's row. It
+ * is re-derived from `staff_members` on every `/me`, so a revoked role is gone
+ * from the next screen the user opens — and it grants nothing: every admin byte
+ * still comes from a `staffed()` route that checks the same table again.
+ */
+export const MeStaffBlock = z.object({
+  is_staff: z.boolean(),
+  role: StaffRole.nullable(),
+  plain: z.string(),
+});
+export type MeStaffBlock = z.infer<typeof MeStaffBlock>;
+
+export const MeRound6Response = MeRound4Response.extend({
+  staff: MeStaffBlock,
+});
+export type MeRound6Response = z.infer<typeof MeRound6Response>;

@@ -13,7 +13,7 @@
  * `prefs` namespaces it so an onboarding rewrite cannot collide with it.
  */
 import type { NextRequest } from 'next/server';
-import { MeRound4Response } from '@shared/api';
+import { MeRound6Response } from '@shared/api';
 import { authed, ok, type Ctx } from '@/lib/http';
 import { serviceClient } from '@/lib/db';
 import { env } from '@/lib/env';
@@ -22,12 +22,13 @@ import { loadEntitlements } from '@/lib/entitlements';
 import { canResetPaper, resetPlain } from '@/lib/paper';
 import { readPrefs } from '@/lib/prefs';
 import { kaiProfile, ruleAdherence } from '@/lib/round4/profile-round4';
+import { loadStaffRole, staffPlain } from '@/lib/admin/staff';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
   const db = serviceClient();
-  const [profile, risk, ent, account, notifPrefs, counts, adherence] = await Promise.all([
+  const [profile, risk, ent, account, notifPrefs, counts, adherence, staffRole] = await Promise.all([
     loadProfile(ctx.user.id),
     loadRiskPolicy(ctx.user.id),
     loadEntitlements(ctx.user.id),
@@ -46,6 +47,7 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
       .maybeSingle(),
     countBlock(ctx.user.id),
     ruleAdherence(ctx.user.id),
+    loadStaffRole(ctx.user.id),
   ]);
 
   const acc = (account.data as Record<string, unknown> | null) ?? null;
@@ -55,7 +57,7 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
   const prefs = readPrefs(profile.onboarding);
 
   return ok(
-    MeRound4Response.parse({
+    MeRound6Response.parse({
       profile: {
         user_id: profile.user_id,
         handle: null,
@@ -116,6 +118,18 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
         onboarding: profile.onboarding,
         experienceLevel: profile.experience,
       }),
+
+      // ---- round 6: the operator's door -------------------------------
+      // A COURTESY, NOT A CONTROL (brief §3). This is what the Account tab
+      // reads to decide whether to draw the admin row, and it grants nothing:
+      // every admin byte still comes from a `staffed()` route that asks
+      // `staff_members` again. Re-derived on every /me, so a revoked role is
+      // gone from the next screen the user opens rather than at token expiry.
+      staff: {
+        is_staff: staffRole !== null,
+        role: staffRole,
+        plain: staffPlain(staffRole),
+      },
     })
   );
 });
