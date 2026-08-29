@@ -209,12 +209,44 @@ with no data source renders as "not tracked yet", never as zero.
 Entry: a row in Account, rendered only when `/me` reports staff. Screens:
 **Overview** (the §8 numbers, one screen, scannable at a glance) ·
 **People** (search + filters + saved segments; row = name, status, tier, last
-seen, source) · **Person** (identity list, unified timeline across app/SMS/Stripe,
+seen, source) · **Person** (identity list, unified timeline across sources,
 subscriptions, entitlements with grant/revoke, notes, tags, merge conflicts) ·
-**Invites** (create, copy link, see redemptions) · **Audit** (what staff did).
-Design register: this is the adult, dense, operator surface — tables and rules,
-not consumer cards. Follows the palette lock and the standing no-generic-card-grid
-rule. Never invent a metric label the API does not return.
+**Invites** (create, copy link, see redemptions) · **Sources** (each source, its
+`configured` state and reason, last run, "Sync now") · **Audit** (what staff did).
+
+### The admin board is the same product, not an admin theme
+
+Owner, 2026-08-29: "make sure the CRM and admin board match app UX/UI." This is
+binding and it means built from the app's OWN primitives, not a lookalike:
+
+- **Tokens only, no literals.** `src/ui/tokens.ts` — `color.bg #0B0B0E`,
+  `surface/surface2/surface3`, `text #FFF7E8`, `muted`, `dim`, radius, spacing.
+  A hex code typed into an admin screen is a bug. The palette grammar still
+  holds and is not decorative here: **volt = the operator's own action**
+  (grant, invite, sync), **violet = Kai intelligence**, **cyan = market data**,
+  green/red/gold = financial semantics ONLY — an admin status pill is not
+  allowed to borrow green/red for "active/blocked" if no money is involved; use
+  text weight and `muted`/`dim` for state instead.
+- **Existing components, extended — never re-implemented.** `Screen`,
+  `StackHeader`, `Panel`/`ObjectCard`, `T`/`Eyebrow`, `Segmented`/`ChipRail`,
+  `Field`, `Button`, `Toggle`, `Sheet`, `Loading`, `Icons`, `FreshnessMark`.
+  If a dense table row does not exist yet, add it to `src/ui/` as a shared
+  primitive so the rest of the app can use it — do not fork a private copy
+  inside `(admin)`.
+- **Same type system**: Space Grotesk for prose, **JetBrains Mono for every
+  number, id, code and timestamp** (round 4 locked the mono face). Same scale,
+  same `Eyebrow` treatment for section labels.
+- **Same standing rule as the rest of the product: no generic card containers.**
+  Boxed rounded-rect grids are banned here too. Compose with typography, rules,
+  and objects that carry identity — the way Alerts and the Trade Portal do.
+- **Same motion and the same empty/loading/error states** (`Loading.tsx`,
+  `NotConnected`). An admin screen that spins differently from the app is a
+  different app.
+- Density is achieved through type scale and rules, NOT through a foreign
+  compact theme. Someone who uses the app should recognise this instantly as
+  the same product with the operator's door opened.
+
+Never invent a metric label the API does not return.
 
 ## 10. Verification
 
