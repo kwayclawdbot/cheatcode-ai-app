@@ -400,6 +400,21 @@ written, only read. `conversations.last_message_at` is trigger-maintained by
 0021, so `touchConversation` is a deliberate NO-OP once the column exists — two
 authors for one value is how a timestamp starts lying.
 
+### Round 5 — push
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/push/subscriptions` | register this device. Goes through 0024's `register_push_subscription`, because registration decides a device's OWNER: re-registering your own revoked device re-activates it, and a handle already registered to someone else is **taken over** by the registrant (a handed-down phone). The response never carries the handle or the keys. |
+| `GET` | `/push/subscriptions` | the account's devices, `push_enabled`, and the `vapid_public_key` a browser must subscribe against. Revoked rows are not offered back. |
+| `DELETE` | `/push/subscriptions/:id` | turn this device off. Revokes rather than deletes, so the ledger keeps its join. A row that is not yours and a row that does not exist give the same 404. |
+| `POST` | `/push/test` | "Send a test". Bypasses the category switches and the daily budget — the user just pressed the button — but **not** quiet hours, because "you are in quiet hours right now" is the answer they actually need. Returns `{sent, suppressed:[{reason, plain}]}`. Rate limited 1/min/user. |
+| `GET` | `/push/health` | configured transports, whether native is in dry-run, queue depth, last drain. Authenticated; not user data. |
+| `POST` | `/internal/push/drain` | not a user route — `x-internal-secret`, 404 when the secret is unset. The Vercel cron. |
+
+`PUT /settings` gains `push_enabled` and `notification_categories` (a MERGED
+patch, not a replacement); `GET /me` and `PUT /settings` both return them under
+`prefs`. See "Push notifications (round 5)" below.
+
 ### Error envelope
 
 Every non-2xx is `{error:{code, message_plain, detail?}}` with an
@@ -633,13 +648,19 @@ Two ways it runs:
   reload and leave three tickers racing into duplicate fills). It is off unless
   `PAPER_TICK_DEV_INTERVAL_S` is a positive number AND `NODE_ENV !== 'production'`,
   and a slow tick never overlaps the next one.
-- **Hosted** — a Vercel cron:
+- **Hosted** — a Vercel cron. Both crons live in `apps/api/vercel.json`:
 
   ```json
-  { "crons": [{ "path": "/api/v1/internal/paper/tick", "schedule": "* * * * *" }] }
+  { "crons": [
+      { "path": "/api/v1/internal/paper/tick",  "schedule": "* * * * *" },
+      { "path": "/api/v1/internal/push/drain",  "schedule": "* * * * *" }
+  ] }
   ```
 
-  with the secret supplied by a header rewrite.
+  with the secret supplied by a header rewrite. Note for whoever deploys this:
+  Vercel's Hobby plan allows two crons at daily granularity only — a per-minute
+  tick needs Pro, and without it neither fills nor pushes happen between
+  requests.
 
 `{"quotes":{"META":573.0}}` overrides the quote for a symbol so a test can cross
 a level on demand. It is **`DEV_TOOLS=1` only** — a synthetic price that could
@@ -687,6 +708,104 @@ and nothing in the whole app can place an order.
 
 ---
 
+## Push notifications (round 5)
+
+`docs/BUILD-BRIEF-round-5-push.md` is binding. The one-line version: **one
+notification, two transports.**
+
+`notify()` is still the single writer. It writes the in-app row exactly as it
+did before, and then enqueues one `notification_deliveries` row per outcome. The
+inbox and the buzz say the same thing because they ARE the same row — the banner
+title and body are `payload.title_plain` and `payload.body_plain`, and there is
+deliberately no second, punchier copy path for notifications anywhere in
+`lib/push/`.
+
+**A push can never fail an order.** `notify()` is called from the middle of a
+fill, a trigger and a debrief. The enqueue is raced against a 2.5s timeout, the
+drain is fire-and-forget, and every throw is caught and logged. The worst a
+broken push service can do to a trade is leave a `queued` row behind.
+
+### The decision is one pure function
+
+`resolveDelivery()` in `src/lib/push/policy.ts` takes `(kind, user, prefs,
+subscriptions, now, sentToday)` and returns who to send to and, for everyone
+else, why not. No database, no network, no clock — `now` is an argument. Every
+bug a notification system has ever had lives in this function, so it is the one
+piece that can be run a thousand times in a millisecond with no stack around it:
+`npm test` (`scripts/push-policy-test.ts`) is a table of 89 cases including the
+quiet-hours window that wraps past midnight, the same instant falling inside one
+user's night and outside another's, and the budget that must never touch a
+trigger the user asked for.
+
+The order is fixed, and the order is the product:
+
+```
+entitlement → push_enabled → category → quiet hours → budget (proactive only) → devices
+```
+
+- **Quiet hours suppress everything, including a triggered alert.** No critical
+  override in v1: our evaluation runs off delayed quotes and the market is shut
+  during typical quiet hours, so waking someone for a trade they cannot take is
+  worse than the inbox. Nothing is replayed when the window ends.
+- **`max_per_day` caps proactive kinds only** — `alert_activated` and `system`,
+  the ones nobody asked for. A trigger on an alert the user created themselves is
+  never capped and never deduped away.
+- **An absent category key means ON.** `notification_prefs.categories` starts
+  `{}`, and `PUT /settings` MERGES a patch into it rather than replacing it.
+
+### A suppressed push is a record, not a drop
+
+Every path out writes a row: `quiet_hours`, `prefs_off`, `category_off`,
+`budget`, `no_subscription`, `keys_missing`, `entitlement`, or the provider's own
+code. A user-level suppression carries `transport:'none'` and no
+`subscription_id`, because no device was ever chosen. That is what lets
+`POST /push/test` answer "you are in quiet hours right now" instead of appearing
+broken, and what answers "why did I not get that" six hours later.
+`notifications.sent_at` is stamped on the FIRST successful send to any transport
+and stays null when everything was suppressed — it answers "did this ever reach
+them", not "did it reach all their devices".
+
+### The two transports are not equally proven
+
+| | web | expo (native) |
+|---|---|---|
+| Encryption | real: AES-128-GCM to the browser's own `{p256dh, auth}` | Expo's |
+| Signature | real: ES256 VAPID JWT | account token |
+| Furthest honest state | `sent` — Web Push has no receipt | `delivered`, via receipts ≥15 min later |
+| Proven end to end | **yes** — see the smoke block | **no** |
+
+**Native push is NOT verified and must not be claimed.** There are no APNs
+(Apple Developer account) or FCM (Firebase) credentials, and no dev build to
+receive a token, so the expo path runs under `PUSH_DRY_RUN=1`: it builds, chunks
+and logs the message, marks the row `sent`, and contacts nothing. It records no
+ticket id, so no receipt is ever asked for. A green smoke run proves the
+plumbing and nothing about a phone.
+
+`PUSH_DRY_RUN` deliberately does **not** apply to web push, which has a real
+endpoint and a real status code. `src/lib/push/web.ts` uses `web-push`'s
+`generateRequestDetails` (the encryption and the VAPID signature) and posts the
+result with `fetch`, because the library's own sender hard-codes `https.request`
+and would make the one provable transport testable only against mocks. The bytes
+on the wire are identical.
+
+`src/app/api/v1/dev/push-sink` (DEV_TOOLS only) is a stand-in push service:
+`web-push` cannot tell it from Mozilla's, and `?status=` reproduces the responses
+that matter. The smoke asserts that 345 bytes of `aes128gcm` ciphertext arrive
+with a VAPID `Authorization` header, and that a `410` revokes the row.
+
+### The sender only runs while something ticks
+
+Same shape as the paper tick. Locally, `PUSH_DRAIN_DEV_INTERVAL_S` starts an
+in-process `setInterval` guarded on `globalThis`. Hosted, it is the Vercel cron
+in `apps/api/vercel.json` hitting `POST /api/v1/internal/push/drain`, which is
+`x-internal-secret`-gated and answers 404 when the secret is unset. **No cron and
+no dev interval means no push** — rows pile up as `queued` and
+`GET /api/v1/push/health` says so.
+
+Retries are 1m, 5m, 25m, then `failed`. `DeviceNotRegistered` (expo) and
+404/410 (web) revoke the token rather than retrying; five consecutive failures
+mark a device `stale`.
+
 ## Layout
 
 ```
@@ -705,7 +824,14 @@ src/lib/
     technicals.ts    EMA / RSI / ATR / swing levels — arithmetic, never generated
   entitlements.ts    tier from `subscriptions` + flags from `entitlement_flags`
   rpc.ts             SCHEMA-2 command RPCs + the documented PostgREST fallbacks
-  notify.ts          in-app notification rows with deep-link routes
+  notify.ts          the single writer: the in-app row, then one delivery row per outcome
+  push/
+    policy.ts        resolveDelivery() — PURE. entitlement → switch → category → quiet hours → budget → devices
+    payload.ts       one payload from the notification row; the banner copy IS the inbox copy
+    expo.ts          expo-server-sdk: chunks, tickets, receipts, DeviceNotRegistered → revoke. PUSH_DRY_RUN
+    web.ts           web-push + VAPID: real encryption, real signature, 404/410 → revoke, 429 → back off
+    send.ts          enqueue + the queue drain: claim, send, backoff, receipts, prune
+    drain-dev.ts     the local setInterval sender (tick-dev.ts for push)
   ratelimit.ts       in-memory per-user buckets (community posting, @Kai)
   spam.ts            community spam heuristics
   rooms.ts           room shaping, membership, message/author/object hydration
@@ -1053,3 +1179,34 @@ And it asserts the refusals, because a guard that never fires is not a guard:
     model, so "recent" is what the user actually touched — positions, working
     orders, then the setups Kai is watching. It is honest about why each row is
     there (`reason_plain`) rather than pretending to be a visit log.
+
+### Known gaps (round 5 — push)
+
+1. **Native push is not verified and must not be claimed.** No APNs key, no FCM
+   project, no dev build. `PUSH_DRY_RUN=1` exercises the path and contacts
+   nothing. Owner blockers: an Apple Developer account ($99/yr) and a Firebase
+   project. Expo Go cannot receive push at all — it was removed in SDK 53.
+2. **The queue claim is a lease, not a lock.** `drainPush` claims rows with an
+   UPDATE that pushes `next_attempt_at` out by 60s, rather than
+   `select … for update skip locked`. Two drains racing inside that window could
+   both claim a row and send it twice. There is one drainer locally
+   (single-instance guard) and one cron hosted, so the window is not currently
+   open; closing it properly needs an RPC, which is the schema lane's to write.
+3. **`enqueuePush` costs five reads per notification** (profile, prefs, alert
+   prefs, subscriptions, entitlements — issued in parallel, plus one count for
+   proactive kinds). They are awaited inside `notify()` so the ledger is written
+   before the response, capped at 2.5s. On a tick that notifies many users this
+   is the dominant cost, and the fix is a per-request cache of
+   `entitlement_flags`, which is global seeded config.
+4. **Web push stops at `sent`.** The protocol has no receipt, so `delivered` is
+   reachable only through Expo. The table in the push section says so; nothing
+   in the UI should imply a web push was seen.
+5. **Quiet hours default to `America/New_York`** when neither the window nor the
+   profile names a timezone. That is a guess — a correct one for a US-market
+   product, a wrong one for a user in London who never set a timezone. The
+   profile's timezone is never collected by onboarding today; collecting it is a
+   client change, not an API one.
+6. **`resolveDelivery` is only reachable through `notify()`.** There is no
+   admin route to ask "what would happen if you notified this user right now",
+   which is the question support will want. The unit table covers the logic; an
+   operator cannot yet run it against a real account.

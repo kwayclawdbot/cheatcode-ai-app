@@ -2225,6 +2225,465 @@ if d["active_alert"]:
     print("  alert row:",d["active_alert"]["plain"],"->",d["active_alert"]["route"])
 print("  community:",d["ticker_community"]["plain"][:90])'
 
+# =============================================================================
+# ROUND 5 — push: one notification, two transports
+# =============================================================================
+# WHAT THIS BLOCK IS ACTUALLY PROVING, and what it deliberately is not.
+#
+#   PROVED, against the real thing: a browser subscription registered through
+#   0024's RPC; `notify()` writing a delivery row; the drain claiming it;
+#   `web-push` encrypting the payload to a real P-256 key pair and signing it
+#   with the real VAPID pair; that ciphertext arriving over HTTP at an endpoint
+#   with a VAPID Authorization header; the row moving queued → sent and
+#   `notifications.sent_at` being stamped; a 410 from an endpoint revoking the
+#   token; and every suppression writing a row with its reason instead of
+#   vanishing.
+#
+#   NOT PROVED, and not provable this round: that a native push reaches a phone.
+#   There are no APNs or FCM credentials and no dev build, so the expo transport
+#   runs under `PUSH_DRY_RUN=1` — it builds and logs the message, marks the row
+#   `sent`, and contacts nothing. A green expo assertion below means the
+#   plumbing is right. It does not mean native push works.
+#
+# The `dev/push-sink` endpoint is a stand-in Web Push service (DEV_TOOLS only).
+# It is what makes the web transport testable without a browser: `web-push`
+# cannot tell it from Mozilla's, and `?status=` reproduces the responses that
+# matter.
+hr; echo "ROUND 5 — push (registry · policy · the real web-push wire · the drain)"; hr
+
+MAIN_TOKEN="$ACCESS_TOKEN"
+PUSH_TMP="$(mktemp -d)"
+
+# A throwaway account per case. `POST /push/test` is rate limited to one a
+# minute per user — deliberately — and the cases below need seven of them, so
+# each gets its own account rather than the script sleeping for seven minutes.
+# It also means no case can be polluted by what another one left behind.
+push_user() { # push_user <label>  ->  ACCESS_TOKEN + PUSH_USER_ID
+  local label="$1" email pw created
+  email="smoke-push-$label+$(date +%s)$RANDOM@cheatcode.test"
+  pw="Smoke-Push-$RANDOM-9x!"
+  created=$(curl -sS -X POST "$SUPABASE_URL/auth/v1/admin/users" \
+    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+    -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$email\",\"password\":\"$pw\",\"email_confirm\":true,\"user_metadata\":{\"display_name\":\"Push $label\"}}")
+  PUSH_USER_ID=$(printf '%s' "$created" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
+  ACCESS_TOKEN=$(curl -sS -X POST "$SUPABASE_URL/auth/v1/token?grant_type=password" \
+    -H "apikey: $SUPABASE_ANON_KEY" -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$email\",\"password\":\"$pw\"}" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
+  if [ -z "$PUSH_USER_ID" ] || [ -z "$ACCESS_TOKEN" ]; then
+    red "FAIL  could not create the push test account '$label'"; FAIL=$((FAIL+1))
+  fi
+}
+
+# A REAL P-256 key pair, made the way a browser makes one. `web-push` encrypts
+# to this and nothing but the private half could decrypt it — which is the
+# point: the sink receives ciphertext it cannot read, exactly as a push service
+# does.
+web_keys() {
+  node -e "const c=require('crypto');const e=c.createECDH('prime256v1');e.generateKeys();
+  console.log(JSON.stringify({p256dh:e.getPublicKey().toString('base64url'),auth:c.randomBytes(16).toString('base64url')}))"
+}
+
+sink_url() { printf '%s/api/v1/dev/push-sink?status=%s&d=%s' "$API_BASE" "$1" "$2"; }
+
+# --- the sender's own board ---------------------------------------------------
+check "push health" GET /api/v1/push/health
+assert_body "web push is really configured and native is honestly labelled dry-run" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["transports"]["web"]["vapid"] is True, "no VAPID key pair — web push cannot send"
+assert d["transports"]["expo"]["dry_run"] is True, "PUSH_DRY_RUN is not set; this run would contact Expo"
+assert "dry-run" in d["transports"]["expo"]["plain"], d["transports"]["expo"]["plain"]
+assert isinstance(d["queue"]["queued"], int)
+print("  web:",d["transports"]["web"]["plain"])
+print("  expo:",d["transports"]["expo"]["plain"])
+print("  queue:",d["queue"],"| dev drainer:",d["dev_drainer"])'
+
+# --- 1. a browser registers, and a real encrypted push reaches an endpoint -----
+push_user web
+WEB_KEYS=$(web_keys)
+WEB_SINK=$(sink_url 201 "ok$RANDOM")
+check "register a browser for push" POST /api/v1/push/subscriptions \
+  "{\"transport\":\"web\",\"handle\":\"$WEB_SINK\",\"keys\":$WEB_KEYS,\"platform\":\"web\",\"device_label\":\"Chrome on macOS\"}"
+WEB_SUB=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["subscription"]["id"])')
+assert_body "the registry answers with the device and never with the token" '
+import json,sys
+d=json.load(sys.stdin)["subscription"]
+assert d["state"] == "active", d
+assert d["transport"] == "web" and d["platform"] == "web", d
+assert "handle" not in d and "keys" not in d, "a push token reached a response body"
+assert d["plain"], d
+print("  ",d["plain"])'
+
+check "the devices on this account" GET /api/v1/push/subscriptions
+assert_body "the list carries the VAPID public key the browser has to subscribe against" '
+import json,sys
+d=json.load(sys.stdin)
+assert len(d["subscriptions"]) == 1, d
+assert d["push_enabled"] is True
+assert d["vapid_public_key"] and len(d["vapid_public_key"]) > 80, d["vapid_public_key"]
+blob=json.dumps(d)
+assert "push-sink" not in blob, "the endpoint URL leaked into the list"
+print("  ",d["plain"],"| vapid:",d["vapid_public_key"][:24]+"…")'
+
+curl -sS -o /dev/null "$API_BASE/api/v1/dev/push-sink?reset=1"
+check "send a test to this browser" POST /api/v1/push/test '{}'
+assert_body "one device, one push, nothing suppressed" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sent"] == 1, d
+assert d["suppressed"] == [], d
+print("  ",d["plain"])'
+
+SINK=$(curl -sS "$API_BASE/api/v1/dev/push-sink")
+printf '%s' "$SINK" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["count"] == 1, "the push never reached an endpoint: %r" % (d,)
+assert d["last_authorized"] is True, "no VAPID Authorization header — the request was not signed"
+assert d["last_encoding"] == "aes128gcm", "the payload was not encrypted with the standard scheme: %r" % (d["last_encoding"],)
+assert d["last_bytes"] > 100, "the body was too small to be an encrypted payload: %r" % (d["last_bytes"],)
+assert d["last_ttl"], "no TTL header"
+print("  a real web push landed:",d["last_bytes"],"bytes of",d["last_encoding"],"| ttl",d["last_ttl"],"| signed:",d["last_authorized"])'
+if [ $? -eq 0 ]; then
+  green "PASS  web-push encrypted, signed and delivered a real payload to an endpoint"; PASS=$((PASS+1))
+else
+  red "FAIL  the web-push payload never arrived, or arrived unencrypted/unsigned"; FAIL=$((FAIL+1))
+fi
+
+sb_get "notification_deliveries?select=transport,state,reason,subscription_id&subscription_id=eq.$WEB_SUB" | python3 -c '
+import json,sys
+rows=json.load(sys.stdin)
+assert len(rows) == 1, rows
+r=rows[0]
+assert r["transport"] == "web", r
+assert r["state"] == "sent", "the ledger did not record the send: %r" % (r,)
+assert r["reason"] is None, r
+print("  ledger:",r["transport"],r["state"])'
+if [ $? -eq 0 ]; then
+  green "PASS  the delivery ledger moved queued -> sent"; PASS=$((PASS+1))
+else
+  red "FAIL  the delivery ledger did not reach sent"; FAIL=$((FAIL+1))
+fi
+
+sb_get "notifications?select=kind,sent_at,payload&user_id=eq.$PUSH_USER_ID&order=created_at.desc&limit=1" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)[0]
+assert r["sent_at"] is not None, "sent_at was never stamped, so nothing can answer did-this-ever-reach-them"
+p=r["payload"]
+assert p["title_plain"] == "Notifications are on.", p
+assert p["body_plain"], p
+assert p["route"], "no deep link on the row the banner was built from"
+print("  inbox row:",p["title_plain"],"|",p["body_plain"],"->",p["route"])
+print("  sent_at:",r["sent_at"])'
+if [ $? -eq 0 ]; then
+  green "PASS  the banner copy IS the inbox copy, and sent_at records the first success"; PASS=$((PASS+1))
+else
+  red "FAIL  the inbox row and the banner disagree, or sent_at was never set"; FAIL=$((FAIL+1))
+fi
+
+expect "one test a minute, and the refusal says so" 429 POST /api/v1/push/test '{}'
+assert_body "the rate limit is plain about what to do" '
+import json,sys
+e=json.load(sys.stdin)["error"]
+assert e["code"] == "RATE_LIMITED", e
+print("  ",e["message_plain"])'
+
+# --- 2. quiet hours suppress, and SAY they suppressed -------------------------
+# The window is built around the current instant in UTC so it is inside it
+# whatever time this runs — including the case where it wraps past midnight,
+# which is the ordinary shape of a quiet-hours window and the one that breaks.
+push_user quiet
+QH=$(python3 -c '
+import datetime
+now=datetime.datetime.now(datetime.timezone.utc)
+s=(now-datetime.timedelta(hours=1)).strftime("%H:%M")
+e=(now+datetime.timedelta(hours=1)).strftime("%H:%M")
+print("{\"start\":\"%s\",\"end\":\"%s\",\"timezone\":\"UTC\"}" % (s,e))')
+echo "  quiet hours for this run: $QH"
+QK=$(web_keys)
+check "a browser on the quiet-hours account" POST /api/v1/push/subscriptions \
+  "{\"transport\":\"web\",\"handle\":\"$(sink_url 201 "quiet$RANDOM")\",\"keys\":$QK,\"platform\":\"web\"}"
+check "set quiet hours around right now" PUT /api/v1/settings "{\"quiet_hours\":$QH}"
+assert_body "settings echoes the window back with the push fields" '
+import json,sys
+p=json.load(sys.stdin)["prefs"]
+assert p["quiet_hours"]["timezone"] == "UTC", p
+assert p["push_enabled"] is True, p
+assert p["notification_categories"] == {}, p
+print("  ",p["quiet_hours"])'
+
+check "a test inside quiet hours" POST /api/v1/push/test '{}'
+assert_body "nothing was sent, and the reason is the one the UI has to print" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sent"] == 0, d
+assert len(d["suppressed"]) == 1, d
+s=d["suppressed"][0]
+assert s["reason"] == "quiet_hours", s
+assert "quiet hours" in s["plain"].lower(), s
+assert "inbox" in s["plain"].lower(), "the copy does not tell them where the thing went"
+print("  ",s["reason"],"|",s["plain"])'
+
+sb_get "notifications?select=id,sent_at&user_id=eq.$PUSH_USER_ID&order=created_at.desc&limit=1" > "$PUSH_TMP/qn.json"
+QN=$(python3 -c "import json;print(json.load(open('$PUSH_TMP/qn.json'))[0]['id'])")
+sb_get "notification_deliveries?select=transport,state,reason&notification_id=eq.$QN" | python3 -c '
+import json,sys
+rows=json.load(sys.stdin)
+assert len(rows) == 1, rows
+r=rows[0]
+assert r["state"] == "suppressed", r
+assert r["reason"] == "quiet_hours", r
+assert r["transport"] == "none", "a user-level suppression must not claim a transport nobody chose: %r" % (r,)
+print("  ledger:",r)'
+if [ $? -eq 0 ]; then
+  green "PASS  a suppressed push is a ROW WITH A REASON, not a drop"; PASS=$((PASS+1))
+else
+  red "FAIL  quiet hours did not write a suppression row"; FAIL=$((FAIL+1))
+fi
+
+python3 -c "
+import json
+r=json.load(open('$PUSH_TMP/qn.json'))[0]
+assert r['sent_at'] is None, 'sent_at was stamped for a push that never went out'
+print('  sent_at stayed null, as it must when every delivery was suppressed')" 
+if [ $? -eq 0 ]; then
+  green "PASS  sent_at stays null when nothing was ever sent"; PASS=$((PASS+1))
+else
+  red "FAIL  sent_at was stamped for a suppressed notification"; FAIL=$((FAIL+1))
+fi
+
+check "the thing is still in the inbox" GET /api/v1/notifications
+assert_body "quiet hours silenced the buzz and kept the row — that is the whole promise" '
+import json,sys
+d=json.load(sys.stdin)
+rows=[r for g in d["groups"].values() for r in g]
+assert any(r["title_plain"] == "Notifications are on." for r in rows), rows
+print("  inbox still has it:",[r["title_plain"] for r in rows][:3])'
+
+# --- 3. the master switch ------------------------------------------------------
+push_user off
+OK1=$(web_keys)
+check "a browser on the switched-off account" POST /api/v1/push/subscriptions \
+  "{\"transport\":\"web\",\"handle\":\"$(sink_url 201 "off$RANDOM")\",\"keys\":$OK1,\"platform\":\"web\"}"
+check "turn push off" PUT /api/v1/settings '{"push_enabled":false}'
+check "and /me agrees" GET /api/v1/me
+assert_body "push_enabled is intent and it survives on the profile, not on the device" '
+import json,sys
+p=json.load(sys.stdin)["prefs"]
+assert p["push_enabled"] is False, p
+print("  push_enabled:",p["push_enabled"])'
+check "a test with push switched off" POST /api/v1/push/test '{}'
+assert_body "the master switch beats a perfectly good device" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sent"] == 0, d
+assert d["suppressed"][0]["reason"] == "prefs_off", d
+print("  ",d["suppressed"][0]["plain"])'
+
+# --- 4. nothing to send to -----------------------------------------------------
+push_user none
+check "a test with no device at all" POST /api/v1/push/test '{}'
+assert_body "no device is a recorded reason, not a silent success" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sent"] == 0, d
+assert d["suppressed"][0]["reason"] == "no_subscription", d
+print("  ",d["suppressed"][0]["plain"])'
+
+# --- 5. §12.1 a web row with no keys is storable and undeliverable -------------
+push_user keys
+check "a browser registers without its encryption keys" POST /api/v1/push/subscriptions \
+  "{\"transport\":\"web\",\"handle\":\"$(sink_url 201 "keys$RANDOM")\",\"platform\":\"web\",\"device_label\":\"Half a browser\"}"
+KEYLESS=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["subscription"]["id"])')
+check "a test to a device that cannot be encrypted to" POST /api/v1/push/test '{}'
+assert_body "it is skipped with a reason rather than throwing inside the drain" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sent"] == 0, d
+assert d["suppressed"][0]["reason"] == "keys_missing", d
+print("  ",d["suppressed"][0]["plain"])'
+sb_get "push_subscriptions?select=state&id=eq.$KEYLESS" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)[0]
+assert r["state"] == "stale", "an undeliverable row was left active: %r" % (r,)
+print("  the row is now:",r["state"])'
+if [ $? -eq 0 ]; then
+  green "PASS  a keyless web row is marked stale, not retried forever"; PASS=$((PASS+1))
+else
+  red "FAIL  a keyless web row was left active"; FAIL=$((FAIL+1))
+fi
+
+# --- 6. a 410 from an endpoint retires the token -------------------------------
+# This is the normal way a browser subscription ENDS — the profile was cleared,
+# the user unsubscribed — so it must be handled as routine, not as an error we
+# keep retrying.
+push_user gone
+GK=$(web_keys)
+check "a browser whose subscription is already gone" POST /api/v1/push/subscriptions \
+  "{\"transport\":\"web\",\"handle\":\"$(sink_url 410 "gone$RANDOM")\",\"keys\":$GK,\"platform\":\"web\"}"
+GONE_SUB=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["subscription"]["id"])')
+check "a test to a dead endpoint" POST /api/v1/push/test '{}'
+assert_body "the user is told plainly rather than shown a success" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sent"] == 0, d
+assert any(s["reason"] == "http_410" for s in d["suppressed"]), d
+print("  ",d["suppressed"][0]["reason"],"|",d["suppressed"][0]["plain"])'
+sb_get "push_subscriptions?select=state&id=eq.$GONE_SUB" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)[0]
+assert r["state"] == "revoked", "a 410 did not retire the token: %r" % (r,)
+print("  the row is now:",r["state"])'
+if [ $? -eq 0 ]; then
+  green "PASS  a 410 from a push endpoint revokes the subscription"; PASS=$((PASS+1))
+else
+  red "FAIL  a 410 left the subscription active"; FAIL=$((FAIL+1))
+fi
+check "and it drops off the account's device list" GET /api/v1/push/subscriptions
+assert_body "a revoked device is not offered back to the user" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["subscriptions"] == [], d
+print("  ",d["plain"])'
+
+# --- 7. the native path, dry --------------------------------------------------
+push_user expo
+EXPO_TOKEN="ExponentPushToken[smoke$RANDOM$RANDOM]"
+check "a phone registers a native token" POST /api/v1/push/subscriptions \
+  "{\"transport\":\"expo\",\"handle\":\"$EXPO_TOKEN\",\"platform\":\"ios\",\"device_label\":\"iPhone\"}"
+EXPO_SUB=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["subscription"]["id"])')
+check "a test to the phone" POST /api/v1/push/test '{}'
+assert_body "the expo path runs end to end under PUSH_DRY_RUN — and contacts nothing" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sent"] == 1, d
+print("  ",d["plain"],"(dry run: nothing was contacted)")'
+sb_get "notification_deliveries?select=transport,state,ticket_id&subscription_id=eq.$EXPO_SUB" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)[0]
+assert r["transport"] == "expo" and r["state"] == "sent", r
+assert r["ticket_id"] is None, "a dry run invented a ticket id, which would then be handed to the receipts API"
+print("  ledger:",r)'
+if [ $? -eq 0 ]; then
+  green "PASS  a dry-run native send records no ticket, so no receipt is ever asked for"; PASS=$((PASS+1))
+else
+  red "FAIL  the dry-run expo path recorded the wrong thing"; FAIL=$((FAIL+1))
+fi
+
+# --- 8. §12.5 a handed-down device is taken over, not refused ------------------
+push_user hand
+check "the same token registers to a different account" POST /api/v1/push/subscriptions \
+  "{\"transport\":\"expo\",\"handle\":\"$EXPO_TOKEN\",\"platform\":\"ios\",\"device_label\":\"iPhone\"}"
+assert_body "the takeover reuses the row rather than failing on the unique index" "
+import json,sys
+d=json.load(sys.stdin)['subscription']
+assert d['id'] == '$EXPO_SUB', 'a second row was created for one token: ' + d['id']
+assert d['state'] == 'active', d
+print('  the token now belongs to the account holding the device')"
+check "and the new owner sees it" GET /api/v1/push/subscriptions
+assert_body "the device is on the new account" '
+import json,sys
+d=json.load(sys.stdin)
+assert len(d["subscriptions"]) == 1, d
+print("  ",d["plain"])'
+
+# --- 9. turning one device off -------------------------------------------------
+ACCESS_TOKEN="$MAIN_TOKEN"
+MAIN_KEYS=$(web_keys)
+check "the main account registers a browser" POST /api/v1/push/subscriptions \
+  "{\"transport\":\"web\",\"handle\":\"$(sink_url 201 "main$RANDOM")\",\"keys\":$MAIN_KEYS,\"platform\":\"web\",\"device_label\":\"Smoke browser\"}"
+MAIN_SUB=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["subscription"]["id"])')
+
+# --- 10. THE WIRE-IN: a real event, not the test route -------------------------
+# `POST /push/test` proves the transport. This proves that `notify()` — the same
+# call an order fill and an alert trigger make — enqueues on its own.
+curl -sS -o /dev/null "$API_BASE/api/v1/dev/push-sink?reset=1"
+check "a watch to arm, so a real notify() fires" POST /api/v1/alerts/draft \
+  '{"natural_language":"Tell me when NVDA breaks above 400","refs":{"symbol":"NVDA","level":400}}'
+PUSH_DRAFT=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["alert"]["id"])')
+check "arm it — this is the notify() an alert makes" POST /api/v1/alerts "{\"draft_id\":\"$PUSH_DRAFT\"}"
+curl -sS -o /dev/null -X POST "$API_BASE/api/v1/internal/push/drain" -H "x-internal-secret: $INTERNAL_SECRET"
+sb_get "notification_deliveries?select=transport,state,reason&subscription_id=eq.$MAIN_SUB&order=created_at.desc&limit=1" | python3 -c '
+import json,sys
+rows=json.load(sys.stdin)
+assert rows, "arming an alert enqueued nothing — notify() is not wired to push"
+r=rows[0]
+assert r["state"] in ("sent","delivered"), r
+print("  a real event pushed:",r)'
+if [ $? -eq 0 ]; then
+  green "PASS  notify() enqueues on a real event, not only from the test route"; PASS=$((PASS+1))
+else
+  red "FAIL  a real notify() did not reach the push queue"; FAIL=$((FAIL+1))
+fi
+
+# --- 11. a category switched off ----------------------------------------------
+check "switch trade alerts off" PUT /api/v1/settings '{"notification_categories":{"trade_alerts":false}}'
+assert_body "the switch is stored as a patch — the untouched categories stay absent, which means on" '
+import json,sys
+p=json.load(sys.stdin)["prefs"]
+assert p["notification_categories"] == {"trade_alerts": False}, p
+print("  ",p["notification_categories"])'
+check "another watch to arm" POST /api/v1/alerts/draft \
+  '{"natural_language":"Tell me when NVDA breaks above 410","refs":{"symbol":"NVDA","level":410}}'
+PUSH_DRAFT2=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["alert"]["id"])')
+check "arm it with the category off" POST /api/v1/alerts "{\"draft_id\":\"$PUSH_DRAFT2\"}"
+sb_get "notifications?select=id&user_id=eq.$USER_ID&kind=eq.alert_activated&order=created_at.desc&limit=1" > "$PUSH_TMP/cn.json"
+CN=$(python3 -c "import json;print(json.load(open('$PUSH_TMP/cn.json'))[0]['id'])")
+sb_get "notification_deliveries?select=state,reason,transport&notification_id=eq.$CN" | python3 -c '
+import json,sys
+rows=json.load(sys.stdin)
+assert len(rows) == 1, rows
+r=rows[0]
+assert r["state"] == "suppressed" and r["reason"] == "category_off", r
+assert r["transport"] == "none", r
+print("  ledger:",r)'
+if [ $? -eq 0 ]; then
+  green "PASS  a category the user switched off suppresses that kind, with its reason"; PASS=$((PASS+1))
+else
+  red "FAIL  a switched-off category still pushed"; FAIL=$((FAIL+1))
+fi
+check "switch trade alerts back on" PUT /api/v1/settings '{"notification_categories":{"trade_alerts":true}}'
+
+# --- 12. turning a device off --------------------------------------------------
+check "turn this device off" DELETE "/api/v1/push/subscriptions/$MAIN_SUB"
+assert_body "the copy says where the notifications still go" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["revoked"] == 1, d
+assert "inbox" in d["plain"].lower(), d["plain"]
+print("  ",d["plain"])'
+sb_get "push_subscriptions?select=state&id=eq.$MAIN_SUB" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)[0]
+assert r["state"] == "revoked", r
+print("  revoked, not deleted — the ledger keeps its join:",r["state"])'
+if [ $? -eq 0 ]; then
+  green "PASS  turning a device off revokes the row rather than deleting the history"; PASS=$((PASS+1))
+else
+  red "FAIL  the device was not revoked"; FAIL=$((FAIL+1))
+fi
+expect "a device that is not yours is not found" 404 DELETE \
+  "/api/v1/push/subscriptions/00000000-0000-0000-0000-000000000000"
+
+# --- 13. the internal drain is not reachable from the app ----------------------
+DRAIN_UNAUTH=$(curl -sS -X POST "$API_BASE/api/v1/internal/push/drain" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" -w '\n%{http_code}')
+if [ "${DRAIN_UNAUTH##*$'\n'}" = "404" ]; then
+  green "PASS  404  POST /api/v1/internal/push/drain without the internal secret"; PASS=$((PASS+1))
+else
+  red "FAIL  the drain answered ${DRAIN_UNAUTH##*$'\n'} to a signed-in user with no internal secret"; FAIL=$((FAIL+1))
+fi
+DRAIN=$(curl -sS -X POST "$API_BASE/api/v1/internal/push/drain" \
+  -H "x-internal-secret: $INTERNAL_SECRET" -H 'Content-Type: application/json' -d '{}' -w '\n%{http_code}')
+if [ "${DRAIN##*$'\n'}" = "200" ]; then
+  green "PASS  200  POST /api/v1/internal/push/drain with the internal secret"; PASS=$((PASS+1))
+  echo "  ${DRAIN%$'\n'*}"
+else
+  red "FAIL  the drain refused the internal secret (${DRAIN##*$'\n'})"; FAIL=$((FAIL+1))
+fi
+
 hr
 echo "passed: $PASS   failed: $FAIL"
 hr

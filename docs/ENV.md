@@ -7,6 +7,39 @@ SUPABASE_URL=                  # local: http://127.0.0.1:54321 (from `supabase s
 SUPABASE_SERVICE_ROLE_KEY=     # from `supabase status`
 SUPABASE_ANON_KEY=
 
+### Round 5 — push (never commit; the key pair below is DEV ONLY)
+
+```
+VAPID_PUBLIC_KEY=…            # generate once: npx web-push generate-vapid-keys
+VAPID_PRIVATE_KEY=…           # free, no account, no third party involved
+VAPID_SUBJECT=mailto:support@cheatcode.com
+PUSH_DRY_RUN=1                # EXPO ONLY: build + log the message, contact nothing
+PUSH_DRAIN_DEV_INTERVAL_S=20  # the local sender; hosted this is the Vercel cron
+EXPO_ACCESS_TOKEN=            # optional; only needed once Expo push is enhanced-security
+```
+
+| Variable | What it does |
+|---|---|
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | the Web Push signing pair. A browser subscribes against the PUBLIC half (served to the client by `GET /api/v1/push/subscriptions` as `vapid_public_key`, and to the mobile web build as `EXPO_PUBLIC_VAPID_PUBLIC_KEY`), and only the private half can sign for it. **Rotating them invalidates every existing browser subscription** — every device has to re-register — so the dev pair and the production pair are different pairs, and neither is ever committed. |
+| `VAPID_SUBJECT` | a `mailto:` or `https:` the push service can contact about us. Defaults to `mailto:support@cheatcode.com`. |
+| `PUSH_DRY_RUN` | `1` = the EXPO transport builds, chunks and logs the message, marks the delivery `sent`, and contacts nothing. This is how the native path is exercised without APNs/FCM credentials — **a green run under it does not mean native push works.** It deliberately does NOT apply to web push, which has a real endpoint and a real status code. |
+| `PUSH_DRAIN_DEV_INTERVAL_S` | seconds between local drains. Off unless positive AND `NODE_ENV !== 'production'`; single-instance guarded on `globalThis` so hot reload cannot start three. |
+| `EXPO_ACCESS_TOKEN` | optional. Only required if Expo push security is raised on the account. |
+| `INTERNAL_SECRET` | already present — also authenticates `POST /api/v1/internal/push/drain`. Unset it and that route answers 404, as if it did not exist. |
+
+`apps/mobile/.env` gains `EXPO_PUBLIC_VAPID_PUBLIC_KEY` (the same public half —
+it is public by design; it is in every subscription the browser creates).
+
+**Hosted, the drain is a cron** — `apps/api/vercel.json`, alongside the paper
+tick. THE SENDER ONLY RUNS WHILE SOMETHING TICKS: no cron and no dev interval
+means rows pile up as `queued`, and `GET /api/v1/push/health` says so.
+
+**Owner blockers, recorded not worked around:** there are no APNs (Apple
+Developer account, $99/yr) or FCM (Firebase project) credentials, so there is no
+native token to send to and Expo Go cannot receive push at all. And web push
+needs a secure origin — desktop `localhost` qualifies, a phone does not until
+the app is hosted.
+
 ## workers/kai-live/.env.local (never commit — LIVE-2)
 
 The show worker reads THIS file first and then `apps/api/.env.local`, without
