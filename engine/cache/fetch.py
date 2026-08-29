@@ -40,8 +40,11 @@ SCHEMA = pa.schema([
 ])
 
 
+SNAPSHOT = config.SNAPSHOT          # rebound by main() when --snapshot is given
+
+
 def snapshot_dir() -> Path:
-    return config.DATA_ROOT / config.SNAPSHOT
+    return config.DATA_ROOT / SNAPSHOT
 
 
 def bars_path(timespan: str, symbol: str, chunk: str) -> Path:
@@ -153,7 +156,7 @@ async def main_async(symbols: list[str], start: str, end: str, force: bool) -> i
         if force or not bars_path("day", sym, "all").exists():
             jobs.append(("day", "day", sym, "all", start, end))
 
-    print(f"cache {config.SNAPSHOT}: {len(jobs)} chunks to fetch "
+    print(f"cache {SNAPSHOT}: {len(jobs)} chunks to fetch "
           f"({len(symbols)} symbols, {start}..{end})", flush=True)
     if not jobs:
         return 0
@@ -192,7 +195,12 @@ def main() -> int:
     ap.add_argument("--start", default=config.CACHE_START)
     ap.add_argument("--end", default=config.CACHE_END)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--snapshot", default=None,
+                    help="write into a different immutable snapshot directory")
     a = ap.parse_args()
+    if a.snapshot:
+        global SNAPSHOT
+        SNAPSHOT = a.snapshot
     syms = [s.strip().upper() for s in a.symbols.split(",") if s.strip()]
     return asyncio.run(main_async(syms, a.start, a.end, a.force))
 

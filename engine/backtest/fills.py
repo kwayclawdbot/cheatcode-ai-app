@@ -46,6 +46,21 @@ def entry_fill(side: Side, entry_type: EntryType, level: float,
     raise ValueError(entry_type)
 
 
+def resolved_target(signal, fill_price: float) -> float:
+    """The target actually working once the position exists.
+
+    Signals that name a price get that price back. Signals that name a multiple
+    of risk (`target_r`) get it measured from the fill, because that is the
+    risk the position is really carrying. Both runners go through here so the
+    two cannot drift apart.
+    """
+    if getattr(signal, "target_r", None) is None:
+        return signal.target_price
+    risk = abs(fill_price - signal.stop_price)
+    return (fill_price + signal.target_r * risk if signal.side == "long"
+            else fill_price - signal.target_r * risk)
+
+
 def exit_on_bar(side: Side, stop: float, target: float,
                 bar_open: float, bar_high: float, bar_low: float,
                 costs: Costs) -> tuple[str, float, bool] | None:

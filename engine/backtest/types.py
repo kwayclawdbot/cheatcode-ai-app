@@ -54,6 +54,18 @@ class Signal:
     expiry_minute: int          # cancel if unfilled at or after this ET minute
     exit_minute: int            # flatten at this ET minute if still open
     meta: dict = field(default_factory=dict)
+    target_r: float | None = None
+    """If set, the target is a multiple of the risk measured FROM THE FILL, and
+    `target_price` is only the decision-time estimate of it.
+
+    ENGINE-4's spec is "take profit at 2R". A decision is made at the close of
+    one bar and filled at the open of the next, so the risk the position
+    actually carries is not the risk the decision was priced on. Booking a
+    target computed off the earlier price would quietly make a 2R model a
+    1.5R-to-2.5R model, trade by trade, in a direction correlated with the gap.
+
+    `None` means "the price in `target_price` is the target", which is every
+    model written before ENGINE-4 and is unchanged by this field existing."""
 
     @property
     def risk_per_share(self) -> float:

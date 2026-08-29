@@ -62,3 +62,53 @@ class MatchedCoinflip(Model):
         return Signal(self.id, view.symbol, day, view.i, last.minute, "short",
                       "market", px, px + risk, px - reward,
                       last.minute + 5, self.flatten_min, {"matched": True})
+
+
+class MatchedCoinflipMulti(Model):
+    """The same control, for a model that can take more than one trade a day.
+
+    `orb_simple_*.v1` allows one trade per DIRECTION per day, so a day's plan is
+    a list rather than a single entry, and the risk distance is paired with a
+    target expressed in R so the control's target is measured from its own fill
+    exactly as the model's is. Everything else — symbols, days, decision
+    minutes, stop distance in price, market entry on the next bar, flat at 15:55
+    — is the model's, and only the direction is flipped.
+    """
+
+    id = "null_coinflip.v1.matched"
+    description = ("control: the model's own days, minutes and stop distances, "
+                   "direction by coin flip")
+
+    def __init__(self, plan: dict[int, list[tuple[int, float]]],
+                 target_r: float = 2.0,
+                 flatten_min: int = 15 * 60 + 55) -> None:
+        # plan: {day -> [(decision_minute, risk_per_share), ...]}
+        self.plan = {int(d): {int(m): float(r) for m, r in v}
+                     for d, v in plan.items()}
+        self.target_r = target_r
+        self.flatten_min = flatten_min
+
+    def params(self) -> dict:
+        return {"seed": SEED, "planned_days": len(self.plan),
+                "planned_entries": sum(len(v) for v in self.plan.values()),
+                "target_r": self.target_r, "flatten_min": self.flatten_min}
+
+    def wants_bar(self, minute: int, day: int) -> bool:
+        p = self.plan.get(day)
+        return p is not None and minute in p
+
+    def evaluate(self, view: BarView, day: int) -> Signal | None:
+        risk = (self.plan.get(day) or {}).get(int(view.last.minute))
+        if risk is None or risk <= 0:
+            return None
+        last = view.last
+        px = float(last.close)
+        minute = int(last.minute)
+        long = bool(_hash(view.symbol, day, minute, "side") % 2)
+        side = "long" if long else "short"
+        stop = px - risk if long else px + risk
+        target = (px + self.target_r * risk if long else px - self.target_r * risk)
+        return Signal(self.id, view.symbol, day, view.i, minute, side,
+                      "market", px, stop, target, minute + 5, self.flatten_min,
+                      {"matched": True, "risk_ps": risk},
+                      target_r=self.target_r)

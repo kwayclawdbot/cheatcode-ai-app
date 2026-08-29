@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from engine.backtest.fills import entry_fill, exit_on_bar, r_multiples, time_exit
+from engine.backtest.fills import (entry_fill, exit_on_bar, r_multiples,
+                                   resolved_target, time_exit)
 from engine.backtest.types import Costs, Rejection, Signal, Trade
 from engine.primitives.session import rth_close_minute
 from engine.series import BarSeries
@@ -27,6 +28,7 @@ class _Open:
     fill_price: float
     entry_idx: int
     entry_minute: int
+    target: float = float("nan")
     mae_price: float = 0.0
     mfe_price: float = 0.0
     ambiguous: bool = False
@@ -69,12 +71,13 @@ def run_symbol(series: BarSeries, model, costs: Costs,
                     fp = entry_fill(pending.side, pending.entry_type,
                                     pending.entry_price, o, h, l, costs)
                     if fp is not None:
-                        pos = _Open(pending, fp, j, minute)
+                        pos = _Open(pending, fp, j, minute,
+                                    resolved_target(pending, fp))
                         pending = None
                         # the entry bar can also resolve the trade
                         _update_excursions(pos, h, l)
                         res = exit_on_bar(pos.signal.side, pos.signal.stop_price,
-                                          pos.signal.target_price, o, h, l, costs)
+                                          pos.target, o, h, l, costs)
                         if res is not None:
                             trades.append(_close(pos, j, minute, res, costs))
                             pos = None
@@ -84,7 +87,7 @@ def run_symbol(series: BarSeries, model, costs: Costs,
             if pos is not None:
                 _update_excursions(pos, h, l)
                 res = exit_on_bar(pos.signal.side, pos.signal.stop_price,
-                                  pos.signal.target_price, o, h, l, costs)
+                                  pos.target, o, h, l, costs)
                 if res is None and minute >= min(pos.signal.exit_minute, close_min - 1):
                     res = ("time", time_exit(pos.signal.side, c, costs), False)
                 if res is not None:
@@ -138,7 +141,7 @@ def _close(pos: _Open, j: int, minute: int, res: tuple[str, float, bool],
         model_id=s.model_id, symbol=s.symbol, day=s.day, side=s.side,
         decision_minute=s.decision_minute, entry_minute=pos.entry_minute,
         exit_minute=minute, signal_entry=s.entry_price, fill_price=pos.fill_price,
-        stop_price=s.stop_price, target_price=s.target_price, exit_price=px,
+        stop_price=s.stop_price, target_price=pos.target, exit_price=px,
         exit_reason=reason, bars_held=j - pos.entry_idx,
         risk_per_share=risk, mae_price=pos.mae_price, mfe_price=pos.mfe_price,
         gross_r=gross_r, net_r=net_r, gross_pct=gross_pct, net_pct=net_pct,

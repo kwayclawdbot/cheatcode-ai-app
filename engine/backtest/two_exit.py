@@ -44,7 +44,7 @@ from __future__ import annotations
 import numpy as np
 
 from engine.backtest.fills import (entry_fill, exit_on_bar_gapped, r_multiples,
-                                   time_exit)
+                                   resolved_target, time_exit)
 from engine.backtest.types import Costs, Rejection, Signal, Trade
 from engine.primitives.session import rth_close_minute
 from engine.primitives.timeframe import RTH_OPEN_MIN
@@ -143,7 +143,8 @@ def run_symbol_two_exits(series: BarSeries, model, costs: Costs,
 def _simulate(rth: _Rth, o, h, l, c, sig: Signal, fill: float, p0: int,
               costs: Costs, sessions: int, label: str) -> Trade:
     """Walk regular-hours bars from the fill until the position ends."""
-    side, stop, target = sig.side, sig.stop_price, sig.target_price
+    side, stop = sig.side, sig.stop_price
+    target = resolved_target(sig, fill)
     last_session = int(rth.session[p0]) + sessions - 1
     mae = mfe = 0.0
     ambiguous = False

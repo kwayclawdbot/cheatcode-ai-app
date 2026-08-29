@@ -163,3 +163,52 @@ def verdict_swing(core: list[GateResult], extra: list[GateResult],
     if v == "PASS" and not all(x.passed for x in extra):
         return "FAIL"
     return v
+
+
+# ---------------------------------------------------------------------------
+# ENGINE-4 addendum. Written before `orb_simple_1h.v1` or `orb_simple_4h.v1`
+# produced a number; see each model's own GATE.md for the reasoning, and the
+# git log for the ordering.
+#
+# ENGINE-4 runs on a DIFFERENT data snapshot (`polygon-deep-v1`, 2012-2026,
+# three index ETFs) and judges ONE symbol at a time, so it needs its own windows
+# and its own sample floor. Every other threshold is carried over from
+# ENGINE-1's bar unchanged, because a model that gets an easier bar than the
+# four that failed before it has not been measured against anything.
+
+DEEP_IN_SAMPLE = ("2012-01-01", "2022-12-31")
+DEEP_OUT_OF_SAMPLE = ("2023-01-01", "2026-08-28")
+
+# Single-symbol floors. SPY has ~2,769 sessions in-sample and ~916 out. A model
+# with no skip rules should trade a large fraction of them; 500 and 150 are
+# roughly 18% and 16%. Set deliberately low so that missing them is a signal
+# about the IMPLEMENTATION rather than a statement about the market.
+MIN_TRADES_IS_DEEP = 500
+MIN_TRADES_OOS_DEEP = 150
+
+
+def evaluate_deep(is_summary, oos_summary, regime_summaries) -> list[GateResult]:
+    """G1-G5 for one symbol on `polygon-deep-v1`. Only G1's numbers differ."""
+    g = evaluate(is_summary, oos_summary, regime_summaries)
+    g[0] = GateResult(
+        "G1", "sample size (this symbol alone)",
+        f"IS>={MIN_TRADES_IS_DEEP}, OOS>={MIN_TRADES_OOS_DEEP}",
+        f"IS={is_summary.n}, OOS={oos_summary.n}",
+        is_summary.n >= MIN_TRADES_IS_DEEP and oos_summary.n >= MIN_TRADES_OOS_DEEP)
+    return g
+
+
+def verdict3_deep(gates: list[GateResult], is_r, oos_r) -> str:
+    """`verdict3`, with ENGINE-4's sample floor. Same three outcomes, same rule."""
+    by_id = {g.id: g for g in gates}
+    if all(g.passed for g in gates):
+        return "PASS"
+    if not by_id["G1"].passed:
+        return INCONCLUSIVE_SAMPLE
+    if not by_id["G2"].passed:
+        is_hi = mean_ci95(is_r)[1]
+        oos_hi = mean_ci95(oos_r)[1]
+        decisive = (is_hi == is_hi and is_hi < MIN_EXPECTANCY_IS) or \
+                   (oos_hi == oos_hi and oos_hi < MIN_EXPECTANCY_OOS)
+        return "FAIL" if decisive else INCONCLUSIVE_POWER
+    return "FAIL"

@@ -19,6 +19,21 @@ SNAPSHOT = "polygon-v1"
 CACHE_START = "2023-09-01"
 CACHE_END = "2026-08-28"
 
+# ENGINE-4 needs a single-symbol sample that is interpretable, and three years
+# of one symbol is not one. `polygon-deep-v1` is a SECOND immutable snapshot —
+# it does not replace or extend `polygon-v1`, and no report may mix them.
+#
+# It starts 2012-01-01 for one concrete reason: the Nasdaq-100 ETF traded as
+# QQQQ from 2004-12 to 2011-03, and Polygon returns nothing for the ticker
+# "QQQ" across that window (verified 2026-08-29: 2008-06-02 -> 0 bars for QQQ,
+# 2 bars for SPY and IWM). Starting after the rename buys a clean, unspliced
+# tape for all three symbols at the cost of the 2004-2011 era, which would have
+# been a different instrument for one of them.
+SNAPSHOT_DEEP = "polygon-deep-v1"
+DEEP_START = "2012-01-01"
+DEEP_END = "2026-08-28"
+DEEP_UNIVERSE = ["SPY", "QQQ", "IWM"]
+
 # --- universe ----------------------------------------------------------------
 # Chosen with hindsight: these are liquid *today*. See the survivorship note in
 # every report. None of them were selected on performance.
