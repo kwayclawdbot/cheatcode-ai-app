@@ -31,7 +31,7 @@ from engine import config as ecfg  # noqa: E402
 from engine.sip import config as scfg  # noqa: E402
 from engine.sip.poly import BASE, get_json  # noqa: E402
 
-CONCURRENCY = 12
+CONCURRENCY = 24
 OUT = scfg.DATA_ROOT / "ticker_types.json"
 
 # Types that are not common stock. ADRC/ADRP are foreign common stock through a

@@ -335,6 +335,36 @@ def write_report(sel, sip, flip, unf, sip_census, unf_census,
       "and in nothing else; the coin flip differs in the direction call and in "
       "nothing else.")
     A("")
+    A("### The two controls, read properly")
+    A("")
+    pf_m = float(np.mean(paired_flip)) if paired_flip else float("nan")
+    lo_f, hi_f = gates.mean_ci95(paired_flip)
+    A(f"**Against the coin flip, paired, gross:** {pf_m:+.4f}R "
+      f"(95%: {lo_f:+.4f} to {hi_f:+.4f}) over {len(paired_flip):,} "
+      "(symbol, day) pairs where both arms traded. This is R3, and it is the "
+      "number that says whether the direction call is worth anything once the "
+      "day has already been chosen.")
+    A("")
+    pu_m = float(np.mean(paired_unf)) if paired_unf else float("nan")
+    lo_u, hi_u = gates.mean_ci95(paired_unf)
+    A(f"**Against the unfiltered control, paired by day, net:** {pu_m:+.4f}R "
+      f"(95%: {lo_u:+.4f} to {hi_u:+.4f}) over {len(paired_unf):,} days both "
+      "arms traded. This is R4, and it is the number the whole lane exists for: "
+      "the paper's claim is that the relative-volume filter does almost all the "
+      "work.")
+    A("")
+    if sip_rep and unf_rep:
+        x = np.array([t.net_r for t in sip_rep], dtype="float64")
+        y = np.array([t.net_r for t in unf_rep], dtype="float64")
+        d = float(x.mean() - y.mean())
+        se = float(np.sqrt(x.var(ddof=1) / len(x) + y.var(ddof=1) / len(y)))
+        A(f"*Diagnostic, not a gate:* the same comparison unpaired at trade level "
+          f"is {d:+.4f}R (95%: {d - 1.96*se:+.4f} to {d + 1.96*se:+.4f}), "
+          f"n={len(x):,} against {len(y):,}. It is reported because the "
+          "day-level pairing in R4 spends power to remove a day effect, and a "
+          "reader should be able to see both. The gate is the paired one, "
+          "because that is what was written down.")
+        A("")
     A("## The portfolio, which is what the published number is")
     A("")
     A("1% of equity risked a position, gross exposure capped at 4x, all of a day's "

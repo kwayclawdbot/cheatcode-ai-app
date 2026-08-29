@@ -34,7 +34,7 @@ from engine import config as ecfg  # noqa: E402
 from engine.sip import config as scfg  # noqa: E402
 from engine.sip.poly import BASE, paginate  # noqa: E402
 
-CONCURRENCY = 16
+CONCURRENCY = 48
 KEEP_FROM_MINUTE = 9 * 60 + 30           # 09:30
 KEEP_TO_MINUTE = 10 * 60 + 30            # 10:30, exclusive
 ET = "America/New_York"
