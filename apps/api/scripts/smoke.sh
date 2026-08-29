@@ -107,6 +107,15 @@ expect() {
   fi
 }
 
+assert_body() {
+  local name="$1" code="$2"
+  if printf '%s' "$BODY" | python3 -c "$code"; then
+    green "PASS  $name"; PASS=$((PASS+1))
+  else
+    red   "FAIL  $name"; FAIL=$((FAIL+1))
+  fi
+}
+
 hr; echo "API base:      $API_BASE"; echo "Supabase:      $SUPABASE_URL"; hr
 
 # --- 0. health (unauthenticated) --------------------------------------------
@@ -287,13 +296,41 @@ rm -f "$SSE_OUT"
 hr; echo "ROUND 2 — market data"; hr
 
 check "market session" GET /api/v1/market/session
-check "market snapshot (real Polygon closes)" GET "/api/v1/market/snapshot?symbols=META,NVDA,AMD"
+check "market snapshot (real Polygon prices)" GET "/api/v1/market/snapshot?symbols=META,NVDA,AMD"
 printf '%s' "$BODY" | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
 print("  degraded",d["degraded"],d.get("degraded_reason"))
 for q in d["quotes"]:
     print("   ",q["symbol"],"$%s"%q["price"],"prev $%s"%q["prev_close"],"chg",q["change_pct"],"|",q["freshness"],"/",q.get("delay_reason"),"|",q["label_plain"])'
+
+# FRESHNESS IS MEASURED, NOT DECLARED.
+#
+# Until 2026-08-29 every quote this API produced was `delayed` / `entitlement`
+# because a constant in lib/market/polygon.ts said so. The plan was upgraded and
+# the constant became a false statement about market data shown to users. A
+# check that only asserts the field is one of three strings would have passed
+# throughout — so this one asserts the label TRACKS THE SESSION, which no
+# hard-coded value can do.
+assert_body "freshness comes from the age of the data, and the reason tracks the session" '
+import json,sys
+d=json.load(sys.stdin)
+sess=d["market"]["status"]
+for q in d["quotes"]:
+    assert q["source_ts"], ("a quote with no measured timestamp cannot be labelled at all",q)
+    assert q["freshness"] in ("live","delayed","stale"), q
+    assert not (q["freshness"] == "live" and q["delay_reason"]), ("live data cannot carry a delay reason",q)
+    if sess in ("closed","pre","after"):
+        # Nothing has traded since the last print, so it is late by ZERO market
+        # minutes. Not stale (the Saturday bug), and not a fixed entitlement
+        # label either (the constant this replaced).
+        assert q["freshness"] == "delayed" and q["delay_reason"] == "market_closed", \
+            ("with the market shut the last print is delayed/market_closed",q)
+        assert "Market closed" in q["label_plain"], q["label_plain"]
+    else:
+        assert q["freshness"] != "stale", ("a liquid name during regular hours must not read stale",q)
+        assert q["delay_reason"] != "market_closed", ("the market is open; market_closed is not a reason",q)
+print("  session %s | %s"%(sess,[(q["symbol"],q["freshness"],q["delay_reason"]) for q in d["quotes"]]))'
 
 check "market candles 1d" GET "/api/v1/market/candles?symbol=META&tf=1d"
 printf '%s' "$BODY" | python3 -c '
@@ -309,13 +346,37 @@ import json,sys
 d=json.load(sys.stdin)
 print("  %d bars from %s"%(len(d["candles"]),d["source"]))'
 
+# THE REQUEST BUDGET, MEASURED THROUGH THE API.
+#
+# The old plan allowed five requests a rolling minute and the client enforced it
+# in front of Polygon, so a cold cache asking for six resolutions in a row
+# legitimately spent the budget and a show run before a smoke run starved it for
+# about ninety seconds. All six resolutions back to back, no sleeps, no retries,
+# is the proof that the famine is over.
+BURST_OK=1
+for TF in 1m 5m 15m 1h 4h 1d; do
+  BODY=$(curl -sS "$API_BASE/api/v1/market/candles?symbol=NVDA&tf=$TF" -H "Authorization: Bearer $ACCESS_TOKEN")
+  if ! printf '%s' "$BODY" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["candles"], "no bars"
+assert not d["degraded"], d.get("degraded_reason")
+print("   %-3s %4d bars from %-7s | %s / %s"%(d["timeframe"],len(d["candles"]),d["source"],d["freshness"],d["delay_reason"]))'; then
+    BURST_OK=0
+  fi
+done
+if [ "$BURST_OK" = "1" ]; then
+  green "PASS  six resolutions back to back, no sleeps — the request budget no longer starves the chart"; PASS=$((PASS+1))
+else
+  red   "FAIL  a burst of six candle requests was refused or degraded"; FAIL=$((FAIL+1))
+fi
+
 # The portal's rail offers 1m/5m/15m/1h/4h/D. Four of those used to answer 400
 # and the client quietly redrew a coarser bar labelled "not exact", so the two
 # that carry the most weight are asserted to come back with real bars.
 #
-# The retry is not a fudge: the Polygon plan allows 5 requests a rolling minute,
-# and a cold cache asking for six resolutions in a row will legitimately spend
-# the budget. The bucket refills; the assertion is still "bars, or fail".
+# The retry loop is kept as a courtesy to a cold cache and a slow network; on
+# the current plan it should never take a second try.
 candles_with_bars() { # candles_with_bars <tf>
   local tf="$1" tries=0
   while [ "$tries" -lt 4 ]; do
@@ -331,7 +392,7 @@ print("  %s: %d bars from %s | %s"%(d["timeframe"],len(c),d["source"],d["freshne
       return 0
     fi
     tries=$((tries+1))
-    sleep 15
+    sleep 5
   done
   printf '%s' "$BODY" | head -c 300; echo
   return 1
@@ -943,14 +1004,6 @@ print("  watching:",[(w["symbol"],w["quote"]["price"]) for w in d["watching"]])'
 hr; echo "ROUND 3 — V5 payloads (Home priority · workspace · Alerts · Trade)"; hr
 
 # assert_body <name> <python-on-$BODY>
-assert_body() {
-  local name="$1" code="$2"
-  if printf '%s' "$BODY" | python3 -c "$code"; then
-    green "PASS  $name"; PASS=$((PASS+1))
-  else
-    red   "FAIL  $name"; FAIL=$((FAIL+1))
-  fi
-}
 
 # Direct-to-Postgres helpers. Used ONLY to arrange a test condition (a spent
 # daily cap, an account big enough to buy one share of a $500 stock inside a
