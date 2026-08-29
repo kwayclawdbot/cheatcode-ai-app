@@ -3721,3 +3721,41 @@ export const PaperTickRound4Response = PaperTickResponse.extend({
   circles_closed: z.number(),
 });
 export type PaperTickRound4Response = z.infer<typeof PaperTickRound4Response>;
+
+/* ------------------------------------------------------------------ */
+/* GET /trade/default — which chart the Trade tab opens on              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Trade is a working chart, not a search prompt (spec 10 §7). The tab therefore
+ * has to know a symbol BEFORE the user has picked one, and it has to know it
+ * fast enough that nobody watches a placeholder.
+ *
+ * This answer is DATABASE ONLY — no quote, no snapshot, no scan. It names the
+ * symbol and says, in one plain sentence, why that one. The order is the order
+ * of the user's own attention:
+ *
+ *   alert      an alert of theirs is on the Active tab — that is the thing that
+ *              needs a decision, so the portal opens with its context restored.
+ *   position   something is open. A position with no exit level comes first,
+ *              because that is the one with an unanswered question on it.
+ *   watchlist  the first name they put on the list themselves.
+ *   recent     the last symbol they actually worked (an order they placed).
+ *   fallback   SPY. Not "nothing" — the market itself.
+ */
+export const TradeDefaultReason = z.enum(['alert', 'position', 'watchlist', 'recent', 'fallback']);
+export type TradeDefaultReason = z.infer<typeof TradeDefaultReason>;
+
+/** The symbol Trade opens on when the user has nothing of their own yet. */
+export const TRADE_DEFAULT_FALLBACK_SYMBOL = 'SPY';
+
+export const TradeDefaultResponse = z.object({
+  symbol: z.string().min(1).max(12),
+  reason: TradeDefaultReason,
+  /** Set only when `reason` is 'alert': the portal restores that alert. */
+  alert_id: z.string().nullable(),
+  /** Which context panel the portal should open on. */
+  ctx: z.enum(['alert', 'kai']),
+  label_plain: z.string(),
+});
+export type TradeDefaultResponse = z.infer<typeof TradeDefaultResponse>;

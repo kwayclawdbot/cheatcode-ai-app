@@ -136,6 +136,27 @@ ACCESS_TOKEN=$(printf '%s' "$TOKENS" | python3 -c 'import json,sys; print(json.l
 if [ -z "$ACCESS_TOKEN" ]; then red "FAIL  could not sign in"; echo "$TOKENS" | head -c 400; exit 1; fi
 green "PASS  signed in"; PASS=$((PASS+1))
 
+# --- 1b. Trade opens on a CHART, never on a search prompt ---------------------
+# Owner feedback on round 4: "the trade page defaults to a search request vs
+# opening the trading terminal". The Trade tab no longer waits for a landing
+# payload and then offers a "Find a symbol" card — it asks this endpoint which
+# chart it is opening. This user was created four lines ago and owns nothing at
+# all, which is exactly the case that used to produce the search prompt.
+check "trade default — a brand-new account" GET /api/v1/trade/default
+if printf '%s' "$BODY" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["symbol"] == "SPY", d
+assert d["reason"] == "fallback", d
+assert d["alert_id"] is None, d
+assert d["ctx"] == "kai", d
+assert d["label_plain"], d
+print("  ",d["symbol"],"|",d["reason"],"|",d["label_plain"])'; then
+  green "PASS  an empty account opens Trade on SPY, not on a search prompt"; PASS=$((PASS+1))
+else
+  red   "FAIL  an empty account did not open Trade on SPY"; FAIL=$((FAIL+1))
+fi
+
 # --- 2. 401 envelope ----------------------------------------------------------
 UNAUTH=$(curl -sS "$API_BASE/api/v1/home" -w '\n%{http_code}')
 if [ "${UNAUTH##*$'\n'}" = "401" ]; then
@@ -438,21 +459,40 @@ d=json.load(sys.stdin)
 for a in d["watching"]: print("   ",a["status"],"|",a.get("monitoring"),"|",a["summary_plain"][:70])'
 
 # The free tier allows 5 active alerts. Fill it, then prove the 6th is refused.
+#
+# The levels are deliberately unreachable. These alerts exist to fill an
+# entitlement, and when their level sat a couple of dollars over NVDA's last
+# print the dev ticker fired them mid-run — which quietly turned Home's priority
+# into "a watch of yours hit" and made the ROUND 3 home assertion depend on
+# where NVDA happened to close that day.
+FILLERS=""
 for i in 1 2 3 4 5 6; do
   DRAFT=$(curl -sS -X POST "$API_BASE/api/v1/alerts/draft" \
     -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
-    -d "{\"natural_language\":\"Watch NVDA above $((220+i))\",\"refs\":{\"symbol\":\"NVDA\",\"level\":$((220+i))}}")
+    -d "{\"natural_language\":\"Watch NVDA above $((9000+i))\",\"refs\":{\"symbol\":\"NVDA\",\"level\":$((9000+i))}}")
   DID=$(printf '%s' "$DRAFT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["alert"]["id"])' 2>/dev/null)
   LAST_DRAFT="$DID"
   CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$API_BASE/api/v1/alerts" \
     -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
     -d "{\"draft_id\":\"$DID\"}")
+  [ "$CODE" = "402" ] || FILLERS="$FILLERS $DID"
 done
 if [ "$CODE" = "402" ]; then
   green "PASS  402  POST /api/v1/alerts — free tier alert limit enforced"; PASS=$((PASS+1))
 else
   red "FAIL  expected 402 once the free alert limit is full, got $CODE"; FAIL=$((FAIL+1))
 fi
+
+# Hand the slots back. The fillers have made their point, and a run that leaves
+# the entitlement full cannot arm any of the watches the later sections need.
+# (This used to happen by accident: the fillers sat a dollar over NVDA's last
+# print, the dev ticker fired them, and a triggered watch no longer counts
+# against the cap. That also made Home's priority depend on where NVDA closed.)
+for DID in $FILLERS; do
+  curl -sS -o /dev/null -X POST "$API_BASE/api/v1/alerts/$DID/actions" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
+    -d '{"action":"cancel"}'
+done
 
 check "alert edit becomes a new draft" POST "/api/v1/alerts/$ALERT_ID/actions" \
   '{"action":"edit","natural_language":"Watch META above 610 instead"}'
@@ -2083,6 +2123,30 @@ import json,sys
 d=json.load(sys.stdin)
 assert all(c['id'] != '$R4_CIRCLE' for c in d['circles']), 'an expired circle is still being offered'
 print('  open circles now:', [c['name'] for c in d['circles']])"
+
+# --- what Trade opens on once the user has an alert that needs them ------------
+# The same endpoint, the same user, after a watch of theirs really triggered.
+# An Active alert outranks positions, watchlist and recents, and it carries its
+# own id and context so the portal restores the alert rather than opening a bare
+# chart on the same ticker. AMD triggered earlier in this run, so this also
+# proves "newest first" rather than "first row that matched".
+check "a META watch to trigger" POST /api/v1/alerts/draft \
+  '{"natural_language":"Tell me when META breaks above 100","refs":{"symbol":"META","level":100}}'
+TD_ALERT=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["alert"]["id"])')
+check "arm the META watch" POST /api/v1/alerts "{\"draft_id\":\"$TD_ALERT\"}"
+curl -sS -o /dev/null -X POST "$API_BASE/api/v1/internal/paper/tick" \
+  -H "x-internal-secret: $INTERNAL_SECRET" -H 'Content-Type: application/json' \
+  -d '{"quotes":{"META":101}}'
+
+check "trade default — after an alert triggered" GET /api/v1/trade/default
+assert_body "Trade opens on the alert that needs a decision, with its context" "
+import json,sys
+d=json.load(sys.stdin)
+assert d['symbol'] == 'META', d
+assert d['reason'] == 'alert', d
+assert d['alert_id'] == '$TD_ALERT', d
+assert d['ctx'] == 'alert', d
+print('  ',d['symbol'],'|',d['reason'],'|',d['alert_id'][:8],'|',d['label_plain'])"
 
 # --- the ticker research page --------------------------------------------------
 check "ticker page" GET "/api/v1/symbols/META"

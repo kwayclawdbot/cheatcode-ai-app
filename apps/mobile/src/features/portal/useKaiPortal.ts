@@ -22,6 +22,7 @@ import type {
   Annotation, ChartCommand, ChartCommandName, PortalTimeframe, TradePortal,
 } from './types';
 import { KIND_LABEL } from './types';
+import { subscribeAsk } from './ask-bus';
 
 export type PortalTurn =
   | { kind: 'user'; id: string; text: string }
@@ -241,6 +242,13 @@ export function useKaiPortal(opts: {
       finish();
     }
   }, [mode, streaming, symbol, alertId, patch, narrate]);
+
+  // A question typed into the top-bar search that matched no symbol arrives
+  // here (see ask-bus). It is an ordinary turn — Kai answers it about the chart
+  // the user is already on, rather than the search dead-ending on "no match".
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  useEffect(() => subscribeAsk((q) => { void sendRef.current(q); }), []);
 
   return { turns, send, streaming, narrate };
 }

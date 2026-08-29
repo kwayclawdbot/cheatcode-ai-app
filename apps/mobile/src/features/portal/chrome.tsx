@@ -2,15 +2,17 @@
  * Portal chrome — top bar, timeframe rail, context switcher, annotation
  * inspector and the ticker switcher sheet. Asset-workspace.html is pixel truth.
  */
-import React, { useEffect, useState } from 'react';
-import { Pressable, TextInput, View, ScrollView } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, TextInput, View, ScrollView } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 import { T, Num } from '../../ui/Text';
 import { Sheet } from '../../ui/Sheet';
+import { KaiOrb } from '../../ui/KaiOrb';
 import { Button } from '../../ui/Button';
 import { FreshnessMark } from '../../ui/FreshnessMark';
 import { Search } from '../../ui/Icons';
-import { alpha, color, radius } from '../../ui/tokens';
+import { alpha, color, gradient, gradientAngle, radius } from '../../ui/tokens';
 import { family } from '../../ui/fonts';
 import { PaperChip } from '../trade/components';
 import { api } from '../../lib/api';
@@ -18,6 +20,7 @@ import type { Quote, SearchResult } from '../../lib/types';
 import { kindColor } from '../chart/semantics';
 import type { Annotation, PortalContext, PortalTimeframe } from './types';
 import { KIND_LABEL, PROVENANCE_LABEL } from './types';
+import { publishAsk } from './ask-bus';
 
 const Chevron = ({ size = 11, c = color.muted }: { size?: number; c?: string }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={2.5}>
@@ -46,7 +49,7 @@ const Panels = ({ size = 16, c = color.muted }: { size?: number; c?: string }) =
 /* ------------------------------------------------------------------ */
 
 export function PortalTopBar({
-  symbol, name, quote, marketState, paper, onBack, onSwitchTicker, onOpenDrawers, volumeLine,
+  symbol, name, quote, marketState, paper, onBack, onSwitchTicker, onOpenDrawers, onSearch, volumeLine,
 }: {
   symbol: string;
   name: string | null;
@@ -56,6 +59,8 @@ export function PortalTopBar({
   onBack: () => void;
   onSwitchTicker: () => void;
   onOpenDrawers: () => void;
+  /** Defaults to the ticker switcher, which is the same sheet, opened focused. */
+  onSearch?: () => void;
   volumeLine?: string | null;
 }) {
   const up = (quote?.change_pct ?? 0) >= 0;
@@ -106,10 +111,108 @@ export function PortalTopBar({
         <FreshnessMark freshness={quote?.freshness ?? 'unknown'} delayReason={quote?.delay_reason} size={10} />
       </View>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingBottom: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingBottom: 6 }}>
         <Num size={10.5} weight="regular" c={color.dim}>
           {[volumeLine, marketState].filter(Boolean).join(' · ') || (name ?? '')}
         </Num>
+      </View>
+
+      <PortalSearchField onPress={onSearch ?? onSwitchTicker} />
+    </View>
+  );
+}
+
+/**
+ * The search field in the top bar (spec 10 §7: "Top bar — ticker switcher,
+ * current price, market state, paper/live account, SEARCH and drawers").
+ *
+ * It is a field, not an icon: the round-3 Trade landing's search moved into a
+ * drawer when Trade became a chart, and an affordance the user has to go
+ * looking for is the reason Trade read as a dead end. Same composer pill, same
+ * magnifier, same placeholder grammar as that search — one row shorter, and
+ * BELOW the price so the chart is still the dominant object on the screen.
+ *
+ * Tapping it opens the ticker switcher with its input focused. There is one
+ * search surface in the portal, not two that disagree.
+ */
+function PortalSearchField({ onPress }: { onPress: () => void }) {
+  return (
+    <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+      <Pressable
+        testID="portal-search"
+        accessibilityRole="search"
+        accessibilityLabel="Search a symbol, a company, or ask Kai"
+        onPress={onPress}
+        hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
+      >
+        <LinearGradient
+          colors={gradient.composer as unknown as readonly [string, string, ...string[]]}
+          start={gradientAngle.start}
+          end={gradientAngle.end}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 9, height: 36, paddingHorizontal: 13,
+            borderRadius: radius.pill, borderWidth: 0.5, borderColor: alpha.ivory20,
+          }}
+        >
+          <Search size={14} color={color.muted} />
+          <T size={12.5} c={color.dim} numberOfLines={1} style={{ flex: 1 }}>
+            Search symbol, company, or ask Kai
+          </T>
+        </LinearGradient>
+      </Pressable>
+    </View>
+  );
+}
+
+/**
+ * The chrome, before there is anything to put in it.
+ *
+ * The Trade tab resolves which chart it is opening in well under a second, and
+ * it shows THIS while it does — the same bars in the same places, empty. What
+ * it must never show is a card asking the user to pick a symbol, which is what
+ * a "Find a symbol" screen is however briefly it appears.
+ */
+export function PortalChromeSkeleton({ label }: { label?: string }) {
+  const bar = (w: number | string, h: number) => (
+    <View style={{ width: w as number, height: h, borderRadius: radius.sm, backgroundColor: alpha.ivory08 }} />
+  );
+  return (
+    <View testID="portal-skeleton">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8 }}>
+        <Back />
+        {bar(64, 16)}
+        <View style={{ flex: 1 }} />
+        {bar(46, 18)}
+      </View>
+      <View style={{ paddingHorizontal: 16, paddingBottom: 6, gap: 7 }}>
+        {bar(128, 26)}
+        {bar(150, 10)}
+      </View>
+      <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+        <View
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 9, height: 36, paddingHorizontal: 13,
+            borderRadius: radius.pill, borderWidth: 0.5, borderColor: alpha.ivory20, backgroundColor: alpha.ivory06,
+          }}
+        >
+          <Search size={14} color={color.muted} />
+          <T size={12.5} c={color.dim}>Search symbol, company, or ask Kai</T>
+        </View>
+      </View>
+      <View style={{ paddingHorizontal: 16, gap: 11 }}>
+        <View
+          style={{
+            height: 196, borderRadius: radius.lg, borderWidth: 0.5,
+            borderColor: alpha.ivory08, backgroundColor: alpha.ivory04 ?? alpha.ivory06,
+            alignItems: 'center', justifyContent: 'center', gap: 10,
+          }}
+        >
+          <ActivityIndicator size="small" color={color.muted} />
+          <T size={11.5} c={color.dim} testID="portal-skeleton-label">{label ?? 'Opening your chart…'}</T>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 24 }}>
+          {bar(28, 13)}{bar(34, 13)}{bar(30, 13)}{bar(66, 13)}
+        </View>
       </View>
     </View>
   );
@@ -297,19 +400,27 @@ export function AnnotationSheet({
 /* ------------------------------------------------------------------ */
 
 export function TickerSwitcherSheet({
-  visible, onClose, onPick, watchlist, recent,
+  visible, onClose, onPick, watchlist, recent, onAskKai,
 }: {
   visible: boolean;
   onClose: () => void;
   onPick: (symbol: string) => void;
   watchlist: { symbol: string; name: string | null }[];
   recent: { symbol: string; name: string | null }[];
+  /** Defaults to the ask bus, which the portal's Kai thread is listening on. */
+  onAskKai?: (question: string) => void;
 }) {
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<SearchResult[]>([]);
+  const input = useRef<TextInput | null>(null);
 
   useEffect(() => {
-    if (!visible) { setQ(''); setHits([]); }
+    if (!visible) { setQ(''); setHits([]); return; }
+    // The sheet IS the search field: it opens focused with the keyboard up, so
+    // tapping search in the top bar costs one tap, not two. The frame of delay
+    // is the modal's own mount — focusing before it is on screen does nothing.
+    const t = setTimeout(() => input.current?.focus(), 60);
+    return () => clearTimeout(t);
   }, [visible]);
 
   useEffect(() => {
@@ -331,6 +442,18 @@ export function TickerSwitcherSheet({
 
   const rows = [...local, ...remote.map((r) => ({ symbol: r.symbol, name: r.name }))];
 
+  const term = q.trim();
+  const searching = term.length > 0 && !hits.length && api.available();
+  // A query that resolves to no instrument is not an error — it is a question.
+  // `/trade/search` already answers with one; this is the same reading, offline.
+  const question = hits.find((h) => h.kind === 'kai_question');
+  const ask = () => {
+    if (!term) return;
+    const asked = question?.kind === 'kai_question' && question.text ? question.text : `What should I know about ${term}?`;
+    onClose();
+    (onAskKai ?? publishAsk)(asked);
+  };
+
   return (
     <Sheet visible={visible} onClose={onClose} title="Open a symbol" testID="ticker-switcher-sheet">
       <View
@@ -341,15 +464,24 @@ export function TickerSwitcherSheet({
       >
         <Search size={15} color={color.muted} />
         <TextInput
+          ref={input}
           testID="ticker-search-input"
-          accessibilityLabel="Search symbols"
+          accessibilityLabel="Search a symbol, a company, or ask Kai"
           value={q}
           onChangeText={setQ}
           autoCapitalize="characters"
-          placeholder="Symbol or company"
+          autoCorrect={false}
+          returnKeyType="go"
+          onSubmitEditing={() => {
+            const exact = rows.find((r) => r.symbol === term.toUpperCase()) ?? rows[0];
+            if (exact) onPick(exact.symbol);
+            else ask();
+          }}
+          placeholder="Symbol, company, or ask Kai"
           placeholderTextColor={color.muted}
-          style={{ flex: 1, fontFamily: family.regular, fontSize: 14, color: color.text }}
+          style={{ flex: 1, fontFamily: family.regular, fontSize: 14, color: color.text, ...(({ outlineStyle: 'none' } as unknown) as object) }}
         />
+        {searching ? <ActivityIndicator size="small" color={color.muted} /> : null}
       </View>
       <ScrollView style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled">
         {rows.length ? rows.map((s) => (
@@ -366,9 +498,24 @@ export function TickerSwitcherSheet({
           </Pressable>
         )) : (
           <T size={12.5} c={color.muted} style={{ paddingVertical: 14 }}>
-            {q.trim() ? 'Nothing matched that.' : 'Your watchlist and recent symbols show up here.'}
+            {term ? 'No symbol matched that.' : 'Your watchlist and recent symbols show up here.'}
           </T>
         )}
+
+        {term ? (
+          <Pressable
+            testID="ticker-ask-kai"
+            accessibilityRole="button"
+            accessibilityLabel={`Ask Kai about ${term}`}
+            onPress={ask}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 46 }}
+          >
+            <KaiOrb size={18} glow={false} />
+            <T size={12.5} c={color.violetLight} numberOfLines={1} style={{ flex: 1 }}>
+              {`Ask Kai about “${term}”`}
+            </T>
+          </Pressable>
+        ) : null}
       </ScrollView>
     </Sheet>
   );

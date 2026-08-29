@@ -1143,8 +1143,63 @@ async function fetchCandles(symbol: string, tf: string, from: string, to: string
   }).filter((c) => c.t && c.c);
 }
 
+/**
+ * `GET /trade/default` — the symbol Trade opens on, and why. Spec 10 §7: Trade
+ * is a working chart, so the tab needs an answer BEFORE the user has picked
+ * anything, and it needs one for an account that owns nothing at all.
+ */
+export type TradeDefaultChart = {
+  symbol: string;
+  reason: 'alert' | 'position' | 'watchlist' | 'recent' | 'fallback';
+  alert_id: string | null;
+  ctx: 'alert' | 'kai';
+  label_plain: string;
+};
+
+const DEFAULT_REASONS = ['alert', 'position', 'watchlist', 'recent', 'fallback'] as const;
+
+/** What the server answers for an empty account, and what we answer offline. */
+export const FALLBACK_DEFAULT_CHART: TradeDefaultChart = {
+  symbol: 'SPY',
+  reason: 'fallback',
+  alert_id: null,
+  ctx: 'kai',
+  label_plain: 'Nothing of yours needs a chart yet, so Trade opens on SPY — the market itself.',
+};
+
 export const portalApi = {
   available: live,
+
+  /**
+   * Which chart the Trade tab opens (`GET /trade/default`).
+   *
+   * The tab has a 700ms budget before it stops waiting and opens SPY, so this
+   * call is deliberately thin: no adapters, no fallback endpoint, no retry. An
+   * unknown route, an offline build or a stack that has not deployed it yet all
+   * answer the same way the server would for an empty account — the market
+   * itself — because "Trade opens on a chart" must not depend on the network.
+   */
+  defaultChart: async (): Promise<TradeDefaultChart> => {
+    if (!live()) return FALLBACK_DEFAULT_CHART;
+    try {
+      const r = obj(await request<unknown>('/trade/default'));
+      const symbol = str(pick(r, 'symbol')).toUpperCase();
+      if (!symbol) return FALLBACK_DEFAULT_CHART;
+      const reason = str(pick(r, 'reason'));
+      const ctx = str(pick(r, 'ctx'));
+      return {
+        symbol,
+        reason: (DEFAULT_REASONS as readonly string[]).includes(reason)
+          ? (reason as TradeDefaultChart['reason'])
+          : 'fallback',
+        alert_id: str(pick(r, 'alert_id')) || null,
+        ctx: ctx === 'alert' ? 'alert' : 'kai',
+        label_plain: str(pick(r, 'label_plain')) || FALLBACK_DEFAULT_CHART.label_plain,
+      };
+    } catch {
+      return FALLBACK_DEFAULT_CHART;
+    }
+  },
 
   /**
    * The portal payload. Falls back to the round-3 `/symbols/:symbol` workspace
@@ -1301,7 +1356,18 @@ export const portalApi = {
     const fetchTf = (t: string) => fetchCandles(symbol, t, from, to);
 
     try {
-      return { candles: await fetchTf(wire[tf]), exact: true };
+      const bars = await fetchTf(wire[tf]);
+      if (bars.length) return { candles: bars, exact: true };
+      // A 200 with NO bars is the shape a resolution we are not entitled to
+      // comes back in — it is not an error, so the throw below never fires and
+      // the portal used to render an empty frame on its own default chart.
+      // Ask for the coarsest resolution instead and say it is coarser; a real
+      // daily chart is worth more than an honest blank one.
+      if (wire[tf] !== '1d') {
+        const daily = await fetchTf('1d').catch(() => []);
+        if (daily.length) return { candles: daily, exact: false };
+      }
+      return { candles: bars, exact: true };
     } catch {
       unsupportedTf.add(tf);
       try {
