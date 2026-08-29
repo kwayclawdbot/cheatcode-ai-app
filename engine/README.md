@@ -1,10 +1,11 @@
 # engine/ — setup detection, measured before it is believed
 
-Phase ENGINE-1 of [`docs/17_ENGINE_ARCHITECTURE.md`](../docs/17_ENGINE_ARCHITECTURE.md),
-scoped by [`docs/BUILD-BRIEF-engine-1-primitives-backtest.md`](../docs/BUILD-BRIEF-engine-1-primitives-backtest.md).
+Phases ENGINE-1 and ENGINE-2 of [`docs/17_ENGINE_ARCHITECTURE.md`](../docs/17_ENGINE_ARCHITECTURE.md),
+scoped by [`docs/BUILD-BRIEF-engine-1-primitives-backtest.md`](../docs/BUILD-BRIEF-engine-1-primitives-backtest.md)
+and [`docs/BUILD-BRIEF-engine-2-orb-htf-structural-stop.md`](../docs/BUILD-BRIEF-engine-2-orb-htf-structural-stop.md).
 
 This directory ships **no alerts**. It exists to build the gate that the current
-SMS engine never had, and to run two day-trade models through it. It does not
+SMS engine never had, and to run day-trade models through it. It does not
 import from `apps/`, `apps/` does not import from it, and it never touches the
 app's database.
 
@@ -18,11 +19,12 @@ config.py        universe, snapshot id, session constants, key lookup
 calendar_us.py   NYSE holidays and early closes, checked against the tape
 series.py        BarSeries and BarView — the as-of contract
 cache/           fetch.py (Polygon -> parquet), load.py (DuckDB), manifest.py (audit)
-primitives/      structure, liquidity, imbalance, session, trend — pure, as-of
-backtest/        types, fills, engine (event replay), stats, regime
-models/          model specs + GATES.md, the pre-registered bar
+primitives/      structure, liquidity, imbalance, session, trend, timeframe,
+                 levels, htf — pure, as-of
+backtest/        types, fills, engine (event replay), stats, regime, htf
+models/          model specs + GATES.md and per-model GATE.md, the bars
 reports/         measured results, per-trade dumps, equity curves
-tests/           196 tests
+tests/           286 tests
 ```
 
 ## The as-of contract
@@ -46,7 +48,9 @@ python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python cache/fetch.py                  # resumable; skips what it has
 .venv/bin/python cache/manifest.py               # audit: gaps, thin days, calendar
 .venv/bin/python -m pytest                       # from engine/
-.venv/bin/python run_backtest.py --model orb_reclaim
+.venv/bin/python run_backtest.py --model orb_reclaim     # ENGINE-1 models
+.venv/bin/python run_engine2.py                          # ENGINE-2: model,
+                                                         # control, ablations
 ```
 
 The Polygon key is read from `apps/api/.env.local` and never written anywhere.

@@ -1,11 +1,26 @@
-# ENGINE-1 — what was measured, and what happened
+# engine/ — what was measured, and what happened
 
-**Both required models were measured against a bar written down before the test
-was run, and both failed it.** Neither ships. Nothing in this phase touches the
-app, and no alert was produced.
+**Three models have now been measured against bars written down before each
+test was run. All three failed.** None ships. Nothing here touches the app, and
+no alert has been produced.
 
 That is the intended kind of outcome. It cost a week; the alternative — the one
 the existing SMS engine took — costs a paying customer.
+
+| phase | model | verdict |
+|---|---|---|
+| ENGINE-1 | [`orb_reclaim.v1`](orb_reclaim.v1.polygon-v1.md) | FAIL |
+| ENGINE-1 | [`sweep_displacement_fvg.v1`](sweep_displacement_fvg.v1.polygon-v1.md) | FAIL |
+| ENGINE-2 | [`orb_htf_structural.v1`](orb_htf_structural.v1.polygon-v1.md) | FAIL — but the first to beat its control before costs |
+
+Read [ENGINE-2's report](orb_htf_structural.v1.polygon-v1.md) for the newest and
+most useful finding: the setup earns about 4.6 cents a share before costs and
+pays about 5.6 cents to trade, and no choice of stop placement changes that
+subtraction.
+
+---
+
+## ENGINE-1
 
 ## What was tested, over what data
 
@@ -104,3 +119,51 @@ model is one specific reading of a family that the corpus describes loosely. A
 different entry inside the same family — the gap edge rather than its midpoint,
 a 5-minute chart rather than a 1-minute one, a bias filter from a higher
 timeframe — is a different model and would need its own pre-registered bar.
+
+
+---
+
+# ENGINE-2 — the owner's ORB, with a trend filter and a structural stop
+
+Brief: [`docs/BUILD-BRIEF-engine-2-orb-htf-structural-stop.md`](../../docs/BUILD-BRIEF-engine-2-orb-htf-structural-stop.md).
+Gate: [`../models/orb_htf_structural.v1/GATE.md`](../models/orb_htf_structural.v1/GATE.md),
+committed at `b065f88`, before the evaluation ran.
+
+`orb_htf_structural.v1` changed the two things that plausibly sank ENGINE-1's
+ORB: it trades only with a confirmed daily trend, and its stop sits behind the
+nearest major level rather than a fixed distance. 1,140 trades over the same 32
+names and the same three years.
+
+| | in-sample | out-of-sample |
+|---|---|---|
+| trades | 896 | 244 |
+| mean net R | −0.113 | **+0.039** |
+| profit factor | 0.85 | 1.05 |
+
+**Verdict: FAIL.** G1 and G4 pass; G2, G3 and G5 do not. The out-of-sample
+window — the one the gate says is the verdict — is the best any model in this
+programme has produced, and it is still short of the +0.05R bar with an interval
+(−0.232R to +0.309R) that comfortably contains zero.
+
+Three things came out of it that are worth more than the verdict:
+
+1. **The structural stop is NARROWER, not wider.** Median risk per trade was
+   0.187% of price against ENGINE-1's 0.287%, so costs took 0.144R out of every
+   trade instead of 0.09R. "The nearest major level" is usually close, because a
+   liquid stock in a trend has structure just underneath it. The brief's hoped-for
+   ~1% stop did not appear.
+2. **Widening the stop could not have fixed it anyway.** R-multiples divide by
+   the stop distance, so a wider stop shrinks the measured edge by exactly the
+   factor it shrinks the cost ratio. In cents a share — the unit where the stop
+   cancels — the setup earns 4.63¢ before costs and pays 5.61¢ to trade.
+3. **This is the first model to beat its control before costs.** Paired trade for
+   trade against a coin flip on the same days with the same stop and target, the
+   model is +0.099R (95%: −0.014R to +0.212R). ENGINE-1's two models were both
+   *below* their control. The direction call has something in it; it is smaller
+   than the frictions, and the interval still touches zero.
+
+Ablations, diagnostics only: removing the daily-trend filter gives 4,662 trades
+at +0.044R gross against the filtered +0.063R — a hint that the filter buys
+accuracy, well inside the noise. Swapping the structural stop for a range-edge
+stop on an identical trade set costs 0.042R a trade, which is the direction the
+owner's rule predicted and the largest single improvement either change made.

@@ -95,6 +95,52 @@ def cost_drag(net_trades, gross_trades):
     return b - a
 
 
+def pnl_per_share(t) -> float:
+    """The trade's dollar result on one share, as booked."""
+    return t.net_r * t.risk_per_share
+
+
+def cents(net_tr, gross_tr, ctl_gross):
+    """The same argument in cents a share, where the stop distance cancels.
+
+    R-multiples divide by the stop distance, so a wider stop flatters the cost
+    ratio and shrinks the edge in exactly the same proportion. Cents a share
+    does not move when the stop moves, which makes it the honest unit for
+    asking whether the edge covers the costs."""
+    g = {(t.symbol, t.day): t for t in gross_tr}
+    c = {(t.symbol, t.day): t for t in ctl_gross}
+    edge, cost, price = [], [], []
+    for t in net_tr:
+        k = (t.symbol, t.day)
+        if k not in g:
+            continue
+        cost.append(pnl_per_share(g[k]) - pnl_per_share(t))
+        price.append(t.fill_price)
+        if k in c:
+            edge.append(pnl_per_share(g[k]) - pnl_per_share(c[k]))
+    if not cost:
+        return {}
+    e_lo, e_hi = G.mean_ci95(edge) if len(edge) > 1 else (float("nan"), float("nan"))
+    return {"edge": float(np.mean(edge)) if edge else float("nan"),
+            "edge_lo": e_lo, "edge_hi": e_hi,
+            "gross": float(np.mean([pnl_per_share(g[(t.symbol, t.day)])
+                                    for t in net_tr if (t.symbol, t.day) in g])),
+            "cost": float(np.mean(cost)), "price": float(np.mean(price)),
+            "n": len(cost)}
+
+
+def paired_diff(model_trades, control_trades, field="gross_r"):
+    """Model minus control on the same symbol-day, so the two runs are compared
+    trade by trade rather than distribution against distribution."""
+    ctl = {(t.symbol, t.day): t for t in control_trades}
+    d = [getattr(m, field) - getattr(ctl[(m.symbol, m.day)], field)
+         for m in model_trades if (m.symbol, m.day) in ctl]
+    if not d:
+        return float("nan"), float("nan"), float("nan"), 0
+    lo, hi = G.mean_ci95(d)
+    return float(np.mean(d)), lo, hi, len(d)
+
+
 def matched_plan(trades):
     """{symbol -> {day -> (minute, risk_ps, reward_ps)}} from the model's own
     signals, so the control gets exactly the geometry the model used."""
@@ -168,7 +214,8 @@ def main() -> int:
     out.write_text(head + "\n" + body + "\n" + tail)
 
     stem = out.with_suffix("").name
-    with gzip.open(config.REPORTS_ROOT / f"{stem}.trades.csv.gz", "wt", newline="") as fh:
+    art = out.parent
+    with gzip.open(art / f"{stem}.trades.csv.gz", "wt", newline="") as fh:
         w = csv.writer(fh)
         if net_tr:
             keys = [k for k in asdict(net_tr[0]) if k != "meta"]
@@ -181,7 +228,7 @@ def main() -> int:
     for t in sorted(net_tr, key=lambda x: (x.day, x.entry_minute)):
         run_r += t.net_r
         eq.append((t.day, round(run_r, 4)))
-    (config.REPORTS_ROOT / f"{stem}.equity.csv").write_text(
+    (art / f"{stem}.equity.csv").write_text(
         "day,cum_net_r\n" + "\n".join(f"{d},{r}" for d, r in eq))
 
     print(f"\n{verdict}  -> {out}")
@@ -213,8 +260,9 @@ def preamble(model, snapshot, symbols, verdict, gate_rows, net_tr, gross_tr,
       f"$0.005/share/side, slippage 1.0bp on market and stop fills.\n")
 
     A("## In plain language\n")
+    pd_mean, pd_lo, pd_hi, _ = paired_diff(gross_tr, ctl_gross)
     A(_plain(verdict, net_tr, is_tr, oos_tr, med, drag, g_model, g_ctl, beats,
-             is_lo, is_hi, oos_lo, oos_hi, census))
+             is_lo, is_hi, oos_lo, oos_hi, census, pd_mean, pd_lo, pd_hi))
 
     A("## The headline number this run existed to produce\n")
     A("ENGINE-1 measured risk per trade at 0.18–0.29% of price, so a "
@@ -230,11 +278,47 @@ def preamble(model, snapshot, symbols, verdict, gate_rows, net_tr, gross_tr,
     A(f"| gross edge needed to break even | ≈+0.15 R | **≈+{drag:.2f} R** |")
     A("")
     A(_drag_prose(med, drag))
+    cb = cents(net_tr, gross_tr, ctl_gross)
+    if cb:
+        A("### The same argument in cents a share\n")
+        A("R-multiples divide by the stop distance, so a wider stop makes the "
+          "cost ratio look better and the edge look smaller by exactly the same "
+          "factor. That is why the brief's arithmetic — wider stop, smaller cost "
+          "drag, lower break-even — is only half true: **widening the stop "
+          "rescales both sides of the ratio and cannot on its own change the "
+          "sign.** What changes the sign is earning more cents a share, which a "
+          "wider stop does only insofar as it stops the trade being knocked out "
+          "of moves that eventually worked.\n")
+        A(f"| per share, average trade (mean price ${cb['price']:.0f}) | |")
+        A("|---|---|")
+        A(f"| the model's result before costs | {cb['gross']*100:+.2f}¢ |")
+        A(f"| commission and slippage | −{cb['cost']*100:.2f}¢ |")
+        A(f"| **the model's result after costs** | **{(cb['gross']-cb['cost'])*100:+.2f}¢** |")
+        A(f"| for reference: the matched coin flip, before costs | {(cb['gross']-cb['edge'])*100:+.2f}¢ |")
+        A(f"| what pointing the right way was worth | {cb['edge']*100:+.2f}¢ "
+          f"(95%: {cb['edge_lo']*100:+.2f}¢ to {cb['edge_hi']*100:+.2f}¢) |")
+        A("")
+        A(f"Read it in that order. On a ${cb['price']:.0f} share the setup earns "
+          f"about {cb['gross']*100:.1f} cents before costs and pays about "
+          f"{cb['cost']*100:.1f} cents to get in and out, so it "
+          f"{'loses' if cb['gross'] < cb['cost'] else 'keeps'} roughly "
+          f"{abs(cb['gross']-cb['cost'])*100:.1f} cents a share. Choosing the "
+          f"direction on purpose was worth about {cb['edge']*100:.1f} cents "
+          f"against a coin flip with the same stop and target — so the "
+          f"direction call is not nothing — but the coin flip's own baseline is "
+          f"well below zero with this geometry, and beating it is not the same "
+          f"as making money.\n")
+        A("Two caveats on this table, because it is easy to over-read. Cents a "
+          "share weights an expensive stock's trade more heavily than a cheap "
+          "one's, whereas the R table above weights every trade by its own "
+          "risk, which is what a position-sized trader actually experiences. "
+          "The two views disagree about how far the model sits above the coin "
+          "flip; they agree that after costs it is below zero.\n")
     return "\n".join(L)
 
 
 def _plain(verdict, net_tr, is_tr, oos_tr, med, drag, g_model, g_ctl, beats,
-           is_lo, is_hi, oos_lo, oos_hi, census) -> str:
+           is_lo, is_hi, oos_lo, oos_hi, census, pd_mean, pd_lo, pd_hi) -> str:
     n, nis, noos = len(net_tr), len(is_tr), len(oos_tr)
     mis = float(np.mean([t.net_r for t in is_tr])) if is_tr else float("nan")
     moos = float(np.mean([t.net_r for t in oos_tr])) if oos_tr else float("nan")
@@ -288,24 +372,38 @@ def _plain(verdict, net_tr, is_tr, oos_tr, med, drag, g_model, g_ctl, beats,
     A(f"Before costs, the model made {g_model:+.3f}R per trade. A coin flip "
       f"taken on the same days, in the same names, at the same minute, with the "
       f"same stop and the same target — differing only in which way it pointed —"
-      f" made {g_ctl:+.3f}R. The difference is **{beats:+.3f}R**, "
-      f"{'in the model' if beats > 0 else 'against the model'}"
-      f"{'' if beats > 0 else ', which means picking the direction on purpose did worse than picking it at random'}"
-      f". Costs come off both equally, so this comparison settles most of the "
-      f"argument before the cost table is even read.\n")
+      f" made {g_ctl:+.3f}R. Trade for trade the model beat that coin flip by "
+      f"**{pd_mean:+.3f}R**"
+      f"{', though the honest range around that gap is ' + f'{pd_lo:+.3f}R to {pd_hi:+.3f}R' if pd_mean == pd_mean else ''}"
+      f". "
+      + ("That is the first sign of real direction-picking any model in this "
+         "programme has shown — and it is still smaller than what the trading "
+         "costs take out." if pd_mean > 0 else
+         "Picking the direction on purpose did no better than picking it at "
+         "random.") + "\n")
+    A(f"Which is the whole story in one line: the model finds about "
+      f"{pd_mean:+.3f}R of direction, and pays {drag:.3f}R to the broker and the "
+      f"spread. {'The costs are larger, so it loses money.' if drag > pd_mean else 'The edge is larger, so it keeps some.'}\n")
 
     A("**What would change the answer?**\n")
-    A("- A bigger sample. The filter is strict by design; more symbols or more "
-      "years is the only honest way to get more trades out of it, and both are "
-      "available.\n"
-      "- A different definition of \"major level\". The stop rule is only as "
-      "good as what counts as a level, and that definition was chosen for "
-      "plausibility rather than performance. A stricter one would place stops "
-      "further away and cut the cost drag further.\n"
-      "- Costs. If the risk per trade is small, the broker takes a large slice "
-      "of it. The table below is the number to watch: it is the difference "
-      "between a setup that has to be brilliant and one that only has to be "
-      "slightly right.\n")
+    A("- **Cheaper trading, or bigger moves.** The gap between what the "
+      "direction call earns and what the round trip costs is a number in cents "
+      "a share, and it is the whole result. Halve the cost, or find setups "
+      "whose average move is twice as large, and the sign flips. Nothing about "
+      "where the stop goes changes it by itself.\n"
+      "- **A bigger sample.** The filter is strict by design and the interval "
+      "around the direction edge still touches zero. More symbols and more "
+      "years are both available and are the only honest way to narrow it.\n"
+      "- **A different definition of \"major level\".** The stop rule is only "
+      "as good as what counts as a level, and this definition was chosen for "
+      "plausibility, not performance. Taking the nearest level of a fairly "
+      "dense set puts the stop close, which is why risk came out narrower than "
+      "the brief expected — a sparser definition would place it behind the "
+      "swing that actually invalidates the idea, and would change which trades "
+      "survive rather than merely rescaling them.\n"
+      "- **Holding past the close.** Everything here is flat at 15:55. A daily "
+      "trend filter argues for a multi-day horizon, and this test never lets "
+      "the trend pay.\n")
     return "\n".join(P)
 
 
@@ -331,6 +429,7 @@ def appendix(net_tr, gross_tr, a1_net, a1_gross, a2_net, a2_gross,
              ctl_net, ctl_gross, census, a1_census) -> str:
     L = []
     A = L.append
+    drag = cost_drag(net_tr, gross_tr)
     A("## Gross of costs, against the matched control\n")
     A("ENGINE-1's decisive finding was that both of its models were below a "
       "coin flip *before* costs, which settles the net number without further "
@@ -345,6 +444,27 @@ def appendix(net_tr, gross_tr, a1_net, a1_gross, a2_net, a2_gross,
           f"{s.mean_r:+.3f} | {s.hit_rate*100:.1f}% | {s.profit_factor:.2f} |"
           if s else f"| {name} | 0 | n/a | n/a | n/a | n/a |")
     A("")
+    A("")
+    m_all, m_lo, m_hi, npair = paired_diff(gross_tr, ctl_gross)
+    g_is, g_oos = windows(gross_tr)
+    c_is, c_oos = windows(ctl_gross)
+    i_all, i_lo, i_hi, n_is = paired_diff(g_is, c_is)
+    o_all, o_lo, o_hi, n_oos = paired_diff(g_oos, c_oos)
+    A("Paired trade by trade on the same symbol-day, **gross of costs**:\n")
+    A("| window | pairs | model − control, gross mean R | 95% interval |")
+    A("|---|---|---|---|")
+    A(f"| all | {npair} | **{m_all:+.3f}** | {m_lo:+.3f} to {m_hi:+.3f} |")
+    A(f"| in-sample | {n_is} | {i_all:+.3f} | {i_lo:+.3f} to {i_hi:+.3f} |")
+    A(f"| out-of-sample | {n_oos} | {o_all:+.3f} | {o_lo:+.3f} to {o_hi:+.3f} |")
+    A("")
+    A(f"This is the one number in the report that is better than anything "
+      f"ENGINE-1 produced: both of its models were *below* their control gross. "
+      f"This one is above it. But read the interval before celebrating — "
+      f"{'it still contains zero, so the gap is suggestive rather than established' if m_lo <= 0 <= m_hi else 'it excludes zero'}"
+      f". The gap of {m_all:+.3f}R is "
+      f"{'smaller' if m_all < drag else 'larger'} than the {drag:.3f}R that "
+      f"costs remove from every trade, which is why a model that points the "
+      f"right way still finishes {'behind' if m_all < drag else 'ahead'}.\n")
     A("The control is not the ENGINE-1 whole-tape coin flip. It takes the same "
       "symbols, the same days, the same decision minute and the same risk and "
       "reward distances as the trades the model actually took, and flips only "
@@ -428,21 +548,29 @@ def _ablation_prose(net_tr, gross_tr, a1_net, a1_gross, a2_net, a2_gross) -> str
     g2 = gross_r_mean(a2_gross)
     P = []
     P.append(
-        f"**A1 — did the daily-trend filter earn its cost in trade count?** "
+        f"**A1 — did the daily-trend filter earn the trades it costs?** "
         f"Removing it takes the sample from {len(net_tr):,} to {len(a1_net):,} "
         f"trades and moves gross expectancy from {g0:+.3f}R to {g1:+.3f}R "
         f"(net {n0:+.3f}R to {n1:+.3f}R). "
-        + ("The filter is adding expectancy, and paying for the trades it costs."
+        + ("The filtered version is the better of the two gross, so the trend "
+           "confirmation is buying accuracy and not only cutting count — but "
+           f"the gap is {abs(g0-g1):.3f}R on samples this size, which is well "
+           "inside the noise, and both versions are still losers after costs. "
+           "This is a hint about direction, not a result."
            if g0 > g1 else
-           "The filter is not adding expectancy: the unfiltered version is at "
-           "least as good gross, on a much larger sample. On this evidence the "
-           "trend confirmation is costing trades without buying accuracy.") + "\n")
+           "The unfiltered version is at least as good gross on a much larger "
+           "sample, so on this evidence the trend confirmation is costing "
+           "trades without buying accuracy.") + "\n")
     P.append(
         f"**A2 — did the structural stop do anything?** Holding the trade set "
         f"fixed and moving only the stop to just inside the broken range edge "
         f"gives {g2:+.3f}R gross and {n2:+.3f}R net, against the structural "
         f"stop's {g0:+.3f}R and {n0:+.3f}R. "
-        + ("The structural stop is the better of the two." if n0 > n2 else
+        + (f"The structural stop is worth {n0-n2:+.3f}R a trade over the "
+           f"range-edge stop, which is the direction the owner's rule "
+           f"predicted. It is also the single largest improvement either "
+           f"change produced — and it is not close to enough to reach the bar."
+           if n0 > n2 else
            "The range-edge stop is at least as good, which means the owner's "
            "stop rule is not where the difference lives.") + "\n")
     return "\n".join(P)
