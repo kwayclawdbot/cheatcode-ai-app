@@ -8,6 +8,7 @@ import { color } from '../ui/tokens';
 import { SessionProvider, useSession } from '../lib/session';
 import { env } from '../lib/env';
 import { KaiSheetHost } from '../features/kai-sheet';
+import { NotificationBridge } from '../features/notifications';
 
 /**
  * Routes an authenticated, onboarded user may sit on outside the tab group.
@@ -88,6 +89,9 @@ export default function RootLayout() {
               {/* Kai's contextual sheet lives above every route: it opens OVER
                   the current screen and never navigates the user away (audit §5). */}
               <KaiSheetHost />
+              {/* A tapped notification has to land on the thing it is about —
+                  warm, cold, native or from the service worker (round 5 §8). */}
+              <NotificationBridge />
             </Gate>
           </SessionProvider>
         )}

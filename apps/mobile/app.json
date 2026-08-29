@@ -30,6 +30,14 @@
       "expo-font",
       "expo-secure-store",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#C8FF00",
+          "defaultChannel": "trade-alerts"
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#0B0B0E",

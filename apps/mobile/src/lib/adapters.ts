@@ -22,7 +22,10 @@ import type {
 } from '@cheatcode/shared';
 import type {
   AlertRow, AlertsPayload, Briefing, BriefingLine, Freshness, GradedSetup,
-  HomePayload, KaiActionPreview, MarketStatus, Quote, SetupState, WatchingItem,
+  HomePayload, KaiActionPreview, MarketStatus, NotificationCategory,
+  NotificationCategoryMap, PushDevice, PushPlatform, PushRegistry,
+  PushSubscriptionState, PushSuppression, PushTestResult, PushTransport, Quote,
+  SetupState, WatchingItem,
 } from './types';
 
 const money = (n: number | null | undefined) =>
@@ -840,7 +843,86 @@ export function adaptMe(v: unknown): Me {
       quiet_hours: obj(settings.quiet_hours) as AppSettings['quiet_hours'],
       notifications: obj(settings.notifications ?? r.notification_prefs) as AppSettings['notifications'],
       accessibility: { reduced_motion: bool(acc.reduced_motion), text_scale: nNum(acc.text_scale) ?? 1 },
+      // Round 5. An API build that predates push answers neither key; the
+      // defaults are "on" and "nothing switched off", which is what the
+      // server's own defaults are, so the screen reads the same either way.
+      push_enabled: bool(settings.push_enabled, true),
+      notification_categories: adaptNotificationCategories(settings.notification_categories),
     },
+  };
+}
+
+const CATEGORY_KEYS: NotificationCategory[] = [
+  'trade_alerts', 'order_status', 'community', 'coaching', 'system',
+];
+
+/** Only known keys, only booleans. An absent key stays absent: it means ON. */
+export function adaptNotificationCategories(v: unknown): NotificationCategoryMap {
+  const src = obj(v);
+  const out: NotificationCategoryMap = {};
+  CATEGORY_KEYS.forEach((k) => {
+    if (typeof src[k] === 'boolean') out[k] = src[k] as boolean;
+  });
+  return out;
+}
+
+const PUSH_TRANSPORT = (v: unknown): PushTransport => (str(v) === 'expo' ? 'expo' : 'web');
+const PUSH_STATE = (v: unknown): PushSubscriptionState => {
+  const s = str(v);
+  return s === 'stale' || s === 'revoked' ? s : 'active';
+};
+const PUSH_PLATFORM = (v: unknown): PushPlatform | null => {
+  const s = str(v);
+  return s === 'ios' || s === 'android' || s === 'web' ? s : null;
+};
+
+export function adaptPushDevice(raw: unknown): PushDevice {
+  const d = obj(raw);
+  const transport = PUSH_TRANSPORT(d.transport);
+  const label = nStr(d.device_label) ?? (transport === 'web' ? 'This browser' : 'This device');
+  return {
+    id: str(d.id),
+    transport,
+    platform: PUSH_PLATFORM(d.platform),
+    device_label: nStr(d.device_label),
+    state: PUSH_STATE(d.state),
+    created_at: nStr(d.created_at),
+    last_success_at: nStr(d.last_success_at),
+    plain: nStr(d.plain) ?? label,
+  };
+}
+
+export function adaptPushRegistry(v: unknown): PushRegistry {
+  const r = obj(v);
+  const devices = arr(r.subscriptions ?? r.devices).map(adaptPushDevice).filter((d) => d.id);
+  return {
+    devices,
+    push_enabled: bool(r.push_enabled, true),
+    vapid_public_key: nStr(r.vapid_public_key),
+    plain: nStr(r.plain) ?? (devices.length ? '' : 'No device is set up yet.'),
+  };
+}
+
+/**
+ * The test route's answer. `suppressed` is the reason nothing buzzed, and it
+ * is the whole point of the call: a test that reports success while sending
+ * nothing is the most confusing thing a notifications screen can do.
+ */
+export function adaptPushTest(v: unknown): PushTestResult {
+  const r = obj(v);
+  const suppressed = arr(r.suppressed).map((raw): PushSuppression => {
+    const s = obj(raw);
+    return {
+      reason: str(s.reason, 'suppressed'),
+      plain: nStr(s.plain) ?? 'That one did not go out.',
+      subscription_id: nStr(s.subscription_id),
+    };
+  });
+  const sent = nNum(r.sent) ?? 0;
+  return {
+    sent,
+    suppressed,
+    plain: nStr(r.plain) ?? (sent > 0 ? 'Sent.' : (suppressed[0]?.plain ?? 'Nothing to send to yet.')),
   };
 }
 

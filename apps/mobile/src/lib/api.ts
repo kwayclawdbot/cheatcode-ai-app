@@ -8,8 +8,9 @@ import { getAccessToken, recoverSession, SESSION_EXPIRED_COPY } from './auth-tok
 import { streamSSE, SSEHandlers } from './sse';
 import {
   adaptAlertDetail, adaptAlertLifecycle, adaptAlertPreview, adaptAlerts, adaptCandles,
-  adaptHome, adaptMe, adaptMemory, adaptNotifications, adaptQuoteLoose, adaptSearch,
-  adaptSetupCard, adaptSetupDetail, adaptSymbolDetail, adaptTradeLanding,
+  adaptHome, adaptMe, adaptMemory, adaptNotifications, adaptPushDevice, adaptPushRegistry,
+  adaptPushTest, adaptQuoteLoose, adaptSearch, adaptSetupCard, adaptSetupDetail,
+  adaptSymbolDetail, adaptTradeLanding,
 } from './adapters';
 import { adaptAlertsSimple, adaptHomeV5, adaptWorkspace, mergeSetupDetail } from './v5';
 import {
@@ -19,7 +20,8 @@ import {
 import type {
   AlertDetail, AlertDraftPreview, AlertLifecycle, AlertsPayload, AlertsRound4, AlertsSimple,
   AlertTab, Candle, ConversationsPayload, Experience, ExplainLevel, FocusKey, GoalMode,
-  GradedSetup, HomePayload, HomeV5, KaiProfile, Me, MemoryRow, NotificationRow, Quote,
+  GradedSetup, HomePayload, HomeV5, KaiProfile, Me, MemoryRow, NotificationRow,
+  PushDevice, PushPlatform, PushRegistry, PushTestResult, PushTransport, Quote,
   RuleAdherence, SearchResult, SetupDetail, SymbolDetail, SymbolWorkspace, TickerPage,
   TradeLanding,
 } from './types';
@@ -295,6 +297,45 @@ export const api = {
   /** `PUT /settings` accepts experience + focus (round-4 personalize). */
   putKaiProfile: (body: { experience?: Experience; focus?: FocusKey[]; mode?: GoalMode }) =>
     request<unknown>('/settings', { method: 'PUT', body: JSON.stringify(body) }),
+
+  /* ---------------- Round 5 · push ---------------- */
+
+  /**
+   * `GET /push/subscriptions` — the devices on this account, the master
+   * switch, and the server's VAPID public key. The key is READ, never
+   * assumed: subscribing a browser against a key the server cannot sign for
+   * produces an endpoint that silently never delivers, which looks exactly
+   * like working push until the day someone needs a notification.
+   */
+  pushRegistry: async (): Promise<PushRegistry> =>
+    adaptPushRegistry(await request<unknown>('/push/subscriptions')),
+
+  /** `POST /push/subscriptions` — register THIS device. Upsert, server-side. */
+  registerPush: async (body: {
+    transport: PushTransport;
+    handle: string;
+    keys?: { p256dh: string; auth: string } | null;
+    platform?: PushPlatform;
+    device_label?: string;
+  }): Promise<PushDevice> => {
+    const r = await request<Record<string, unknown>>('/push/subscriptions', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    return adaptPushDevice(r?.subscription ?? r);
+  },
+
+  /** `DELETE /push/subscriptions/:id` — this device off. Revoke, not delete. */
+  revokePushDevice: (id: string) =>
+    request<unknown>(`/push/subscriptions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  /**
+   * `POST /push/test`. Returns what was suppressed and why — quiet hours, the
+   * master switch, no device — so the screen can say which of those is true
+   * instead of appearing broken.
+   */
+  pushTest: async (): Promise<PushTestResult> =>
+    adaptPushTest(await request<unknown>('/push/test', { method: 'POST', body: '{}' })),
 
   /** DEV_TOOLS=1 on the api-app only. */
   simulateClosedTrade: (symbol?: string) =>

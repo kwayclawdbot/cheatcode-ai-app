@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
+    <title>%WEB_TITLE%</title>
+
+    <!--
+      PWA head (round-5 brief §8). ON iOS THE INSTALL PATH IS THE FEATURE:
+      Safari only allows web push once the app is on the home screen, so the
+      manifest and the apple-mobile-web-app-* tags are not decoration — without
+      them there is no way for an iPhone to ever receive a notification from
+      the web build.
+    -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0B0B0E" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Cheat Code" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" href="/icons/icon-192.png" />
+
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+
+    <script>
+      /*
+       * Register the push service worker.
+       *
+       * `isSecureContext` is the whole guard: over plain http on a LAN IP
+       * `navigator.serviceWorker` is simply absent, and calling into it throws
+       * a TypeError at load and takes the page with it. The app reads the same
+       * fact through `pushCapability()` and says so in words on the
+       * notifications screen instead of rendering a switch that cannot work.
+       *
+       * `window.__cheatcodeSW` is the promise the app awaits, so the very first
+       * "Turn on notifications" tap does not race the registration.
+       */
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && window.isSecureContext) {
+        window.__cheatcodeSW = navigator.serviceWorker
+          .register('/sw.js', { scope: '/' })
+          .catch(function (e) {
+            console.warn('[cheatcode] service worker did not register:', e && e.message);
+            return null;
+          });
+      }
+    </script>
+  </head>
+
+  <body>
+    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
+    <noscript>
+      You need to enable JavaScript to run this app.
+    </noscript>
+    <!-- The root element for your Expo app. -->
+    <div id="root"></div>
+  </body>
+</html>

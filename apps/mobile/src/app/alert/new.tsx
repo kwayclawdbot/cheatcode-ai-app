@@ -12,6 +12,7 @@ import { KaiOrb } from '../../ui/KaiOrb';
 import { family } from '../../ui/fonts';
 import { alpha, color, gradient, gradientAngle, radius } from '../../ui/tokens';
 import { useAlertActions, useAlertBuilder } from '../../features/alerts/useAlerts';
+import { PushPrimingBlock, usePrimingGate } from '../../features/notifications';
 
 const EXAMPLES = [
   'Watch META for a break above 504',
@@ -37,6 +38,13 @@ export default function NewAlert() {
   const { preview, pending, error, build, clear } = useAlertBuilder();
   const actions = useAlertActions();
   const [done, setDone] = useState(false);
+  /**
+   * The one priming moment (§4.3). It is due only after the alert is actually
+   * armed — the act that implies wanting the buzz — and only once ever. It
+   * rides inside the confirmation sheet the user is already reading, so this
+   * is one sheet at one moment, not a second one appearing over the first.
+   */
+  const priming = usePrimingGate(done);
 
   // Prefilled from a setup or a symbol page: read it once so the preview is
   // already on screen when the sheet opens.
@@ -174,7 +182,14 @@ export default function NewAlert() {
 
       <Sheet visible={done} onClose={() => { setDone(false); router.replace('/alerts'); }} title="Kai is watching it" testID="sheet-activated">
         <T size={13} lh={20} c={color.muted}>{preview?.summary_plain}</T>
-        <Button label="Back to alerts" kind="volt" height={48} onPress={() => { setDone(false); router.replace('/alerts'); }} />
+        {priming.due ? (
+          <PushPrimingBlock
+            summaryPlain={preview?.summary_plain}
+            onDone={() => { void priming.close(); setDone(false); router.replace('/alerts'); }}
+          />
+        ) : (
+          <Button label="Back to alerts" kind="volt" height={48} onPress={() => { setDone(false); router.replace('/alerts'); }} />
+        )}
       </Sheet>
 
       <Sheet visible={!!actions.upgradeNeeded} onClose={actions.dismissUpgrade} title="That needs the premium plan">

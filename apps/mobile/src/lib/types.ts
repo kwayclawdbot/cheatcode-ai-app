@@ -335,6 +335,11 @@ export type AppSettings = {
   quiet_hours: QuietHours;
   notifications: { per_mode?: Record<string, boolean> } & Record<string, unknown>;
   accessibility: { reduced_motion: boolean; text_scale: number };
+  /** Round 5: the master push switch. The user's INTENT — a different question
+   *  from whether the OS or the browser has granted permission. */
+  push_enabled: boolean;
+  /** Round 5: an ABSENT key means on. `{}` is a user who never touched them. */
+  notification_categories: NotificationCategoryMap;
 };
 
 export type Me = {
@@ -360,6 +365,61 @@ export type NotificationRow = {
 };
 
 export type MemoryRow = { id: string; kind: string; content: string; created_at?: string | null };
+
+/* ==================================================================== */
+/* Round 5 — push (docs/BUILD-BRIEF-round-5-push.md)                    */
+/*                                                                      */
+/* Mirrors of the API-5 contracts in packages/shared/api.ts, kept local  */
+/* to the app for the same reason every other view model here is: the   */
+/* screen reads THESE, the adapter absorbs whatever the server sends,    */
+/* and a server that has not shipped push yet still renders a screen.    */
+/* Deliberately NOT imported from @cheatcode/shared — another lane owns  */
+/* that file this round.                                                 */
+/* ==================================================================== */
+
+/** What a user can switch off. An absent key means ON — never a row of trues. */
+export type NotificationCategory =
+  | 'trade_alerts'
+  | 'order_status'
+  | 'community'
+  | 'coaching'
+  | 'system';
+
+export type NotificationCategoryMap = Partial<Record<NotificationCategory, boolean>>;
+
+export type PushTransport = 'expo' | 'web';
+export type PushPlatform = 'ios' | 'android' | 'web';
+export type PushSubscriptionState = 'active' | 'stale' | 'revoked';
+
+/**
+ * A registered device. It never carries the handle or the browser's keys —
+ * the server does not send them and no screen needs one, so a token cannot
+ * reach a screenshot, a log or a bug report through here.
+ */
+export type PushDevice = {
+  id: string;
+  transport: PushTransport;
+  platform: PushPlatform | null;
+  device_label: string | null;
+  state: PushSubscriptionState;
+  created_at: string | null;
+  last_success_at: string | null;
+  /** The server's own sentence for this row: "Chrome on macOS — On". */
+  plain: string;
+};
+
+export type PushRegistry = {
+  devices: PushDevice[];
+  push_enabled: boolean;
+  /** Null = this server has no VAPID pair, so no browser can be subscribed. */
+  vapid_public_key: string | null;
+  plain: string;
+};
+
+/** A suppression is a RECORD, not a drop: it is why nothing buzzed. */
+export type PushSuppression = { reason: string; plain: string; subscription_id: string | null };
+
+export type PushTestResult = { sent: number; suppressed: PushSuppression[]; plain: string };
 
 /* ==================================================================== */
 /* V5 consolidation (docs/BUILD-BRIEF-round-3.md + 09 audit)            */

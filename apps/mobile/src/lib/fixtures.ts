@@ -390,6 +390,10 @@ export const fixtureMe: Me = {
     quiet_hours: { enabled: true, start: '21:00', end: '07:00' },
     notifications: { per_mode: { day_trade: true, swing: true, invest: false } },
     accessibility: { reduced_motion: false, text_scale: 1 },
+    // Round 5: the master switch defaults on, and no category is switched off
+    // — an absent key means on, exactly as the server reads it.
+    push_enabled: true,
+    notification_categories: {},
   },
 };
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen } from '../../ui/Screen';
@@ -8,9 +8,10 @@ import { T, Eyebrow } from '../../ui/Text';
 import { ObjectCard } from '../../ui/Panel';
 import { ChipRail } from '../../ui/Segmented';
 import { Bell, ArrowRight, Check } from '../../ui/Icons';
-import { color, radius } from '../../ui/tokens';
+import { alpha, color, radius } from '../../ui/tokens';
 import { api } from '../../lib/api';
 import { useNotifications } from '../../features/account/useAccount';
+import { clearBadge, DeliveryPanel, usePush } from '../../features/notifications';
 import type { NotificationGroup, NotificationRow } from '../../lib/types';
 
 type Filter = 'all' | NotificationGroup;
@@ -41,12 +42,21 @@ const when = (iso: string | null | undefined) => {
 /**
  * Notification inbox (S72). Grouped by what it asks of you, not by feature.
  * Opening a row marks it read and follows its deep link.
+ *
+ * Round 5 adds the delivery header: whether these also reach a phone or a
+ * browser, and — when they cannot — which of the several reasons it is. The
+ * inbox itself is unchanged by any of it, which is the point: a suppressed
+ * push is still a row here in the morning.
  */
 export default function Notifications() {
   const router = useRouter();
   const [filter, setFilter] = useState<Filter>('all');
   const { data, loading, error, isFixture, notAvailable, reload } = useNotifications(filter === 'all' ? undefined : filter);
   const [readLocal, setReadLocal] = useState<Set<string>>(new Set());
+  const push = usePush();
+
+  // The badge counts what the user has not looked at, and they are looking now.
+  useEffect(() => { clearBadge(); }, []);
 
   const rows = data ?? [];
   const groups: NotificationGroup[] = ['action_required', 'changes', 'fyi'];
@@ -102,6 +112,10 @@ export default function Notifications() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 28, gap: 11 }}
         showsVerticalScrollIndicator={false}
       >
+        <DeliveryPanel push={push} />
+
+        <View style={{ height: 0.5, backgroundColor: alpha.ivory08, marginTop: 4 }} />
+
         {!rows.length ? (
           <ObjectCard r={radius.xxl} style={{ padding: 20, gap: 10, alignItems: 'center', marginTop: 20 }}>
             <Bell size={22} color={color.muted} />
