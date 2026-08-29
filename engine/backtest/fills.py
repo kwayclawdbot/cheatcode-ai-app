@@ -61,6 +61,19 @@ def resolved_target(signal, fill_price: float) -> float:
             else fill_price - signal.target_r * risk)
 
 
+def resolved_stop(signal, fill_price: float) -> float:
+    """The stop actually working once the position exists.
+
+    Signals that name a price get that price back. Signals that name a distance
+    from the fill (`stop_from_fill`) get it measured from the fill, because
+    that is the position that actually exists.
+    """
+    d = getattr(signal, "stop_from_fill", None)
+    if d is None:
+        return signal.stop_price
+    return fill_price - d if signal.side == "long" else fill_price + d
+
+
 def exit_on_bar(side: Side, stop: float, target: float,
                 bar_open: float, bar_high: float, bar_low: float,
                 costs: Costs) -> tuple[str, float, bool] | None:

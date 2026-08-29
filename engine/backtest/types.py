@@ -66,6 +66,20 @@ class Signal:
 
     `None` means "the price in `target_price` is the target", which is every
     model written before ENGINE-4 and is unchanged by this field existing."""
+    stop_from_fill: float | None = None
+    """If set, the stop sits this many dollars a share from THE FILL, and
+    `stop_price` is only the decision-time estimate of it.
+
+    ENGINE-6 replicates a published spec whose stop is "10% of the 14-day ATR
+    from the entry". The entry is a resting stop order at the opening range
+    edge, so the price it fills at is not the price the decision was priced on
+    — a gap through the level fills higher, and a stop booked off the earlier
+    number would be a different distance from the position that actually
+    exists. Same argument as `target_r`, same fix, and both are resolved in
+    `fills.py` so the two cannot drift apart.
+
+    `None` means "the price in `stop_price` is the stop", which is every model
+    written before ENGINE-6 and is unchanged by this field existing."""
 
     @property
     def risk_per_share(self) -> float:
