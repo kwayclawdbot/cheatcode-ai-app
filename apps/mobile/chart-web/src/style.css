@@ -1,0 +1,247 @@
+/* Palette lock 14. Every colour here is a token value from src/ui/tokens.ts. */
+
+:root {
+  --bg: #0B0B0E;
+  --surface: #1C1C22;
+  --surface2: #17171C;
+  --text: #FFF7E8;
+  --muted: #B9B0A8;
+  --dim: #6E675F;
+  --volt: #C8FF00;
+  --violet: #8B4DFF;
+  --violet-light: #CBB2FF;
+  --hairline: rgba(255, 247, 232, 0.10);
+
+  /* One curve for entering things, one for things moving on screen. Both are
+     stronger than the CSS built-ins, which are too weak to read as intentional. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  /* The page must never scroll, bounce or rubber-band: it is a panel inside a
+     scroll view, and any scrolling of its own would steal the parent's gesture. */
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+#root {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  background: var(--bg);
+}
+
+.chart-host {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+}
+
+/* ------------------------------------------------------------------ */
+/* Timeframe rail                                                      */
+/* ------------------------------------------------------------------ */
+
+.tf-rail {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  z-index: 4;
+  display: flex;
+  gap: 1px;
+  padding: 2px;
+  border-radius: 7px;
+  /* A floating layer over the plot, not an opaque strip that eats chart height. */
+  background: rgba(23, 23, 28, 0.62);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 0.5px solid var(--hairline);
+}
+
+.tf-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: 4px 6px;
+  min-width: 26px;
+  border-radius: 5px;
+  cursor: pointer;
+  /* Named properties only, never `all`. */
+  transition: color 140ms var(--ease-out), background-color 140ms var(--ease-out), transform 110ms var(--ease-out);
+}
+
+.tf-btn:hover { color: var(--muted); }
+
+/* Volt = a user action, even when Kai is the one performing it on your behalf.
+   Kai's authorship is shown by the violet pointer standing on the button. */
+.tf-btn.is-on {
+  color: var(--volt);
+  background: rgba(200, 255, 0, 0.10);
+}
+
+/* The press. It fires on pointer-down, so the button is already responding
+   before the finger lifts. */
+.tf-btn.is-down {
+  transform: scale(0.94);
+  background: rgba(200, 255, 0, 0.20);
+  color: var(--volt);
+}
+
+/* ------------------------------------------------------------------ */
+/* Kai's pointer                                                       */
+/* ------------------------------------------------------------------ */
+
+.kai-pointer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: 8;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms var(--ease-out);
+  will-change: transform;
+}
+
+.kai-pointer.is-on { opacity: 1; }
+
+.kai-pointer-halo {
+  position: absolute;
+  left: -13px;
+  top: -13px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba(139, 77, 255, 0.55);
+  background: rgba(139, 77, 255, 0.14);
+  /* Scale, never scale(0): nothing in the world appears out of nothing. */
+  transform: scale(0.92);
+  transition: transform 130ms var(--ease-out), background-color 130ms var(--ease-out);
+}
+
+.kai-pointer-dot {
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--violet-light);
+  box-shadow: 0 0 10px rgba(139, 77, 255, 0.75);
+  transition: transform 130ms var(--ease-out);
+}
+
+.kai-pointer.is-press .kai-pointer-halo {
+  transform: scale(0.62);
+  background: rgba(139, 77, 255, 0.34);
+}
+.kai-pointer.is-press .kai-pointer-dot { transform: scale(0.78); }
+
+/* ------------------------------------------------------------------ */
+/* Crosshair OHLC readout                                              */
+/* ------------------------------------------------------------------ */
+
+.ohlc {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: rgba(23, 23, 28, 0.78);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 0.5px solid var(--hairline);
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 130ms var(--ease-out), transform 130ms var(--ease-out);
+  pointer-events: none;
+}
+
+.ohlc.is-on { opacity: 1; transform: translateY(0); }
+.ohlc-k { color: var(--dim); }
+.ohlc-t { color: var(--muted); margin-right: 2px; }
+
+/* ------------------------------------------------------------------ */
+/* Timeframe crossfade veil                                            */
+/* ------------------------------------------------------------------ */
+
+/* Two different price series cutting straight from one to the other is the
+   single most machine-like moment on a chart. 250ms of the surface colour over
+   the top turns a cut into a change. */
+.veil {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: var(--bg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 250ms var(--ease-in-out);
+}
+.veil.is-on { opacity: 0.92; }
+
+/* ------------------------------------------------------------------ */
+/* Empty                                                               */
+/* ------------------------------------------------------------------ */
+
+.empty {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 26px;
+  z-index: 3;
+  padding: 0 18px;
+  text-align: center;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--dim);
+  display: none;
+  pointer-events: none;
+}
+.empty.is-on { display: block; }
+
+/* ------------------------------------------------------------------ */
+/* Reduced motion                                                      */
+/* ------------------------------------------------------------------ */
+
+/* Not "no feedback" — gentler feedback. The states still change; they just stop
+   travelling. Durations in JS collapse to 0 at the same time (02-motion.js). */
+@media (prefers-reduced-motion: reduce) {
+  .kai-pointer,
+  .kai-pointer-halo,
+  .kai-pointer-dot,
+  .tf-btn,
+  .ohlc,
+  .veil {
+    transition-duration: 1ms !important;
+  }
+  .veil.is-on { opacity: 0; }
+}
