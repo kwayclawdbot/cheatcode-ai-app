@@ -6,7 +6,7 @@
 **On the average SPY trade the setup earned -0.37¢ a share and paid -5.66¢ to trade; the middle trade finished -19.3¢.**
 **SPY's realised cost drag is 0.265R — 26.5% of the money risked on every trade**, against 9–14% on the mixed baskets this programme measured before. It is HIGHER, not lower, and the reason is the stop, not the spread: see the cost section.
 
-Run 2026-08-29T20:08:33+00:00 at `a06611d`. Snapshot `polygon-deep-v1`, commission $0.005/share/side, slippage 1.0bp on market and stop fills.
+Run 2026-08-29T20:11:24+00:00 at `19d3234`. Snapshot `polygon-deep-v1`, commission $0.005/share/side, slippage 1.0bp on market and stop fills.
 
 ## Read this before anything else — one ambiguity in the spec
 
@@ -216,9 +216,9 @@ Every session the model looked at and the rule that ended it. This is the check 
 |---|---|---|---|
 | `days_seen` | 3,680 | 3,680 | 3,680 |
 | `days_no_htf_trend` | 598 | 622 | 539 |
-| `days_trend_ok_no_break` | 1,049 | 1,125 | 1,109 |
+| `days_trend_ok_no_break` | 1,049 | 1,125 | 1,110 |
 | `days_trigger_but_no_signal` | 0 | 0 | 1 |
-| `days_with_1_trade_direction(s)` | 1,984 | 1,886 | 1,989 |
+| `days_with_1_trade_direction(s)` | 1,985 | 1,887 | 1,989 |
 | `days_with_2_trade_direction(s)` | 48 | 46 | 41 |
 | `triggers` | 43,230 | 41,928 | 45,564 |
 | `signals` | 2,081 | 1,979 | 2,071 |
@@ -231,11 +231,13 @@ Every session the model looked at and the rule that ended it. This is the check 
 | `bars_no_break_on_trend_side` | 81,084 | 79,049 | 81,298 |
 | `bars_direction_already_traded` | 41,144 | 39,938 | 43,471 |
 
-- **SPY**: 2,032 of 3,680 sessions produced at least one trade (55.2%); 598 were lost to the higher timeframe having no confirmed trend at any point in the session (16.2%); 1,049 had a trend but no 5-minute close beyond the range on that side.
+Every session is booked under exactly one outcome, and the four `days_*` rows below `days_seen` sum to it.
+
+- **SPY**: 2,033 of 3,680 sessions produced at least one trade (55.2%); 598 were lost to the higher timeframe having no confirmed trend at any point in the session (16.2%); 1,049 had a trend but no 5-minute close beyond the range on that side.
   Orders that never became a trade: Counter()
-- **QQQ**: 1,932 of 3,680 sessions produced at least one trade (52.5%); 622 were lost to the higher timeframe having no confirmed trend at any point in the session (16.9%); 1,125 had a trend but no 5-minute close beyond the range on that side.
+- **QQQ**: 1,933 of 3,680 sessions produced at least one trade (52.5%); 622 were lost to the higher timeframe having no confirmed trend at any point in the session (16.9%); 1,125 had a trend but no 5-minute close beyond the range on that side.
   Orders that never became a trade: Counter()
-- **IWM**: 2,030 of 3,680 sessions produced at least one trade (55.2%); 539 were lost to the higher timeframe having no confirmed trend at any point in the session (14.6%); 1,109 had a trend but no 5-minute close beyond the range on that side.
+- **IWM**: 2,030 of 3,680 sessions produced at least one trade (55.2%); 539 were lost to the higher timeframe having no confirmed trend at any point in the session (14.6%); 1,110 had a trend but no 5-minute close beyond the range on that side.
   Orders that never became a trade: Counter()
 
 - model parameters: `{"or_minutes": 15, "entry_tf_minutes": 5, "window": [589, 944], "flatten_min": 955, "trend_timeframe_minutes": 60, "trend_pivot_n": 2, "trend_lookback": 120, "target_r": 2.0, "stop": "trigger candle low (long) / high (short)", "skips": "none"}`

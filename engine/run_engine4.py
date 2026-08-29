@@ -89,6 +89,8 @@ def flat_cost_ps(t, commission=0.005, half_spread=0.005) -> float:
 def run_one(symbol: str, variant: str, costs: Costs):
     m = OrbSimple(variant, snapshot=SNAPSHOT)
     trades, rejects = run_symbol(load(symbol, "1m", SNAPSHOT), m, costs)
+    m.finish()      # `run_symbol` does not call it; without this the final
+                    # session is never booked and the census is one day short
     return trades, rejects, m.census
 
 
@@ -616,6 +618,13 @@ def census_section(variant, res, sessions) -> str:
         vals = [f"{res[s]['census'].get(k, 0):,}" for s in res]
         P.append(f"| `{k}` | " + " | ".join(vals) + " |")
     P.append("")
+    for sym, r in res.items():
+        c = r["census"]
+        booked = sum(v for k, v in c.items()
+                     if k.startswith("days_") and k != "days_seen")
+        assert booked == c["days_seen"], (sym, booked, c["days_seen"])
+    P.append(f"Every session is booked under exactly one outcome, and the four "
+             f"`days_*` rows below `days_seen` sum to it.\n")
     for sym, r in res.items():
         c = r["census"]
         seen = c.get("days_seen", 0) or 1
