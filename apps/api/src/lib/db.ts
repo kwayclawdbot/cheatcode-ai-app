@@ -23,6 +23,24 @@ export function serviceClient(): SupabaseClient {
   return cached;
 }
 
+/**
+ * Drop the cached client so the next call builds a fresh one.
+ *
+ * The client caches Supabase's JWT signing keys (JWKS) for the life of the
+ * process. When the project's signing key rotates — `supabase db reset`
+ * locally, a key rotation hosted — every token then fails verification against
+ * the stale key, and a long-lived server answers 401 to EVERY user forever,
+ * including sessions minted one second ago. Restarting fixed it; nothing else
+ * did, and nothing in the error said so.
+ *
+ * `requireUser` calls this once on a verification failure and retries. That is
+ * a re-verification against current keys, not a relaxation of it: a token that
+ * fails the second check is still refused.
+ */
+export function resetServiceClient(): void {
+  cached = null;
+}
+
 export function supabaseConfigured(): boolean {
   return Boolean(env('SUPABASE_URL') && env('SUPABASE_SERVICE_ROLE_KEY'));
 }

@@ -81,3 +81,14 @@ export function validationError(issues: z.ZodIssue[]): ApiError {
 
 export const UNAUTHENTICATED = () =>
   new ApiError('UNAUTHENTICATED', 'Please sign in again — your session has expired.');
+
+/**
+ * We could not VERIFY the session — which is not the same as the session being
+ * expired, and telling the user it expired sends them to sign in again over and
+ * over while the real fault is ours (see `requireUser`: a rotated signing key
+ * makes a long-lived server reject every token there is). Same 401 status, so
+ * the client still routes to sign-in, but the sentence does not blame the user
+ * for something they cannot fix by signing in.
+ */
+export const UNVERIFIABLE_SESSION = () =>
+  new ApiError('UNAUTHENTICATED', 'We could not verify your session. Please sign in again — if this keeps happening it is a problem on our side, not yours.');
