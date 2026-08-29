@@ -126,3 +126,43 @@ def session_range(view: BarView, session: str = RTH) -> Range:
     if sl.stop == sl.start:
         return EMPTY_RANGE
     return _range_over(view, sl, complete=int(view.last.minute) >= hi)
+
+
+def overnight_range(view: BarView) -> Range:
+    """Prior session's close through today's open — the hours the day session
+    has to price in when it starts.
+
+    Spans the previous ET day's post-market (from its own RTH close, which is
+    13:00 on a half day) and today's premarket. Complete once the last visible
+    bar is at or after 09:30, because nothing after that adds to it.
+    """
+    today = int(view.last.day)
+    prior = view.prior_day()
+    parts: list[slice] = []
+    if prior is not None:
+        psl = view.day_slice(prior)
+        if psl is not None:
+            m = view.minute[psl]
+            keep = np.flatnonzero(m >= rth_close_minute(prior))
+            if len(keep):
+                parts.append(slice(psl.start + int(keep[0]), psl.start + int(keep[-1]) + 1))
+    pre = _today_mask_slice(view, config.PREMARKET_OPEN_MIN, config.RTH_OPEN_MIN)
+    if pre.stop > pre.start:
+        parts.append(pre)
+    if not parts:
+        return EMPTY_RANGE
+    hi = lo = None
+    hi_idx = lo_idx = -1
+    bars = 0
+    for sl in parts:
+        h, l = view.high[sl], view.low[sl]
+        bars += len(h)
+        hj, lj = int(np.argmax(h)), int(np.argmin(l))
+        if hi is None or float(h[hj]) > hi:
+            hi, hi_idx = float(h[hj]), (sl.start or 0) + hj
+        if lo is None or float(l[lj]) < lo:
+            lo, lo_idx = float(l[lj]), (sl.start or 0) + lj
+    # a prior-day slice is contiguous only within itself; `bars` is the count
+    # across both legs, which is what a caller wants to know about the sample.
+    return Range(float(hi), float(lo), hi_idx, lo_idx, bars,
+                 complete=int(view.last.minute) >= config.RTH_OPEN_MIN)

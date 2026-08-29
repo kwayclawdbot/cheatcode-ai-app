@@ -21,13 +21,16 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from engine.primitives import htf as hf
 from engine.primitives import imbalance as im
+from engine.primitives import levels as lv
 from engine.primitives import liquidity as lq
 from engine.primitives import session as ses
 from engine.primitives import structure as st
+from engine.primitives import timeframe as tf
 from engine.primitives import trend as tr
 from engine.series import BarSeries
-from engine.tests.fixtures import make
+from engine.tests.fixtures import make, make_multiday
 
 def _random_day(day: int, n: int = 200, base: float = 100.0, seed: int = 20260829) -> list[tuple]:
     """A tape with enough movement to arm every primitive. Seeded, so a
@@ -45,6 +48,15 @@ def _random_day(day: int, n: int = 200, base: float = 100.0, seed: int = 2026082
         bars.append((240 + k * 2, o, h, l, c, v))
         px = c
     return bars
+
+
+def _resample_signature(v):
+    """resample returns a BarSeries; compare it field by field."""
+    r = tf.resample(v, 5)
+    return [list(map(float, r.open)), list(map(float, r.high)),
+            list(map(float, r.low)), list(map(float, r.close)),
+            list(map(float, r.volume)), list(map(int, r.day)),
+            list(map(int, r.minute)), list(map(int, r.ts_ms))]
 
 
 def build_tape(n: int = 200, seed: int = 20260829) -> BarSeries:
@@ -84,6 +96,16 @@ PRIMITIVES = [
     ("trend.trend_state", tr.trend_state),
     ("trend.volume_regime", tr.volume_regime),
     ("trend.pct_change", lambda v: tr.pct_change(v, 30)),
+    # ENGINE-2. `levels.major_levels` is the highest-risk function in the repo
+    # for accidental lookahead: "the recent major level" is trivially easy to
+    # compute with bars that have not printed. It is attacked here on the
+    # single-day tape and again below on a three-day one.
+    ("timeframe.resample", _resample_signature),
+    ("session.overnight_range", ses.overnight_range),
+    ("htf.daily_structure", lambda v: hf.daily_structure(v, 2, 60)),
+    ("levels.reference_levels", lv.reference_levels),
+    ("levels.pivot_levels", lambda v: lv.pivot_levels(v, 3, 120, 10.0, 2)),
+    ("levels.major_levels", lambda v: lv.major_levels(v, None, 5, 3, 120)),
 ]
 
 AS_OF = [60, 99, 140, 198]
@@ -140,3 +162,62 @@ def test_relative_strength_refuses_a_misaligned_benchmark():
     b = build_tape(seed=7)
     with pytest.raises(ValueError):
         tr.relative_strength(a.view(100), b.view(101), 30)
+
+
+# ---------------------------------------------------------------------------
+# A level finder that only ever sees one day cannot demonstrate much. This tape
+# is three sessions long, with premarket and post-market bars, so prior-day and
+# overnight levels are live and there is a genuine future to poison.
+
+def build_multiday_tape(seed: int = 5150) -> BarSeries:
+    rng = np.random.default_rng(seed)
+    days, out = [20240102, 20240103, 20240104], {}
+    px = 100.0
+    for d in days:
+        bars = []
+        for minute in list(range(240, 570, 3)) + list(range(570, 960, 2)) + list(range(960, 1200, 6)):
+            o = px
+            c = max(1.0, o + rng.normal(0, 0.12))
+            bars.append((minute, o, max(o, c) + abs(rng.normal(0, 0.06)),
+                         min(o, c) - abs(rng.normal(0, 0.06)), c,
+                         float(rng.integers(500, 20_000))))
+            px = c
+        out[d] = bars
+    return make_multiday(out)
+
+
+MULTIDAY_PRIMITIVES = [
+    ("levels.major_levels/multiday", lambda v: lv.major_levels(v, None, 5, 3, 300)),
+    ("levels.reference_levels/multiday", lv.reference_levels),
+    ("session.overnight_range/multiday", ses.overnight_range),
+    ("session.premarket_range/multiday", ses.premarket_range),
+    ("timeframe.resample/multiday", _resample_signature),
+]
+
+
+@pytest.mark.parametrize("name,fn", MULTIDAY_PRIMITIVES,
+                         ids=[p[0] for p in MULTIDAY_PRIMITIVES])
+@pytest.mark.parametrize("frac", [0.45, 0.72, 0.9])
+def test_multiday_primitive_cannot_see_the_future(name, fn, frac):
+    s = build_multiday_tape()
+    i = int(len(s) * frac)
+    baseline = _norm(fn(s.view(i)))
+    assert baseline == _norm(fn(poison(s, i).view(i))), \
+        f"{name} changed when only bars after {i} changed"
+    assert baseline == _norm(fn(s.subrange(0, i + 1).view(i))), \
+        f"{name} changed when bars after {i} did not exist"
+
+
+def test_the_multiday_detector_also_detects():
+    s = build_multiday_tape()
+    i = int(len(s) * 0.72)
+    assert _cheating_primitive(s, i) != _cheating_primitive(poison(s, i), i)
+
+
+def test_major_levels_are_not_empty_on_the_multiday_tape():
+    """A lookahead test on a function that returns nothing proves nothing."""
+    s = build_multiday_tape()
+    got = lv.major_levels(s.view(int(len(s) * 0.72)), None, 5, 3, 300)
+    assert len(got) >= 5
+    assert any(x.label in ("PDH", "PDL", "ONH", "ONL", "PMH", "PML") for x in got)
+    assert any(x.label in ("PH", "PL") for x in got)
