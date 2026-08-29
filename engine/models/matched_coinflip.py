@@ -112,3 +112,61 @@ class MatchedCoinflipMulti(Model):
                       "market", px, stop, target, minute + 5, self.flatten_min,
                       {"matched": True, "risk_ps": risk},
                       target_r=self.target_r)
+
+
+class MatchedCoinflipRR(Model):
+    """ENGINE-5's control: the model's own days, minutes, stop distances AND
+    target distances, with only the direction flipped.
+
+    `MatchedCoinflipMulti` matches the stop distance and re-derives the target
+    as a multiple of it. ENGINE-5's primary model targets a LEVEL, whose
+    distance is not a multiple of anything, so a control that re-derives 2R
+    would be answering a different question — it would differ from the model in
+    both direction and reward. This one carries the reward distance across in
+    price, exactly as the model priced it at its own decision close.
+
+    A reward of `inf` is carried across as `inf`: when the model found no level
+    in its direction and traded without a price target, the control does too.
+    Everything else — symbol, day, decision minute, market entry on the next
+    bar, flat at 15:55, and the management rule applied by whichever runner
+    replays it — is the model's.
+    """
+
+    id = "null_coinflip.v1.matched"
+    description = ("control: the model's own days, minutes, stop AND target "
+                   "distances, direction by coin flip")
+
+    def __init__(self, plan: dict[int, list[tuple[int, float, float]]],
+                 flatten_min: int = 15 * 60 + 55) -> None:
+        # plan: {day -> [(decision_minute, risk_per_share, reward_per_share)]}
+        self.plan = {int(d): {int(m): (float(r), float(w)) for m, r, w in v}
+                     for d, v in plan.items()}
+        self.flatten_min = flatten_min
+
+    def params(self) -> dict:
+        return {"seed": SEED, "planned_days": len(self.plan),
+                "planned_entries": sum(len(v) for v in self.plan.values()),
+                "flatten_min": self.flatten_min,
+                "reward": "the model's own, in price"}
+
+    def wants_bar(self, minute: int, day: int) -> bool:
+        p = self.plan.get(day)
+        return p is not None and minute in p
+
+    def evaluate(self, view: BarView, day: int) -> Signal | None:
+        got = (self.plan.get(day) or {}).get(int(view.last.minute))
+        if got is None:
+            return None
+        risk, reward = got
+        if not (risk > 0) or not (reward > 0):
+            return None
+        last = view.last
+        px = float(last.close)
+        minute = int(last.minute)
+        long = bool(_hash(view.symbol, day, minute, "side") % 2)
+        side = "long" if long else "short"
+        stop = px - risk if long else px + risk
+        target = px + reward if long else px - reward
+        return Signal(self.id, view.symbol, day, view.i, minute, side,
+                      "market", px, stop, target, minute + 5, self.flatten_min,
+                      {"matched": True, "risk_ps": risk, "reward_ps": reward})

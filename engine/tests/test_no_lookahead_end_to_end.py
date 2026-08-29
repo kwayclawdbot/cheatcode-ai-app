@@ -180,3 +180,154 @@ def test_the_trigger_candle_only_ever_reads_minutes_that_have_printed(variant):
             if checked > 400:
                 return
     assert checked > 0
+
+
+# ---------------------------------------------------------------------------
+# ENGINE-5. The same attack again, on `orb_1h_managed.v1` and its three
+# variants, and strengthened once more: this family's TARGET is a level drawn
+# from the 1-hour series, so the amputation now has to leave the level finder
+# and the trend reading with no future at all. The context is rebuilt from a
+# tape that ends at the decision bar; the signal must be identical field for
+# field, target level included.
+
+MANAGED_VARIANTS = ["orb_1h_managed.v1", "orb_1h_managed_2r.v1",
+                    "orb_1h_trigcandle.v1", "orb_1h_unmanaged.v1"]
+
+
+def _managed_decisions(symbol: str, variant: str, limit: int = 5):
+    from engine.models.orb_managed import OrbManaged
+
+    series = load(symbol, "1m", DEEP)
+    bounds = series.day_bounds()
+    days = sorted(bounds)
+    out = []
+    for t in range(200, len(days), 53):
+        day = days[t]
+        win_start = bounds[days[t - 5]][0]
+        win = series.subrange(win_start, bounds[day][1])
+        m = OrbManaged(variant, snapshot=DEEP)
+        for j in range(len(win)):
+            minute = int(win.minute[j])
+            if int(win.day[j]) != day or not m.wants_bar(minute, day):
+                continue
+            sig = m.evaluate(win.view(j), day)
+            if sig is not None:
+                out.append((series, win, j, win_start + j, day, sig))
+                break
+        if len(out) >= limit:
+            break
+    return out
+
+
+@deep
+@pytest.mark.parametrize("variant", MANAGED_VARIANTS)
+@pytest.mark.parametrize("symbol", DEEP_SYMBOLS)
+def test_orb_managed_decides_the_same_thing_with_the_future_amputated(symbol, variant):
+    from engine.backtest.mtf import MtfContext
+    from engine.models.orb_managed import OrbManaged
+
+    found = _managed_decisions(symbol, variant)
+    assert found, f"no {variant} signal for {symbol}; the test would prove nothing"
+    for series, win, j, gj, day, sig in found:
+        truncated = series.subrange(0, gj + 1)
+        ctx = MtfContext(truncated)
+        m2 = OrbManaged(variant, ctx_factory=lambda _s, c=ctx: c)
+        again = m2.evaluate(win.subrange(0, j + 1).view(j), day)
+        assert again is not None, f"{symbol} {variant} {day}: the signal vanished"
+        for field in ("side", "entry_type", "entry_price", "stop_price",
+                      "target_price", "target_r", "decision_minute",
+                      "expiry_minute", "exit_minute"):
+            assert getattr(sig, field) == getattr(again, field), \
+                f"{symbol} {variant} {day}: {field} moved when the future was removed"
+        for k in ("trend", "or_high", "or_low", "stop_candle_high",
+                  "stop_candle_low", "risk_ps", "has_target_level",
+                  "target_label", "target_touches"):
+            assert sig.meta[k] == again.meta[k], \
+                f"{symbol} {variant} {day}: meta[{k}] moved when the future was removed"
+        tl, tl2 = sig.meta["target_level"], again.meta["target_level"]
+        assert (tl == tl2) or (tl != tl and tl2 != tl2), \
+            f"{symbol} {variant} {day}: the target level moved"
+
+
+@deep
+def test_the_prior_candle_is_five_minutes_older_than_the_trigger_candle():
+    """The one genuinely new primitive in ENGINE-5. Its answer must equal the
+    aggregate of exactly the 1-minute bars in the bucket ENDING five minutes
+    before the decision, must be unchanged when everything after the decision
+    is deleted, and must never touch a bar the trigger candle itself covers."""
+    from engine.models.orb_managed import ENTRY_TF_MINUTES, OrbManaged
+
+    series = load("SPY", "1m", DEEP)
+    bounds = series.day_bounds()
+    days = sorted(bounds)
+    checked = 0
+    for day in days[200:2000:211]:
+        a, b = bounds[day]
+        for gj in range(a, b):
+            minute = int(series.minute[gj])
+            if minute % ENTRY_TF_MINUTES != ENTRY_TF_MINUTES - 1 or minute < 589:
+                continue
+            got = OrbManaged._prior_candle(series.view(gj), day, minute)
+            end = minute - ENTRY_TF_MINUTES
+            start = end - (ENTRY_TF_MINUTES - 1)
+            sel = ((series.day[a:b] == day) & (series.minute[a:b] >= start)
+                   & (series.minute[a:b] <= end))
+            if not sel.any():
+                assert got is None
+                continue
+            hi, lo = got
+            assert hi == pytest.approx(float(np.max(series.high[a:b][sel])))
+            assert lo == pytest.approx(float(np.min(series.low[a:b][sel])))
+            # unchanged when everything after the decision bar is gone
+            assert OrbManaged._prior_candle(
+                series.subrange(0, gj + 1).view(gj), day, minute) == got
+            # and it is the OLDER of the two readings: strictly earlier bars
+            trig = OrbManaged._trigger_candle(series.view(gj), day, minute)
+            assert trig is not None
+            checked += 1
+            if checked > 400:
+                return
+    assert checked > 0
+
+
+@deep
+def test_neither_stop_reading_is_always_the_wider_one():
+    """ENGINE-5's brief assumed the prior-candle stop is wider than ENGINE-4's
+    trigger-candle stop. On the real tape that is FALSE as a rule, and this test
+    is where the correction is recorded.
+
+    The trigger candle is the breakout bar. It is frequently a large bar with a
+    long wick, and its own extreme can sit much further from the close than the
+    quieter bar before it — SPY 2012-11-19 at 10:44 risks $2.11 on the trigger
+    reading and $0.24 on the prior reading. Both directions occur, so which
+    reading is wider is a MEASUREMENT, not an argument, and the report has to
+    give the realised distribution rather than assert one.
+    """
+    from engine.models.orb_managed import OrbManaged
+
+    series = load("SPY", "1m", DEEP)
+    bounds = series.day_bounds()
+    days = sorted(bounds)
+    wider = tighter = 0
+    for t in range(200, 900, 7):
+        day = days[t]
+        win = series.subrange(bounds[days[t - 5]][0], bounds[day][1])
+        a = OrbManaged("orb_1h_managed.v1", snapshot=DEEP)
+        b = OrbManaged("orb_1h_trigcandle.v1", snapshot=DEEP)
+        for j in range(len(win)):
+            minute = int(win.minute[j])
+            if int(win.day[j]) != day or not a.wants_bar(minute, day):
+                continue
+            sa = a.evaluate(win.view(j), day)
+            sb = b.evaluate(win.view(j), day)
+            if sa is None or sb is None:
+                continue
+            assert sa.side == sb.side and sa.decision_minute == sb.decision_minute
+            assert sa.entry_price == sb.entry_price
+            assert sa.risk_per_share > 0 and sb.risk_per_share > 0
+            if sa.risk_per_share > sb.risk_per_share:
+                wider += 1
+            elif sa.risk_per_share < sb.risk_per_share:
+                tighter += 1
+            break
+    assert wider > 0 and tighter > 0, (wider, tighter)

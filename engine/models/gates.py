@@ -212,3 +212,70 @@ def verdict3_deep(gates: list[GateResult], is_r, oos_r) -> str:
                    (oos_hi == oos_hi and oos_hi < MIN_EXPECTANCY_OOS)
         return "FAIL" if decisive else INCONCLUSIVE_POWER
     return "FAIL"
+
+
+# ---------------------------------------------------------------------------
+# ENGINE-5 addendum. Written before `orb_1h_managed.v1` or any of its three
+# variants produced a number; see each model's own GATE.md and the git log.
+#
+# ENGINE-5 adds NO gate and moves NO threshold. G1-G5 are ENGINE-1's, the deep
+# windows and single-symbol floors are ENGINE-4's, and the `polygon-v1` basket
+# uses ENGINE-1's windows and pooled floors. A model handed an easier bar than
+# the six that failed before it has not been measured against anything.
+#
+# What ENGINE-5 adds is a DIAGNOSTIC and an explicit fence around it.
+
+ONE_R = 1.0
+
+# The gate functions above reference `Summary.mean_r`, `.profit_factor`, `.n`
+# and `.mae_tail_winners`. None of them references an MFE statistic, a peak, a
+# touch rate or a partial rate, and none of them may be changed to. This
+# constant exists so the fence is greppable.
+DIAGNOSTICS_NEVER_GATED = ("one_r_touch_rate", "partial_rate", "mfe",
+                           "peak", "naive_win_rate")
+
+
+def naive_1r_scoring(trades, level: float = ONE_R) -> dict:
+    """The owner's literal request, priced — and never used as a result.
+
+    *"even if it doesnt hit 2rr mark any trade that moves up at least 1rr as a
+    win"*. This computes what that scoring rule would have CLAIMED on exactly
+    these trades, beside what they actually returned, so the two can be printed
+    next to each other.
+
+    `touch_rate` is the share of trades whose best excursion reached `level` R
+    before the trade resolved. It is capped by the trade's own exit: a trade
+    that took its target at +0.4R cannot show an MFE of +1R, because it was
+    closed. That is stated rather than corrected, because the alternative —
+    following a closed position forward — is exactly the fiction being guarded
+    against.
+
+    `claimed_mean_r` books +1R for every trade that touched and -1R for every
+    trade that did not, which is what "mark it as a win" means if it is to be
+    arithmetic rather than a feeling. `realised_mean_r` is what the trades
+    actually paid, after costs.
+
+    NOTHING here enters a gate. See DIAGNOSTICS_NEVER_GATED.
+    """
+    import math
+
+    rows = [t for t in trades if math.isfinite(t.mfe_r) and math.isfinite(t.net_r)]
+    n = len(rows)
+    if not n:
+        return {"n": 0}
+    touched = [t for t in rows if t.mfe_r >= level]
+    realised = [t.net_r for t in rows]
+    realised.sort()
+    return {
+        "n": n,
+        "touched": len(touched),
+        "touch_rate": len(touched) / n,
+        "claimed_win_rate": len(touched) / n,
+        "claimed_mean_r": (len(touched) * level - (n - len(touched)) * 1.0) / n,
+        "realised_win_rate": sum(1 for t in rows if t.net_r > 0) / n,
+        "realised_mean_r": sum(realised) / n,
+        "realised_median_r": (realised[n // 2] if n % 2
+                              else 0.5 * (realised[n // 2 - 1] + realised[n // 2])),
+        "mean_r_of_touchers": (sum(t.net_r for t in touched) / len(touched)
+                               if touched else float("nan")),
+    }
