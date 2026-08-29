@@ -48,7 +48,14 @@ export async function getAccessToken(): Promise<string | null> {
 export async function recoverSession(): Promise<string | null> {
   const fresh = await refreshOnce();
   if (fresh) return fresh;
-  await supabase?.auth.signOut().catch(() => {});
+  // `scope: 'local'` is load-bearing. The default global sign-out asks the
+  // SERVER to revoke this token — and the case we are in is precisely the one
+  // where the server will not honour it (key rotated, project reset, session
+  // minted against a different stack). That call fails, the dead session stays
+  // in storage, and the next launch reads it, 401s, and shows "session
+  // expired" again. Forever. A local sign-out clears storage without needing
+  // anyone's permission, which is the only thing that can end the loop.
+  await supabase?.auth.signOut({ scope: 'local' }).catch(() => {});
   return null;
 }
 

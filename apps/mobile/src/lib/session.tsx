@@ -132,7 +132,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       return { ok: true, needsConfirmation: true };
     },
 
-    signOut: async () => { await supabase?.auth.signOut(); setProfile(null); },
+    // Revoke server-side when we can — that is what a deliberate sign-out
+    // means. But NEVER let a failed revoke strand the user signed in: if the
+    // server will not accept this token (rotated key, reset project, session
+    // from another stack) the global call throws, and without the fallback the
+    // local session survives and the only escape hatch in the app is broken
+    // for exactly the person who needs it.
+    signOut: async () => {
+      try {
+        await supabase?.auth.signOut();
+      } catch {
+        await supabase?.auth.signOut({ scope: 'local' }).catch(() => {});
+      }
+      setProfile(null);
+    },
 
     refreshProfile: async () => { await loadProfile(session); },
 
