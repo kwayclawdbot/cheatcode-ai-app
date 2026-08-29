@@ -324,6 +324,22 @@ for TF in 15m 1h; do
   fi
 done
 
+# LIVE-1 — the chart contracts and the choreography that drives it.
+#
+# This one does not touch the server: it loads packages/shared and the mobile
+# chart modules in bare Node and asserts the things a running API can never
+# catch — that `AnnotationKind` and `ChartCommandName` were APPENDED to rather
+# than reordered (both are persisted, and a reorder silently re-labels stored
+# rows), that the client<->chart bridge still round-trips, and that a Kai
+# command is still choreographed rather than applied: the pointer arrives
+# before the line is drawn, a plan is marked one leg at a time, and a finger on
+# the glass ends the sequence instead of queueing behind it.
+if node "$(dirname "$0")/contracts-live1.mjs" 2>&1 | grep -v 'MODULE_TYPELESS_PACKAGE_JSON\|Reparsing as ES module\|To eliminate this warning\|trace-warnings'; then
+  green "PASS  LIVE-1 chart contracts + choreography"; PASS=$((PASS+1))
+else
+  red   "FAIL  LIVE-1 chart contracts + choreography"; FAIL=$((FAIL+1))
+fi
+
 hr; echo "ROUND 2 — setups detail, follow, theses"; hr
 
 check "setups list (post-refresh levels)" GET "/api/v1/setups?mode=day_trade"
