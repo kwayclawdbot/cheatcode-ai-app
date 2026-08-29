@@ -119,6 +119,19 @@ export function PortalTopBar({
 /* Timeframe rail                                                       */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The strip under the chart.
+ *
+ * It USED to be the timeframe rail. LIVE-1 moved timeframe selection inside the
+ * chart surface itself, for one reason that outranks familiarity: Kai's pointer
+ * has to be able to press the button. A cursor that travels to the edge of the
+ * chart and stops, while a control outside it changes state on its own, reads
+ * as a script with a mascot — the exact thing this lane exists to kill.
+ *
+ * What is left here is what the chart cannot say about itself: whether the bars
+ * are the resolution you asked for, and whether Kai's levels are showing. The
+ * `timeframe-rail` testID stays because it still identifies this strip.
+ */
 export function TimeframeRail({
   value, options, onChange, exact = true, onToggleAnnotations, annotationsHidden,
 }: {
@@ -129,43 +142,32 @@ export function TimeframeRail({
   onToggleAnnotations?: () => void;
   annotationsHidden?: boolean;
 }) {
+  // `value`, `options` and `onChange` stay in the signature: the chart owns the
+  // control, but the screen still owns the state, and a future compact layout
+  // (a circle room, the Live stage) may need the chips back without a refactor.
+  void value; void options; void onChange;
+
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }} testID="timeframe-rail">
-      {options.map((t) => {
-        const on = t === value;
-        return (
-          <Pressable
-            key={t}
-            testID={`tf-${t}`}
-            accessibilityRole="button"
-            accessibilityLabel={`${t} chart`}
-            accessibilityState={{ selected: on }}
-            onPress={() => onChange(t)}
-            hitSlop={{ top: 10, bottom: 10, left: 2, right: 2 }}
-            style={{
-              height: 23,
-              paddingHorizontal: 8,
-              borderRadius: radius.sm,
-              backgroundColor: on ? alpha.cyan14 : 'transparent',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Num size={10} weight={on ? 'bold' : 'regular'} c={on ? color.cyan : color.dim}>{t}</Num>
-          </Pressable>
-        );
-      })}
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} testID="timeframe-rail">
+      {!exact ? (
+        <T size={9.5} c={color.gold} testID="chart-coarser-bars">
+          Coarser bars — this resolution was not available
+        </T>
+      ) : null}
       <View style={{ flex: 1 }} />
-      {!exact ? <T size={9} c={color.gold}>coarser bars</T> : null}
       <Pressable
         testID="toggle-annotations"
         accessibilityRole="button"
         accessibilityLabel={annotationsHidden ? 'Show Kai levels' : 'Hide Kai levels'}
+        accessibilityState={{ selected: !annotationsHidden }}
         onPress={onToggleAnnotations}
         hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
-        style={{ marginLeft: 10 }}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
       >
-        <Layers size={15} c={annotationsHidden ? color.dim : color.violetLight} />
+        <Layers size={14} c={annotationsHidden ? color.dim : color.violetLight} />
+        <T size={10} c={annotationsHidden ? color.dim : color.violetLight}>
+          {annotationsHidden ? 'Levels hidden' : 'Kai levels'}
+        </T>
       </Pressable>
     </View>
   );

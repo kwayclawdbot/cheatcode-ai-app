@@ -22,10 +22,19 @@ export const PORTAL_TIMEFRAMES: PortalTimeframe[] = ['1m', '5m', '15m', '1h', '4
 /* Annotations — 10 §7 "Annotation requirements"                        */
 /* ------------------------------------------------------------------ */
 
-/** Meaning, never colour. The client maps kind → token (14 palette lock). */
+/**
+ * Meaning, never colour. The client maps kind → token (14 palette lock).
+ *
+ * The first eight say what a level MEANS. `trendline`, `box` and `vertical`
+ * (LIVE-1, append-only) say what SHAPE to draw for something a horizontal price
+ * line cannot express — a slope between two real bars, a time x price region
+ * (an FVG, an order block), a moment. The chart derives the shape from `kind`
+ * plus which coordinates are present, so nothing sends a shape name twice.
+ */
 export type AnnotationKind =
   | 'trigger' | 'entry' | 'stop' | 'invalidation' | 'target'
-  | 'support' | 'resistance' | 'note';
+  | 'support' | 'resistance' | 'note'
+  | 'trendline' | 'box' | 'vertical';
 
 export type AnnotationProvenance = 'kai' | 'user' | 'community' | 'plan';
 export type AnnotationStatus = 'valid' | 'invalidated' | 'hidden' | 'deleted';
@@ -61,7 +70,18 @@ export type Annotation = {
 export type ChartCommandName =
   | 'mark_level' | 'set_timeframe' | 'show_invalidation' | 'mark_plan'
   | 'zoom_trigger' | 'compare_prior' | 'highlight_community'
-  | 'annotation_remove' | 'annotation_explain' | 'alert_from_level' | 'prepare_trade';
+  | 'annotation_remove' | 'annotation_explain' | 'alert_from_level' | 'prepare_trade'
+  // v2 (LIVE-1): the camera is a first-class command, so Kai can say "look
+  // over here" instead of narrating a level that is 400 bars off screen.
+  | 'zoom_range' | 'scroll_bars' | 'scroll_to_now' | 'flash_annotation' | 'pointer_hint';
+
+/** Every command name, for the runtime guards that read frames off the wire. */
+export const CHART_COMMAND_NAMES: ChartCommandName[] = [
+  'mark_level', 'set_timeframe', 'show_invalidation', 'mark_plan', 'zoom_trigger',
+  'compare_prior', 'highlight_community', 'annotation_remove', 'annotation_explain',
+  'alert_from_level', 'prepare_trade',
+  'zoom_range', 'scroll_bars', 'scroll_to_now', 'flash_annotation', 'pointer_hint',
+];
 
 export type ChartCommand = {
   command: ChartCommandName;
@@ -226,6 +246,9 @@ export const KIND_LABEL: Record<AnnotationKind, string> = {
   support: 'Support',
   resistance: 'Resistance',
   note: 'Note',
+  trendline: 'Trend',
+  box: 'Zone',
+  vertical: 'Mark',
 };
 
 export const PROVENANCE_LABEL: Record<AnnotationProvenance, string> = {

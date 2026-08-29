@@ -8,7 +8,7 @@
  *
  * Query: ?alert=<id>&setup=<id>&ctx=kai|alert|plan|community
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '../../ui/Screen';
@@ -20,7 +20,10 @@ import { ScreenLoading } from '../../ui/Loading';
 import { color, radius } from '../../ui/tokens';
 import { useSession } from '../../lib/session';
 import type { GoalMode } from '../../lib/types';
-import { PortalChart } from '../../features/chart/PortalChart';
+import { ChartView } from '../../features/chart/ChartView';
+import { AnnotationRail } from '../../features/chart/AnnotationRail';
+import { applyChartCommand } from '../../features/chart/apply';
+import type { ChartHandle } from '../../features/chart/apply';
 import {
   AnnotationSheet, ContextSwitcher, PortalTopBar, TickerSwitcherSheet, TimeframeRail,
 } from '../../features/portal/chrome';
@@ -57,7 +60,6 @@ export default function TradePortalScreen() {
   const [tf, setTf] = useState<PortalTimeframe | null>(null);
   const [ctx, setCtx] = useState<PortalContext>(routeCtx ?? 'kai');
   const [focusTs, setFocusTs] = useState<string | null>(null);
-  const [compare, setCompare] = useState(false);
   const [hideAnnotations, setHideAnnotations] = useState(false);
   const [inspecting, setInspecting] = useState<Annotation | null>(null);
   const [drawersOpen, setDrawersOpen] = useState(false);
@@ -74,18 +76,50 @@ export default function TradePortalScreen() {
   }, [data, routeCtx]);
 
   const { candles, exact } = usePortalCandles(symbol, tf);
-  const priorSession = usePortalCandles(compare ? symbol : '', tf === 'D' ? 'D' : '1h');
+  const chart = useRef<ChartHandle | null>(null);
 
-  /** One chart command → the chart changes in place, and Kai says what he did. */
+  /**
+   * One chart command → the chart PERFORMS it, and Kai says what he did.
+   *
+   * `planCommand` resolves WHAT (which level, from which real object — no number
+   * is created here). `applyChartCommand` decides HOW it appears: the pointer
+   * travels to the price, the line draws itself, the label catches up. React
+   * state is committed AFTERWARDS, so the annotation set stays the source of
+   * truth without the levels snapping into existence before Kai gets there.
+   */
   const applyCommand = useCallback((c: ChartCommand): string | null => {
     const p = planCommand(c, data, annotations);
     if (!p) return null;
-    p.upsert.forEach(upsertAnnotation);
-    p.remove.forEach((id) => setAnnotationStatus(id, 'deleted'));
+
     if (p.timeframe) setTf(p.timeframe);
     if (p.focusTs) setFocusTs(p.focusTs);
-    if (p.compare) setCompare(true);
     if (p.upsert.length) setHideAnnotations(false);
+
+    const handle = chart.current;
+    const commit = () => {
+      p.upsert.forEach(upsertAnnotation);
+      p.remove.forEach((id) => setAnnotationStatus(id, 'deleted'));
+    };
+
+    if (handle) {
+      void applyChartCommand(handle, {
+        command: c.command,
+        payload: c.payload,
+        annotations: p.upsert.map((a) => ({
+          id: a.id, kind: a.kind, price: a.price, price2: a.price2,
+          ts_from: a.ts_from, ts_to: a.ts_to, text: a.text,
+          provenance: a.provenance, status: a.status,
+        })),
+        removeIds: p.remove,
+        timeframe: p.timeframe,
+        focusTs: p.focusTs,
+        // An interrupted sequence still commits: the user stopped the ANIMATION,
+        // not the marking. The levels are real either way.
+      }).then(commit, commit);
+    } else {
+      commit();
+    }
+
     if (p.route) router.push(p.route as never);
     return p.narration;
   }, [data, annotations, upsertAnnotation, setAnnotationStatus, router]);
@@ -161,6 +195,26 @@ export default function TradePortalScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        <ChartView
+          testID="portal-chart"
+          ref={chart}
+          symbol={data.symbol}
+          timeframe={tf ?? data.chart.timeframe}
+          timeframes={data.chart.timeframes}
+          candles={candles}
+          annotations={annotations}
+          hideAnnotations={hideAnnotations}
+          focusTs={focusTs}
+          lastPrice={data.quote?.price ?? null}
+          onSelectAnnotation={setInspecting}
+          onTimeframeChange={setTf}
+          height={248}
+        />
+
+        {/* The rail is the chart's index: every level, including the ones
+            currently off screen, reachable and readable by a screen reader. */}
+        <AnnotationRail annotations={visibleAnnotations} onSelect={setInspecting} />
+
         <TimeframeRail
           value={tf ?? data.chart.timeframe}
           options={data.chart.timeframes}
@@ -168,16 +222,6 @@ export default function TradePortalScreen() {
           exact={exact}
           annotationsHidden={hideAnnotations}
           onToggleAnnotations={() => setHideAnnotations((h) => !h)}
-        />
-
-        <PortalChart
-          candles={candles}
-          annotations={visibleAnnotations}
-          focusTs={focusTs}
-          lastPrice={data.quote?.price ?? null}
-          compare={compare ? priorSession.candles : null}
-          onSelectAnnotation={setInspecting}
-          height={196}
         />
 
         <ContextSwitcher

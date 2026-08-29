@@ -7,7 +7,10 @@ import { T, Num } from '../../ui/Text';
 import { ScreenLoading } from '../../ui/Loading';
 import { FreshnessMark } from '../../ui/FreshnessMark';
 import { alpha, color, radius } from '../../ui/tokens';
-import { KaiView, TickerChart, TickerSections, useTickerPage } from '../../features/ticker';
+import { KaiView, TickerSections, useTickerPage } from '../../features/ticker';
+import { ChartView } from '../../features/chart/ChartView';
+import { usePortalCandles } from '../../features/portal/usePortal';
+import type { PortalTimeframe } from '../../features/portal/types';
 import { openKaiSheet } from '../../features/kai-sheet';
 import { useSession } from '../../lib/session';
 import type { GoalMode } from '../../lib/types';
@@ -50,7 +53,13 @@ export default function TickerPageScreen() {
   const { profile } = useSession();
   const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? 'day_trade';
   const { data, loading, error, isFixture } = useTickerPage(symbol, mode);
-  const [tf, setTf] = React.useState<string | null>(null);
+  /**
+   * The research page and the Trade Portal now show the SAME chart on the SAME
+   * resolutions. The old 1D/1W/1M/1Y chips were a different vocabulary for the
+   * same question, and a level you studied here did not sit where it sat there.
+   */
+  const [tf, setTf] = React.useState<PortalTimeframe>('D');
+  const { candles } = usePortalCandles(symbol, tf);
 
   if (!data) {
     return (
@@ -101,13 +110,26 @@ export default function TickerPageScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 8, gap: 11 }}
         showsVerticalScrollIndicator={false}
       >
-        <TickerChart
-          points={data.chart.points}
-          timeframes={data.chart.timeframes}
-          selected={tf ?? data.chart.selected}
-          onSelect={setTf}
-          onOpenTrade={openTrade}
+        <ChartView
+          testID="ticker-chart"
+          symbol={data.symbol}
+          timeframe={tf}
+          candles={candles}
+          annotations={[]}
+          lastPrice={data.quote?.price ?? null}
+          onTimeframeChange={setTf}
+          height={210}
         />
+
+        <Pressable
+          onPress={openTrade}
+          accessibilityRole="button"
+          testID="ticker-open-trade-inline"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={({ pressed }) => ({ alignSelf: 'flex-end', opacity: pressed ? 0.7 : 1 })}
+        >
+          <T size={11} weight="semibold" c={color.volt}>Open in Trade ›</T>
+        </Pressable>
 
         <KaiView
           take={data.kai_view.take}

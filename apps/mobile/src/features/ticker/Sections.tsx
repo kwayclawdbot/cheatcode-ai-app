@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Pressable } from 'react-native';
-import Svg, { Path, Polyline, Circle, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { alpha, color, gradientAngle, radius } from '../../ui/tokens';
 import { T, Num } from '../../ui/Text';
@@ -46,61 +46,6 @@ function Stat({ label, value, mono = true }: { label: string; value: string; mon
         ? <Num size={12.5} weight="semibold" style={{ marginTop: 2 }}>{value}</Num>
         : <T size={12.5} weight="semibold" style={{ marginTop: 2 }}>{value}</T>}
     </View>
-  );
-}
-
-/** The chart card: sparkline + timeframe chips + "Open in Trade →". */
-export function TickerChart({
-  points, timeframes, selected, onSelect, onOpenTrade,
-}: {
-  points: number[]; timeframes: string[]; selected: string;
-  onSelect: (tf: string) => void; onOpenTrade: () => void;
-}) {
-  const W = 330, H = 92;
-  const line = points.length
-    ? points.map((p, i) => `${(i / Math.max(1, points.length - 1)) * W},${p}`).join(' ')
-    : '';
-  const lastY = points.length ? points[points.length - 1] : H / 2;
-
-  return (
-    <LinearGradient
-      colors={[alpha.ivory05, 'rgba(11,11,14,0.9)']}
-      start={gradientAngle.start}
-      end={gradientAngle.end}
-      style={{ borderRadius: 15, padding: 10, borderWidth: 0.5, borderColor: alpha.ivory12 }}
-      testID="ticker-chart"
-    >
-      <Svg viewBox={`0 0 ${W} ${H}`} width="100%" height={92}>
-        <Rect x={0} y={34} width={W} height={10} fill={alpha.cyan10} />
-        {line ? <Polyline points={line} fill="none" stroke={color.cyan} strokeWidth={1.8} /> : null}
-        <Circle cx={W} cy={lastY} r={3.5} fill={color.cyan} />
-      </Svg>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6 }}>
-        <View style={{ flexDirection: 'row', gap: 3 }}>
-          {timeframes.map((tf) => {
-            const on = tf === selected;
-            return (
-              <Pressable
-                key={tf}
-                onPress={() => onSelect(tf)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: on }}
-                testID={`ticker-tf-${tf}`}
-                style={{
-                  height: 22, paddingHorizontal: 9, borderRadius: 6, justifyContent: 'center',
-                  ...(on ? { backgroundColor: alpha.volt10, borderWidth: 0.5, borderColor: alpha.volt50 } : null),
-                }}
-              >
-                <T size={10} weight={on ? 'bold' : 'regular'} c={on ? color.volt : color.muted}>{tf}</T>
-              </Pressable>
-            );
-          })}
-        </View>
-        <Pressable onPress={onOpenTrade} accessibilityRole="button" testID="ticker-open-trade-inline">
-          <T size={11} weight="semibold" c={color.volt}>Open in Trade ›</T>
-        </Pressable>
-      </View>
-    </LinearGradient>
   );
 }
 

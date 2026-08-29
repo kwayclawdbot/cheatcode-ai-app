@@ -25,6 +25,13 @@ export const kindColor = (k: AnnotationKind): string => {
     case 'entry':
     case 'support':
     case 'resistance':
+    // The three shape kinds (LIVE-1) carry no financial meaning of their own —
+    // a trendline is a trendline whether it runs under support or over
+    // resistance — so they read as market information, never as risk and never
+    // as a target.
+    case 'trendline':
+    case 'box':
+    case 'vertical':
     default:
       return color.cyan;
   }

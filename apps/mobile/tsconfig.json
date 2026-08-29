@@ -11,6 +11,9 @@
       ],
       "@cheatcode/shared": [
         "../../packages/shared/api.ts"
+      ],
+      "@cheatcode/shared/chart-bridge": [
+        "../../packages/shared/chart-bridge.ts"
       ]
     }
   },
