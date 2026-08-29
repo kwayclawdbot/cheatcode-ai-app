@@ -104,6 +104,27 @@ Why they exist: round 4's vocabulary could say *mark this* and *switch to that* 
 
 **Client↔chart bridge.** `packages/shared/chart-bridge.ts` (zod) is the protocol between the app and the chart page (`apps/mobile/chart-web/`), not a server contract — no endpoint speaks it. Host→chart: `setData` · `updateLast` · `setTimeframe` · `camera.*` · `annotations.set|add|remove|flash|hidden` · `pointer.*` · `setTheme` · `setReducedMotion`. Chart→host: `ready` (carries a **measured** `firstPaintMs`) · `done{id, reason}` · `viewport` · `timeframe` · `annotationTap` · `crosshair` · `fps` · `error`. Every host message carries an `id` and every message that takes time answers `done{id, reason}` where reason is `done` | `interrupted` (a finger landed on the glass) | `superseded` — which is what lets a choreography be a real sequence and what lets the user's touch abandon the rest of it.
 
+## 7b. Kai Live (LIVE-2)
+
+Contract: `packages/shared/live.ts`. Storage: `supabase/migrations/0023_live_shows.sql`.
+
+A show is an ordered list of frames. `LiveFrame = SayFrame | ChartFrame | PresentFrame | OverlayFrame`, every one carrying `show_id`, `segment_id`, `seq` and `t_offset_ms` (milliseconds from the START OF ITS SEGMENT, never from the start of the show). `ChartFrame` wraps LIVE-1's command vocabulary — `ChartCommandName` and `AnnotationRow` are IMPORTED from `api.ts`, never redefined — and adds `annotation_ids[]` and `provenance`, which is required and non-empty on every one.
+
+**Idempotent by `(show_id, seq)`, gap-free, replayable from zero.** Those three properties are the whole contract and each one buys something specific: a broadcast frame and a fetched frame are the same frame and the second is a no-op; a frame that would open a gap is HELD rather than applied, because a chart missing a level is a wrong chart rather than a late one; and applying 0..N lands on one state whether it happened at 4pm or is being watched at midnight. `mergeFrames()` in the shared module is that rule, imported by both ends so they cannot drift.
+
+| Route | Who | What |
+|---|---|---|
+| `GET /live/current?since=&mode=` | any signed-in user (review) · premium (market) | the show on air, its segments, and every frame after `since`. Omitting `since` returns the whole timeline — late join and replay are the same request, deliberately: a catch-up path that differs from the replay path is a second implementation of the same reconciliation |
+| `GET /live/shows/:id/frames?since=&limit=&segment_id=` | same | replay, paged |
+| `POST /live/requests` | **premium only** | ask Kai to pull up a symbol. Rate limited to 3/hour — the show gets through ~10 names an hour, so one enthusiast with a loop could own the rundown. The symbol is validated against `instruments` first |
+| `GET /live/health` | same as the show | show state, buffer depth, measured spend, last error, heartbeat |
+
+`GET /live/current` also returns `channel` — the Supabase Realtime broadcast channel (`live:<show_id>`), one message per frame on event `frame`. **Broadcast is the fast path; the table is the truth.** Clients reconcile by `seq` and treat the poll not as a fallback for a dropped broadcast but as the correction for one.
+
+**The paywall is asked twice, and neither ask is redundant.** RLS (0023) makes a `market` show, its segments and its frames invisible to a free user's own JWT — the paywall as a property of the data, which holds even if a route is ever wrong. The API additionally checks `loadEntitlements()` and answers `ENTITLEMENT_REQUIRED` with the tier, the price and the upgrade link (§11), because RLS can only return an empty set and an empty set reads to a user as "the show is broken".
+
+**Worker-only routes** (`/live/internal/**`, `x-internal-secret` matched against `INTERNAL_SECRET`, 404 — not 401 — when the secret is unset, exactly like the paper tick): `GET /ping`, `GET /rundown` (everything the show could talk about, ranked, with levels/evidence/plain English already derived by `lib/setups.ts`), `GET /market` (candles + technicals + company for several timeframes in one round trip), `POST /annotations` (persist Kai's marks — the choke point the anti-invention rule runs through), `POST /requests/settle`. They exist so the worker never carries a second copy of the Polygon logic, the swing detector or the setup maths: the show and the app must never quote different prices for the same level.
+
 ## 8. Invest (v1.1)
 
 `POST /invest/goals` · `GET /invest/goals/:id/status` (progress, drift, projected range + assumptions + disclosures) · `POST /invest/recommendations/:id/preview|confirm|dismiss` (confirm applies via the paper order pipeline) · v1.2 adds `GET /invest/guidance?goal_id=` (add_on_pullback / trim_at_high objects).

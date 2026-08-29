@@ -1138,3 +1138,53 @@ row changes, and nothing legal before is illegal now. Gap 2.29 is untouched —
 geometry is still unvalidated, so a `box` with no time range or a `trendline`
 with a single anchor is still storable, and the renderer still has to cope with
 whatever it is handed.
+
+## 0023 — live shows (LIVE-2)
+
+`live_shows` · `live_segments` · `live_frames` · `live_requests`, plus the
+`live-audio` storage bucket. Contract in `packages/shared/live.ts`, operations in
+`docs/16_LIVE_SHOW_OPS.md`.
+
+Decisions worth knowing, and the reason for each:
+
+- **`live_frames.payload` is the whole frame, stored verbatim, not normalised.**
+  The four frame kinds share almost no fields, the client parses the union
+  anyway, and adding an overlay kind would otherwise mean a migration for
+  something that is purely presentational. The columns that ARE broken out are
+  exactly the ones queried: show, segment, seq, kind, offset.
+- **`unique (show_id, seq)` is the idempotency key.** A frame that arrives twice
+  — broadcast and table, a retried write, a resumed director — is the same frame.
+  `seq` is assigned in one place in the worker and only after a successful write,
+  which is what makes it gap-free.
+- **`unique (show_id, symbol)` on `live_segments`** puts the router's no-repeat
+  rule in the database rather than only in the process that happens to be
+  running. Cohost bridges therefore take a symbol of their own (`BRIDGE-n`).
+- **`unique (mode) where status = 'live'`** — one show on air per mode. Two would
+  mean two directors interleaving frames into one audience.
+- **`cost_usd` is on the SEGMENT, not the show**, because the budget cap is
+  enforced one segment ahead: the director has to answer "can I afford the next
+  one" before it makes it.
+- **`live_shows.meta.health`** carries the worker's own state (spend, last error,
+  heartbeat). Buffer depth is deliberately NOT read from there by the API — it is
+  derived from the segment rows, so a wedged director cannot report a buffer it
+  does not have.
+- **`live_can_watch_market()`** is a security-definer predicate used by three
+  policies. `subscriptions` is itself RLS'd to its owner, and making that
+  dependency implicit across three tables is how a policy quietly starts
+  returning false for everyone.
+- **The `live-audio` bucket is PUBLIC READ.** The audio is a broadcast: the same
+  file is played to everyone in the app and streamed to YouTube by a headless
+  browser with no session. A signed URL per listener per line would be a
+  per-viewer secret protecting something being said out loud. The paywall is on
+  the FRAMES — without the timeline, a URL to a wav of one sentence is not a show.
+- **A show's annotations belong to a stage account.** `chart_annotations.user_id`
+  is NOT NULL and is the OWNER rather than the author (1.45 / 0021 §3), so the
+  show needs a workspace; it gets one ordinary account
+  (`LIVE_STAGE_USER_EMAIL`). No change to `chart_annotations` was needed and
+  none was made.
+
+**Known gap.** Nothing constrains `live_frames.payload` to parse as a
+`LiveFrame`. The API parses on read and logs a frame it cannot understand rather
+than serving it, so a contract change that forgets the writer shows up as one
+loud frame rather than a client rendering nothing — but the store itself would
+accept `{}`.
