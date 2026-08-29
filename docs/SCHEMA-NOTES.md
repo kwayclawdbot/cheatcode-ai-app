@@ -1121,3 +1121,20 @@ and `ts_to` are not. Nothing requires a price on a `trigger`, forbids
 `entry` for the direction, or caps how many annotations one chart may carry. A
 buggy Kai turn can therefore draw an impossible level, and the client has to
 render whatever it is handed.
+
+### 2.30 `chart_annotations.kind` grew three SHAPES alongside its eight meanings
+LIVE-1 added `trendline`, `box` and `vertical` to the check constraint
+(`0022_live1_annotation_kinds.sql`) so Kai can mark things a horizontal line
+cannot say. The column now mixes two vocabularies: eight values that say what a
+level MEANS (trigger, entry, stop, …) and three that say what SHAPE to draw. The
+chart derives the shape from `kind` plus which coordinates are present, so
+nothing has to send a shape name twice — but the column no longer answers one
+question, and a future reader looking for "the semantic" has to know that
+`trendline` is not one. `annotations.ts` maps all three to the neutral `level`
+semantic on the wire, which keeps the client's colour mapping honest.
+
+The widening is additive: the constraint is replaced by a superset, no existing
+row changes, and nothing legal before is illegal now. Gap 2.29 is untouched —
+geometry is still unvalidated, so a `box` with no time range or a `trendline`
+with a single anchor is still storable, and the renderer still has to cope with
+whatever it is handed.

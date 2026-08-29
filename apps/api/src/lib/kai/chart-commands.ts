@@ -449,6 +449,107 @@ export async function executeChartCommand(
         };
       }
 
+      /* ---------------- chart commands v2 (LIVE-1) ---------------- */
+      //
+      // Camera commands. The determinism rule applies to them exactly as it
+      // does to levels, with one difference worth being explicit about: a
+      // camera move carries no PRICE, so what has to be real is the TIME. A
+      // `zoom_range` over invented timestamps would frame a stretch of chart
+      // that means nothing, so both ends come from a loaded object or the
+      // command is dropped.
+
+      case 'zoom_range': {
+        const from = typeof args.from === 'string' ? args.from : ctx.priorSession?.from ?? null;
+        const to = typeof args.to === 'string' ? args.to : ctx.priorSession?.to ?? null;
+        if (!from || !to || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to))) return null;
+        return {
+          type: 'chart_command',
+          command: 'zoom_range',
+          payload: {
+            from,
+            to,
+            padding: typeof args.padding === 'number' ? args.padding : 0.12,
+            symbol: ctx.symbol,
+            timeframe: ctx.timeframe,
+          },
+          annotations: [],
+          narration: say('I framed the stretch of chart this is about.'),
+          provenance: typeof args.from === 'string' ? 'A window on the setup being discussed.' : 'The prior session, from stored bars.',
+        };
+      }
+
+      case 'scroll_bars': {
+        const bars = Number(args.bars);
+        if (!Number.isFinite(bars) || bars === 0) return null;
+        const n = Math.max(-2000, Math.min(2000, Math.round(bars)));
+        return {
+          type: 'chart_command',
+          command: 'scroll_bars',
+          payload: { bars: n, symbol: ctx.symbol, timeframe: ctx.timeframe },
+          annotations: [],
+          narration: say(n < 0 ? 'I scrolled back to show you more history.' : 'I scrolled forward.'),
+          provenance: 'A view change only — no levels moved.',
+        };
+      }
+
+      case 'scroll_to_now':
+        return {
+          type: 'chart_command',
+          command: 'scroll_to_now',
+          payload: { symbol: ctx.symbol, timeframe: ctx.timeframe },
+          annotations: [],
+          narration: say('Back to the live edge.'),
+          provenance: 'A view change only — no levels moved.',
+        };
+
+      case 'flash_annotation': {
+        // Pulses something ALREADY on the chart, so the id has to exist. An
+        // unresolvable id is dropped rather than flashed at nothing.
+        const fid = typeof args.annotation_id === 'string' ? args.annotation_id : null;
+        const known = await listAnnotations({ userId: ctx.userId, symbol: ctx.symbol, includeHidden: false });
+        const target: AnnotationRow | undefined = fid
+          ? known.annotations.find((a) => a.id === fid)
+          : known.annotations.find((a) => a.kind === String(args.kind ?? args.level ?? ''));
+        if (!target) return null;
+        return {
+          type: 'chart_command',
+          command: 'flash_annotation',
+          payload: {
+            annotation_id: target.id,
+            pulses: Math.max(1, Math.min(6, Number(args.pulses) || 2)),
+            symbol: ctx.symbol,
+          },
+          annotations: [target],
+          narration: say(`This one — the ${target.kind} at $${target.price}.`),
+          provenance: target.provenance === 'kai' ? 'A mark I placed.' : 'A mark already on your chart.',
+        };
+      }
+
+      case 'pointer_hint': {
+        // The only command that changes nothing at all. It exists so Kai can
+        // point at where something is ABOUT to happen while still narrating —
+        // attention first, then the mark.
+        const rail = typeof args.rail === 'string' ? (TIMEFRAME_ALIAS[args.rail] ?? args.rail) : null;
+        const key = typeof args.level === 'string' ? args.level : null;
+        const r = key ? resolveLevel(ctx, key) : null;
+        const ts = typeof args.ts === 'string' ? args.ts : ctx.triggerTs;
+        if (!rail && !r && !ts) return null;
+        return {
+          type: 'chart_command',
+          command: 'pointer_hint',
+          payload: {
+            price: r?.price ?? null,
+            ts: r ? null : ts,
+            rail: rail && TIMEFRAMES.includes(rail as (typeof TIMEFRAMES)[number]) ? rail : null,
+            linger: args.linger === true,
+            symbol: ctx.symbol,
+          },
+          annotations: [],
+          narration: say('Watch here.'),
+          provenance: r ? r.provenance : 'A place on the chart, not a number.',
+        };
+      }
+
       default:
         return null;
     }
@@ -494,6 +595,13 @@ Rules, and they are strict:
   4h, 1d) · show_invalidation · mark_plan · zoom_trigger · compare_prior ·
   highlight_community · annotation_remove (args.annotation_id) ·
   annotation_explain (args.annotation_id) · alert_from_level · prepare_trade
+- camera commands, for looking rather than marking: zoom_range (args.from,
+  args.to — real timestamps from the objects you were given, never invented) ·
+  scroll_bars (args.bars, negative goes back) · scroll_to_now ·
+  flash_annotation (args.annotation_id — pulses a mark that is ALREADY drawn) ·
+  pointer_hint (args.level or args.ts or args.rail — points, changes nothing).
+  Use them when the thing you are describing is off screen. Describing a level
+  the user cannot see is the same mistake as inventing one.
 - alert_from_level and prepare_trade PROPOSE. They do not arm a watch and they
   do not place an order. Say so.
 - Community levels are labelled as the room's opinion, never as your analysis.`;

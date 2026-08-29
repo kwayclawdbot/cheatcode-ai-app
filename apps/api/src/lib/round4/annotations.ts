@@ -34,6 +34,13 @@ const SEMANTIC: Record<AnnotationKind, AnnotationRow['semantic']> = {
   support: 'level',
   resistance: 'level',
   note: 'note',
+  // The three shape kinds LIVE-1 added. They carry no financial meaning of
+  // their own — a trendline is a trendline whether it is drawn under support or
+  // over resistance — so they map to the neutral `level` semantic and the
+  // client colours them as market information, not as risk or as a target.
+  trendline: 'level',
+  box: 'level',
+  vertical: 'level',
 };
 
 export function toAnnotationRow(row: Record<string, unknown>): AnnotationRow {

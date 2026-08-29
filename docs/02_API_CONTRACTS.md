@@ -86,6 +86,24 @@ Key payloads: `graded_setup` mirrors the setup + `{explain:{beginner,intermediat
 
 All financial objects pass the contradiction validator pre-publication; persistent failure publishes nothing (`VALIDATION_INCOHERENT` is internal-only).
 
+### Chart commands v2 (LIVE-1)
+
+`ChartCommandFrame` is unchanged: `{type:'chart_command', command, payload, annotations[], narration, provenance}`. `ChartCommandName` is **appended to, never reordered** — round 4's eleven keep their meaning and five camera commands join them:
+
+| Command | Payload | What has to be real |
+|---|---|---|
+| `zoom_range` | `{from, to, padding?, duration_ms?}` — ISO timestamps | **Both timestamps.** They come from a setup window, an alert's session or `priorSession`; a range over invented times frames a stretch of chart that means nothing, so the command is dropped instead |
+| `scroll_bars` | `{bars, duration_ms?}` — negative goes back | Nothing. Bars are a view offset, not a price |
+| `scroll_to_now` | `{duration_ms?}` | Nothing |
+| `flash_annotation` | `{annotation_id, pulses?}` | **The annotation must already exist** on that symbol for that user. Two pulses of opacity; the line never moves, because a price line that moves is a lie about the price |
+| `pointer_hint` | `{price?, ts?, rail?, linger?, duration_ms?}` | The level if one is named (resolved the same way `mark_level` resolves it). Changes no state at all — it points |
+
+Why they exist: round 4's vocabulary could say *mark this* and *switch to that* but had no way to say *look over here*, so Kai could draw a level 400 bars off screen and narrate it as if the user could see it. Describing a level nobody can see is the same class of mistake as inventing one.
+
+`AnnotationKind` is likewise appended to: **`trendline`, `box`, `vertical`** join the eight semantic kinds. The first eight say what a level *means*; these three are *shapes* with no single meaning (a trendline between two anchors, a time × price region for an FVG or order block, a moment on the time axis), and all three map to the neutral `level` semantic — the API still never sends a colour. DB constraint widened in `supabase/migrations/0022_live1_annotation_kinds.sql`.
+
+**Client↔chart bridge.** `packages/shared/chart-bridge.ts` (zod) is the protocol between the app and the chart page (`apps/mobile/chart-web/`), not a server contract — no endpoint speaks it. Host→chart: `setData` · `updateLast` · `setTimeframe` · `camera.*` · `annotations.set|add|remove|flash|hidden` · `pointer.*` · `setTheme` · `setReducedMotion`. Chart→host: `ready` (carries a **measured** `firstPaintMs`) · `done{id, reason}` · `viewport` · `timeframe` · `annotationTap` · `crosshair` · `fps` · `error`. Every host message carries an `id` and every message that takes time answers `done{id, reason}` where reason is `done` | `interrupted` (a finger landed on the glass) | `superseded` — which is what lets a choreography be a real sequence and what lets the user's touch abandon the rest of it.
+
 ## 8. Invest (v1.1)
 
 `POST /invest/goals` · `GET /invest/goals/:id/status` (progress, drift, projected range + assumptions + disclosures) · `POST /invest/recommendations/:id/preview|confirm|dismiss` (confirm applies via the paper order pipeline) · v1.2 adds `GET /invest/guidance?goal_id=` (add_on_pullback / trim_at_high objects).

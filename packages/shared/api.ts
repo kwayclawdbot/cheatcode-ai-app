@@ -13,6 +13,15 @@
  */
 import { z } from 'zod';
 
+/**
+ * NOTE: the chart bridge (LIVE-1) lives in `./chart-bridge.ts` and is NOT
+ * re-exported here on purpose. It is a client↔page protocol, not a
+ * client↔server one — no endpoint speaks it — and keeping this file free of
+ * relative imports is what lets the contract tests load it in bare Node.
+ * Import it as `@cheatcode/shared/chart-bridge` (mobile) or
+ * `@shared/chart-bridge` (api).
+ */
+
 /* ------------------------------------------------------------------ */
 /* Enums (mirror the Postgres types in 01 §1)                          */
 /* ------------------------------------------------------------------ */
@@ -3136,6 +3145,19 @@ export type AlertsRound4Response = z.infer<typeof AlertsRound4Response>;
 /* Chart annotations (spec §7 "Annotation requirements")                */
 /* ------------------------------------------------------------------ */
 
+/**
+ * APPEND-ONLY. Every value below `note` was added by LIVE-1 and every existing
+ * value keeps its meaning and its position — a stored row written by round 4
+ * still parses, and a client that has not shipped LIVE-1 yet simply never
+ * receives the new three.
+ *
+ * The first eight are SEMANTIC (what the level means). The last three are
+ * SHAPES the chart can draw that have no single semantic (`trendline` between
+ * two anchors, `box` over a time × price region for an FVG or an order block,
+ * `vertical` marking a moment). Mixing the two in one enum is the honest
+ * modelling: the drawing layer keys off `kind` plus which coordinates are
+ * present, and nothing has to send a shape name twice.
+ */
 export const AnnotationKind = z.enum([
   'trigger',
   'entry',
@@ -3145,6 +3167,9 @@ export const AnnotationKind = z.enum([
   'support',
   'resistance',
   'note',
+  'trendline',
+  'box',
+  'vertical',
 ]);
 export type AnnotationKind = z.infer<typeof AnnotationKind>;
 
@@ -3232,6 +3257,16 @@ export type AnnotationResponse = z.infer<typeof AnnotationResponse>;
 /* Kai chart-control commands (spec §7)                                 */
 /* ------------------------------------------------------------------ */
 
+/**
+ * APPEND-ONLY (v2, LIVE-1). The first eleven are round 4's and are unchanged.
+ *
+ * The five new ones are CAMERA commands. Round 4's vocabulary could only say
+ * "mark this" and "switch to that"; it had no way to say "look over here" — so
+ * Kai could draw a level 400 bars off screen and narrate it as though the user
+ * could see it. These five give the camera the same first-class standing the
+ * annotations already had, which is what "Kai is working the chart" needs to be
+ * true rather than a figure of speech.
+ */
 export const ChartCommandName = z.enum([
   'mark_level',
   'set_timeframe',
@@ -3244,8 +3279,79 @@ export const ChartCommandName = z.enum([
   'annotation_explain',
   'alert_from_level',
   'prepare_trade',
+  'zoom_range',
+  'scroll_bars',
+  'scroll_to_now',
+  'flash_annotation',
+  'pointer_hint',
 ]);
 export type ChartCommandName = z.infer<typeof ChartCommandName>;
+
+/* ---- Chart commands v2: the payload of each new command (02 §7) ---- */
+
+/**
+ * Zoom to a span of time that already exists on a real object — a setup's
+ * formation window, the session an alert triggered in. Both ends are
+ * timestamps, never "N bars ago", so the command survives a timeframe switch.
+ */
+export const ZoomRangePayload = z.object({
+  from: z.string(),
+  to: z.string(),
+  /** Share of the span left as breathing room either side. Default 0.12. */
+  padding: z.number().min(0).max(1).optional(),
+  duration_ms: z.number().min(0).max(4000).optional(),
+});
+export type ZoomRangePayload = z.infer<typeof ZoomRangePayload>;
+
+/** Move the view by whole bars. Negative is back in time. */
+export const ScrollBarsPayload = z.object({
+  bars: z.number().min(-2000).max(2000),
+  duration_ms: z.number().min(0).max(4000).optional(),
+});
+export type ScrollBarsPayload = z.infer<typeof ScrollBarsPayload>;
+
+/** Back to the live edge after a look at history. */
+export const ScrollToNowPayload = z.object({
+  duration_ms: z.number().min(0).max(4000).optional(),
+});
+export type ScrollToNowPayload = z.infer<typeof ScrollToNowPayload>;
+
+/**
+ * Pulse an annotation that is ALREADY on the chart. Two pulses, no movement:
+ * the price line must never move to draw attention to itself, because a moving
+ * price line is a lie about the price.
+ */
+export const FlashAnnotationPayload = z.object({
+  annotation_id: z.string(),
+  pulses: z.number().min(1).max(6).optional(),
+});
+export type FlashAnnotationPayload = z.infer<typeof FlashAnnotationPayload>;
+
+/**
+ * Send Kai's pointer somewhere without changing anything. The one command in
+ * the set that alters no state at all — it exists so narration and attention can
+ * be aligned ("look at what happens here…") before the thing being described
+ * has been drawn.
+ */
+export const PointerHintPayload = z.object({
+  price: z.number().nullable().optional(),
+  ts: z.string().nullable().optional(),
+  /** Park on a timeframe button instead of on the plot. */
+  rail: z.enum(['1m', '5m', '15m', '1h', '4h', 'D']).nullable().optional(),
+  duration_ms: z.number().min(0).max(4000).optional(),
+  /** Leave it there rather than fading it out when the move finishes. */
+  linger: z.boolean().optional(),
+});
+export type PointerHintPayload = z.infer<typeof PointerHintPayload>;
+
+/** Every v2 payload, keyed by command. Commands not listed keep free-form args. */
+export const ChartCommandPayloadV2 = {
+  zoom_range: ZoomRangePayload,
+  scroll_bars: ScrollBarsPayload,
+  scroll_to_now: ScrollToNowPayload,
+  flash_annotation: FlashAnnotationPayload,
+  pointer_hint: PointerHintPayload,
+} as const;
 
 /**
  * A frame the client applies to the chart IN PLACE and narrates (spec §8).
