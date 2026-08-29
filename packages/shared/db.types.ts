@@ -110,6 +110,63 @@ export type Database = {
           },
         ]
       }
+      admin_audit_log: {
+        Row: {
+          action: string
+          actor_user_id: string | null
+          after: Json | null
+          before: Json | null
+          created_at: string
+          id: string
+          ip: unknown
+          reason: string | null
+          request_id: string | null
+          target_id: string | null
+          target_kind: string | null
+        }
+        Insert: {
+          action: string
+          actor_user_id?: string | null
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          id?: string
+          ip?: unknown
+          reason?: string | null
+          request_id?: string | null
+          target_id?: string | null
+          target_kind?: string | null
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string | null
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          id?: string
+          ip?: unknown
+          reason?: string | null
+          request_id?: string | null
+          target_id?: string | null
+          target_kind?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_audit_log_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "admin_audit_log_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       alert_events: {
         Row: {
           alert_id: string
@@ -863,6 +920,315 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_events: {
+        Row: {
+          category: string | null
+          external_id: string | null
+          id: string
+          ingested_at: string
+          occurred_at: string
+          payload: Json
+          person_id: string
+          source: string
+          type: string
+          value_cents: number | null
+        }
+        Insert: {
+          category?: string | null
+          external_id?: string | null
+          id?: string
+          ingested_at?: string
+          occurred_at?: string
+          payload?: Json
+          person_id: string
+          source: string
+          type: string
+          value_cents?: number | null
+        }
+        Update: {
+          category?: string | null
+          external_id?: string | null
+          id?: string
+          ingested_at?: string
+          occurred_at?: string
+          payload?: Json
+          person_id?: string
+          source?: string
+          type?: string
+          value_cents?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_events_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "crm_people"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_identities: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          person_id: string
+          source: string | null
+          value: string
+          verified: boolean
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          person_id: string
+          source?: string | null
+          value: string
+          verified?: boolean
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          person_id?: string
+          source?: string | null
+          value?: string
+          verified?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_identities_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "crm_people"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_notes: {
+        Row: {
+          author_user_id: string | null
+          body: string
+          created_at: string
+          id: string
+          person_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          author_user_id?: string | null
+          body: string
+          created_at?: string
+          id?: string
+          person_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          author_user_id?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          person_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_notes_author_user_id_fkey"
+            columns: ["author_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "crm_notes_author_user_id_fkey"
+            columns: ["author_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "crm_notes_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "crm_people"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_people: {
+        Row: {
+          app_user_id: string | null
+          created_at: string
+          current_mrr_cents: number | null
+          custom_fields: Json
+          deleted_at: string | null
+          display_name: string | null
+          first_seen_at: string | null
+          id: string
+          inbound_count: number
+          last_active_at: string | null
+          last_inbound_at: string | null
+          last_outbound_at: string | null
+          ltv_cents: number | null
+          merged_into: string | null
+          outbound_count: number
+          primary_email: string | null
+          primary_phone_e164: string | null
+          primary_tier: string | null
+          score_buy_propensity: number | null
+          score_churn_risk: number | null
+          score_crosssell_propensity: number | null
+          score_engagement: number | null
+          score_predicted_days_to_churn: number | null
+          score_predicted_ltv_cents: number | null
+          score_responsiveness: number | null
+          score_upsell_propensity: number | null
+          scores_updated_at: string | null
+          source: string | null
+          source_detail: Json
+          status: string
+          tags: string[]
+          total_paid_cents: number | null
+          total_refunded_cents: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          app_user_id?: string | null
+          created_at?: string
+          current_mrr_cents?: number | null
+          custom_fields?: Json
+          deleted_at?: string | null
+          display_name?: string | null
+          first_seen_at?: string | null
+          id?: string
+          inbound_count?: number
+          last_active_at?: string | null
+          last_inbound_at?: string | null
+          last_outbound_at?: string | null
+          ltv_cents?: number | null
+          merged_into?: string | null
+          outbound_count?: number
+          primary_email?: string | null
+          primary_phone_e164?: string | null
+          primary_tier?: string | null
+          score_buy_propensity?: number | null
+          score_churn_risk?: number | null
+          score_crosssell_propensity?: number | null
+          score_engagement?: number | null
+          score_predicted_days_to_churn?: number | null
+          score_predicted_ltv_cents?: number | null
+          score_responsiveness?: number | null
+          score_upsell_propensity?: number | null
+          scores_updated_at?: string | null
+          source?: string | null
+          source_detail?: Json
+          status?: string
+          tags?: string[]
+          total_paid_cents?: number | null
+          total_refunded_cents?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          app_user_id?: string | null
+          created_at?: string
+          current_mrr_cents?: number | null
+          custom_fields?: Json
+          deleted_at?: string | null
+          display_name?: string | null
+          first_seen_at?: string | null
+          id?: string
+          inbound_count?: number
+          last_active_at?: string | null
+          last_inbound_at?: string | null
+          last_outbound_at?: string | null
+          ltv_cents?: number | null
+          merged_into?: string | null
+          outbound_count?: number
+          primary_email?: string | null
+          primary_phone_e164?: string | null
+          primary_tier?: string | null
+          score_buy_propensity?: number | null
+          score_churn_risk?: number | null
+          score_crosssell_propensity?: number | null
+          score_engagement?: number | null
+          score_predicted_days_to_churn?: number | null
+          score_predicted_ltv_cents?: number | null
+          score_responsiveness?: number | null
+          score_upsell_propensity?: number | null
+          scores_updated_at?: string | null
+          source?: string | null
+          source_detail?: Json
+          status?: string
+          tags?: string[]
+          total_paid_cents?: number | null
+          total_refunded_cents?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_people_app_user_id_fkey"
+            columns: ["app_user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "crm_people_app_user_id_fkey"
+            columns: ["app_user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles_public"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "crm_people_merged_into_fkey"
+            columns: ["merged_into"]
+            isOneToOne: false
+            referencedRelation: "crm_people"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_segments: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          filter: Json
+          id: string
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          filter?: Json
+          id?: string
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          filter?: Json
+          id?: string
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_segments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "crm_segments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       debriefs: {
         Row: {
           created_at: string | null
@@ -1154,6 +1520,125 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "invest_goals"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      invite_redemptions: {
+        Row: {
+          granted: Json
+          id: string
+          invite_id: string
+          ip: unknown
+          person_id: string | null
+          redeemed_at: string
+          user_id: string | null
+        }
+        Insert: {
+          granted?: Json
+          id?: string
+          invite_id: string
+          ip?: unknown
+          person_id?: string | null
+          redeemed_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          granted?: Json
+          id?: string
+          invite_id?: string
+          ip?: unknown
+          person_id?: string | null
+          redeemed_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invite_redemptions_invite_id_fkey"
+            columns: ["invite_id"]
+            isOneToOne: false
+            referencedRelation: "invites"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invite_redemptions_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "crm_people"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invite_redemptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "invite_redemptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      invites: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string | null
+          entitlements: Json
+          expires_at: string | null
+          id: string
+          label: string | null
+          max_redemptions: number | null
+          redeemed_count: number
+          revoked_at: string | null
+          tier: string
+          updated_at: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          created_by?: string | null
+          entitlements?: Json
+          expires_at?: string | null
+          id?: string
+          label?: string | null
+          max_redemptions?: number | null
+          redeemed_count?: number
+          revoked_at?: string | null
+          tier?: string
+          updated_at?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          entitlements?: Json
+          expires_at?: string | null
+          id?: string
+          label?: string | null
+          max_redemptions?: number | null
+          redeemed_count?: number
+          revoked_at?: string | null
+          tier?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invites_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "invites_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -2891,6 +3376,65 @@ export type Database = {
           },
         ]
       }
+      staff_members: {
+        Row: {
+          created_at: string
+          granted_at: string
+          granted_by: string | null
+          revoked_at: string | null
+          role: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          granted_at?: string
+          granted_by?: string | null
+          revoked_at?: string | null
+          role: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          granted_at?: string
+          granted_by?: string | null
+          revoked_at?: string | null
+          role?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_members_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "staff_members_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "staff_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "staff_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles_public"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       subscriptions: {
         Row: {
           created_at: string
@@ -2938,6 +3482,48 @@ export type Database = {
             referencedColumns: ["user_id"]
           },
         ]
+      }
+      sync_runs: {
+        Row: {
+          counts: Json
+          created_at: string
+          cursor: Json | null
+          dry_run: boolean
+          error: string | null
+          finished_at: string | null
+          id: string
+          source: string
+          started_at: string
+          state: string
+          updated_at: string | null
+        }
+        Insert: {
+          counts?: Json
+          created_at?: string
+          cursor?: Json | null
+          dry_run?: boolean
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          source: string
+          started_at?: string
+          state?: string
+          updated_at?: string | null
+        }
+        Update: {
+          counts?: Json
+          created_at?: string
+          cursor?: Json | null
+          dry_run?: boolean
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          source?: string
+          started_at?: string
+          state?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       system_status: {
         Row: {
@@ -3341,6 +3927,31 @@ export type Database = {
       }
     }
     Views: {
+      crm_daily_signups_v: {
+        Row: {
+          day: string | null
+          leads: number | null
+          signups: number | null
+        }
+        Relationships: []
+      }
+      crm_funnel_v: {
+        Row: {
+          people: number | null
+          position: number | null
+          status: string | null
+        }
+        Relationships: []
+      }
+      crm_mrr_v: {
+        Row: {
+          ltv_cents: number | null
+          mrr_cents: number | null
+          paying_people: number | null
+          total_paid_cents: number | null
+        }
+        Relationships: []
+      }
       daily_risk_v: {
         Row: {
           cap: number | null
@@ -3624,6 +4235,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      ensure_owner_staff: { Args: never; Returns: string }
       is_room_member: { Args: { p_room: string }; Returns: boolean }
       join_core_room: {
         Args: { p_room_id: string; p_user_id: string }
@@ -3646,6 +4258,16 @@ export type Database = {
         }
       }
       live_can_watch_market: { Args: never; Returns: boolean }
+      merge_crm_people: {
+        Args: {
+          p_actor_user_id: string
+          p_loser_id: string
+          p_reason?: string
+          p_winner_id: string
+        }
+        Returns: Json
+      }
+      new_invite_code: { Args: { p_length?: number }; Returns: string }
       next_room_message_seq: { Args: { p_room: string }; Returns: number }
       next_user_event_seq: { Args: { p_user: string }; Returns: number }
       notify: {
@@ -3877,6 +4499,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      redeem_invite: {
+        Args: {
+          p_code: string
+          p_ip?: unknown
+          p_request_id?: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
       register_push_subscription: {
         Args: {
           p_handle: string
@@ -3953,6 +4584,29 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      set_staff_role: {
+        Args: {
+          p_actor_user_id: string
+          p_reason?: string
+          p_role: string
+          p_user_id: string
+        }
+        Returns: {
+          created_at: string
+          granted_at: string
+          granted_by: string | null
+          revoked_at: string | null
+          role: string
+          updated_at: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "staff_members"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       simulate_closed_trade: {
         Args: {
           p_entry?: number
@@ -3963,6 +4617,7 @@ export type Database = {
         }
         Returns: Json
       }
+      staff_role: { Args: { p_user_id: string }; Returns: string }
       submit_paper_order: {
         Args: {
           p_fill: Json
@@ -3971,6 +4626,42 @@ export type Database = {
           p_user_id: string
         }
         Returns: Json
+      }
+      unmerge_crm_person: {
+        Args: { p_actor_user_id: string; p_loser_id: string; p_reason?: string }
+        Returns: Json
+      }
+      write_admin_audit: {
+        Args: {
+          p_action: string
+          p_actor_user_id: string
+          p_after?: Json
+          p_before?: Json
+          p_ip?: unknown
+          p_reason?: string
+          p_request_id?: string
+          p_target_id?: string
+          p_target_kind?: string
+        }
+        Returns: {
+          action: string
+          actor_user_id: string | null
+          after: Json | null
+          before: Json | null
+          created_at: string
+          id: string
+          ip: unknown
+          reason: string | null
+          request_id: string | null
+          target_id: string | null
+          target_kind: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "admin_audit_log"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {

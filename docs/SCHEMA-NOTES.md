@@ -12,10 +12,10 @@ Sections 1 and 2 cover the v1 slice (`0001…0016`); sections 3 and 4 cover roun
 (`0017`, `0018`); sections 5 and 6 cover round 3 (`0020`, paper execution);
 sections 7 and 8 cover round 4 (`0021`, the Prototype: alerts as trade objects,
 chart annotations, circles, conversation drawer). Later rounds are filed under
-their migration number: `0023` (live shows) and `0024` (push notifications). All
-continue the same numbering.
+their migration number: `0023` (live shows), `0024` (push notifications) and
+`0025` (the admin backend + CRM). All continue the same numbering.
 
-Migrations live in `supabase/migrations/0001…0024`, applied in filename order.
+Migrations live in `supabase/migrations/0001…0025`, applied in filename order.
 
 ---
 
@@ -1329,3 +1329,317 @@ either column — deciding what `sent_at` means when one notification fans out t
 three devices with three different outcomes is the sender's call (API-5), not the
 schema's. Left as-is rather than guessed at. If it stays unwritten after round 5,
 it should be dropped in favour of the `notification_deliveries` join.
+
+## 0025 — admin backend + CRM (round 6, ADMIN-1)
+
+`staff_members` · `crm_people` · `crm_identities` · `crm_events` · `crm_notes` ·
+`crm_segments` · `invites` · `invite_redemptions` · `admin_audit_log` ·
+`sync_runs`, three funnel views (`crm_funnel_v`, `crm_daily_signups_v`,
+`crm_mrr_v`) and eight service-role RPCs. Brief:
+`docs/BUILD-BRIEF-round-6-admin-crm.md` §3, §4, §6, §8. The API is
+`/api/v1/admin/**` (ADMIN-2); the connectors are
+`apps/api/src/lib/crm/sources/**` (ADMIN-3).
+
+This round is a **port of a proven model**, not a new one: `crm.contacts` in the
+K.AI project `ryprohqthwflinadqotj` already holds 2,507 real people in this
+shape. Its column list was read off `information_schema` on 2026-08-29 rather
+than reconstructed from the brief's summary — see 1.58.
+
+### 1.58 The columns that came from the source, and the three that did not
+
+The brief's §4 sketch and the live `crm.contacts` disagree in four places, all
+resolved in favour of the real table since the point of the round is that the
+2,507 rows import cleanly:
+
+- **eight score columns, not six.** `score_engagement`,
+  `score_buy_propensity`, `score_churn_risk`, `score_upsell_propensity`,
+  `score_crosssell_propensity`, `score_responsiveness`,
+  `score_predicted_ltv_cents`, `score_predicted_days_to_churn`, plus
+  `scores_updated_at`. All nullable, all **empty**: nothing in this app computes
+  any of them. The admin UI must render them as "not tracked yet", never as 0.
+- **`total_refunded_cents`** is in the source and not in §4's list. Ported, because
+  leaving it out means the ingest drops a number it already has.
+- **`inbound_count` / `outbound_count`** keep the brief's names; the source calls
+  them `total_inbound_count` / `total_outbound_count`. The mapping is the
+  connector's, and it is the only rename in the port.
+- **`ai_summary` and `embedding` were NOT ported.** They are the K.AI side's LLM
+  layer (a pgvector column and a generated paragraph). Nothing in this round
+  reads or writes either, and an embedding column with no embedder is a schema
+  claiming a capability that does not exist.
+
+### 1.59 `invites.code` is `text` + a `lower(code)` unique index, not `citext`
+
+The brief offers either. citext is the wrong one **here specifically**, and not
+for taste: pgcrypto and citext live in the `extensions` schema (0001), every
+security-definer function in this schema pins `set search_path = public`, and a
+citext comparison with the citext operators out of scope **does not fail** — it
+falls back to text equality and silently becomes case-SENSITIVE. Measured on the
+local stack before choosing:
+
+```
+create temp table t (c extensions.citext);  insert into t values ('ABC');
+select count(*) from t where c = 'abc';                       -- 1
+set search_path = public;
+select count(*) from pg_temp.t where c = 'abc';               -- 0
+```
+
+A redemption path that quietly stops being case-insensitive is a support queue,
+not an error. `lower(code)` in the index and `lower(code) = lower(p_code)` in the
+one lookup cannot degrade that way. `crm_segments.name` uses the same shape.
+
+`new_invite_code()` draws from a 30-glyph alphabet with no `0/O`, `1/I/L` or `U`,
+with **rejection sampling** (bytes ≥ 240 discarded) rather than `byte % 30`,
+which would make the first sixteen glyphs ~7% more likely. 12 characters ≈ 59
+bits. `gen_random_bytes` is schema-qualified as `extensions.gen_random_bytes`
+for the same search_path reason; `gen_random_uuid()` elsewhere needs no
+qualification because it is core, not pgcrypto.
+
+### 1.60 `crm_events` dedups keyed events only, and that is the contract
+
+`unique (source, external_id)` is a table CONSTRAINT rather than a partial index
+(`where external_id is not null`), even though the partial form would look
+tighter. Two reasons, in order:
+
+1. `ON CONFLICT (source, external_id)` cannot infer a partial index from a
+   statement that does not repeat its predicate, so the connectors — which
+   insert with `on conflict do nothing`, and whose whole idempotence claim is
+   "the second run creates zero rows" — would take a 409 per already-seen row
+   instead of writing nothing quietly.
+2. Nulls are distinct anyway, so the two forms behave identically for every row
+   that has an external id.
+
+The consequence, stated rather than hidden: **an event with no `external_id` is
+never deduplicated.** That is the connectors' obligation (always supply one) and
+is asserted as such in `rls-test.mjs`. Unkeyed events are admin actions and
+redemptions — written once by the thing that caused them, never re-ingested.
+
+### 1.61 Service-role only, and why `crm_people` has no owner-select policy
+
+Every table in this migration has RLS enabled and **zero policies**. This is the
+opposite of the rest of the schema (01 §13 rows 1–7), where a table is
+owner-readable and the policy names the owner, so the reasoning is worth
+recording:
+
+- There is no owner. `crm_people` is every user's row *and* every lead's, and
+  "may you read this row" is not answerable from the row.
+- It is answerable from `staff_members` — but a policy that consulted
+  `staff_members` would still be a door a JWT holder can walk through, and would
+  put the staff check in two places that can disagree. `staffed()` in
+  `lib/http.ts` re-reads the staff row from the database on every request (never
+  a JWT claim, which can be stale after a revoke), and is the only lock.
+- A user's own crm_people row is **still not theirs to read**. It carries staff's
+  tags, a `blocked` status and scores. Their own data lives in the tables they
+  already own (`profiles`, `user_events`, `notifications`); this is not a copy of
+  it.
+
+The three views are owner-rights (no `security_invoker`), so they are revoked
+from anon + authenticated explicitly as well as granted to `service_role` — a
+view over an RLS'd table is the classic leak, and saying it twice costs nothing.
+
+`staff_members` is its own table because `profiles` is client-writable (01 §13
+row 1); a staff bit there is one missing field-filter in `PATCH /settings` away
+from self-promotion. It is also not readable by its own holder: being staff needs
+no lookup, and the list of who can see everything is not a thing to hand out.
+
+### 1.62 The owner seed is a lookup by email, not a literal uuid
+
+Brief §3 asks for the owner row to be "seeded exactly once, by migration". This
+database has no hosted instance yet (brief §11.2) and the owner's auth user does
+not exist in any environment this migration currently runs in — `auth.users` on
+the local stack holds one row, `stage@kai-live.local`, created by the LIVE-2
+proof harness. So `ensure_owner_staff()` looks the user up by email
+(`kcoffie90@gmail.com`), inserts the `owner` row with an audit entry if it finds
+one, and **returns null having changed nothing** if it does not. The migration
+calls it and raises a `notice` either way.
+
+A literal uuid was rejected outright: it would seed a staff row for nobody today,
+and become a real grant the day an unrelated user happens to be created with that
+id. The empty state is the safe one — no staff means no admin surface, not an
+open one. The function is idempotent and re-runnable, so **ADMIN-2 should call it
+at boot**, and the owner gets their row the first time they sign in.
+
+`set_staff_role()` enforces "only an active owner grants staff" in SQL, not only
+in the route, and `p_role = 'revoked'` stamps `revoked_at` instead of deleting —
+"was X ever staff" is a question an audit needs six months later.
+
+### 1.63 `redeem_invite` — the lock, and the four things it refuses to lie about
+
+One transaction: claim the slot → resolve or create the person → grant → write
+`invite_redemptions` → `crm_events` → `append_user_event` → `admin_audit_log`.
+
+- **The capped race is solved with a row lock, not optimism.** `select … for
+  update` on the invite happens before any check, so a second redeemer of the
+  last seat blocks there, and under READ COMMITTED re-reads the row as the first
+  transaction committed it. `invites_within_cap` is a check constraint backstop
+  for any future path that skips the function. Proven in `rls-test.mjs` with two
+  genuinely simultaneous PostgREST calls, and by hand with two psql sessions.
+- **A retry is the same redemption.** A second call by the same user returns
+  `ok: true, already_redeemed: true` with the original receipt rather than
+  `invite_already_redeemed`, because a client whose response was dropped must be
+  able to call again. No second seat is spent.
+- **Status only moves forward.** §6 says a redemption moves the person to
+  `signed_up`; written literally that demotes a `paying` person who redeems a
+  bonus code. Rank order lead < invited < signed_up < onboarded < activated <
+  paying; `blocked` is not a funnel stage and is never overwritten here.
+- **A grant never shortens what somebody already has.** The `subscriptions`
+  upsert takes `greatest(existing, new)` on `current_period_end`, and a null end
+  (Stripe's open-ended truth) outranks any date. `tier = 'free'` invites grant no
+  subscription at all — they are attribution and an entitlements envelope.
+- `invite_redemptions.granted` freezes the receipt. The invite's `tier` and
+  `entitlements` can be edited afterwards; what a person actually got cannot.
+
+Refusals are **values, not exceptions** (1.25/1.29): `invite_code_required`,
+`invite_not_found`, `invite_revoked`, `invite_expired`, `invite_exhausted`,
+`user_not_found` — the public route has to render "that code expired on the 4th",
+not parse an error string.
+
+### 1.64 A merge is undoable because it records what it moved
+
+`merge_crm_people` locks both rows in id order (so two staff merging the same
+pair from opposite directions never deadlock), repoints identities, events, notes
+and redemptions, coalesces the winner's null fields from the loser, and writes
+the exact id lists into `admin_audit_log.after.moved`. `unmerge_crm_person` reads
+that row back and moves precisely those ids home.
+
+Three details worth keeping:
+
+- **Nothing is ever dropped as a duplicate.** `unique (kind, value)` on
+  `crm_identities` is global, so two people cannot already hold the same
+  identity and the repoint can never collide. The usual merge headache — "they
+  both have that email, pick one" — is unreachable by construction.
+- **The loser gives up `app_user_id` before the winner takes it**, in that order,
+  because the column is unique and both rows cannot hold it for even one
+  statement. Two people who each hold a *different* app user refuse to merge
+  (`conflicting_app_user`): dropping one would be choosing whose account
+  disappears, which is brief §5's `merge_conflict` — a human decides.
+- **Money is not merged.** `total_paid_cents`, `current_mrr_cents`,
+  `ltv_cents` stay as the winner's. Summing would double-count a person whose two
+  rows were fed by one Stripe customer, and the `stripe_customer` identity moves
+  to the winner in the same transaction, so the next sync rewrites them from the
+  source that owns them. `unmerge` says so in its answer rather than pretending
+  to restore them.
+
+### 1.65 `admin_audit_log` is append-only for `service_role`, TRUNCATE included
+
+01 §13's append-only rule, applied to the table it matters most for: the API runs
+as `service_role`, so an audit log `service_role` can UPDATE is an audit log the
+admin surface can rewrite. `revoke update, delete` follows 0014's block —
+**and `revoke truncate` as well**, which 0014 did not do (gap 2.37). The table
+owner is unaffected, so `supabase db reset`, migrations and a legal hold still
+work (1.14).
+
+`actor_user_id` is `on delete set null`: the row must outlive the account, or
+deleting your user deletes the record of what you did with it. `target_id` is
+**text**, not uuid — most targets are uuids, but a sync target is the source name
+`'stripe'` and an entitlement target may be a flag key, and the one table that
+must not round anything off is this one. The single writer is
+`write_admin_audit()`, which is also what `redeem_invite` calls: that is the one
+audit row whose actor is not staff, and it is there because entitlement grants
+are accounted for regardless of who caused them.
+
+### 1.66 `scripts/rls-test.mjs` — round 6
+
+64 new assertions (167 → 231, all green on a fresh `supabase db reset`, and green
+again on a second run), in five blocks:
+
+- **the wall** — a signed-in non-staff user reads nothing from all ten tables and
+  all three views, including the `crm_people` row that describes them, and cannot
+  insert into any of them; anon cannot reach `crm_people` at all;
+- **staff** — a staff member cannot read or patch their own row, `profiles` has
+  no staff column to patch, `set_staff_role` refuses a `support` actor
+  (`not_owner`) and accepts an `owner`, and a revoke takes `staff_role()` to null
+  while keeping the row;
+- **the RPCs** — all eight refuse a user JWT, and `redeem_invite` refuses the
+  anon key (the *route* is public, the function is not);
+- **invites** — the full happy path with its subscription, person move, ledger row
+  and audit row; the retry; each named refusal; and **two simultaneous
+  redemptions of a one-seat invite leaving exactly one grant**;
+- **the constraints** — one identity cannot belong to two people, the same value
+  under another kind is a different identity, a re-ingest of the same
+  `(source, external_id)` creates zero rows, an unkeyed event is deliberately
+  duplicated, and merge/unmerge move exactly the recorded ids.
+
+Cleanup deletes the invites and people it made (`merged_into` is nulled first
+because it is self-referential) but **cannot delete its audit rows** — the table
+is append-only for `service_role` too, which is the property the block just
+asserted. `supabase db reset` is what empties it.
+
+### 0025 — known gaps (owner decides)
+
+### 1.67 `sync_runs.dry_run`, and what the one-running index does not cover
+
+Brief §5 (as revised 2026-08-29, when the `kai_sms` and `stripe` sources were
+deferred to registered stubs) keeps the dry-run mode in this round. A dry run is
+recorded like any other run, with `dry_run = true`, because "what would the
+Stripe sync do right now" is a question whose last answer is worth keeping — and
+because a mode that leaves no trace is a mode nobody can audit.
+
+`sync_runs_one_running_per_source_idx` therefore excludes dry runs: a dry run
+writes nothing, so it must not block the real sync, and two dry runs racing each
+other change nothing. Two REAL runs of one source are still refused by the index,
+because both would advance `cursor` and could leave it behind the rows they
+wrote.
+
+Nothing else in this migration changed with that revision: §4's schema is
+unchanged, and everything §5 says must exist now regardless of which sources are
+switched on — `unique (kind, value)`, `unique (source, external_id)`, the
+resumable cursor, the merge RPC and its conflict refusal — is here.
+
+### 2.34 People search is a sequential scan
+
+`GET /admin/people` searches name, email and phone with `ilike '%…%'`, and there
+is no trigram index (`pg_trgm` is not installed by 0001). At 2,507 rows that is
+sub-millisecond and an index would be ceremony. It stops being true somewhere in
+the tens of thousands; the fix is one extension plus three `gin (… gin_trgm_ops)`
+indexes, and it should be done **before** the first import that is an order of
+magnitude larger, not after somebody notices the People screen got slow.
+
+### 2.35 `crm_people.status` is a check, not a state machine
+
+Same shape as gap 2.25 (`alerts.lifecycle_state`). Any status may be written
+directly to any other by `service_role`; only `redeem_invite` enforces the
+forward-only rank (1.63). The ingest derives the funnel state each run, so a
+backwards write is self-correcting rather than permanent — but nothing stops a
+route writing `paying` on a person with no subscription.
+
+### 2.36 Churn is not in `crm_mrr_v`, and no view invents it
+
+Brief §8 asks for "churn in the last 30 days". There is no churn timestamp on
+`crm_people` and no agreed `crm_events.type` for it — that vocabulary belongs to
+the `stripe` connector (ADMIN-3), which does not exist yet. §8 also says a metric
+with no data source renders as "not tracked yet", never as zero, so it is
+**absent** from the view rather than computed as 0. When the connector lands and
+picks a type, churn is one `count(*) filter (…)` away.
+
+Related: `crm_mrr_v` counts only people carrying a `stripe_customer` identity,
+which is what makes "MRR from Stripe only" structural rather than a convention —
+a number typed into `current_mrr_cents` by an importer cannot get in. On an empty
+database it returns zeros, and the API should read `sync_runs` to decide between
+"$0" and "not tracked yet".
+
+### 2.37 0014's append-only tables can still be TRUNCATEd by `service_role`
+
+Found while auditing grants for this round, and deliberately **not fixed here**:
+0014's append-only block revokes `update, delete` from
+`risk_policy_events`, `user_events`, `setup_events`, `plan_events`,
+`order_events`, `fills` and `moderation_log`, but Supabase's default privileges
+hand `service_role` every privilege on a new table, and TRUNCATE empties a
+journal in one statement. `admin_audit_log` closes it (1.65); the other seven
+still have it. One line in a later migration fixes all of them:
+
+```sql
+revoke truncate on risk_policy_events, user_events, setup_events, plan_events,
+  order_events, fills, moderation_log from anon, authenticated, service_role;
+```
+
+Left to the owner because it touches tables another lane owns, and because
+nothing in the API issues a TRUNCATE today.
+
+### 2.38 `crm_segments.filter` and `invites.entitlements` are unconstrained jsonb
+
+Same class as 2.10 and 2.32. A segment filter that references a field the API
+does not know about is ignored rather than erroring, and
+`entitlements` is read for exactly one key (`duration_days`); everything else
+rides into the redemption receipt uninterpreted. Deliberate — §4 calls segments
+"saved filters, not a query language", and nothing here evaluates jsonb as SQL —
+but a typo'd filter key silently matches everybody.

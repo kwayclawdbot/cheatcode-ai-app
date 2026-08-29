@@ -12,6 +12,24 @@
  *   - A CAN read its own rows (so we know the assertions above are meaningful)
  *   - a direct client insert into `messages` is rejected (api-app writes only)
  *
+ * Round 6 (0025) adds:
+ *   - the admin + CRM wall: a signed-in NON-STAFF user reads nothing from any of
+ *     staff_members / crm_people / crm_identities / crm_events / crm_notes /
+ *     crm_segments / invites / invite_redemptions / admin_audit_log / sync_runs,
+ *     nor from the three funnel views, INCLUDING the crm_people row about them
+ *   - staff_members is not readable or writable by its own holder, `profiles`
+ *     (which a client CAN patch) carries no staff column, and set_staff_role
+ *     refuses any actor who is not an active owner
+ *   - none of the eight admin RPCs is executable with a user JWT or the anon key
+ *   - invites: one call grants the entitlement, writes the redemption, moves the
+ *     person and audits; a retry is the same redemption; expired / revoked /
+ *     exhausted / unknown each say which; and two SIMULTANEOUS redemptions of a
+ *     one-seat invite leave exactly one grant
+ *   - unique(kind, value) refuses a second person for one identity;
+ *     unique(source, external_id) makes a re-ingest create zero rows; merge
+ *     records what it moved and unmerge moves exactly that back
+ *   - admin_audit_log cannot be updated, deleted or truncated by service_role
+ *
  * Round 5 (0024) adds:
  *   - push_subscriptions: owner select/delete only, no client INSERT or UPDATE
  *     anywhere; A cannot read, update or delete B's row, and cannot register a
@@ -206,6 +224,8 @@ const B = { email: `rls-b-${stamp}@example.com`, password: `pw-b-${stamp}!B1` };
 let createdIds = [];
 const liveShowIds = [];
 const notificationIds = [];
+const crmPeopleIds = [];
+const inviteIds = [];
 let tmpCoreRoom = null;
 let tmpSetupRoom = null;
 let amdCircle = null;      // opened by open_setup_circle during the run
@@ -1434,6 +1454,404 @@ try {
     assert(anon.status >= 400, 'anon cannot read rule_adherence_v at all', `status ${anon.status}`);
   }
 
+  // ================================= the admin + CRM wall (0025, round 6)
+  // Every other block in this file asserts that a user sees THEIR OWN row and
+  // not somebody else's. This one asserts something stronger and simpler: a
+  // signed-in user sees NOTHING here, including the row that is about them.
+  // The API is the only door (brief §3), so the tables have RLS on and no
+  // policy at all for `authenticated`.
+  console.log('\nthe CRM is service-role only, from every table:');
+  {
+    const person = await serviceInsert('crm_people', {
+      display_name: `RLS subject ${stamp}`,
+      primary_email: `rls-person-${stamp}@example.com`,
+      status: 'lead',
+      source: 'rls-test',
+      app_user_id: A.id,
+      first_seen_at: new Date().toISOString(),
+    });
+    crmPeopleIds.push(person.id);
+
+    await serviceInsert('crm_identities', {
+      person_id: person.id, kind: 'email', value: `rls-person-${stamp}@example.com`, source: 'rls-test',
+    });
+    await serviceInsert('crm_events', {
+      person_id: person.id, type: 'sms_in', category: 'message', source: 'kai_sms',
+      external_id: `rls-${stamp}-1`,
+    });
+    await serviceInsert('crm_notes', { person_id: person.id, body: 'staff-only note' });
+    await serviceInsert('crm_segments', { name: `rls seg ${stamp}`, filter: { status: 'lead' } });
+    await serviceInsert('sync_runs', { source: 'kai_sms', state: 'ok', counts: { scanned: 1 } });
+
+    for (const table of [
+      'staff_members', 'crm_people', 'crm_identities', 'crm_events', 'crm_notes',
+      'crm_segments', 'invites', 'invite_redemptions', 'admin_audit_log', 'sync_runs',
+    ]) {
+      const r = await asA(`${table}?select=*`);
+      assert(r.status >= 400 || (Array.isArray(r.body) && r.body.length === 0),
+        `A reads nothing from ${table}`, `status ${r.status} body ${JSON.stringify(r.body)}`);
+    }
+
+    // The row that is ABOUT A is still not A's to read. crm_people carries
+    // staff's tags, notes and a `blocked` status — it is not a copy of the
+    // user's own data, which lives in tables they already own.
+    const mine = await asA(`crm_people?app_user_id=eq.${A.id}&select=*`);
+    assert(mine.status >= 400 || (Array.isArray(mine.body) && mine.body.length === 0),
+      'not even the person row that describes A', `status ${mine.status} body ${JSON.stringify(mine.body)}`);
+
+    for (const view of ['crm_funnel_v', 'crm_daily_signups_v', 'crm_mrr_v']) {
+      const r = await asA(`${view}?select=*`);
+      assert(r.status >= 400 || (Array.isArray(r.body) && r.body.length === 0),
+        `and nothing from ${view} — a view is the classic way an RLS table leaks`,
+        `status ${r.status} body ${JSON.stringify(r.body)}`);
+    }
+
+    for (const [table, row] of [
+      ['crm_people', { display_name: 'self inserted', status: 'lead' }],
+      ['crm_notes', { person_id: person.id, body: 'i am writing my own file' }],
+      ['invites', { code: `SELFMADE${stamp}`, tier: 'premium' }],
+      ['admin_audit_log', { action: 'nice.try', actor_user_id: A.id }],
+    ]) {
+      const r = await asA(table, { method: 'POST', body: JSON.stringify(row) });
+      assert(r.status >= 400, `A cannot insert into ${table}`,
+        `status ${r.status} body ${JSON.stringify(r.body)}`);
+    }
+
+    const anonPeople = await fetch(`${URL_BASE}/rest/v1/crm_people?select=id`, {
+      headers: { apikey: ANON, Authorization: `Bearer ${ANON}` },
+    });
+    assert(anonPeople.status >= 400, 'anon cannot reach crm_people at all', `status ${anonPeople.status}`);
+  }
+
+  // ============================================ staff_members (0025 §1)
+  console.log('\nstaff is its own table, and not even staff may write it:');
+  {
+    // A is made staff the only way there is: service role, i.e. the API.
+    await serviceInsert('staff_members', { user_id: A.id, role: 'support' });
+
+    const read = await asA(`staff_members?user_id=eq.${A.id}&select=role`);
+    assert(read.status >= 400 || (Array.isArray(read.body) && read.body.length === 0),
+      'a staff member cannot read their own staff row (being staff needs no lookup)',
+      `status ${read.status} body ${JSON.stringify(read.body)}`);
+
+    const selfInsert = await asA('staff_members', {
+      method: 'POST', body: JSON.stringify({ user_id: B.id, role: 'owner' }),
+    });
+    assert(selfInsert.status >= 400, 'and cannot grant staff to anyone by direct insert',
+      `status ${selfInsert.status} body ${JSON.stringify(selfInsert.body)}`);
+
+    const selfPromote = await asA(`staff_members?user_id=eq.${A.id}`, {
+      method: 'PATCH', body: JSON.stringify({ role: 'owner' }),
+    });
+    const stillSupport = await serviceGet(`staff_members?user_id=eq.${A.id}&select=role`);
+    assert(selfPromote.status >= 400 || stillSupport?.[0]?.role === 'support',
+      'nor promote themselves from support to owner',
+      `status ${selfPromote.status} row ${JSON.stringify(stillSupport)}`);
+
+    // THE REASON THIS TABLE EXISTS. `profiles` IS client-writable (01 §13 row
+    // 1) — a staff flag living there would be one PATCH away.
+    const viaProfile = await asA(`profiles?user_id=eq.${A.id}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ display_name: 'still just a user', role: 'owner' }),
+    });
+    assert(viaProfile.status >= 400 || !('role' in (viaProfile.body?.[0] ?? {})),
+      'and profiles — which a user CAN patch — carries no staff column to patch',
+      `status ${viaProfile.status} body ${JSON.stringify(viaProfile.body)}`);
+
+    // Only an owner grants staff, and that rule is in the function, not in the
+    // route: a support member calling it as the API would still be refused.
+    const bySupport = await serviceRpc('set_staff_role', {
+      p_user_id: B.id, p_role: 'admin', p_actor_user_id: A.id, p_reason: 'promoting a friend',
+    });
+    assert(bySupport.status >= 400 && String(bySupport.body?.message).includes('not_owner'),
+      'set_staff_role refuses a support member as actor (not_owner)',
+      `status ${bySupport.status} body ${JSON.stringify(bySupport.body)}`);
+
+    await serviceInsert('staff_members', { user_id: B.id, role: 'owner' });
+    const byOwner = await serviceRpc('set_staff_role', {
+      p_user_id: A.id, p_role: 'admin', p_actor_user_id: B.id, p_reason: 'promoted',
+    });
+    assert(byOwner.status < 300 && byOwner.body?.role === 'admin',
+      'and accepts an owner', `status ${byOwner.status} body ${JSON.stringify(byOwner.body)}`);
+
+    const revoked = await serviceRpc('set_staff_role', {
+      p_user_id: A.id, p_role: 'revoked', p_actor_user_id: B.id, p_reason: 'left',
+    });
+    const after = await serviceRpc('staff_role', { p_user_id: A.id });
+    assert(revoked.status < 300 && revoked.body?.revoked_at && after.body === null,
+      'revoking stamps revoked_at, keeps the row, and staff_role() goes null',
+      `revoke ${JSON.stringify(revoked.body)} staff_role ${JSON.stringify(after.body)}`);
+  }
+
+  // ================================== no admin RPC is client-callable (0025)
+  console.log('\nno admin RPC is reachable with a user JWT:');
+  {
+    for (const [fn, args] of [
+      ['staff_role', { p_user_id: A.id }],
+      ['set_staff_role', { p_user_id: A.id, p_role: 'owner', p_actor_user_id: A.id }],
+      ['ensure_owner_staff', {}],
+      ['new_invite_code', {}],
+      ['write_admin_audit', { p_actor_user_id: A.id, p_action: 'forged' }],
+      ['redeem_invite', { p_code: 'ANYTHING1234', p_user_id: A.id }],
+      ['merge_crm_people', { p_winner_id: A.id, p_loser_id: B.id, p_actor_user_id: A.id }],
+      ['unmerge_crm_person', { p_loser_id: A.id, p_actor_user_id: A.id }],
+    ]) {
+      const r = await asA(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) });
+      assert(r.status >= 400, `${fn} is not executable by a client JWT`,
+        `status ${r.status} body ${JSON.stringify(r.body)}`);
+    }
+
+    const anonRedeem = await fetch(`${URL_BASE}/rest/v1/rpc/redeem_invite`, {
+      method: 'POST',
+      headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_code: 'ANYTHING1234', p_user_id: A.id }),
+    });
+    assert(anonRedeem.status >= 400, 'and redeem_invite is not an anon endpoint either — the route is',
+      `status ${anonRedeem.status}`);
+  }
+
+  // ================================================= invites (0025 §6/§12)
+  console.log('\nan invite is one transaction, and a capped one is one seat:');
+  {
+    const codeRes = await serviceRpc('new_invite_code', {});
+    const code = String(codeRes.body ?? '').replace(/"/g, '');
+    assert(/^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{12}$/.test(code),
+      'new_invite_code returns 12 unambiguous glyphs (no 0/O, 1/I/L, U)', code);
+
+    const invite = await serviceInsert('invites', {
+      code, label: 'rls one seat', tier: 'premium',
+      entitlements: { duration_days: 30 }, max_redemptions: 1,
+    });
+    inviteIds.push(invite.id);
+
+    // Case-insensitive by the lower(code) index, not by citext (SCHEMA-NOTES 1.59).
+    const ok = await serviceRpc('redeem_invite', {
+      p_code: code.toLowerCase(), p_user_id: A.id, p_ip: '203.0.113.7', p_request_id: `req-${stamp}`,
+    });
+    assert(ok.status < 300 && ok.body?.ok === true && ok.body?.granted?.tier === 'premium',
+      'A redeems the code in one call and the grant comes back with it',
+      `status ${ok.status} body ${JSON.stringify(ok.body)}`);
+    if (ok.body?.person_id) crmPeopleIds.push(ok.body.person_id);
+
+    const sub = await serviceGet(`subscriptions?user_id=eq.${A.id}&select=tier,status,current_period_end`);
+    assert(sub?.[0]?.tier === 'premium' && sub[0].status === 'active' && sub[0].current_period_end,
+      'the entitlement is real: a premium subscription with a period end',
+      JSON.stringify(sub));
+
+    const personRow = await serviceGet(`crm_people?app_user_id=eq.${A.id}&select=id,status`);
+    assert(personRow?.[0]?.status === 'signed_up',
+      'and the person moved to signed_up in the same transaction', JSON.stringify(personRow));
+
+    const redemption = await serviceGet(`invite_redemptions?invite_id=eq.${invite.id}&select=user_id,granted,ip`);
+    assert(redemption?.length === 1 && redemption[0].user_id === A.id && redemption[0].ip === '203.0.113.7',
+      'the redemption is on the ledger with its ip and a frozen receipt', JSON.stringify(redemption));
+
+    const audited = await serviceGet(
+      `admin_audit_log?action=eq.invite.redeem&target_id=eq.${invite.id}&select=actor_user_id`);
+    assert(audited?.length === 1 && audited[0].actor_user_id === A.id,
+      'and the grant is in the audit log, actor = the redeemer', JSON.stringify(audited));
+
+    // A retried POST is the SAME redemption, not a second seat.
+    const retry = await serviceRpc('redeem_invite', { p_code: code, p_user_id: A.id });
+    const count1 = await serviceGet(`invites?id=eq.${invite.id}&select=redeemed_count`);
+    assert(retry.body?.ok === true && retry.body?.already_redeemed === true &&
+      count1?.[0]?.redeemed_count === 1,
+      'redeeming again returns the same grant and spends no second seat',
+      `${JSON.stringify(retry.body)} count ${JSON.stringify(count1)}`);
+
+    const exhausted = await serviceRpc('redeem_invite', { p_code: code, p_user_id: B.id });
+    assert(exhausted.body?.ok === false && exhausted.body?.reason === 'invite_exhausted',
+      'and B is told exactly which thing is wrong: invite_exhausted',
+      JSON.stringify(exhausted.body));
+
+    const bSub = await serviceGet(`subscriptions?user_id=eq.${B.id}&select=tier`);
+    assert(!Array.isArray(bSub) || bSub.length === 0,
+      'B got nothing — the refusal happened before any grant', JSON.stringify(bSub));
+
+    // Each refusal names itself in plain words (brief §6).
+    const expired = await serviceInsert('invites', {
+      code: `EXP${code.slice(3)}`, tier: 'premium',
+      expires_at: new Date(Date.now() - 86400000).toISOString(),
+    });
+    inviteIds.push(expired.id);
+    const revokedInvite = await serviceInsert('invites', {
+      code: `RVK${code.slice(3)}`, tier: 'premium', revoked_at: new Date().toISOString(),
+    });
+    inviteIds.push(revokedInvite.id);
+
+    for (const [c, reason] of [
+      [expired.code, 'invite_expired'],
+      [revokedInvite.code, 'invite_revoked'],
+      ['NOSUCHCODE99', 'invite_not_found'],
+      ['', 'invite_code_required'],
+    ]) {
+      const r = await serviceRpc('redeem_invite', { p_code: c, p_user_id: B.id });
+      assert(r.status < 300 && r.body?.ok === false && r.body?.reason === reason,
+        `a refusal is a value, not an exception: ${reason}`,
+        `status ${r.status} body ${JSON.stringify(r.body)}`);
+    }
+
+    // THE RACE (brief §6). Two people redeem the last seat at the same instant,
+    // through two separate PostgREST transactions. The row lock in
+    // redeem_invite decides it; exactly one grant exists afterwards.
+    const raceInvite = await serviceInsert('invites', {
+      code: `RACE${code.slice(4)}`, label: 'last seat', tier: 'premium', max_redemptions: 1,
+    });
+    inviteIds.push(raceInvite.id);
+
+    const [r1, r2] = await Promise.all([
+      serviceRpc('redeem_invite', { p_code: raceInvite.code, p_user_id: A.id }),
+      serviceRpc('redeem_invite', { p_code: raceInvite.code, p_user_id: B.id }),
+    ]);
+    const winners = [r1, r2].filter((r) => r.body?.ok === true);
+    const losers = [r1, r2].filter((r) => r.body?.reason === 'invite_exhausted');
+    assert(winners.length === 1 && losers.length === 1,
+      'two simultaneous redemptions of a one-seat invite: exactly one wins',
+      `${JSON.stringify(r1.body)} / ${JSON.stringify(r2.body)}`);
+
+    const raceCount = await serviceGet(`invites?id=eq.${raceInvite.id}&select=redeemed_count`);
+    const raceRows = await serviceGet(`invite_redemptions?invite_id=eq.${raceInvite.id}&select=id`);
+    assert(raceCount?.[0]?.redeemed_count === 1 && raceRows?.length === 1,
+      'and the count and the ledger agree: one seat, one row',
+      `count ${JSON.stringify(raceCount)} rows ${JSON.stringify(raceRows)}`);
+  }
+
+  // ============================== identity resolution + re-ingest (0025 §3/§4)
+  console.log('\nthe constraints that make the CRM trustworthy:');
+  {
+    const p1 = await serviceInsert('crm_people', { display_name: `dup-a ${stamp}`, status: 'lead' });
+    const p2 = await serviceInsert('crm_people', { display_name: `dup-b ${stamp}`, status: 'lead' });
+    crmPeopleIds.push(p1.id, p2.id);
+
+    const email = `shared-${stamp}@example.com`;
+    await serviceInsert('crm_identities', { person_id: p1.id, kind: 'email', value: email });
+
+    const dup = await fetch(`${URL_BASE}/rest/v1/crm_identities`, {
+      method: 'POST',
+      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ person_id: p2.id, kind: 'email', value: email }),
+    });
+    assert(dup.status >= 400,
+      'two people cannot hold one identity — unique(kind, value) is the resolution index',
+      `status ${dup.status}`);
+
+    // Different kinds are different namespaces: an invite code and an email
+    // that happen to read the same are not the same identity.
+    const otherKind = await fetch(`${URL_BASE}/rest/v1/crm_identities`, {
+      method: 'POST',
+      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ person_id: p2.id, kind: 'invite_code', value: email }),
+    });
+    assert(otherKind.status < 300, 'but the same value under another kind is a different identity',
+      `status ${otherKind.status}`);
+
+    // RE-INGEST. The brief's claim is that a second sync run creates ZERO rows,
+    // and this is where that is true or not.
+    const ext = `kai:evt-${stamp}`;
+    const before = await serviceGet(`crm_events?person_id=eq.${p1.id}&select=id`);
+    await serviceInsert('crm_events', {
+      person_id: p1.id, type: 'sms_in', source: 'kai_sms', external_id: ext,
+    });
+    const again = await fetch(`${URL_BASE}/rest/v1/crm_events?on_conflict=source,external_id`, {
+      method: 'POST',
+      headers: {
+        apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json',
+        Prefer: 'resolution=ignore-duplicates',
+      },
+      body: JSON.stringify({ person_id: p1.id, type: 'sms_in', source: 'kai_sms', external_id: ext }),
+    });
+    const after = await serviceGet(`crm_events?person_id=eq.${p1.id}&select=id`);
+    assert(again.status < 300 && after.length === before.length + 1,
+      're-ingesting the same (source, external_id) creates zero new rows',
+      `status ${again.status} ${before.length} -> ${after.length}`);
+
+    // The honest half of that: null is distinct from null, so an event with NO
+    // external id is not idempotent and never was (SCHEMA-NOTES 1.60).
+    await serviceInsert('crm_events', { person_id: p1.id, type: 'admin_note', source: 'admin' });
+    await serviceInsert('crm_events', { person_id: p1.id, type: 'admin_note', source: 'admin' });
+    const unkeyed = await serviceGet(`crm_events?person_id=eq.${p1.id}&type=eq.admin_note&select=id`);
+    assert(unkeyed.length === 2,
+      'an event with no external_id is deliberately not deduplicated — connectors must supply one',
+      JSON.stringify(unkeyed));
+
+    // A merge is reversible because it records what it moved.
+    const merged = await serviceRpc('merge_crm_people', {
+      p_winner_id: p1.id, p_loser_id: p2.id, p_actor_user_id: B.id, p_reason: 'same human',
+    });
+    assert(merged.body?.ok === true && Array.isArray(merged.body?.moved?.identities),
+      'merge_crm_people moves the loser onto the winner and reports the exact ids',
+      JSON.stringify(merged.body));
+
+    const loser = await serviceGet(`crm_people?id=eq.${p2.id}&select=merged_into`);
+    assert(loser?.[0]?.merged_into === p1.id,
+      'the loser survives, pointing at the winner, so old ids still resolve',
+      JSON.stringify(loser));
+
+    const movedIdent = await serviceGet(`crm_identities?person_id=eq.${p1.id}&kind=eq.invite_code&select=id`);
+    assert(movedIdent?.length === 1, "and the loser's identities now belong to the winner",
+      JSON.stringify(movedIdent));
+
+    const undone = await serviceRpc('unmerge_crm_person', {
+      p_loser_id: p2.id, p_actor_user_id: B.id, p_reason: 'wrong person',
+    });
+    const backIdent = await serviceGet(`crm_identities?person_id=eq.${p2.id}&kind=eq.invite_code&select=id`);
+    const restored = await serviceGet(`crm_people?id=eq.${p2.id}&select=merged_into`);
+    assert(undone.body?.ok === true && backIdent?.length === 1 && restored?.[0]?.merged_into === null,
+      'and unmerge moves back exactly those ids',
+      `${JSON.stringify(undone.body)} ident ${JSON.stringify(backIdent)}`);
+
+    // Two people who each hold a DIFFERENT app user are not mergeable at all:
+    // `app_user_id` is unique, so somebody would have to lose their account.
+    // (B may already be linked to the person the race created — take the link
+    //  off that row first, since the column allows exactly one holder.)
+    const svcPatch = (path, body) => fetch(`${URL_BASE}/rest/v1/${path}`, {
+      method: 'PATCH',
+      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    await svcPatch(`crm_people?app_user_id=eq.${B.id}`, { app_user_id: null });
+    await svcPatch(`crm_people?id=eq.${p1.id}`, { app_user_id: B.id });
+    const holders = await serviceGet(
+      `crm_people?or=(id.eq.${p1.id},id.eq.${crmPeopleIds[0]})&select=id,app_user_id`);
+    assert(holders?.length === 2 && holders.every((h) => h.app_user_id),
+      'two people, two different app users (the setup for the refusal below)',
+      JSON.stringify(holders));
+    const conflicted = await serviceRpc('merge_crm_people', {
+      p_winner_id: p1.id, p_loser_id: crmPeopleIds[0], p_actor_user_id: B.id,
+    });
+    assert(conflicted.body?.ok === false && conflicted.body?.reason === 'conflicting_app_user',
+      'and two rows each holding a different app user refuse to merge (a human decides)',
+      JSON.stringify(conflicted.body));
+  }
+
+  // ================================ admin_audit_log is append-only (0025 §7)
+  console.log('\nthe audit log cannot be edited by the thing it audits:');
+  {
+    const row = await serviceRpc('write_admin_audit', {
+      p_actor_user_id: B.id, p_action: 'crm.person.view', p_target_kind: 'crm_person',
+      p_target_id: crmPeopleIds[0], p_reason: 'support ticket 12', p_ip: '198.51.100.4',
+    });
+    assert(row.status < 300 && row.body?.action === 'crm.person.view',
+      'the API can write one (reads of a person are logged too, not just writes)',
+      `status ${row.status} body ${JSON.stringify(row.body)}`);
+
+    const patched = await fetch(`${URL_BASE}/rest/v1/admin_audit_log?id=eq.${row.body.id}`, {
+      method: 'PATCH',
+      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'nothing.happened' }),
+    });
+    assert(patched.status >= 400, 'service_role cannot rewrite it', `status ${patched.status}`);
+
+    const deleted = await serviceDelete(`admin_audit_log?id=eq.${row.body.id}`);
+    assert(deleted.status >= 400, 'nor delete it — the API runs as service_role, and that is the point',
+      `status ${deleted.status} body ${JSON.stringify(deleted.body)}`);
+
+    const survives = await serviceGet(`admin_audit_log?id=eq.${row.body.id}&select=action,reason`);
+    assert(survives?.[0]?.action === 'crm.person.view' && survives[0].reason === 'support ticket 12',
+      'and the row is still there, reason and all', JSON.stringify(survives));
+  }
+
 } catch (err) {
   failures++;
   console.error(`\n  ERROR ${err.message}`);
@@ -1459,6 +1877,23 @@ try {
     await serviceDelete(`debriefs?user_id=eq.${id}`);
     await serviceDelete(`positions?user_id=eq.${id}`);
   }
+  // Round 6 (0025): invites cascade to their redemptions, and a person cascades
+  // to its identities, events and notes. `merged_into` is self-referential, so
+  // let go of it first. admin_audit_log rows are NOT cleaned up — they cannot
+  // be: the table is append-only for service_role too, which is the property
+  // this file just asserted. `supabase db reset` is what empties it.
+  for (const id of inviteIds) await serviceDelete(`invites?id=eq.${id}`);
+  for (const id of crmPeopleIds) {
+    await fetch(`${URL_BASE}/rest/v1/crm_people?id=eq.${id}`, {
+      method: 'PATCH',
+      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ merged_into: null }),
+    }).catch(() => {});
+  }
+  for (const id of crmPeopleIds) await serviceDelete(`crm_people?id=eq.${id}`);
+  for (const id of createdIds) await serviceDelete(`crm_people?app_user_id=eq.${id}`);
+  await serviceDelete(`crm_segments?name=like.rls%20seg%20${stamp}`);
+  await serviceDelete(`crm_people?display_name=like.*${stamp}`);
   // notifications has no FK to profiles either, and notification_deliveries
   // cascades from it. push_subscriptions goes with the profile.
   for (const id of notificationIds) await serviceDelete(`notifications?id=eq.${id}`);
