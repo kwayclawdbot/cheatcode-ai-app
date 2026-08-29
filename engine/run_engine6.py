@@ -1,0 +1,450 @@
+"""ENGINE-6 — replicate the published stocks-in-play ORB, and say honestly
+whether this harness can see it.
+
+    .venv/bin/python run_engine6.py --stage plan       # selection, then pairs.json
+    .venv/bin/python sip/fetch_days.py --pairs <path>  # stage B download
+    .venv/bin/python run_engine6.py --stage run        # backtest + report
+
+`plan` is deliberately separate from `run`. The selection is decided from
+grouped daily bars through the prior close and the 09:30-09:35 volume, written
+to disk, and only then are one-minute bars requested for the sessions it named.
+The download therefore cannot influence the selection, and the intermediate
+file is the receipt.
+"""
+
+from __future__ import annotations
+
+import argparse
+import gzip
+import json
+import sys
+from collections import Counter
+from pathlib import Path
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from engine import calendar_us  # noqa: E402
+from engine.backtest.engine import run_symbol  # noqa: E402
+from engine.backtest.stats import (SUMMARY_HEADER, fmt, split_by,  # noqa: E402
+                                   summarise, summary_row)
+from engine.backtest.types import Costs  # noqa: E402
+from engine.cache import load as cache_load  # noqa: E402
+from engine.models import gates  # noqa: E402
+from engine.models.orb_sip import OrbStocksInPlay, OrbStocksInPlayCoinflip  # noqa: E402
+from engine.sip import config as scfg  # noqa: E402
+from engine.sip import universe  # noqa: E402
+from engine.sip.control import select_day_random  # noqa: E402
+from engine.sip.portfolio import run_portfolio  # noqa: E402
+from engine.sip.selection import select_day  # noqa: E402
+from engine.sip.store import load_open_store  # noqa: E402
+
+SELECTION_PATH = scfg.DATA_ROOT / "selection.json.gz"
+PAIRS_PATH = scfg.DATA_ROOT / "pairs.json"
+REPORT = Path(__file__).resolve().parent / "reports" / f"orb_sip.v1.{scfg.SNAPSHOT}.md"
+COSTS = Costs()
+
+ARM_SIP = "sip"
+ARM_UNFILTERED = "unfiltered"
+
+
+def _d(s: str) -> int:
+    return int(s.replace("-", ""))
+
+
+# ---------------------------------------------------------------------------
+# plan
+
+
+def stage_plan() -> None:
+    if not (scfg.DATA_ROOT / "eligible.parquet").exists():
+        print("building the eligible universe from grouped daily bars...", flush=True)
+        universe.build_eligible()
+    tab = universe.eligible_table()
+    print("loading the 09:30-09:35 opening bars...", flush=True)
+    store = load_open_store()
+    print(f"  {len(store.symbols()):,} symbols in the opening store", flush=True)
+
+    days = [_d(x) for x in calendar_us.trading_days(scfg.START, scfg.END)]
+    rows: list[dict] = []
+    cover: list[tuple[int, int, int, int]] = []
+    for day in days:
+        row = tab.get(day)
+        if row is None:
+            continue
+        eligible = [str(x) for x in row["ticker"]]
+        pool = eligible[:scfg.POOL_N]
+        have = [s for s in pool if store.has(s)]
+        picks = select_day(day, have, store)
+        ctrl = select_day_random(day, have, store)
+        cover.append((day, len(eligible), len(pool), len(have)))
+        for p in picks:
+            rows.append({"day": day, "symbol": p.symbol, "arm": ARM_SIP,
+                         "rvol": p.rvol, "rank": p.rank,
+                         "open_volume": p.open_volume, "baseline": p.baseline})
+        for p in ctrl:
+            rows.append({"day": day, "symbol": p.symbol, "arm": ARM_UNFILTERED,
+                         "rvol": p.rvol, "rank": p.rank,
+                         "open_volume": 0.0, "baseline": 0.0})
+
+    SELECTION_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(SELECTION_PATH, "wt") as f:
+        json.dump({"rows": rows, "coverage": cover,
+                   "pool_n": scfg.POOL_N, "top_k": scfg.TOP_K,
+                   "baseline_days": scfg.RVOL_BASELINE_DAYS,
+                   "min_rvol": scfg.MIN_RVOL,
+                   "window": [scfg.START, scfg.END]}, f)
+
+    pairs = sorted({(r["symbol"], r["day"]) for r in rows})
+    PAIRS_PATH.write_text(json.dumps([[s, d] for s, d in pairs]))
+    el = np.array([c[1] for c in cover])
+    hv = np.array([c[3] for c in cover])
+    print(f"days planned            {len(cover):,}")
+    print(f"eligible per day        median {np.median(el):.0f} (min {el.min()}, max {el.max()})")
+    print(f"pool with opening bars  median {np.median(hv):.0f} "
+          f"= {100.0 * np.median(hv / np.maximum(el, 1)):.0f}% of eligible")
+    print(f"selections              {len(rows):,} rows, {len(pairs):,} distinct symbol-days")
+    print(f"wrote {SELECTION_PATH} and {PAIRS_PATH}")
+
+
+# ---------------------------------------------------------------------------
+# run
+
+
+def _load_selection() -> dict:
+    with gzip.open(SELECTION_PATH, "rt") as f:
+        return json.load(f)
+
+
+def _atr_map(pairs: set[tuple[str, int]]) -> dict[tuple[str, int], float]:
+    tab = universe.eligible_table()
+    want: dict[int, set[str]] = {}
+    for s, d in pairs:
+        want.setdefault(d, set()).add(s)
+    out: dict[tuple[str, int], float] = {}
+    for day, syms in want.items():
+        row = tab.get(day)
+        if row is None:
+            continue
+        for t, a in zip(row["ticker"], row["atr"]):
+            t = str(t)
+            if t in syms:
+                out[(t, day)] = float(a)
+    return out
+
+
+def _replay(days_by_symbol: dict[str, set[int]], atr: dict, model_cls) -> tuple[list, Counter, int]:
+    trades: list = []
+    census: Counter = Counter()
+    missing = 0
+    for i, (sym, days) in enumerate(sorted(days_by_symbol.items())):
+        try:
+            series = cache_load.load(sym, "1m", scfg.SNAPSHOT)
+        except FileNotFoundError:
+            missing += len(days)
+            continue
+        model = model_cls(atr)
+        t, _ = run_symbol(series, model, COSTS, warmup_days=0,
+                          day_filter=lambda d, days=days: int(d) in days)
+        model.finish()
+        trades.extend(t)
+        census.update(model.census)
+        if (i + 1) % 500 == 0:
+            print(f"  replayed {i+1:,} symbols, {len(trades):,} trades", flush=True)
+    return trades, census, missing
+
+
+def _window(trades, lo: int, hi: int):
+    return [t for t in trades if lo <= t.day <= hi]
+
+
+def _paired_gross(model_trades, control_trades):
+    ctl = {(t.symbol, t.day): t for t in control_trades}
+    out = []
+    for t in model_trades:
+        c = ctl.get((t.symbol, t.day))
+        if c is not None:
+            out.append(t.gross_r - c.gross_r)
+    return out
+
+
+def _paired_by_day(a_trades, b_trades):
+    """Per-day mean net R of arm A minus arm B, on days both arms traded."""
+    def by_day(ts):
+        d: dict[int, list[float]] = {}
+        for t in ts:
+            d.setdefault(int(t.day), []).append(float(t.net_r))
+        return {k: float(np.mean(v)) for k, v in d.items()}
+    a, b = by_day(a_trades), by_day(b_trades)
+    return [a[d] - b[d] for d in sorted(set(a) & set(b))]
+
+
+def stage_run() -> None:
+    sel = _load_selection()
+    rows = sel["rows"]
+    pairs = {(r["symbol"], int(r["day"])) for r in rows}
+    atr = _atr_map(pairs)
+    print(f"selection: {len(rows):,} rows, {len(pairs):,} symbol-days, "
+          f"{len(atr):,} with an ATR", flush=True)
+
+    arms: dict[str, dict[str, set[int]]] = {ARM_SIP: {}, ARM_UNFILTERED: {}}
+    for r in rows:
+        arms[r["arm"]].setdefault(r["symbol"], set()).add(int(r["day"]))
+
+    print("replaying the stocks-in-play arm...", flush=True)
+    sip_trades, sip_census, sip_missing = _replay(arms[ARM_SIP], atr, OrbStocksInPlay)
+    print("replaying the matched coin-flip control...", flush=True)
+    flip_trades, _, _ = _replay(arms[ARM_SIP], atr, OrbStocksInPlayCoinflip)
+    print("replaying the unfiltered control...", flush=True)
+    unf_trades, unf_census, unf_missing = _replay(arms[ARM_UNFILTERED], atr, OrbStocksInPlay)
+    print(f"trades: sip={len(sip_trades):,} flip={len(flip_trades):,} "
+          f"unfiltered={len(unf_trades):,}", flush=True)
+
+    write_report(sel, sip_trades, flip_trades, unf_trades,
+                 sip_census, unf_census, sip_missing, unf_missing)
+
+
+# ---------------------------------------------------------------------------
+# report
+
+
+def _gross_summary(trades):
+    """Mean/median GROSS R — reported before the net numbers, every time."""
+    if not trades:
+        return float("nan"), float("nan")
+    g = np.array([t.gross_r for t in trades], dtype="float64")
+    return float(np.mean(g)), float(np.median(g))
+
+
+def write_report(sel, sip, flip, unf, sip_census, unf_census,
+                 sip_missing, unf_missing) -> None:
+    rep_lo, rep_hi = (_d(x) for x in gates.SIP_REPLICATION_WINDOW)
+    hb_lo, hb_hi = (_d(x) for x in gates.SIP_HELD_BACK)
+
+    sip_rep, sip_hb = _window(sip, rep_lo, rep_hi), _window(sip, hb_lo, hb_hi)
+    flip_rep = _window(flip, rep_lo, rep_hi)
+    unf_rep, unf_hb = _window(unf, rep_lo, rep_hi), _window(unf, hb_lo, hb_hi)
+
+    s_rep = summarise(sip_rep, "in play, replication window")
+    s_hb = summarise(sip_hb, "in play, held back")
+    u_rep = summarise(unf_rep, "unfiltered, replication window")
+    u_hb = summarise(unf_hb, "unfiltered, held back")
+    f_rep = summarise(flip_rep, "coin flip, replication window")
+
+    g_mean, g_med = _gross_summary(sip_rep)
+    ug_mean, ug_med = _gross_summary(unf_rep)
+    fg_mean, fg_med = _gross_summary(flip_rep)
+
+    paired_flip = _paired_gross(sip_rep, flip_rep)
+    paired_unf = _paired_by_day(sip_rep, unf_rep)
+
+    days_rep = [_d(x) for x in calendar_us.trading_days(*gates.SIP_REPLICATION_WINDOW)]
+    days_all = [_d(x) for x in calendar_us.trading_days(scfg.START, scfg.END)]
+    pf_rep = run_portfolio(sip_rep, days_rep)
+    pf_all = run_portfolio(sip, days_all)
+    pf_unf = run_portfolio(unf_rep, days_rep)
+
+    gate_rows = gates.evaluate_sip(s_rep, g_mean, paired_flip, paired_unf, pf_rep)
+    verdict = gates.verdict_sip(gate_rows)
+
+    cover = np.array(sel["coverage"], dtype="int64")
+    el, pool, have = cover[:, 1], cover[:, 2], cover[:, 3]
+
+    L: list[str] = []
+    A = L.append
+    A(f"# `orb_sip.v1` — the published stocks-in-play ORB, replicated")
+    A("")
+    A(f"**Verdict: {verdict}.**")
+    A("")
+    A(f"Snapshot `{scfg.SNAPSHOT}`. Replication window "
+      f"{gates.SIP_REPLICATION_WINDOW[0]} → {gates.SIP_REPLICATION_WINDOW[1]} — "
+      f"the paper's own window — with {gates.SIP_HELD_BACK[0]} → "
+      f"{gates.SIP_HELD_BACK[1]} held back and reported separately. Gate: "
+      "[`../models/orb_sip.v1/GATE.md`](../models/orb_sip.v1/GATE.md), committed "
+      "before any number below existed.")
+    A("")
+    A("## In plain English")
+    A("")
+    A(f"- **Pool size**: {int(np.median(have)):,} names a day had an opening bar, "
+      f"against a median {int(np.median(el)):,} names a day that passed the paper's "
+      f"universe filter — **{100.0*float(np.median(have/np.maximum(el,1))):.0f}% of the "
+      "eligible universe was visible to the selector**. This is a weaker filter than "
+      "the paper's and the direction of the weakness is against us: the names it "
+      "misses are the smaller, more volatile ones where a doubling of opening volume "
+      "is most likely.")
+    A(f"- **Date range**: {gates.SIP_REPLICATION_WINDOW[0]} → "
+      f"{gates.SIP_HELD_BACK[1]}, {len(days_all):,} sessions.")
+    A(f"- **Trade count**: {len(sip_rep):,} in the replication window, "
+      f"{len(sip_hb):,} held back, {len(sip):,} in total.")
+    A(f"- **Did it reproduce**: **{verdict}**.")
+    A("")
+    A("## The bar, and what it observed")
+    A("")
+    A("| id | gate | threshold | observed | |")
+    A("|---|---|---|---|---|")
+    for g in gate_rows:
+        A(f"| **{g.id}** | {g.name} | {g.threshold} | {g.observed} | "
+          f"{'PASS' if g.passed else 'FAIL'} |")
+    A("")
+    A("## Gross before net, median beside mean")
+    A("")
+    A("| arm | n | mean gross R | median gross R | mean net R | median net R | hit | PF |")
+    A("|---|---|---|---|---|---|---|---|")
+    A(f"| stocks in play | {s_rep.n} | {fmt(g_mean,4)} | {fmt(g_med,4)} | "
+      f"{fmt(s_rep.mean_r,4)} | {fmt(s_rep.median_r,4)} | {fmt(s_rep.hit_rate*100,1)}% | "
+      f"{fmt(s_rep.profit_factor,2)} |")
+    A(f"| unfiltered control | {u_rep.n} | {fmt(ug_mean,4)} | {fmt(ug_med,4)} | "
+      f"{fmt(u_rep.mean_r,4)} | {fmt(u_rep.median_r,4)} | {fmt(u_rep.hit_rate*100,1)}% | "
+      f"{fmt(u_rep.profit_factor,2)} |")
+    A(f"| matched coin flip | {f_rep.n} | {fmt(fg_mean,4)} | {fmt(fg_med,4)} | "
+      f"{fmt(f_rep.mean_r,4)} | {fmt(f_rep.median_r,4)} | {fmt(f_rep.hit_rate*100,1)}% | "
+      f"{fmt(f_rep.profit_factor,2)} |")
+    A("")
+    A("All three arms use the same rules, the same costs and the same fills. The "
+      "unfiltered control differs from the stocks-in-play arm in the ranking key "
+      "and in nothing else; the coin flip differs in the direction call and in "
+      "nothing else.")
+    A("")
+    A("## The portfolio, which is what the published number is")
+    A("")
+    A("1% of equity risked a position, gross exposure capped at 4x, all of a day's "
+      "positions scaled down together when the cap binds, compounded daily from "
+      "$100,000.")
+    A("")
+    A("| | in play (replication) | in play (whole window) | unfiltered (replication) |")
+    A("|---|---|---|---|")
+    A(f"| total return | {pf_rep.total_return:+.1%} | {pf_all.total_return:+.1%} | "
+      f"{pf_unf.total_return:+.1%} |")
+    A(f"| CAGR | {pf_rep.cagr:+.1%} | {pf_all.cagr:+.1%} | {pf_unf.cagr:+.1%} |")
+    A(f"| Sharpe | {pf_rep.sharpe:.2f} | {pf_all.sharpe:.2f} | {pf_unf.sharpe:.2f} |")
+    A(f"| max drawdown | {pf_rep.max_drawdown:.1%} | {pf_all.max_drawdown:.1%} | "
+      f"{pf_unf.max_drawdown:.1%} |")
+    A(f"| days the 4x cap bound | {pf_rep.capped_days}/{pf_rep.n_days} | "
+      f"{pf_all.capped_days}/{pf_all.n_days} | {pf_unf.capped_days}/{pf_unf.n_days} |")
+    A("")
+    A("**Published, for comparison: 1,637% and a 2.81 Sharpe on stocks in play, "
+      "29% and 0.48 unfiltered.** The rows above are on our pool, our window and "
+      "our cost model, and are not claimed to be the same experiment.")
+    A("")
+    A("## Slices")
+    A("")
+    A(SUMMARY_HEADER)
+    for s in (s_rep, s_hb, u_rep, u_hb, f_rep):
+        A(summary_row(s))
+    A("")
+    A("### By year, stocks in play, net R")
+    A("")
+    A(SUMMARY_HEADER)
+    for k, v in sorted(split_by(sip, lambda t: str(t.day)[:4]).items()):
+        A(summary_row(summarise(v, k)))
+    A("")
+    A("### By side, replication window")
+    A("")
+    A(SUMMARY_HEADER)
+    for k, v in sorted(split_by(sip_rep, lambda t: t.side).items()):
+        A(summary_row(summarise(v, k)))
+    A("")
+    A("### By relative-volume decile, replication window")
+    A("")
+    rvol = {(r["symbol"], int(r["day"])): float(r["rvol"])
+            for r in sel["rows"] if r["arm"] == ARM_SIP}
+    vals = np.array([rvol.get((t.symbol, t.day), np.nan) for t in sip_rep])
+    ok = np.isfinite(vals)
+    if ok.sum() > 10:
+        qs = np.quantile(vals[ok], np.linspace(0, 1, 11))
+        A(SUMMARY_HEADER)
+        for i in range(10):
+            lo_q, hi_q = qs[i], qs[i + 1]
+            grp = [t for t, v in zip(sip_rep, vals)
+                   if np.isfinite(v) and lo_q <= v < (hi_q if i < 9 else np.inf)]
+            if grp:
+                A(summary_row(summarise(grp, f"rvol {lo_q:.1f}-{hi_q:.1f}")))
+    A("")
+    A("### Exit mix and stop geometry, replication window")
+    A("")
+    if sip_rep:
+        risk = np.array([t.risk_per_share for t in sip_rep])
+        px = np.array([t.fill_price for t in sip_rep])
+        drag = 2.0 * COSTS.commission_per_share / np.maximum(risk, 1e-9)
+        A(f"- median stop distance **{np.median(risk)*100:.1f} cents**, "
+          f"{np.median(risk/np.maximum(px,1e-9))*100:.3f}% of price")
+        A(f"- commission alone is **{np.median(drag):.3f}R** of the median trade; "
+          f"a tenth of an ATR is a very tight stop and the cost fraction is "
+          "`cost per share / stop distance`, which is the law ENGINE-4 and "
+          "ENGINE-5 measured twice")
+        A(f"- exits: {dict(sorted(s_rep.exit_mix.items()))}")
+        A(f"- trades resolved by the stop-before-target assumption: {s_rep.ambiguous_bars}")
+    A("")
+    A("## Census")
+    A("")
+    A("| | stocks in play | unfiltered |")
+    A("|---|---|---|")
+    for k in sorted(set(sip_census) | set(unf_census)):
+        A(f"| {k} | {sip_census.get(k,0):,} | {unf_census.get(k,0):,} |")
+    A(f"| symbol-days with no cached bars | {sip_missing:,} | {unf_missing:,} |")
+    A("")
+    A("## Selection, and the lookahead treatment")
+    A("")
+    A(f"- pool: top {sel['pool_n']:,} of the eligible set by 20-day average dollar "
+      "volume as of the prior close")
+    A(f"- selection: top {sel['top_k']} by 09:30-09:35 volume over the mean of the "
+      f"same five minutes across the previous {sel['baseline_days']} sessions, "
+      f"floor {sel['min_rvol']:.1f}")
+    if ok.sum():
+        A(f"- realised relative volume of the selected: median "
+          f"{np.median(vals[ok]):.2f}x, p90 {np.quantile(vals[ok],0.9):.2f}x, "
+          f"max {vals[ok].max():.1f}x")
+    A("- the parquet on disk holds only 09:30-10:30 of each session, so the "
+      "afternoon of the day being selected for was never written; "
+      "`tests/test_sip_selection.py` runs the poisoned-future and "
+      "amputated-future attacks against `select_day`, requires an identical "
+      "selection when the rest of the session is deleted from disk, and catches "
+      "a deliberately cheating selector with the same harness")
+    A("")
+    A("## Costs and fills")
+    A("")
+    A(f"- ${COSTS.commission_per_share:.3f}/share/side commission, "
+      f"{COSTS.slippage_bps:.1f} bp adverse slippage on market and stop fills")
+    A("- entry is a resting stop order, filled at the worse of the level and the "
+      "bar's open, plus slippage; a bar containing both the stop and the target "
+      "is resolved as the stop")
+    A("")
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text("\n".join(L) + "\n")
+    print("\n".join(L[:40]))
+    print(f"\nwrote {REPORT}")
+
+    dump = REPORT.with_suffix(".trades.csv.gz")
+    with gzip.open(dump, "wt") as f:
+        f.write("arm,model_id,symbol,day,side,entry_minute,exit_minute,fill_price,"
+                "stop_price,exit_price,exit_reason,risk_per_share,gross_r,net_r,"
+                "mae_r,mfe_r\n")
+        for arm, ts in ((ARM_SIP, sip), ("coinflip", flip), (ARM_UNFILTERED, unf)):
+            for t in ts:
+                f.write(f"{arm},{t.model_id},{t.symbol},{t.day},{t.side},"
+                        f"{t.entry_minute},{t.exit_minute},{t.fill_price:.4f},"
+                        f"{t.stop_price:.4f},{t.exit_price:.4f},{t.exit_reason},"
+                        f"{t.risk_per_share:.4f},{t.gross_r:.5f},{t.net_r:.5f},"
+                        f"{t.mae_r:.5f},{t.mfe_r:.5f}\n")
+    eq = REPORT.with_suffix(".equity.csv")
+    eq.write_text("day,equity,daily_return,exposure_ratio\n" + "\n".join(
+        f"{d},{e:.2f},{r:.6f},{x:.4f}"
+        for d, e, r, x in zip(pf_all.days, pf_all.equity, pf_all.daily_return,
+                              pf_all.exposure_ratio)) + "\n")
+    print(f"wrote {dump} and {eq}")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--stage", choices=["plan", "run"], required=True)
+    a = ap.parse_args()
+    if a.stage == "plan":
+        stage_plan()
+    else:
+        stage_run()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
