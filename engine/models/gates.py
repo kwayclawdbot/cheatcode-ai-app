@@ -319,3 +319,85 @@ def naive_1r_scoring_generous(trades, level: float = ONE_R) -> dict:
                               else 0.5 * (realised[n // 2 - 1] + realised[n // 2])),
         "promoted": sum(1 for t in rows if t.mfe_r >= level and t.net_r < level),
     }
+
+
+# ---------------------------------------------------------------------------
+# ENGINE-6 addendum. Written before `orb_sip.v1` produced a number; see
+# engine/models/orb_sip.v1/GATE.md for the reasoning and the git log for the
+# ordering.
+#
+# This is a REPLICATION bar, not an expectancy bar, and it is deliberately a
+# different KIND of thing from G1-G7. Those ask "does this model have edge".
+# R1-R5 ask "can this harness see an edge somebody else has already
+# documented" — Zarattini, Barbon & Aziz's 1,637% / 2.81 Sharpe on stocks in
+# play against 29% / 0.48 unfiltered. A miss here is a finding about the
+# machinery, and the verdict names it as such rather than filing an eighth
+# failed model.
+#
+# NOTHING in this block relaxes G1-G5 for any other model. They are not
+# referenced by it and are not reachable from it.
+
+SIP_REPLICATION_WINDOW = ("2016-01-01", "2023-12-31")   # the paper's own window
+SIP_HELD_BACK = ("2024-01-01", "2026-08-28")
+
+SIP_MIN_TRADES = 5_000
+SIP_MIN_SHARPE = 1.0
+
+REPRODUCED = "REPRODUCED"
+PARTIALLY_REPRODUCED = "PARTIALLY REPRODUCED"
+NOT_REPRODUCED = "NOT REPRODUCED"
+
+
+def evaluate_sip(summary, gross_mean_r, control_paired_diff,
+                 unfiltered_diff, portfolio) -> list[GateResult]:
+    """R1-R5 on the replication window.
+
+    `control_paired_diff` is the per-pair gross R difference against the
+    matched coin flip (same symbol, day, geometry, direction flipped).
+    `unfiltered_diff` is the per-day net R difference between the
+    stocks-in-play arm and the same rules on twenty random eligible names.
+    Both are lists of numbers, and both are judged by whether their 95%
+    interval excludes zero in the model's favour.
+    """
+    g = []
+    g.append(GateResult(
+        "R1", "sample", f">={SIP_MIN_TRADES} trades in the replication window",
+        f"n={summary.n}", summary.n >= SIP_MIN_TRADES))
+    g.append(GateResult(
+        "R2", "sign", "mean gross R > 0 AND mean net R > 0",
+        f"gross={gross_mean_r:+.4f}, net={summary.mean_r:+.4f}",
+        gross_mean_r > 0 and summary.mean_r > 0))
+
+    lo, hi = mean_ci95(control_paired_diff)
+    m = (sum(control_paired_diff) / len(control_paired_diff)) if control_paired_diff else float("nan")
+    g.append(GateResult(
+        "R3", "direction beats a coin flip (paired, gross)",
+        "95% interval excludes zero, in the model's favour",
+        f"{m:+.4f} (95%: {lo:+.4f} to {hi:+.4f}, n={len(control_paired_diff)})",
+        len(control_paired_diff) > 1 and lo > 0))
+
+    lo2, hi2 = mean_ci95(unfiltered_diff)
+    m2 = (sum(unfiltered_diff) / len(unfiltered_diff)) if unfiltered_diff else float("nan")
+    g.append(GateResult(
+        "R4", "the filter is the thing (net R, in play minus unfiltered)",
+        "95% interval excludes zero, in the model's favour",
+        f"{m2:+.4f} (95%: {lo2:+.4f} to {hi2:+.4f}, n={len(unfiltered_diff)})",
+        len(unfiltered_diff) > 1 and lo2 > 0))
+
+    g.append(GateResult(
+        "R5", "portfolio, directionally consistent with the published result",
+        f"total return > 0 AND Sharpe >= {SIP_MIN_SHARPE:.1f}",
+        f"total={portfolio.total_return:+.1%}, Sharpe={portfolio.sharpe:.2f}, "
+        f"maxDD={portfolio.max_drawdown:.1%}",
+        portfolio.total_return > 0 and portfolio.sharpe >= SIP_MIN_SHARPE))
+    return g
+
+
+def verdict_sip(gates: list[GateResult]) -> str:
+    """The four-way verdict, fixed before any count was known."""
+    by_id = {g.id: g for g in gates}
+    if not by_id["R1"].passed:
+        return INCONCLUSIVE_SAMPLE
+    if not (by_id["R2"].passed and by_id["R3"].passed and by_id["R4"].passed):
+        return NOT_REPRODUCED
+    return REPRODUCED if by_id["R5"].passed else PARTIALLY_REPRODUCED

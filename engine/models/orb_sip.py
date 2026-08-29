@@ -34,6 +34,7 @@ is deliberately absent here. Phase 2 does not run unless Phase 1 reproduces.
 
 from __future__ import annotations
 
+import hashlib
 from collections import Counter
 
 import numpy as np
@@ -147,5 +148,73 @@ class OrbStocksInPlay(Model):
             {"or_high": hi, "or_low": lo, "or_open": o, "or_close": c,
              "or_size": hi - lo, "atr14": float(atr),
              "stop_dist": stop_dist, "ref_price": c},
+            stop_from_fill=stop_dist,
+        )
+
+
+class OrbStocksInPlayCoinflip(OrbStocksInPlay):
+    """The matched control: `orb_sip.v1` with the direction call replaced.
+
+    Same symbols, same days, same 09:35 decision, same opening range, same
+    entry mechanics (a resting stop order at the range edge on the chosen
+    side), same 10%-of-ATR stop distance, same end-of-day exit. The ONLY
+    difference is that the side comes from a deterministic hash instead of from
+    the sign of the opening candle.
+
+    So anything the model earns over this control it earned by knowing which
+    way to point on a day it had already been told was in play. The two trade
+    sets are not identical — a coin-flip long can sit under a high that never
+    breaks while the model's short broke the low — so the report pairs on the
+    (symbol, day) intersection and also gives both unpaired means.
+    """
+
+    id = "orb_sip.v1.coinflip"
+    description = "control: the same days and geometry, direction by coin flip"
+
+    SEED = "engine-6-matched-control"
+
+    def _side(self, symbol: str, day: int) -> str:
+        h = hashlib.sha256(f"{self.SEED}|{symbol}|{day}".encode()).digest()
+        return "long" if int.from_bytes(h[:8], "big") % 2 else "short"
+
+    def evaluate(self, view: BarView, day: int) -> Signal | None:
+        self._roll(day)
+        if self._done:
+            return None
+        last = view.last
+        minute = int(last.minute)
+        if minute < DECIDE_FROM:
+            return None
+        self._done = True
+
+        cndl = self._opening_candle(view)
+        if cndl is None:
+            self.census["skip_no_opening_candle"] += 1
+            return None
+        o, hi, lo, c = cndl
+        if not (hi > lo):
+            self.census["skip_zero_width_range"] += 1
+            return None
+        if c == o:
+            self.census["skip_doji_opening_candle"] += 1
+            return None
+
+        side = self._side(view.symbol, int(day))
+        entry = hi if side == "long" else lo
+        atr = self.atr.get((view.symbol, int(day)))
+        if atr is None or not (atr > 0):
+            self.census["skip_no_atr"] += 1
+            return None
+        stop_dist = ATR_STOP_FRACTION * float(atr)
+        stop = entry - stop_dist if side == "long" else entry + stop_dist
+        target = NO_TARGET if side == "long" else -NO_TARGET
+        self.census["signals"] += 1
+        self.census[f"signals_{side}"] += 1
+        return Signal(
+            self.id, view.symbol, int(day), view.i, minute, side, "stop",
+            entry, stop, target, FLATTEN_MIN + 1, FLATTEN_MIN,
+            {"or_high": hi, "or_low": lo, "or_open": o, "or_close": c,
+             "or_size": hi - lo, "atr14": float(atr),
+             "stop_dist": stop_dist, "ref_price": c, "matched": True},
             stop_from_fill=stop_dist,
         )
