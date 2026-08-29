@@ -190,6 +190,7 @@ const A = { email: `rls-a-${stamp}@example.com`, password: `pw-a-${stamp}!A1` };
 const B = { email: `rls-b-${stamp}@example.com`, password: `pw-b-${stamp}!B1` };
 
 let createdIds = [];
+const liveShowIds = [];
 let tmpCoreRoom = null;
 let tmpSetupRoom = null;
 let amdCircle = null;      // opened by open_setup_circle during the run
@@ -1005,6 +1006,119 @@ try {
     assert(delEvent.status >= 400, 'alert_events is append-only even for service_role', `status ${delEvent.status}`);
   }
 
+
+  // ============================================ live shows (0023)
+  console.log('\nlive shows: review is free, market-hours is premium:');
+  {
+    // Two shows, one of each mode. A and B are both free users at this point —
+    // nothing in this script ever creates a subscription — so `market` must be
+    // invisible to both, and `review` visible to both.
+    const reviewShow = await serviceInsert('live_shows', {
+      mode: 'review', status: 'ended', title: 'rls review show',
+    });
+    const marketShow = await serviceInsert('live_shows', {
+      mode: 'market', status: 'ended', title: 'rls market show',
+    });
+    liveShowIds.push(reviewShow.id, marketShow.id);
+
+    const reviewSeg = await serviceInsert('live_segments', {
+      show_id: reviewShow.id, seq: 0, symbol: 'META', source: 'setup', state: 'done',
+    });
+    const marketSeg = await serviceInsert('live_segments', {
+      show_id: marketShow.id, seq: 0, symbol: 'NVDA', source: 'setup', state: 'done',
+    });
+    await serviceInsert('live_frames', {
+      show_id: reviewShow.id, segment_id: reviewSeg.id, seq: 0, kind: 'say',
+      payload: { kind: 'say', text: 'free' }, t_offset_ms: 0,
+    });
+    await serviceInsert('live_frames', {
+      show_id: marketShow.id, segment_id: marketSeg.id, seq: 0, kind: 'say',
+      payload: { kind: 'say', text: 'paid' }, t_offset_ms: 0,
+    });
+
+    const freeShows = await asA(`live_shows?id=eq.${reviewShow.id}&select=id,mode`);
+    assert(Array.isArray(freeShows.body) && freeShows.body.length === 1,
+      'a free user can read a review-mode show', JSON.stringify(freeShows.body));
+
+    const paidShows = await asA(`live_shows?id=eq.${marketShow.id}&select=id,mode`);
+    assert(Array.isArray(paidShows.body) && paidShows.body.length === 0,
+      'a free user CANNOT read a market-mode show', JSON.stringify(paidShows.body));
+
+    const freeFrames = await asA(`live_frames?show_id=eq.${reviewShow.id}&select=seq`);
+    assert(Array.isArray(freeFrames.body) && freeFrames.body.length === 1,
+      'a free user can read the frames of a review show', JSON.stringify(freeFrames.body));
+
+    // The one that matters: the paywall has to be on the FRAMES, not only on the
+    // show row. A market-mode timeline readable by anyone who guessed a show id
+    // would be the entire premium product, given away.
+    const paidFrames = await asB(`live_frames?show_id=eq.${marketShow.id}&select=seq,payload`);
+    assert(Array.isArray(paidFrames.body) && paidFrames.body.length === 0,
+      'a free user CANNOT read the frames of a market-mode show', JSON.stringify(paidFrames.body));
+
+    const paidSegs = await asB(`live_segments?show_id=eq.${marketShow.id}&select=symbol`);
+    assert(Array.isArray(paidSegs.body) && paidSegs.body.length === 0,
+      'nor its segments — not even the list of tickers it covered', JSON.stringify(paidSegs.body));
+
+    // Promote A to premium and the same rows appear. This is what proves the
+    // policy is reading the subscription rather than refusing everybody.
+    await serviceInsert('subscriptions', {
+      user_id: A.id, tier: 'premium', status: 'active',
+    });
+    const nowVisible = await asA(`live_frames?show_id=eq.${marketShow.id}&select=seq`);
+    assert(Array.isArray(nowVisible.body) && nowVisible.body.length === 1,
+      'a premium user CAN read a market-mode timeline', JSON.stringify(nowVisible.body));
+    const stillHidden = await asB(`live_frames?show_id=eq.${marketShow.id}&select=seq`);
+    assert(Array.isArray(stillHidden.body) && stillHidden.body.length === 0,
+      "and B, still free, still cannot", JSON.stringify(stillHidden.body));
+
+    // Writes are the worker's alone.
+    const insFrame = await asA(`live_frames`, {
+      method: 'POST',
+      body: JSON.stringify({ show_id: reviewShow.id, seq: 99, kind: 'say', payload: {} }),
+    });
+    assert(insFrame.status >= 400, 'no client may write a frame', `status ${insFrame.status}`);
+
+    const insShow = await asA(`live_shows`, {
+      method: 'POST',
+      body: JSON.stringify({ mode: 'review', status: 'live' }),
+    });
+    assert(insShow.status >= 400, 'nor start a show', `status ${insShow.status}`);
+
+    // A request is the ONE client write, and only for a premium user. A is
+    // premium now; B is not.
+    const bReq = await asB(`live_requests`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: B.id, symbol: 'META', status: 'queued' }),
+    });
+    assert(bReq.status >= 400, 'a free user cannot ask Kai to pull up a ticker', `status ${bReq.status}`);
+
+    const aReq = await asA(`live_requests`, {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ user_id: A.id, symbol: 'META', status: 'queued' }),
+    });
+    assert(aReq.status < 300, 'a premium user can', `status ${aReq.status} ${JSON.stringify(aReq.body)}`);
+
+    const forOther = await asA(`live_requests`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: B.id, symbol: 'NVDA', status: 'queued' }),
+    });
+    assert(forOther.status >= 400, 'and cannot put a request in somebody else\'s name', `status ${forOther.status}`);
+
+    const bSees = await asB('live_requests?select=id');
+    assert(Array.isArray(bSees.body) && bSees.body.length === 0,
+      "B cannot see A's requests", JSON.stringify(bSees.body));
+
+    const anonFrames = await fetch(`${URL_BASE}/rest/v1/live_frames?select=seq`, {
+      headers: { apikey: ANON, Authorization: `Bearer ${ANON}` },
+    });
+    assert(anonFrames.status >= 400 || (await anonFrames.json()).length === 0,
+      'anon reads no frames at all', `status ${anonFrames.status}`);
+
+    // Put A back where the rest of the script expects to find them.
+    await serviceDelete(`subscriptions?user_id=eq.${A.id}`);
+  }
+
   // ============================================ rule_adherence_v (0021)
   console.log('\nrule_adherence_v counts a user\'s own sessions only:');
   {
@@ -1046,6 +1160,8 @@ try {
   failures++;
   console.error(`\n  ERROR ${err.message}`);
 } finally {
+  // live_segments / live_frames / live_requests all cascade from live_shows.
+  for (const id of liveShowIds) await serviceDelete(`live_shows?id=eq.${id}`);
   await dropRoom(tmpCoreRoom?.id);
   await dropRoom(tmpSetupRoom?.id);
   // setups.discussion_room_id points at the circle 0021 opened, and the FK is
