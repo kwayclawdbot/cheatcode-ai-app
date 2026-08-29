@@ -4,13 +4,14 @@
  * the exit style, and whether it came from the dev fixture.
  *
  * `mark_price` / `mark_ts` land with SCHEMA-3's 0020. Until then this reads them
- * when present and falls back to a live delayed quote, so the surfaces work on
- * either database and the freshness label is always the truth about the number
- * being shown — never a stored mark rendered as if it were current.
+ * when present and falls back to a fresh quote, so the surfaces work on either
+ * database and the freshness label is always the truth about the number being
+ * shown — never a stored mark rendered as if it were current, and never a
+ * ten-second-old mark rendered as if it were late.
  */
 import type { Freshness, OpenPositionRow, ExitStyle } from '@shared/api';
 import { serviceClient } from '../db';
-import { getSnapshot } from '../market/polygon';
+import { freshnessFor, getSnapshot } from '../market/polygon';
 import { normalizeTargets } from '../kai/context';
 import { isSimulated } from '../debriefs';
 import { toOpenPositionRow, type PositionExtras } from './shape';
@@ -99,7 +100,15 @@ export async function loadOpenPositions(opts: {
       exitStyle: plan?.exitStyle ?? 'auto',
       markPrice: stored ?? q?.price ?? null,
       markTs: stored !== null ? ((r.mark_ts as string) ?? null) : (q?.ts ?? null),
-      markFreshness: stored !== null ? 'delayed' : (q?.freshness ?? 'stale'),
+      // A stored mark used to be declared `delayed` whatever its age — which
+      // was true on a plan that was always delayed and is a false claim on this
+      // one, in both directions: it hid a mark the tick stopped updating hours
+      // ago, and it will call a mark from ten seconds ago "delayed". The mark
+      // carries its own timestamp, so measure it.
+      markFreshness:
+        stored !== null
+          ? freshnessFor((r.mark_ts as string) ?? null).freshness
+          : (q?.freshness ?? 'stale'),
       simulated: isSimulated((r.origin as Record<string, unknown>) ?? undefined) || Boolean(plan?.simulated),
     };
     return toOpenPositionRow(r as Record<string, unknown>, extras);

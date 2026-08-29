@@ -4,7 +4,7 @@
  * There is no execution worker in this round (03 Unit 4 is a Python service on
  * Railway that does not exist yet), so the API does the smallest honest version
  * of its job: for every symbol with an open position or a resting order, take
- * one delayed quote and hand it to `apply_paper_tick`, which — in ONE
+ * one quote and hand it to `apply_paper_tick`, which — in ONE
  * transaction per user+symbol — fills crossed resting entries, fires `auto`
  * bracket legs, and re-marks every open position.
  *
@@ -16,13 +16,17 @@
  *                execute them; the Attention alert and the notification are
  *                raised here, because that is where the copy lives.
  *
- * DATA BUDGET. The Polygon plan allows 5 requests a minute. `getSnapshot()`
- * covers EVERY symbol in one `/v2/aggs/grouped` call (plus one cached call for
- * the prior close), so a tick costs at most two requests regardless of how many
- * symbols are in flight, and a 60s interval sits inside the budget with room
- * for the rest of the app. When the budget is spent the token bucket serves the
- * cache and the tick reports `degraded` — it never queues, and it never invents
- * a print to fill against.
+ * DATA BUDGET. `getSnapshot()` covers EVERY symbol in ONE call, so a tick costs
+ * one request regardless of how many symbols are in flight. That was a
+ * necessity under the old five-a-minute plan and it is still the right shape.
+ * When the budget guard does trip the token bucket serves the cache and the
+ * tick reports `degraded` — it never queues, and it never invents a print to
+ * fill against.
+ *
+ * FRESHNESS IS CARRIED, NOT ASSUMED. Every mark travels with the freshness the
+ * quote came back with, and the tick's own sentence is written from what the
+ * marks actually were. This file used to say "against delayed prices" in a
+ * string, which was true on the old entitlement and is a claim nothing checks.
  *
  * EXIT STYLE is the difference that matters, and the copy never blurs it:
  *   auto            — the leg executes. The stop is real protection.
@@ -102,7 +106,7 @@ export async function runPaperTick(opts: {
     };
   }
 
-  // --- quotes: ONE grouped call for every symbol -------------------------
+  // --- quotes: ONE snapshot call for every symbol ------------------------
   const marks = new Map<string, Mark>();
   let source: PaperTickResponse['quote_source'] = 'none';
   let degraded = false;
@@ -111,6 +115,10 @@ export async function runPaperTick(opts: {
   const overrides = opts.overrides ?? {};
   const overridden = Object.keys(overrides).map((s) => s.toUpperCase());
   for (const key of Object.keys(overrides)) {
+    // An override is a price a developer typed. It is not market data, so it is
+    // stamped now and labelled `delayed` — the one place in this file where a
+    // freshness is declared rather than measured, because there is nothing to
+    // measure. `quote_source: 'override'` says so on the response.
     marks.set(key.toUpperCase(), { price: overrides[key], ts: at, freshness: 'delayed' });
   }
   if (overridden.length) source = 'override';
@@ -288,12 +296,25 @@ export async function runPaperTick(opts: {
     alerts_created: alertsCreated,
     degraded,
     degraded_reason: degradedReason,
-    plain: `Marked ${marked} position${marked === 1 ? '' : 's'} and filled ${filled} resting order${filled === 1 ? '' : 's'} against delayed prices. ${PAPER_FILL_PLAIN}`,
+    plain: `Marked ${marked} position${marked === 1 ? '' : 's'} and filled ${filled} resting order${filled === 1 ? '' : 's'} against ${markQuality(marks)} prices. ${PAPER_FILL_PLAIN}`,
     alerts_evaluated: alertEval.evaluated,
     alerts_triggered: alertEval.triggered,
     circles_opened: swept.opened,
     circles_closed: swept.closed,
   };
+}
+
+/**
+ * What the tick actually priced against, taken from the marks it used. The
+ * worst freshness in the set wins: one stale symbol makes the sentence honest
+ * about the whole run rather than averaging the problem away.
+ */
+function markQuality(marks: Map<string, Mark>): string {
+  const all = [...marks.values()].map((m) => m.freshness);
+  if (!all.length) return 'the last';
+  if (all.includes('stale')) return 'the last prices we received, some of them stale,';
+  if (all.every((f) => f === 'live')) return 'live';
+  return 'delayed';
 }
 
 /**

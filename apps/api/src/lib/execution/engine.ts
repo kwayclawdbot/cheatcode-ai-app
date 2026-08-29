@@ -133,6 +133,21 @@ export async function transition(
   });
 }
 
+/**
+ * The trail, in the order it happened.
+ *
+ * `created_at` alone is not that order. It is written from
+ * `new Date().toISOString()`, which is milliseconds, and previewed → submitted
+ * → accepted → filled can all land inside one of those — at which point
+ * Postgres returns the ties in whatever order it likes and the story reads
+ * "filled" before "submitted". That was invisible while a quote cost a network
+ * round trip in the middle of the sequence and became reproducible the moment
+ * the market client got faster (DATA-1, 2026-08-29).
+ *
+ * `order_events.id` is a bigserial, so insertion order is recorded exactly.
+ * Sorting on it after the timestamp keeps the display right without changing a
+ * single row.
+ */
 export async function orderEvents(orderIds: string[]) {
   if (!orderIds.length) return [] as Record<string, unknown>[];
   const db = serviceClient();
@@ -140,7 +155,8 @@ export async function orderEvents(orderIds: string[]) {
     .from('order_events')
     .select('order_id,from_status,to_status,payload,created_at')
     .in('order_id', orderIds)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true });
   return (data ?? []) as Record<string, unknown>[];
 }
 

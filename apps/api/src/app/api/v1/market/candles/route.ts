@@ -2,8 +2,9 @@
  * GET /api/v1/market/candles?symbol=&tf=1m|5m|15m|1h|4h|1d&from=&to=
  *
  * Cache-first: the `candles` table is the store and Polygon is the refill. A
- * symbol whose bars already reach the last trading day costs zero API calls
- * (the plan allows 5 a minute — see lib/market/polygon.ts).
+ * symbol whose stored bars already reach the PRESENT costs zero API calls —
+ * "the present" measured by the same freshness function that labels the answer,
+ * not by a calendar date (see `candlesCovered` in lib/market/polygon.ts).
  *
  * SIX RESOLUTIONS, ONE ENDPOINT. The trade portal's rail offers 1m/5m/15m/1h/
  * 4h/D; this route used to accept only `1d` and `5m`, so four of the six 400'd
@@ -56,7 +57,10 @@ export const GET = authed(async (req: NextRequest, _ctx: Ctx) => {
   // Keep the NEWEST bars: a chart that has to drop something drops history.
   const candles = result.candles.slice(-maxCandles());
   const last = candles[candles.length - 1] ?? null;
-  const { freshness, delay_reason } = freshnessFor(last?.ts ?? null);
+  // `tf` is not decoration here: a candle is stamped at the START of the bar it
+  // covers, so a 4-hour bar is four hours "old" the moment it closes. Without
+  // the width the widest resolutions would read stale for most of their life.
+  const { freshness, delay_reason } = freshnessFor(last?.ts ?? null, { bar: q.tf });
 
   return ok(
     CandlesResponseTf.parse({

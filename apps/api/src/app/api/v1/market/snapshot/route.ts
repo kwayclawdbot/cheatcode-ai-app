@@ -1,11 +1,16 @@
 /**
  * GET /api/v1/market/snapshot?symbols=META,NVDA
  *
- * One grouped Polygon call covers every ticker, so the cost does not grow with
- * the symbol list. Each quote carries {price, source_ts, received_ts,
- * freshness} plus `delay_reason` — on this plan that is always
- * `delayed`/`entitlement`, never `stale`, and the app must keep its actions
- * enabled (BUILD-BRIEF-round-2 "Market data").
+ * ONE Polygon call covers every ticker, so the cost does not grow with the
+ * symbol list. Each quote carries {price, source_ts, received_ts, freshness}
+ * plus `delay_reason`, and every one of those is MEASURED from the data that
+ * came back — see the block at the top of lib/market/polygon.ts. This route
+ * used to document `delayed`/`entitlement` as a permanent property of the
+ * plan; it is now whatever the age of the print says, which outside regular
+ * hours is `delayed`/`market_closed` and during them can be `live`.
+ *
+ * `delayed` NEVER DISABLES AN ACTION. That part is unchanged and is the reason
+ * the distinction from `stale` is worth keeping.
  */
 import type { NextRequest } from 'next/server';
 import { SnapshotQuery, SnapshotResponse } from '@shared/api';

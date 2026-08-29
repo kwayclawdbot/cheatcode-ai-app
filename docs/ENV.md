@@ -7,6 +7,44 @@ SUPABASE_URL=                  # local: http://127.0.0.1:54321 (from `supabase s
 SUPABASE_SERVICE_ROLE_KEY=     # from `supabase status`
 SUPABASE_ANON_KEY=
 
+### Market data — Polygon (updated 2026-08-29, plan upgraded)
+
+```
+POLYGON_API_KEY=…              # required for any live market data
+POLYGON_REALTIME=              # a HINT ONLY. See below — the observation wins.
+POLYGON_RPM=100                # requests / rolling minute. Was 5 on the old plan.
+POLYGON_MAX_CONCURRENCY=8      # in-flight cap; waiters QUEUE, they are not refused
+POLYGON_QUEUE_MAX_MS=8000      # how long a waiter holds on before serving cache
+POLYGON_429_COOLDOWN_S=20      # one 429 parks every caller for this long
+POLYGON_BASE_LIMIT=50000       # BASE aggregates scanned per request (not bars!)
+POLYGON_MAX_CANDLES=1500       # bars RETURNED per request (a display cap)
+POLYGON_LIVE_MAX_MIN=2         # market minutes of lateness still counted `live`
+POLYGON_DELAYED_MAX_MIN=45     # beyond this, during an OPEN session, it is `stale`
+POLYGON_SNAPSHOT_TTL_S=        # quote memo; default 10s open / 60s closed
+POLYGON_REFILL_COOLDOWN_S=     # candle refill floor; default 20s open / 60s closed
+```
+
+**Nothing here sets a freshness.** Every variable above moves a threshold or a
+budget; the verdict is always computed from the age of the data that came back.
+See the block at the top of `apps/api/src/lib/market/polygon.ts`.
+
+| Variable | What it does |
+|---|---|
+| `POLYGON_API_KEY` | the only required one. Without it every market surface answers `degraded` with "Live market data is not connected yet" and keeps working off the `candles` store. |
+| `POLYGON_REALTIME` | **a hint, and the weakest input there is.** `1`/`true` says "assume real-time", `0`/`false` says "assume delayed", unset says nothing. It seeds an assumption and is overridden by (1) the lateness we actually measure during an open session and (2) Polygon stamping `status:"DELAYED"` on a body. Setting it to `1` on a plan that is really fifteen minutes behind changes nothing after the first quote of the first session — and it can never, on its own, make a price read `live`. It exists so a fresh process has a sensible first guess before the market opens, not so anyone can declare an entitlement. |
+| `POLYGON_RPM` | the non-blocking token bucket. The old plan allowed 5 a minute and the app was built around that famine (measured 2026-08-29: twelve rapid calls, all 200 — it is gone). When the budget IS spent nothing queues: the cache answers and the response says `degraded`. |
+| `POLYGON_MAX_CONCURRENCY` / `POLYGON_QUEUE_MAX_MS` | politeness, not scarcity. Over the cap a caller WAITS (up to `QUEUE_MAX_MS`, just under the 9s request timeout) rather than being refused — refusing because thirty requests are in flight this millisecond serves stale data to protect nobody. |
+| `POLYGON_429_COOLDOWN_S` | a 429 is still possible on any plan. One is enough to stand every caller down for this long, instead of retrying into the wall. |
+| `POLYGON_BASE_LIMIT` | **not a bar count.** Polygon's `limit` bounds the number of one-minute BASE aggregates it will scan, and the response stops when that runs out — silently, with `status:"OK"`. Passing our 1500-bar display cap into it meant the 15-minute chart ended nine days before the present (measured; see `fetchAggregates`). 50 000 is Polygon's own ceiling and covers about 50 calendar days of minute bases, so wider requests are clamped at the OLD end rather than being allowed to stop short at the new one. |
+| `POLYGON_MAX_CANDLES` | how many bars go back on the wire, newest kept. A three-month 1-minute range is 30 000 bars nobody can draw. |
+| `POLYGON_LIVE_MAX_MIN` / `POLYGON_DELAYED_MAX_MIN` | the two thresholds, in minutes of MARKET time (09:30–16:00 ET only — nights and weekends do not accrue). Inside the first, data reaches the present. Between them it is `delayed`: real, late, labeled, and **actions stay enabled**. Past the second, during an open session, the feed has stopped and it is `stale`. 45 is deliberately generous: it covers a 15-minute entitlement delay plus bar granularity. |
+| `POLYGON_SNAPSHOT_TTL_S` / `POLYGON_REFILL_COOLDOWN_S` | how long a quote and a candle series are reused. Both default to a short window while the market is open and a long one while it is shut, because a minute is a long time in a live session and no time at all in a closed one. |
+
+**Not set anywhere yet:** there is no websocket configuration. The account does
+have real-time stock entitlement on `wss://socket.polygon.io/stocks`
+(`auth_success`, and `T.`/`Q.`/`AM.` subscriptions accepted — verified
+2026-08-29), but nothing in this app consumes a push stream.
+
 ### Round 5 — push (never commit; the key pair below is DEV ONLY)
 
 ```

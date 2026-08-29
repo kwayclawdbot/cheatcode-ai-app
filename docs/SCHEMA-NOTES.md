@@ -1745,3 +1745,52 @@ So `blocked` is reachable only by a direct `service_role` write today: there is
 no admin route that blocks a person. Not built because brief §7 does not list
 one and blocking is a decision with product consequences nobody has specified —
 recorded here so it is a choice rather than an oversight.
+
+### 2.47 Freshness is computed per request; nothing about it is stored
+
+`candles` stores bars and `positions` stores `mark_ts`, but no table anywhere
+holds a `freshness`. That is deliberate and it is now load-bearing.
+
+Freshness is a statement about the RELATIONSHIP between a timestamp and the
+present, so the instant it is written down it starts to rot: a row stamped
+`delayed` at 10:04 is a lie at 11:04 and a different lie on Saturday. Every
+surface derives it at read time from the timestamp that IS stored — `source_ts`
+on a quote, `mark_ts` on a position, `ts` on the newest candle — through the one
+function in `lib/market/polygon.ts`.
+
+The two places that used to break this rule both did it the same way, by
+declaring a constant:
+
+  - every quote was built `delayed` / `entitlement` because the account was on a
+    delayed Polygon plan (true until 2026-08-29, then a false statement shown to
+    users in the opposite direction);
+  - `positions-view` labelled any STORED mark `delayed` whatever its age, which
+    hid a mark the tick had stopped updating.
+
+Both now measure. The only remaining declared freshness in the codebase is the
+paper tick's `overrides` path, where a developer typed the price and there is
+nothing to measure — and the response says `quote_source: 'override'`.
+
+### 2.48 `market_closed` is a delay reason, and it is not `entitlement`
+
+`DelayReason` has carried `market_closed` since round 2 and nothing ever emitted
+it. It is now the normal weekend and overnight answer: the last print is late by
+ZERO market minutes, because the market has produced nothing since. `stale` is
+reserved for a feed that has gone quiet while the market says it is trading.
+
+The mobile `FreshnessMark` still renders any `delayed` as "Delayed" and only
+special-cases `entitlement` (→ "Delayed 15m"). A weekend quote therefore reads
+"Delayed" where it should read "Market closed" — the component already has a
+`closed` shape and colour for it. That is a MOBILE follow-up, not an API one;
+the API's `label_plain` says "Market closed · …" correctly today.
+
+### 2.49 `order_events` is ordered by `(created_at, id)`, not `created_at`
+
+`created_at` is written from `new Date().toISOString()` — milliseconds — and
+previewed → submitted → accepted → filled can all land inside one of them, at
+which point Postgres returns the ties in any order it likes and the trail reads
+"filled" before "submitted". It was invisible while a quote cost a network round
+trip in the middle of that sequence, and became reproducible the moment the
+market client stopped making one (DATA-1, 2026-08-29). `id` is a `bigserial`, so
+insertion order is already recorded exactly; the read sorts on it after the
+timestamp. No rows changed.
