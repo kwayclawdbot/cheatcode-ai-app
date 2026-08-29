@@ -48,9 +48,12 @@ UI reads another project's database live — a dashboard that dies when a foreig
 pooler is slow is not a command surface.
 
 ```
-app's own tables ─┐
-K.AI Supabase   ─┼─→ ingest (idempotent, resumable) ─→ crm_people / crm_events ─→ admin API ─→ admin UI
-Stripe API      ─┘                                     (identity resolution)
+app's own tables ──→ source: app     ─┐
+K.AI Supabase   ──→ source: kai_sms ─┼─→ sync (idempotent, resumable) ─→ crm_people / crm_events ─→ admin API ─→ admin UI
+Stripe API      ──→ source: stripe  ─┘        (identity resolution)
+
+   this round: `app` only. `kai_sms` and `stripe` are registered stubs
+   reporting `configured: false` — see §5.
 ```
 
 ## 3. Security — this is the part that must not be got wrong
@@ -125,36 +128,49 @@ any of them. The API is the only door. Every new function ends in an explicit
 `REVOKE` (SCHEMA-NOTES §2.7). RLS tests: a signed-in non-staff user gets nothing
 from every table above, and cannot call any admin RPC.
 
-## 5. Ingest (lane ADMIN-3)
+## 5. Sources (lane ADMIN-3)
 
-Three connectors under `apps/api/src/lib/crm/sources/`, one interface, all
-idempotent and resumable through `sync_runs.cursor`:
+**Owner, 2026-08-29: "just make the admin and CRM system first, we will worry
+about the import later."** So this round builds the source *interface* and the one
+source that needs no foreign credentials, and stops there.
 
-- **`app`** — this database. Every profile becomes a person (`app_user_id` set),
-  and the funnel state is *derived, never stored twice*: signed_up → onboarded
-  (`onboarding.completed`) → activated (armed an alert or placed a paper order) →
-  paying (entitlement/Stripe). Backfills `crm_events` from `user_events`.
-- **`kai_sms`** — read-only from `ryprohqthwflinadqotj` (service key in
-  `~/.openclaw/secrets/supabase_kai.env`). Pulls `crm.contacts`, `crm.events`,
-  `crm.subscriptions`, `public.users`. Counts and timestamps only from
-  `conversation_history` — never bodies (§3). **Read-only credentials, and the
-  connector must never issue a write to that database.**
-- **`stripe`** — customers + subscriptions + charges → identities, MRR, LTV,
-  churn. **Use a restricted read-only key (`rk_…`), not the `sk_live_` in
-  `~/breakout-alert-system/.env`.** See §11.
+**IN THIS ROUND — the `app` source.** This database. Every profile becomes a
+`crm_people` row (`app_user_id` set), and the funnel state is *derived, never
+stored twice*: signed_up -> onboarded (`onboarding.completed`) -> activated (armed
+an alert or placed a paper order) -> paying (entitlement/Stripe). Backfills
+`crm_events` from `user_events`. This is not an "import" — it is the app telling
+the truth about its own users, and it is what makes the dashboard real and
+testable on day one instead of an empty shell.
 
-**Identity resolution** — the one algorithm that decides whether this CRM is
-trustworthy. Match in this order, first hit wins: `stripe_customer_id` →
-`app_user_id` → normalised email (lowercased, trimmed) → E.164 phone. Never match
-on name. When a candidate match would join two people who *both* already carry a
-different strong identity (two app users sharing one email), **do not merge** —
-write a `merge_conflict` event and surface it in the admin UI for a human. Merges
-are performed by an RPC that records `merged_into` and an audit row, and can be
-undone.
+**DEFERRED, NOT DESIGNED AWAY — `kai_sms` and `stripe`.** Both are written as
+stubs implementing the same `Source` interface (`plan()` -> `pull(cursor)` ->
+`resolve()`), registered, and reported by `GET /admin/sync` as
+`configured: false` with the exact reason (no read-only Stripe key; foreign
+database import not yet authorised). The admin UI shows them as sources that
+exist and are switched off — not as missing features. When the owner returns to
+this, the work is writing two `pull()` bodies, nothing structural.
 
-Driver: `POST /api/v1/internal/crm/sync` (`x-internal-secret`, same pattern as
-the paper tick) + an admin "Sync now" button, per source, with a dry-run mode that
-reports what it *would* change.
+Everything the deferred sources need is nevertheless built NOW, because retrofitting
+it later is what makes CRMs untrustworthy:
+- `crm_identities.unique(kind, value)` and the resolution order:
+  `stripe_customer_id` -> `app_user_id` -> normalised email (lowercased, trimmed)
+  -> E.164 phone. Never match on name. When a candidate match would join two
+  people who *both* already carry a different strong identity, **do not merge** —
+  write a `merge_conflict` event and surface it for a human. Merges record
+  `merged_into` plus an audit row and can be undone.
+- `crm_events.unique(source, external_id)` — a second sync run of any source must
+  create zero rows. Prove it with the `app` source now; the guarantee then holds
+  for the others by construction.
+- `sync_runs` with a resumable cursor, per source, and a dry-run mode that reports
+  what it *would* change without writing.
+
+Driver: `POST /api/v1/internal/crm/sync` (`x-internal-secret`, same pattern as the
+paper tick) plus an admin "Sync now" button per source.
+
+**Privacy rule that survives the deferral:** when the SMS source is eventually
+switched on it copies counts and timestamps only — never the text of
+`conversation_history`. 19,100 private messages do not get duplicated into a
+marketing tool. Build the stub with that contract in its comments.
 
 ## 6. Invites (lane ADMIN-2)
 
@@ -205,7 +221,7 @@ rule. Never invent a metric label the API does not return.
 - RLS: non-staff sees nothing, from every table, plus the RPC calls.
 - Unit: identity resolution table tests, including the conflict case that must
   refuse to merge; invite redemption (expired / revoked / exhausted / valid).
-- Ingest: run `kai_sms` against the real read-only source into local Supabase and
+- Sync: run the `app` source into local Supabase and
   report actual counts resolved / created / conflicted. Re-run it — the second
   run must create **zero** new rows (idempotence is the whole claim).
 - Smoke: the admin block, on top of the existing suite, all green.
@@ -215,14 +231,15 @@ rule. Never invent a metric label the API does not return.
 
 ## 11. Owner blockers / things to decide
 
-1. **Stripe key.** A `sk_live_` full-access key exists in
+1. **Stripe key** (only when the deferred `stripe` source is switched on). A
+   `sk_live_` full-access key exists in
    `~/breakout-alert-system/.env`. Do not reuse it here. Create a **restricted
    read-only key** (customers, subscriptions, charges: read) at
    dashboard.stripe.com → Developers → API keys → restricted. A CRM never needs
    write access to money.
 2. **Hosting.** This app has no hosted database (Supabase org invoice). The
-   ingest runs against local Supabase for now; the real 2,507-row import happens
-   once hosted.
+   `app` source runs against local Supabase now; the 2,507-row K.AI import waits
+   for hosting AND for the owner to return to it.
 3. **Superseding `cheatcode-crm`.** It is deployed and its Stripe webhook is
    live. Two systems must not both claim to be the CRM: decide when its webhook
    is repointed here, and until then treat its `crm.*` tables as the upstream
