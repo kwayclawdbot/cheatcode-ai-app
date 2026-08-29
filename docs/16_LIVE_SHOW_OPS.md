@@ -200,6 +200,23 @@ may not name), and it holds in practice, but the guard behind it does not cover
 the spoken form. Closing it means a words-to-number parser over the narration;
 that is a LIVE-4 item, not a nice-to-have.
 
+## 7b. It shares the Polygon budget with the rest of the app
+
+The plan allows five requests a minute and the whole app draws on one token
+bucket. `getCandles` is cache-first, so a warm cache costs nothing — but the
+rundown's watchlist tier asks for daily bars on every instrument it considers,
+and `withSwingLevels` asks again per setup candidate. On a COLD cache that is
+tens of requests in a few seconds.
+
+Observed, and it is worth knowing before it confuses somebody: a smoke run
+started immediately after a show run failed eleven paper-execution assertions
+with `INTERNAL … invalid response from the upstream server`. Nothing was broken.
+The order preview needs a fresh quote, the budget was spent, and ninety seconds
+later the same suite passed 269/0.
+
+If you are going to run a show and then a smoke suite, leave a minute between
+them — or warm the cache first, which is what a scheduled show would do anyway.
+
 ## 8. Test it
 
 ```bash
