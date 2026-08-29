@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import gzip
 import json
 import subprocess
 import sys
@@ -26,10 +27,13 @@ from engine.backtest.stats import (SUMMARY_HEADER, fmt, session_bucket,  # noqa:
 from engine.backtest.types import Costs  # noqa: E402
 from engine.cache.load import load  # noqa: E402
 from engine.models import gates as G  # noqa: E402
+from engine.models.null_coinflip import NullCoinflip  # noqa: E402
 from engine.models.orb_reclaim import OrbReclaim  # noqa: E402
 from engine.models.sweep_displacement_fvg import SweepDisplacementFvg  # noqa: E402
 
-MODELS = {"orb_reclaim": OrbReclaim, "sweep_displacement_fvg": SweepDisplacementFvg}
+MODELS = {"orb_reclaim": OrbReclaim,
+          "sweep_displacement_fvg": SweepDisplacementFvg,
+          "null_coinflip": NullCoinflip}
 
 
 def dayint(s: str) -> int:
@@ -52,6 +56,8 @@ def main() -> int:
     ap.add_argument("--snapshot", default=None)
     ap.add_argument("--commission", type=float, default=0.005)
     ap.add_argument("--slippage-bps", type=float, default=1.0)
+    ap.add_argument("--tag", default="", help="suffix for the report filename; "
+                    "diagnostic runs must not overwrite the pre-registered one")
     a = ap.parse_args()
 
     snapshot = a.snapshot or config.SNAPSHOT
@@ -95,9 +101,9 @@ def main() -> int:
     model = model_cls()
     out_dir = config.REPORTS_ROOT
     out_dir.mkdir(parents=True, exist_ok=True)
-    stem = f"{model.id}.{snapshot}"
+    stem = f"{model.id}.{snapshot}" + (f".{a.tag}" if a.tag else "")
 
-    with open(out_dir / f"{stem}.trades.csv", "w", newline="") as fh:
+    with gzip.open(out_dir / f"{stem}.trades.csv.gz", "wt", newline="") as fh:
         w = csv.writer(fh)
         if all_trades:
             keys = [k for k in asdict(all_trades[0]) if k != "meta"]
