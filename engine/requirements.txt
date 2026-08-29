@@ -1,0 +1,7 @@
+# ENGINE-1 pinned set. Regenerate with: .venv/bin/pip freeze > requirements.lock.txt
+httpx==0.28.1
+pyarrow==25.0.1
+duckdb==1.5.5
+pandas==3.0.5
+numpy==2.5.2
+pytest==9.1.1

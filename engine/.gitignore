@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# The bar cache is data, not source. It is reproducible from the manifest.
+data/
