@@ -53,7 +53,17 @@ const must = async (page, testId, why) => {
   console.log(`  · ${why}`);
 };
 
-const results = { firstPaintMs: null, fps: null, worstFps: null, interrupted: null, frames: 0 };
+const results = { firstPaintMs: null, paint1500: null, fps: null, worstFps: null, interrupted: null, frames: 0 };
+
+/**
+ * The native-feel checklist from the brief. Every line is a MEASUREMENT taken
+ * on this run, not a claim — an unchecked box here fails the script.
+ */
+const checklist = [];
+const feel = (item, passed, note = '') => {
+  checklist.push({ item, passed, note });
+  console.log(`  ${passed ? 'PASS' : 'FAIL'}  ${item}${note ? ` — ${note}` : ''}`);
+};
 
 /* ------------------------------------------------------------------ */
 /* 1. The choreography, on the stage                                   */
@@ -70,6 +80,7 @@ async function stage() {
   const ctx = await browser.newContext({
     viewport: { width: 1920, height: 1080 },
     deviceScaleFactor: 1,
+    hasTouch: true,
     recordVideo: { dir: FRAMES, size: { width: 1920, height: 1080 } },
   });
   await hideChrome(ctx);
@@ -162,6 +173,152 @@ async function stage() {
     throw new Error(`a touch during a Kai camera move must interrupt it; got '${results.interrupted}'`);
   }
   await shot(page, 'live1-05-interrupted');
+  feel('Kai motion is interruptible by touch', results.interrupted === 'interrupted',
+    `the sequence ended '${results.interrupted}' after ${st.lastResult?.completed}/${st.lastResult?.total} steps`);
+
+  /* ---- the native-feel checklist, measured ---- */
+  console.log('\n[5] native-feel checklist');
+
+  // 1,500 bars, and the page reports the frame that actually showed them.
+  await page.evaluate(() => window.__ccStage.stress(1500));
+  await page.waitForFunction(() => window.__ccStage.state().painted?.bars === 1500, null, { timeout: 15000 });
+  const painted = await page.evaluate(() => window.__ccStage.state().painted);
+  results.paint1500 = painted.ms;
+  feel('first paint under 400ms with 1,500 bars', painted.ms < 400, `${painted.ms}ms for ${painted.bars} bars`);
+
+  const cbox = await page.getByTestId('stage-chart').first().boundingBox();
+  const cy = cbox.y + cbox.height / 2;
+  // The camera, read off the `onViewportChange` prop the screen already
+  // subscribes to — no extra bridge surface invented for the test.
+  const readRange = async () => {
+    for (let i = 0; i < 20; i++) {
+      const v = await page.evaluate(() => window.__ccStage.state().viewport);
+      if (v) return v;
+      await page.waitForTimeout(100);
+    }
+    throw new Error('the chart never reported a viewport');
+  };
+
+  // Horizontal drag, with momentum.
+  //
+  // It has to be a TOUCH drag, and that is not a detail: Lightweight Charts
+  // enables kinetic scrolling for touch and deliberately not for the mouse,
+  // because a desktop drag that coasted past where you let go would feel
+  // broken. So the momentum check dispatches real touch points through CDP —
+  // the same thing a finger produces — and then measures how far the chart
+  // keeps travelling after the last one lifts.
+  const cdp = await ctx.newCDPSession(page);
+  const tp = (x) => [{ x, y: cy, id: 1, radiusX: 8, radiusY: 8, force: 1 }];
+  const before = await readRange();
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: tp(cbox.x + cbox.width * 0.82) });
+  for (let i = 1; i <= 12; i++) {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove', touchPoints: tp(cbox.x + cbox.width * (0.82 - i * 0.05)),
+    });
+    await page.waitForTimeout(10);
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(90);
+  const justAfter = await readRange();
+  await page.waitForTimeout(1100);
+  const settled = await readRange();
+  const moved = Math.abs(settled.from - before.from);
+  const coasted = Math.abs(settled.from - justAfter.from);
+  feel('horizontal drag scrolls the chart', moved > 3, `${before.from.toFixed(1)} → ${settled.from.toFixed(1)} bars`);
+  feel('and it carries momentum after the finger leaves', coasted > 0.3, `${coasted.toFixed(1)} bars of coast`);
+
+  // Vertical drag on the chart must not scroll the page underneath it.
+  const pageYBefore = await page.evaluate(() => window.scrollY);
+  await page.mouse.move(cbox.x + cbox.width * 0.5, cbox.y + cbox.height * 0.25);
+  await page.mouse.down();
+  for (let i = 0; i < 12; i++) {
+    await page.mouse.move(cbox.x + cbox.width * 0.5, cbox.y + cbox.height * 0.25 + i * 18);
+    await page.waitForTimeout(8);
+  }
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  const pageYAfter = await page.evaluate(() => window.scrollY);
+  feel('vertical drag on the chart does NOT scroll the page', pageYBefore === pageYAfter,
+    `scrollY ${pageYBefore} → ${pageYAfter}`);
+
+  // Pinch. Two real touch points, through CDP, because Playwright's own
+  // touchscreen is single-finger and a pinch is the one gesture that is not.
+  const beforePinch = await readRange();
+  const px = cbox.x + cbox.width * 0.5;
+  const py = cy;
+  const touch = (a, b) => cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [{ x: px - a, y: py, id: 1 }, { x: px + a, y: py, id: 2 }],
+  }).catch(() => {});
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: px - 40, y: py, id: 1 }, { x: px + 40, y: py, id: 2 }],
+  }).catch(() => {});
+  for (let i = 1; i <= 10; i++) { await touch(40 + i * 14); await page.waitForTimeout(16); }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }).catch(() => {});
+  await page.waitForTimeout(500);
+  const afterPinch = await readRange();
+  const zoomed = Math.abs(afterPinch.barSpacing - beforePinch.barSpacing);
+  feel('pinch changes the zoom', zoomed > 0.4,
+    `bar spacing ${beforePinch.barSpacing.toFixed(2)} → ${afterPinch.barSpacing.toFixed(2)}`);
+
+  // Double-tap returns to the timeframe's own default window.
+  await page.mouse.click(cbox.x + cbox.width * 0.5, cy);
+  await page.waitForTimeout(60);
+  await page.mouse.click(cbox.x + cbox.width * 0.5, cy);
+  await page.waitForTimeout(900);
+  const reset = await readRange();
+  const span = reset.to - reset.from;
+  feel('double-tap resets to the timeframe default window', span > 60 && span < 200,
+    `${span.toFixed(0)} bars on screen`);
+
+  await page.evaluate(() => window.__ccStage.unstress());
+  await page.waitForTimeout(600);
+
+  // A tap on the chart's OWN chip (canvas, inside the page) selects the level.
+  await page.evaluate(() => window.__ccStage.showAllKinds());
+  await page.waitForTimeout(900);
+  // The chips are painted on a canvas, so there is no element to click: the
+  // page hit-tests the tap itself. Sweeping down the left edge finds every
+  // chip's row, and the first one that answers proves the hit test is wired to
+  // the right rectangles — which is the part that could silently rot.
+  const tapped = await page.evaluate(() => new Promise((res) => {
+    const f = document.querySelector('iframe');
+    const doc = f.contentDocument;
+    const host = doc.querySelector('.chart-host');
+    const h = (e) => {
+      if (e.data?.type === 'annotationTap') { window.removeEventListener('message', h); res(e.data.payload.id); }
+    };
+    window.addEventListener('message', h);
+    const H = host.getBoundingClientRect().height;
+    let y = 8;
+    const step = () => {
+      if (y > H - 8) { window.removeEventListener('message', h); return res(null); }
+      for (const type of ['pointerdown', 'pointerup']) {
+        host.dispatchEvent(new PointerEvent(type, { clientX: 40, clientY: y, bubbles: true, pointerId: 1 }));
+      }
+      y += 3;
+      setTimeout(step, 0);
+    };
+    step();
+  }));
+  feel('a tap on an on-chart chip selects that level', typeof tapped === 'string' && tapped.length > 0,
+    tapped ? `annotationTap ${tapped}` : 'no chip answered the sweep');
+
+  // No white flash: the container, the page and the WebView background are all
+  // the surface token before a single candle exists.
+  const bg = await page.evaluate(() => {
+    const f = document.querySelector('iframe');
+    return {
+      frame: getComputedStyle(f).backgroundColor,
+      body: f.contentWindow.getComputedStyle(f.contentDocument.body).backgroundColor,
+      root: f.contentWindow.getComputedStyle(f.contentDocument.getElementById('root')).backgroundColor,
+    };
+  });
+  const isSurface = (c) => c === 'rgb(11, 11, 14)';
+  feel('no white flash on mount (page painted the surface token before anything else)',
+    isSurface(bg.body) && isSurface(bg.root) && isSurface(bg.frame),
+    JSON.stringify(bg));
 
   await page.close();
   const video = page.video();
@@ -180,7 +337,7 @@ async function stage() {
 /* ------------------------------------------------------------------ */
 
 async function portalOnWebKit() {
-  console.log('\n[5] the Trade Portal on WebKit (iPhone descriptor — the closest engine to the iOS WKWebView available here)');
+  console.log('\n[6] the Trade Portal on WebKit (iPhone descriptor — the closest engine to the iOS WKWebView available here)');
   const browser = await webkit.launch();
   const ctx = await browser.newContext({ ...devices['iPhone 13'] });
   await hideChrome(ctx);
@@ -194,7 +351,7 @@ async function portalOnWebKit() {
   await page.waitForTimeout(2500);
   await shot(page, 'live1-06-portal-webkit-iphone');
 
-  console.log('\n[6] a level is an object — tap one');
+  console.log('\n[7] a level is an object — tap one');
   await page.getByTestId('annotation-ann-stop').first().tap();
   await must(page, 'annotation-sheet', 'the inspector opens');
   await must(page, 'annotation-reason', 'carrying the reason it was placed');
@@ -202,7 +359,7 @@ async function portalOnWebKit() {
   await page.keyboard.press('Escape').catch(() => {});
   await page.waitForTimeout(500);
 
-  console.log('\n[7] a horizontal drag scrolls the chart, and the page does not move');
+  console.log('\n[8] a horizontal drag scrolls the chart, and the page does not move');
   const box = await page.getByTestId('portal-chart').first().boundingBox();
   const scrollBefore = await page.evaluate(() => window.scrollY);
   const cy = box.y + box.height / 2;
@@ -219,7 +376,7 @@ async function portalOnWebKit() {
   console.log(`  · page scrollY ${scrollBefore} → ${scrollAfter} (the chart took the gesture, the page did not)`);
   await shot(page, 'live1-08-portal-dragged-webkit');
 
-  console.log('\n[8] the ticker research page shows the same chart');
+  console.log('\n[9] the ticker research page shows the same chart');
   await page.goto(`${BASE}/symbol/META`, { waitUntil: 'domcontentloaded' });
   await must(page, 'ticker-chart', 'the research page and the portal share one chart');
   await page.waitForTimeout(2200);
@@ -236,8 +393,11 @@ async function main() {
   await stage();
   await portalOnWebKit();
 
+  console.log('\n──────── LIVE-1 native-feel checklist ────────');
+  for (const c of checklist) console.log(`  ${c.passed ? '[x]' : '[ ]'} ${c.item}${c.note ? ` — ${c.note}` : ''}`);
   console.log('\n──────── LIVE-1 measurements ────────');
-  console.log(`  first paint (1,500-bar budget, fixture set): ${results.firstPaintMs} ms`);
+  console.log(`  page boot to first paint:                    ${results.firstPaintMs} ms`);
+  console.log(`  1,500 bars parsed, drawn and on screen:      ${results.paint1500} ms (budget 400)`);
   console.log(`  frame rate while the chart is being moved:   ${results.fps} fps (worst sampled ${results.worstFps})`);
   console.log(`  Kai motion under a user touch:               ${results.interrupted}`);
   console.log(`  choreography frames captured:                ${results.frames}`);
@@ -245,6 +405,11 @@ async function main() {
   console.log('  Tools only — `xcrun simctl` is absent, so there is no simulator to record.');
   console.log('  The WebKit + iPhone-descriptor runs above are the closest substitute.');
   console.log('─────────────────────────────────────\n');
+
+  const failed = checklist.filter((c) => !c.passed);
+  if (failed.length) {
+    throw new Error(`native-feel checklist has ${failed.length} unchecked box(es): ${failed.map((f) => f.item).join('; ')}`);
+  }
 }
 
 main().catch((e) => { console.error('\nFAILED:', e.message); process.exit(1); });

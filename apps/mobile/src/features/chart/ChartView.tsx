@@ -101,6 +101,8 @@ export type ChartViewProps = {
   /** `firstPaintMs` is measured inside the page on the real device. */
   onReady?: (info: { version: string; firstPaintMs: number; reducedMotion: boolean }) => void;
   onFps?: (f: { fps: number; worst: number }) => void;
+  /** Measured on the frame that actually shows the bars, after every `setData`. */
+  onPainted?: (p: { ms: number; bars: number }) => void;
 
   testID?: string;
 };
@@ -130,7 +132,7 @@ export const ChartView = forwardRef<ChartHandle, ChartViewProps>(function ChartV
     symbol, timeframe, candles, annotations, lastPrice = null, focusTs = null,
     timeframes = PORTAL_TIMEFRAMES, hideAnnotations = false, showVolume = false,
     reducedMotion = false, height,
-    onSelectAnnotation, onTimeframeChange, onViewportChange, onCrosshair, onReady, onFps,
+    onSelectAnnotation, onTimeframeChange, onViewportChange, onCrosshair, onReady, onFps, onPainted,
     testID = 'chart-view',
   } = props;
 
@@ -149,8 +151,8 @@ export const ChartView = forwardRef<ChartHandle, ChartViewProps>(function ChartV
   const latest = useRef({ symbol, timeframe, candles, annotations, lastPrice, hideAnnotations, showVolume, reducedMotion });
   latest.current = { symbol, timeframe, candles, annotations, lastPrice, hideAnnotations, showVolume, reducedMotion };
 
-  const cb = useRef({ onSelectAnnotation, onTimeframeChange, onViewportChange, onCrosshair, onReady, onFps });
-  cb.current = { onSelectAnnotation, onTimeframeChange, onViewportChange, onCrosshair, onReady, onFps };
+  const cb = useRef({ onSelectAnnotation, onTimeframeChange, onViewportChange, onCrosshair, onReady, onFps, onPainted });
+  cb.current = { onSelectAnnotation, onTimeframeChange, onViewportChange, onCrosshair, onReady, onFps, onPainted };
 
   const uri = useMemo(() => pageUri(), []);
 
@@ -238,6 +240,7 @@ export const ChartView = forwardRef<ChartHandle, ChartViewProps>(function ChartV
         break;
       case 'crosshairEnd': cb.current.onCrosshair?.(null); break;
       case 'fps': cb.current.onFps?.({ fps: Number(p.fps), worst: Number(p.worst) }); break;
+      case 'painted': cb.current.onPainted?.({ ms: Number(p.ms), bars: Number(p.bars) }); break;
       default: break;
     }
   }, []);

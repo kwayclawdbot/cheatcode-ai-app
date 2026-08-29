@@ -266,6 +266,12 @@ export const ChartBridgeInbound = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('crosshairEnd'), payload: z.object({}) }),
   z.object({ type: z.literal('fps'), payload: z.object({ fps: z.number(), worst: z.number() }) }),
+  /**
+   * Measured after `setData`, on the frame that actually shows the bars — not
+   * after the parse. This is the number the brief's "first paint < 400ms with
+   * 1,500 bars" budget is checked against.
+   */
+  z.object({ type: z.literal('painted'), payload: z.object({ ms: z.number(), bars: z.number() }) }),
   z.object({
     type: z.literal('error'),
     id: z.string().nullable().optional(),

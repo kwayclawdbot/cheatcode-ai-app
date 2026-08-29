@@ -152,6 +152,7 @@ const IN = [
   { type: 'annotationTap', payload: { id: 'ann-stop' } },
   { type: 'crosshair', payload: { time: 1, open: 1, high: 2, low: 0.5, close: 1.5 } },
   { type: 'fps', payload: { fps: 60, worst: 58 } },
+  { type: 'painted', payload: { ms: 7, bars: 1500 } },
   { type: 'error', id: 'c9', payload: { message: 'nope' } },
 ];
 for (const m of IN) {
@@ -160,6 +161,8 @@ for (const m of IN) {
 }
 throws('a `done` reason outside the three is refused',
   () => bridge.ChartBridgeInbound.parse({ type: 'done', id: 'x', payload: { reason: 'whatever' } }));
+ok('`painted` carries the measurement the 400ms budget is checked against',
+  bridge.ChartBridgeInbound.parse({ type: 'painted', payload: { ms: 7, bars: 1500 } }).payload.bars === 1500);
 
 ok('the default window per timeframe matches the brief',
   JSON.stringify(bridge.CHART_TF_DEFAULT_BARS) ===

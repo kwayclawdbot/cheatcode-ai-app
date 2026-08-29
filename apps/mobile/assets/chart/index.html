@@ -1469,6 +1469,12 @@ Chart.prototype._bindTaps = function () {
 /* ------------------------------------------------------------------ */
 
 Chart.prototype.setData = function (p) {
+  // The brief's budget is "first paint < 400ms after mount with 1,500 bars", so
+  // the thing measured has to be the whole job: normalise, sort, hand to the
+  // series, shade the session, frame the window — and then wait for the frame
+  // that actually shows it. A number taken before the rAF is a number about
+  // parsing, not about painting.
+  var t0 = (window.performance || Date).now();
   var raw = p.candles || [];
   var bars = [];
   var vols = [];
@@ -1501,6 +1507,13 @@ Chart.prototype.setData = function (p) {
   if (wasEmpty || p.resetView !== false) this.fitDefault(0);
   this._lower();
   this._postViewport();
+
+  requestAnimationFrame(function () {
+    post({
+      type: 'painted',
+      payload: { ms: Math.round(((window.performance || Date).now()) - t0), bars: bars.length },
+    });
+  });
 };
 
 /** Replace or append the newest bar without touching the camera. */

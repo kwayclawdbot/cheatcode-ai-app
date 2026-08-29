@@ -109,11 +109,21 @@ export default function StageCheckScreen() {
   const [running, setRunning] = useState(false);
   const [ready, setReady] = useState<{ firstPaintMs: number; version: string } | null>(null);
   const [fps, setFps] = useState<{ fps: number; worst: number } | null>(null);
+  const [painted, setPainted] = useState<{ ms: number; bars: number } | null>(null);
+  /** The live camera, straight off `onViewportChange`. A ref, not state: it
+   *  changes on every frame of a tween and must never cause a render. */
+  const viewport = useRef<{ from: number; to: number; barSpacing: number } | null>(null);
+  /** A bar set the fixtures do not have. The brief's paint budget is written
+   *  against 1,500 bars, so the harness has to be able to produce 1,500 bars. */
+  const [stress, setStress] = useState<{ t: string; o: number; h: number; l: number; c: number; v: number }[] | null>(null);
   /** How the last performance ended. `interrupted` is the one the proof cares
    *  about: it is the evidence that a finger outranks Kai. */
   const lastResult = useRef<{ reason: string; completed: number; total: number } | null>(null);
 
-  const candles = useMemo(() => (tf === 'D' || tf === '4h' ? fixtureCandlesDaily : fixtureCandles), [tf]);
+  const candles = useMemo(
+    () => stress ?? (tf === 'D' || tf === '4h' ? fixtureCandlesDaily : fixtureCandles),
+    [stress, tf],
+  );
 
   /** One command, choreographed. Returns when the performance is over. */
   const runStep = useCallback(async (i: number) => {
@@ -154,10 +164,16 @@ export default function StageCheckScreen() {
       runAll,
       reset,
       showAllKinds: () => setShown(ALL_KINDS),
-      state: () => ({ tf, step, annotations: shown.length, ready, fps, lastResult: lastResult.current }),
+      /** Load N synthetic bars and let the page report what painting them cost. */
+      stress: (n: number) => { setPainted(null); setStress(makeBars(n)); },
+      unstress: () => { setStress(null); setPainted(null); },
+      state: () => ({
+        tf, step, annotations: shown.length, ready, fps, painted,
+        bars: candles.length, viewport: viewport.current, lastResult: lastResult.current,
+      }),
     };
     return () => { delete w.__ccStage; };
-  }, [runStep, runAll, reset, tf, step, shown.length, ready, fps]);
+  }, [runStep, runAll, reset, tf, step, shown.length, ready, fps, painted, candles.length]);
 
   if (!DEV && !env.FIXTURES) {
     return (
@@ -183,6 +199,9 @@ export default function StageCheckScreen() {
               {`first paint ${ready.firstPaintMs}ms · lwc ${ready.version}`}
             </Num>
           ) : null}
+          {painted ? (
+            <Num size={11} c={color.dim} testID="stage-painted">{`${painted.bars} bars painted in ${painted.ms}ms`}</Num>
+          ) : null}
           {fps ? <Num size={11} c={color.dim} testID="stage-fps">{`${fps.fps} fps (worst ${fps.worst})`}</Num> : null}
         </View>
 
@@ -196,8 +215,10 @@ export default function StageCheckScreen() {
             annotations={shown}
             lastPrice={508.4}
             onTimeframeChange={setTf}
+            onViewportChange={(v) => { viewport.current = v; }}
             onReady={(r) => setReady({ firstPaintMs: r.firstPaintMs, version: r.version })}
             onFps={setFps}
+            onPainted={setPainted}
           />
         </View>
 
@@ -280,6 +301,30 @@ export default function StageCheckScreen() {
       </View>
     </View>
   );
+}
+
+/**
+ * N synthetic 5-minute bars. Not a fixture anybody sees — it exists so the
+ * "1,500 bars" budget in the brief can be measured rather than assumed, and it
+ * is only reachable from the dev harness.
+ */
+function makeBars(n: number) {
+  const out: { t: string; o: number; h: number; l: number; c: number; v: number }[] = [];
+  const start = Date.now() - n * 300_000;
+  let p = 500;
+  for (let i = 0; i < n; i++) {
+    const o = p;
+    const c = o + Math.sin(i / 11) * 0.9 + (((i * 2654435761) % 1000) / 1000 - 0.5) * 1.2;
+    out.push({
+      t: new Date(start + i * 300_000).toISOString(),
+      o, c,
+      h: Math.max(o, c) + 0.4,
+      l: Math.min(o, c) - 0.4,
+      v: 500_000 + (i % 97) * 1_000,
+    });
+    p = c;
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
