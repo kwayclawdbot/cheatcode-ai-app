@@ -65,3 +65,47 @@ def evaluate(is_summary, oos_summary, regime_summaries) -> list[GateResult]:
 
 def verdict(gates: list[GateResult]) -> str:
     return "PASS" if all(x.passed for x in gates) else "FAIL"
+
+
+# ---------------------------------------------------------------------------
+# ENGINE-2 addendum. Written before `orb_htf_structural.v1` was evaluated; see
+# engine/models/orb_htf_structural.v1/GATE.md for the reasoning.
+#
+# A filtered model can be too small to judge. Calling that a failure of edge is
+# as dishonest as calling a fluke a success, so the verdict has three outcomes
+# and the rule for choosing between them is fixed here rather than after the
+# count is known.
+
+INCONCLUSIVE_SAMPLE = "INCONCLUSIVE (sample)"
+INCONCLUSIVE_POWER = "INCONCLUSIVE (power)"
+
+
+def mean_ci95(values) -> tuple[float, float]:
+    """Normal-approximation 95% interval for the mean. Trade R is not normal,
+    but n is large enough for the CLT to carry the mean, and the interval is
+    used only to ask whether a threshold is excluded."""
+    import math
+
+    n = len(values)
+    if n < 2:
+        return (float("nan"), float("nan"))
+    m = sum(values) / n
+    var = sum((v - m) ** 2 for v in values) / (n - 1)
+    se = math.sqrt(var / n)
+    return (m - 1.96 * se, m + 1.96 * se)
+
+
+def verdict3(gates: list[GateResult], is_r, oos_r) -> str:
+    """PASS / FAIL / INCONCLUSIVE, per the pre-registered rule."""
+    by_id = {g.id: g for g in gates}
+    if all(g.passed for g in gates):
+        return "PASS"
+    if not by_id["G1"].passed:
+        return INCONCLUSIVE_SAMPLE
+    if not by_id["G2"].passed:
+        is_hi = mean_ci95(is_r)[1]
+        oos_hi = mean_ci95(oos_r)[1]
+        decisive = (is_hi == is_hi and is_hi < MIN_EXPECTANCY_IS) or \
+                   (oos_hi == oos_hi and oos_hi < MIN_EXPECTANCY_OOS)
+        return "FAIL" if decisive else INCONCLUSIVE_POWER
+    return "FAIL"
