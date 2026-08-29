@@ -1,8 +1,8 @@
 # engine/ — what was measured, and what happened
 
-**Four models have now been measured against bars written down before each test
-was run. Three failed and the fourth came back inconclusive.** None ships.
-Nothing here touches the app, and no alert has been produced.
+**Six models have now been measured against bars written down before each test
+was run. Five failed and one came back inconclusive.** None ships. Nothing here
+touches the app, and no alert has been produced.
 
 That is the intended kind of outcome. It cost a week; the alternative — the one
 the existing SMS engine took — costs a paying customer.
@@ -14,6 +14,8 @@ the existing SMS engine took — costs a paying customer.
 | ENGINE-2 | [`orb_htf_structural.v1`](orb_htf_structural.v1.polygon-v1.md) | FAIL — but the first to beat its control before costs |
 | ENGINE-3 | [`orb_mtf.v1`](orb_mtf.v1.polygon-v1.md) — Exit A, day trade | INCONCLUSIVE (sample) |
 | ENGINE-3 | [`orb_mtf.v1`](orb_mtf.v1.polygon-v1.md) — Exit B, swing | INCONCLUSIVE (sample) |
+| ENGINE-4 | [`orb_simple_1h.v1`](orb_simple_1h.v1.polygon-deep-v1.md) — SPY, 2,081 trades | FAIL |
+| ENGINE-4 | [`orb_simple_4h.v1`](orb_simple_4h.v1.polygon-deep-v1.md) — SPY, 1,547 trades | FAIL |
 
 Read [ENGINE-2's report](orb_htf_structural.v1.polygon-v1.md) for the finding the
 whole family turns on: the setup earns about 4.6 cents a share before costs and
@@ -233,3 +235,85 @@ The direction edge over the matched control shrank rather than grew: +0.052R
 gross on Exit A (95%: −0.139R to +0.244R) against ENGINE-2's +0.099R, and it is
 negative out-of-sample. Adding the second trend filter did not sharpen the
 direction call; it mostly removed trades.
+
+
+---
+
+# ENGINE-4 — the owner's rule with nothing added, on fourteen years of SPY
+
+Brief: [`docs/BUILD-BRIEF-engine-4-orb-spy.md`](../../docs/BUILD-BRIEF-engine-4-orb-spy.md).
+Gates: [`../models/orb_simple_1h.v1/GATE.md`](../models/orb_simple_1h.v1/GATE.md)
+and [`../models/orb_simple_4h.v1/GATE.md`](../models/orb_simple_4h.v1/GATE.md),
+both committed at `a06611d`, before either evaluation ran.
+
+ENGINE-3 produced 20 SPY trades in three years, and that was the spec's fault.
+`orb_simple_*.v1` removes every skip rule — no range band, no minimum reward, no
+risk cap, no risk floor, no structural level, no both-charts-must-agree — and
+runs on a new, deeper snapshot. **The sample problem is solved: 2,081 SPY trades
+over 14.7 years for the 1-hour variant, 1,547 for the 4-hour, from 3,680
+sessions. And the answer is a clean, unambiguous failure.**
+
+| | 1h — SPY | 4h — SPY |
+|---|---|---|
+| trades (in-sample / held back) | 2,081 (1,583 / 498) | 1,547 (1,132 / 415) |
+| sessions producing a trade | 55.2% | 42.0% |
+| mean net R, in-sample | **−0.359** | **−0.361** |
+| mean net R, held back | **−0.154** | **−0.185** |
+| **median** net R | −1.093 | −1.093 |
+| profit factor | 0.63 | 0.61 |
+| gross mean R vs matched coin flip | −0.039 vs −0.005 | −0.092 vs −0.010 |
+| verdict | **FAIL** (G2, G3, G5) | **FAIL** (G2, G3, G5) |
+
+Every single one of the fifteen calendar years is negative on SPY. There is no
+slice of this that works.
+
+Three findings worth more than the verdict:
+
+1. **The brief's cost hypothesis came out backwards, and this is the most
+   useful number in the report.** SPY's realised drag is **0.265R — 26.5% of the
+   money risked on every trade** — against the 9–14% the earlier mixed baskets
+   paid. Cost as a fraction of risk is `cost per share ÷ stop distance`. The
+   numerator scales with the price of the instrument; the denominator is chosen
+   by the model. A trigger-candle stop on SPY is about 29¢, roughly a third of
+   what ENGINE-1/2/3 risked, so the fraction roughly doubles. **Trading the
+   cheapest instrument in the world with a very tight stop is proportionally
+   more expensive than trading an ordinary name with a wide one.** Liquidity
+   does not rescue a stop that tight.
+2. **The pre-registered cost model is itself proportional, and on SPY that
+   overcharges.** 1.0 bp of a $770 ETF is 7.7¢ when the real spread is about a
+   penny. Repricing the same trades at an absolute half-cent half-spread — a
+   disclosed sensitivity, not a result — takes SPY's drag from 0.303R to 0.098R
+   and its mean net R from −0.310 to −0.135. **Still nowhere near the bar.**
+   Cost is a large part of the loss and is not the whole of it.
+3. **Before costs the model is at or below its own coin flip.** Same days, same
+   minutes, same stop distances, same 2R target, direction flipped: SPY 1h is
+   −0.035R against the control (95%: −0.107 to +0.038) and SPY 4h is −0.082R
+   (95%: −0.164 to +0.001). The higher-timeframe trend filter bought nothing
+   measurable in either variant. On IWM's 4h held-back window the model is
+   −0.203R against the control with an interval that excludes zero — measured,
+   and against the filter.
+
+The one ambiguity, recorded in both gates before the run and repeated at the top
+of both reports: *"stop at the previous 5min candlestick high/low"* is
+implemented as the **trigger** candle's own extreme. If the candle before it was
+meant, it is a one-line change and a re-run, and it is the single most
+informative variation still available — a wider stop lowers the cost fraction
+and lowers the hit rate at the same time.
+
+## The data, and why it is a separate snapshot
+
+| | |
+|---|---|
+| snapshot | `polygon-deep-v1` — SPY, QQQ, IWM |
+| range | 2012-01-01 → 2026-08-28, **3,685/3,685 sessions on every symbol**, zero missing, zero extra |
+| bars | 7,801,725 one-minute |
+| in-sample | 2012-01-01 → 2022-12-31 — never touched by this programme before |
+| out-of-sample | 2023-01-01 → 2026-08-28, evaluated once |
+
+It starts in 2012 because the Nasdaq-100 ETF traded as QQQQ until 2011-03 and
+Polygon returns nothing for the ticker "QQQ" across 2005–2011; starting after
+the rename buys an unspliced tape for all three. `polygon-v1` is untouched and
+no report mixes them. The NYSE holiday and early-close table was extended back
+to 2012 and the manifest audit finds it agrees with the tape on all 3,685 days —
+the only anomaly is QQQ's 216-minute session on 2013-08-22, the Nasdaq halt,
+which is real and kept.

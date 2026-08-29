@@ -24,7 +24,7 @@ primitives/      structure, liquidity, imbalance, session, trend, timeframe,
 backtest/        types, fills, engine (event replay), stats, regime, htf
 models/          model specs + GATES.md and per-model GATE.md, the bars
 reports/         measured results, per-trade dumps, equity curves
-tests/           286 tests
+tests/           364 tests
 ```
 
 ## The as-of contract
@@ -51,12 +51,19 @@ python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python run_backtest.py --model orb_reclaim     # ENGINE-1 models
 .venv/bin/python run_engine2.py                          # ENGINE-2: model,
                                                          # control, ablations
+.venv/bin/python run_engine3.py                          # ENGINE-3: two exits
+.venv/bin/python cache/fetch.py --snapshot polygon-deep-v1 \
+    --symbols SPY,QQQ,IWM --start 2012-01-01 --end 2026-08-28
+.venv/bin/python run_engine4.py                          # ENGINE-4: both
+                                                         # orb_simple variants
 ```
 
 The Polygon key is read from `apps/api/.env.local` and never written anywhere.
 It is **shared with `~/breakout-alert-system`'s Railway crons**: the fetcher runs
-four concurrent requests and backs off hard on 429. The cache
-(`engine/data/`, ~400 MB) is not committed — it is reproducible from the manifest.
+four concurrent requests and backs off hard on 429. The cache (`engine/data/`, ~580 MB across two snapshots) is not committed — it is
+reproducible from the manifests. There are two snapshots and **no report may mix
+them**: `polygon-v1` (32 symbols, 2023-09 → 2026-08) is ENGINE-1 through
+ENGINE-3, and `polygon-deep-v1` (SPY/QQQ/IWM, 2012-01 → 2026-08) is ENGINE-4.
 
 ## Rules of this directory
 
