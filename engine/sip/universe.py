@@ -129,7 +129,15 @@ def eligible_table(path: str | None = None):
     dv = t.column("avg_dollar_vol").to_numpy(zero_copy_only=False)
     pc = t.column("prior_close").to_numpy(zero_copy_only=False)
     atr = t.column("atr").to_numpy(zero_copy_only=False)
-    keep = np.array([is_common_like(str(x)) for x in tick], dtype=bool)
+    # Two filters, and both are static properties of the ticker rather than of
+    # the day: the fifth-letter/dotted suffix test above, and the security type
+    # from `sip/fetch_types.py` when it has been resolved. A ticker the
+    # reference API does not know is KEPT — dropping unknowns would quietly
+    # reintroduce the survivorship the grouped-bar universe exists to avoid.
+    from engine.sip.fetch_types import is_stock, load_types
+    types = load_types()
+    keep = np.array([is_common_like(str(x)) and (not types or is_stock(str(x), types))
+                     for x in tick], dtype=bool)
     days, tick, dv, pc, atr = days[keep], tick[keep], dv[keep], pc[keep], atr[keep]
     out: dict[int, dict] = {}
     edges = np.flatnonzero(np.diff(days)) + 1
