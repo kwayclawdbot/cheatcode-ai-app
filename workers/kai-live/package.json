@@ -1,0 +1,24 @@
+{
+  "name": "kai-live",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Kai's show brain — the director loop that decides what to talk about, analyzes it, writes the lines, makes the audio and emits the timeline the chart plays back.",
+  "scripts": {
+    "show:review": "tsx src/run.ts --mode review",
+    "show:market": "tsx src/run.ts --mode market",
+    "test": "tsx scripts/contracts-live2.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.121.0",
+    "@supabase/supabase-js": "^2.112.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "playwright": "^1.62.1",
+    "tsx": "^4.20.3",
+    "typescript": "^5"
+  }
+}
