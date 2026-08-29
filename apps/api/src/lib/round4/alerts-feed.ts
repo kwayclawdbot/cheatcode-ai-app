@@ -26,7 +26,7 @@ import {
   type OpenPositionRow,
 } from '@shared/api';
 import { serviceClient } from '../db';
-import { getSnapshot } from '../market/polygon';
+import { resolveQuotes } from '../market/polygon';
 import { getCompanyProfiles } from '../market/profile';
 import { loadProfile, loadRiskPolicy, type SetupRow } from '../kai/context';
 import { loadOpenPositions } from '../execution/positions-view';
@@ -157,7 +157,7 @@ export async function loadAlertCards(opts: { userId: string; requestId?: string 
 
   const symbolList = [...symbols];
   const [snap, profiles] = await Promise.all([
-    symbolList.length ? getSnapshot(symbolList) : Promise.resolve({ quotes: [], degraded: false, degraded_reason: null }),
+    symbolList.length ? resolveQuotes(symbolList, { preferIntraday: true }) : Promise.resolve({ quotes: [], degraded: false, degraded_reason: null }),
     getCompanyProfiles(symbolList),
   ]);
   const quoteBy = new Map<string, MarketQuote>();

@@ -32,7 +32,7 @@ import { authedParams, ok, parseQuery, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
 import { serviceClient } from '@/lib/db';
 import { marketBlock } from '@/lib/market';
-import { getQuote, getNews, getCandles, lastTradingDate, polygonConfigured } from '@/lib/market/polygon';
+import { getNews, lastTradingDate, polygonConfigured, resolveQuote } from '@/lib/market/polygon';
 import { getCompanyProfile } from '@/lib/market/profile';
 import { computeTechnicals } from '@/lib/market/technicals';
 import { loadAlertCards } from '@/lib/round4/alerts-feed';
@@ -108,9 +108,11 @@ export const GET = authedParams<{ symbol: string }>(
     const profile = await loadProfile(ctx.user.id);
     const mode = q.mode ?? profile.primary_mode;
 
-    const [quote, setupsRes, alertsRes, wl, newsRes, positions, account, policy, plansRes, ordersRes] =
+    // The ticker page draws a DAILY chart, so its header is priced from that
+    // same daily series — one symbol, one price, one source timestamp (spec §9).
+    const [priced, setupsRes, alertsRes, wl, newsRes, positions, account, policy, plansRes, ordersRes] =
       await Promise.all([
-        getQuote(symbol),
+        resolveQuote(symbol, { timeframe: '1d', from: daysAgo(150), to: lastTradingDate() }),
         db
           .from('setups')
           .select(SETUP_COLUMNS)
@@ -145,6 +147,7 @@ export const GET = authedParams<{ symbol: string }>(
           .order('created_at', { ascending: false }),
       ]);
 
+    const quote = priced.quote;
     const rows = (setupsRes.data ?? []) as unknown as SetupRow[];
     // Mode is global context now, so the setup shown is simply the best live one
     // for the user's current mode, with any mode as the fallback.
@@ -256,14 +259,14 @@ export const GET = authedParams<{ symbol: string }>(
     const experience = experienceOf(
       (profile.onboarding as Record<string, unknown>)?.experience ?? profile.experience
     );
-    const [company, candlesRes, feed, circlesRes] = await Promise.all([
+    const [company, feed, circlesRes] = await Promise.all([
       getCompanyProfile(symbol),
-      getCandles(symbol, '1d', daysAgo(150), lastTradingDate()),
       loadAlertCards({ userId: ctx.user.id, requestId: ctx.requestId }),
       listCircles({ userId: ctx.user.id }),
     ]);
     const technicals = computeTechnicals({
-      candles: candlesRes.candles,
+      // The very bars the quote above was taken from.
+      candles: priced.candles,
       price: quote.price,
       freshness: quote.freshness,
     });
@@ -303,7 +306,7 @@ export const GET = authedParams<{ symbol: string }>(
         chart: {
           timeframes: TIMEFRAMES,
           default_timeframe: mode === 'day_trade' ? '1D' : '3M',
-          candles_path: `/api/v1/market/candles?symbol=${symbol}`,
+          candles_path: `/api/v1/market/candles?symbol=${symbol}&tf=1d`,
           annotations: annotationsFor(current),
         },
         lenses: [],
@@ -339,7 +342,7 @@ export const GET = authedParams<{ symbol: string }>(
         chart_config: {
           timeframes: TIMEFRAMES,
           default_timeframe: mode === 'day_trade' ? '1D' : '3M',
-          candles_path: `/api/v1/market/candles?symbol=${symbol}`,
+          candles_path: `/api/v1/market/candles?symbol=${symbol}&tf=1d`,
           annotations: annotationsFor(current),
         },
         overview: {

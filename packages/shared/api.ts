@@ -3459,9 +3459,31 @@ export function portalOpeningMessage(symbol: string): string {
 }
 
 export const PortalChartConfig = z.object({
+  /** The resolution the portal actually resolved to — the series below. */
   timeframe: z.string(),
+  /** What was asked for. Differs from `timeframe` only when `exact` is false. */
+  requested_timeframe: z.string().default('1d'),
+  /** false when a coarser series had to answer; `resolution_plain` says why. */
+  exact: z.boolean().default(true),
+  resolution_plain: z.string().nullable().default(null),
   timeframes: z.array(z.object({ key: z.string(), label: z.string() })),
   candles_path: z.string(),
+  /**
+   * The bars the header quote was taken from. `quote.price` IS the close of the
+   * last one and `quote.source_ts` its timestamp — the header and the chart are
+   * the same array, so they cannot contradict each other (spec §9).
+   */
+  candles: z.array(Candle).default([]),
+  /**
+   * The timestamp of the bar the header quote was taken from — always the last
+   * element of `candles`. `quote.source_ts` is that same instant, restamped to
+   * the session close (4:00 PM ET) when the series is daily, because Polygon
+   * stamps a daily bar at the START of its session and a header reading
+   * "last close 12:00 AM" would be a lie about a true price.
+   */
+  quote_bar_ts: z.string().nullable().default(null),
+  /** Where the price came from: a chart bar, or the daily snapshot alone. */
+  quote_series: z.enum(['intraday', 'daily', 'snapshot']).default('snapshot'),
   /** The trigger candle's timestamp, when the portal was opened from an event. */
   focus_ts: z.string().nullable(),
   range: z.object({ from: z.string().nullable(), to: z.string().nullable() }),
@@ -3506,7 +3528,14 @@ export type PortalCommunityContext = z.infer<typeof PortalCommunityContext>;
 
 export const PortalExecution = z.object({
   state: AlertCardState.nullable(),
-  primary_action: PlainAction,
+  /**
+   * null when there is nothing to execute. Volt is the app's one dominant
+   * action; a filled button reading "Nothing to prepare yet" spends it on a
+   * non-action, so the portal returns no action at all and the surface renders
+   * the reason as text instead. `no_action_plain` carries that sentence.
+   */
+  primary_action: PlainAction.nullable(),
+  no_action_plain: z.string().nullable().default(null),
   /** Never "Submit to broker" on paper (spec §10). */
   capability_plain: z.string(),
   paper: z.boolean(),

@@ -6,7 +6,7 @@
  */
 import type { WatchlistItem } from '@shared/api';
 import { serviceClient } from './db';
-import { getSnapshot } from './market/polygon';
+import { resolveQuotes } from './market/polygon';
 import { listWatchlist } from './watchlist';
 
 export async function watchlistItems(userId: string, requestId: string): Promise<{
@@ -25,7 +25,9 @@ export async function watchlistItems(userId: string, requestId: string): Promise
   const symbols = wl.items.map((i) => i.symbol);
   const db = serviceClient();
   const [snap, names, setups] = await Promise.all([
-    getSnapshot(symbols),
+    // Same resolver the portal header uses, so a watchlist row and the chart
+    // it opens quote the same price for the same symbol.
+    resolveQuotes(symbols, { preferIntraday: true }),
     db.from('instruments').select('symbol,name').in('symbol', symbols),
     db
       .from('setups')

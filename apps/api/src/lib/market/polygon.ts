@@ -188,13 +188,24 @@ export function freshnessFor(
   return { freshness: 'stale', delay_reason: 'feed_gap' };
 }
 
-export function quoteLabel(freshness: Freshness, reason: DelayReason | null, sourceTs: string | null): string {
+/**
+ * `bar` names the resolution the price was taken from, when it was taken from a
+ * chart bar rather than a session close. Saying "last close" over a 5-minute
+ * bar is the kind of quiet inference spec §9 forbids, so the two cases read
+ * differently — and neither of them may ever read "Live" on a delayed plan.
+ */
+export function quoteLabel(
+  freshness: Freshness,
+  reason: DelayReason | null,
+  sourceTs: string | null,
+  bar: string | null = null
+): string {
   const when = etStamp(sourceTs);
   if (freshness === 'live') return `Live · ${when}`;
   if (freshness === 'stale') return `Data unavailable · last seen ${when}`;
-  if (reason === 'entitlement') return `Delayed · last close ${when}`;
+  if (reason === 'entitlement') return bar ? `Delayed · last ${bar} bar ${when}` : `Delayed · last close ${when}`;
   if (reason === 'seed') return `Sample data · ${when}`;
-  return `Delayed · ${when}`;
+  return bar ? `Delayed · last ${bar} bar ${when}` : `Delayed · ${when}`;
 }
 
 /** Build the full MarketQuote the Trade surfaces render. */
@@ -204,6 +215,8 @@ export function buildQuote(opts: {
   prevClose: number | null;
   sourceTs: string | null;
   seed?: boolean;
+  /** Set when the price is a chart bar's close, not a session close. */
+  bar?: string | null;
 }): MarketQuote {
   const { freshness, delay_reason } = freshnessFor(opts.sourceTs, { seed: opts.seed });
   const change =
@@ -220,7 +233,7 @@ export function buildQuote(opts: {
     received_ts: new Date().toISOString(),
     freshness,
     delay_reason,
-    label_plain: quoteLabel(freshness, delay_reason, opts.sourceTs),
+    label_plain: quoteLabel(freshness, delay_reason, opts.sourceTs, opts.bar ?? null),
     session: marketStatus(),
   };
 }
@@ -619,6 +632,269 @@ async function readLastDailyBars(
 }
 
 /* ------------------------------------------------------------------ */
+/* ONE PRICE PER SYMBOL — resolveQuote                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * WHY THIS EXISTS
+ * ---------------
+ * The Trade Portal used to read its header from `getQuote()` — the grouped
+ * DAILY snapshot — while the chart under it drew intraday aggregates. Two
+ * sources, two numbers, same symbol, same screen: SPY at 771.10 over a last
+ * 5-minute bar of 765.26. Spec §9 forbids exactly that: every quote carries its
+ * own source timestamp and freshness, and nothing may be inferred silently.
+ *
+ * THE RULE
+ * --------
+ *   1. The price IS the last bar of the series the chart is drawing. Header and
+ *      chart cannot disagree when they are the same array.
+ *   2. An intraday series only earns that job when its last bar is NEWER than
+ *      the last daily close we know about. Finer is not fresher: a 5-minute
+ *      series that stopped two sessions ago loses to yesterday's close, and the
+ *      resolver falls back to the daily series and SAYS SO (`fell_back`,
+ *      `resolution_plain`) instead of quietly mixing the two.
+ *   3. Only when there is no priced bar at all does the daily snapshot answer
+ *      on its own, with its own timestamp and its own "last close …" label.
+ *
+ * Freshness is untouched: a delayed plan still reports `delayed`/`entitlement`
+ * whichever series wins, and never `live`.
+ *
+ * BUDGET. The daily fallback reads the `candles` table first and only pays a
+ * Polygon call when the store has nothing recent enough, and every resolution
+ * is memoised for 30s per (symbol, timeframe) — a portal reload inside that
+ * window costs zero requests out of the five-a-minute budget.
+ */
+
+export type QuoteSeriesKind = 'intraday' | 'daily' | 'snapshot';
+
+export type ResolvedQuote = {
+  /** The one quote for this symbol on this request. */
+  quote: MarketQuote;
+  /** The resolution the price came from — the series a chart must draw. */
+  timeframe: CandleTimeframe;
+  requested_timeframe: CandleTimeframe;
+  /** true when the requested resolution could not carry the price. */
+  fell_back: boolean;
+  /** The bars the quote was taken from. `quote.price` is the last one's close. */
+  candles: Candle[];
+  series: QuoteSeriesKind;
+  /** Plain sentence naming the substitution, when there was one. */
+  resolution_plain: string | null;
+  degraded: boolean;
+  degraded_reason: string | null;
+};
+
+/** 'D', '1D', '1d' and junk all land somewhere sane. */
+export function normalizeTimeframe(tf: string | null | undefined, fallback: CandleTimeframe = '1d'): CandleTimeframe {
+  const v = String(tf ?? '').trim().toLowerCase();
+  if (v === 'd' || v === 'day' || v === '1day') return '1d';
+  return (CANDLE_TIMEFRAMES as readonly string[]).includes(v) ? (v as CandleTimeframe) : fallback;
+}
+
+function lastPriced(candles: Candle[]): { last: Candle; prev: Candle | null } | null {
+  for (let i = candles.length - 1; i >= 0; i--) {
+    if (candles[i].c === null) continue;
+    let prev: Candle | null = null;
+    for (let j = i - 1; j >= 0; j--) {
+      if (candles[j].c !== null) {
+        prev = candles[j];
+        break;
+      }
+    }
+    return { last: candles[i], prev };
+  }
+  return null;
+}
+
+/** Strictly newer, and a missing comparison point never wins. */
+function isNewer(ts: string, than: string | null): boolean {
+  if (!than) return true;
+  const a = Date.parse(ts);
+  const b = Date.parse(than);
+  return Number.isFinite(a) && Number.isFinite(b) ? a > b : false;
+}
+
+function etDateOf(ts: string | null): string | null {
+  if (!ts) return null;
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? null : etParts(d).date;
+}
+
+function utcToday(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function daysAgoUTC(n: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+const RESOLVE_TTL_MS = 30_000;
+const resolveCache = new Map<string, Cached<ResolvedQuote>>();
+
+/**
+ * The single quote resolver. Every surface that shows a price beside a chart
+ * goes through here so the two can never be sourced separately again.
+ */
+export async function resolveQuote(
+  symbol: string,
+  opts: { preferIntraday?: boolean; timeframe?: string | null; from?: string; to?: string } = {}
+): Promise<ResolvedQuote> {
+  const sym = symbol.toUpperCase();
+  const requested = normalizeTimeframe(opts.timeframe, opts.preferIntraday ? '5m' : '1d');
+  const key = `${sym}:${requested}:${opts.from ?? ''}:${opts.to ?? ''}`;
+  const memo = fresh(resolveCache.get(key), RESOLVE_TTL_MS);
+  if (memo) return memo;
+
+  const snapshot = await getQuote(sym);
+  const to = opts.to ?? utcToday();
+
+  let tf: CandleTimeframe = requested;
+  let bars: Candle[] = [];
+  let fellBack = false;
+  let note: string | null = null;
+  let degraded = false;
+  let degradedReason: string | null = null;
+
+  if (requested !== '1d') {
+    const intraday = await getCandles(sym, requested, opts.from ?? daysAgoUTC(TF_DEFAULT_SPAN_DAYS[requested]), to);
+    const found = lastPriced(intraday.candles);
+    if (found && isNewer(found.last.ts, snapshot.source_ts)) {
+      bars = intraday.candles;
+      degraded = intraday.degraded;
+      degradedReason = intraday.degraded_reason;
+    } else {
+      // The finer series is not the fresher one. Say which chart this is.
+      tf = '1d';
+      fellBack = true;
+      note = found
+        ? `The ${requested} bars stop at ${etStamp(found.last.ts)}, so this is the daily chart — the newest data there is for ${sym}.`
+        : `There are no ${requested} bars for ${sym} yet, so this is the daily chart.`;
+    }
+  }
+
+  if (tf === '1d') {
+    const from = opts.from ?? daysAgoUTC(TF_DEFAULT_SPAN_DAYS['1d']);
+    // Cache first: the daily bars are usually already stored by the snapshot
+    // that just ran, and a refill is only worth a request when they are not.
+    const stored = await readCachedCandles(sym, '1d', from, to);
+    const have = lastPriced(stored);
+    if (have && !isNewer(snapshot.source_ts ?? '', have.last.ts)) {
+      bars = stored;
+    } else {
+      const daily = await getCandles(sym, '1d', from, to);
+      bars = daily.candles.length ? daily.candles : stored;
+      if (daily.degraded && !bars.length) {
+        degraded = true;
+        degradedReason = daily.degraded_reason;
+      }
+    }
+  }
+
+  const found = lastPriced(bars);
+  const resolved: ResolvedQuote = found
+    ? (() => {
+        const intradaySeries = tf !== '1d';
+        const sourceTs = intradaySeries ? found.last.ts : closeStamp(found.last.ts);
+        const barDate = etDateOf(found.last.ts);
+        const snapDate = etDateOf(snapshot.source_ts);
+        const prevClose = intradaySeries
+          ? // A bar from a session AFTER the last daily close compares against
+            // that close; a bar from inside it compares against the one before.
+            barDate && snapDate && barDate > snapDate
+            ? snapshot.price
+            : snapshot.prev_close
+          : (found.prev?.c ?? snapshot.prev_close);
+        return {
+          quote: buildQuote({
+            symbol: sym,
+            price: found.last.c,
+            prevClose,
+            sourceTs,
+            bar: intradaySeries ? tf : null,
+          }),
+          timeframe: tf,
+          requested_timeframe: requested,
+          fell_back: fellBack,
+          candles: bars,
+          series: intradaySeries ? 'intraday' : 'daily',
+          resolution_plain: note,
+          degraded,
+          degraded_reason: degradedReason,
+        };
+      })()
+    : {
+        // No bar anywhere. The snapshot answers alone, and says so in its label.
+        quote: snapshot,
+        timeframe: tf,
+        requested_timeframe: requested,
+        fell_back: fellBack,
+        candles: [],
+        series: 'snapshot',
+        resolution_plain: note,
+        degraded: degraded || snapshot.price === null,
+        degraded_reason:
+          degradedReason ?? (snapshot.price === null ? `I do not have a price for ${sym} right now.` : null),
+      };
+
+  resolveCache.set(key, { at: Date.now(), value: resolved });
+  return resolved;
+}
+
+/**
+ * The list form: same rule, one extra database read for the whole set and NO
+ * extra Polygon calls. A watchlist row and the portal header it opens must not
+ * quote different prices for the same symbol.
+ */
+export async function resolveQuotes(
+  symbols: string[],
+  opts: { preferIntraday?: boolean; timeframe?: string | null } = {}
+): Promise<SnapshotResult> {
+  const wanted = [...new Set(symbols.map((s) => s.toUpperCase()).filter(Boolean))];
+  const snap = await getSnapshot(wanted);
+  const tf = normalizeTimeframe(opts.timeframe, opts.preferIntraday ? '5m' : '1d');
+  if (!opts.preferIntraday || tf === '1d' || !wanted.length) return snap;
+
+  const latest = await readLatestBars(wanted, tf);
+  const quotes = snap.quotes.map((q) => {
+    const bar = latest.get(q.symbol);
+    if (!bar || bar.c === null || !isNewer(bar.ts, q.source_ts)) return q;
+    const barDate = etDateOf(bar.ts);
+    const snapDate = etDateOf(q.source_ts);
+    const prevClose = barDate && snapDate && barDate > snapDate ? q.price : q.prev_close;
+    return buildQuote({ symbol: q.symbol, price: bar.c, prevClose, sourceTs: bar.ts, bar: tf });
+  });
+  return { ...snap, quotes };
+}
+
+/** The newest stored bar per symbol at one resolution, in a single query. */
+async function readLatestBars(symbols: string[], tf: CandleTimeframe): Promise<Map<string, Candle>> {
+  const out = new Map<string, Candle>();
+  if (!symbols.length) return out;
+  const db = serviceClient();
+  const { data, error } = await db
+    .from('candles')
+    .select('symbol,ts,c')
+    .in('symbol', symbols)
+    .eq('timeframe', tf)
+    .gte('ts', `${daysAgoUTC(4)}T00:00:00Z`)
+    .order('ts', { ascending: false })
+    .limit(Math.min(2000, symbols.length * 80));
+  if (error) {
+    log('warn', '-', 'candles.latest_failed', { tf, message: error.message });
+    return out;
+  }
+  for (const r of data ?? []) {
+    const row = r as Record<string, unknown>;
+    const sym = String(row.symbol);
+    if (out.has(sym)) continue;
+    out.set(sym, { ts: new Date(String(row.ts)).toISOString(), o: null, h: null, l: null, c: num(row.c), v: null });
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
 /* News (evidence block on the symbol page)                             */
 /* ------------------------------------------------------------------ */
 
@@ -698,5 +974,6 @@ export function resetMarketCaches(): void {
   groupedCache.clear();
   quoteCache.clear();
   newsCache.clear();
+  resolveCache.clear();
   hits = [];
 }

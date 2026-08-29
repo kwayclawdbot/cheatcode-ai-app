@@ -26,7 +26,7 @@ import { ApiError } from '@/lib/errors';
 import { emitUserEvent } from '@/lib/events';
 import { loadEntitlements, numericFlag, entitlementRequired } from '@/lib/entitlements';
 import { notify } from '@/lib/notify';
-import { getSnapshot } from '@/lib/market/polygon';
+import { resolveQuotes } from '@/lib/market/polygon';
 import { loadOpenPositions } from '@/lib/execution/positions-view';
 import { ensureDevTicker } from '@/lib/execution/tick-dev';
 import { loadProfile, rankedSetups } from '@/lib/kai/context';
@@ -85,7 +85,9 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
   ];
   const priceBy = new Map<string, string>();
   if (symbols.length) {
-    const snap = await getSnapshot(symbols);
+    // The same resolver the cards on this screen use, so the monitoring row and
+    // the card above it never quote two different prices for one symbol.
+    const snap = await resolveQuotes(symbols, { preferIntraday: true });
     for (const quote of snap.quotes) {
       priceBy.set(
         quote.symbol,

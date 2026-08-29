@@ -12,7 +12,7 @@ import { SnapshotQuery, SnapshotResponse } from '@shared/api';
 import { authed, ok, parseQuery, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
 import { marketBlock } from '@/lib/market';
-import { getSnapshot, polygonConfigured } from '@/lib/market/polygon';
+import { polygonConfigured, resolveQuotes } from '@/lib/market/polygon';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +29,10 @@ export const GET = authed(async (req: NextRequest, _ctx: Ctx) => {
     throw new ApiError('VALIDATION_FAILED', `That is a lot of symbols at once — ${MAX_SYMBOLS} is the limit.`);
   }
 
-  const snap = await getSnapshot(symbols);
+  // resolveQuotes, not getSnapshot: when a symbol's stored intraday bars are
+  // newer than the last daily close, the price is that bar — the same rule the
+  // portal header follows, so a list and a chart never disagree.
+  const snap = await resolveQuotes(symbols, { preferIntraday: true });
   const worst = snap.quotes.some((qq) => qq.freshness === 'stale')
     ? 'stale'
     : snap.quotes.some((qq) => qq.freshness === 'delayed')

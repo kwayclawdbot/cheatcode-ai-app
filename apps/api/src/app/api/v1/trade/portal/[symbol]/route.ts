@@ -42,7 +42,7 @@ import { authedParams, ok, parseQuery, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
 import { serviceClient } from '@/lib/db';
 import { marketBlock } from '@/lib/market';
-import { getQuote } from '@/lib/market/polygon';
+import { normalizeTimeframe, resolveQuote } from '@/lib/market/polygon';
 import { getCompanyProfile } from '@/lib/market/profile';
 import { loadProfile, loadRiskPolicy, type SetupRow } from '@/lib/kai/context';
 import { levels, isLong } from '@/lib/setups';
@@ -83,6 +83,9 @@ const TIMEFRAMES = [
   { key: '1d', label: 'D' },
 ];
 
+/** How many bars of the resolved series travel in the payload. */
+const PORTAL_CHART_BARS = 400;
+
 /** Which timeframe an alert should land on. Day trades open intraday. */
 function defaultTimeframe(mode: string): string {
   return mode === 'day_trade' ? '5m' : '1d';
@@ -106,8 +109,7 @@ export const GET = authedParams<{ symbol: string }>(
     );
 
     /* ---- the objects this portal is about ---------------------------- */
-    const [quote, company, setupsRes, policy, positions, account, wl, plansRes, ordersRes] = await Promise.all([
-      getQuote(symbol),
+    const [company, setupsRes, policy, positions, account, wl, plansRes, ordersRes] = await Promise.all([
       getCompanyProfile(symbol),
       db
         .from('setups')
@@ -171,7 +173,24 @@ export const GET = authedParams<{ symbol: string }>(
 
     const openedFromAlert = Boolean(q.alert && alertCard);
     const mode = setup?.mode ?? alertCard?.identity.mode ?? profile.primary_mode;
-    const timeframe = q.timeframe ?? defaultTimeframe(mode);
+    const requestedTimeframe = normalizeTimeframe(q.timeframe ?? defaultTimeframe(mode), '1d');
+
+    /* ---- ONE price, from the series this chart draws ------------------
+     * The header used to read the grouped DAILY snapshot while the chart drew
+     * intraday bars, so the portal showed two prices for one symbol. The quote
+     * is now the last bar of the resolved series, and `chart_config` returns
+     * that same series — including the resolution it actually landed on when
+     * the requested one was behind the last close (spec §9: no silent
+     * inference, one source timestamp per quote). */
+    const resolved = await resolveQuote(symbol, {
+      preferIntraday: requestedTimeframe !== '1d',
+      timeframe: requestedTimeframe,
+    });
+    const quote = resolved.quote;
+    const timeframe = resolved.timeframe;
+    // The wire copy keeps the NEWEST bars, so the last bar — the one the header
+    // is priced from — is always in it.
+    const chartCandles = resolved.candles.slice(-PORTAL_CHART_BARS);
 
     /* ---- levels, from the plan first and the setup second ------------- */
     const planRow = ((plansRes.data ?? []) as Record<string, unknown>[])[0] ?? null;
@@ -224,7 +243,17 @@ export const GET = authedParams<{ symbol: string }>(
       alertCard?.state ??
       (position ? 'position_active' : symbolOrders.length ? 'order_pending' : existingPlan ? 'planned' : setup ? (setup.state === 'ready' ? 'ready' : 'watching') : null);
 
-    const executionAction: PlainAction = position
+    /**
+     * The execution CTA, or NOTHING.
+     *
+     * There is one dominant action per screen and volt is what marks it. A
+     * filled volt button reading "Nothing to prepare yet" spent that on a
+     * non-action: it looked like the thing to press and did nothing when
+     * pressed. When there is no entry and no invalidation there is no trade to
+     * prepare, so this returns `null` and the reason travels as plain text in
+     * `no_action_plain` for the surface to render quietly.
+     */
+    const executionAction: PlainAction | null = position
       ? action('manage_trade', 'Manage trade', `/position/${position.id}`, true)
       : symbolOrders.length
         ? action('manage_order', 'Manage order', `/order/${symbolOrders[0].id}`, true)
@@ -232,14 +261,11 @@ export const GET = authedParams<{ symbol: string }>(
           ? action('prepare_order', 'Prepare order', `/order/new?symbol=${symbol}&plan=${existingPlan.id}`, true)
           : entry !== null && stop !== null
             ? action('build_plan', 'Review trade', `/plan/new?symbol=${symbol}${setup ? `&setup=${setup.id}` : ''}`, true)
-            : action(
-                'no_plan',
-                'Nothing to prepare yet',
-                null,
-                true,
-                false,
-                'I need an entry and an invalidation level before there is a trade to prepare.'
-              );
+            : null;
+    const noActionPlain =
+      executionAction === null
+        ? 'Nothing to prepare yet — I need an entry and an invalidation level before there is a trade here.'
+        : null;
 
     /* ---- Kai context -------------------------------------------------- */
     const selected: PortalContextKey = q.ctx ?? (openedFromAlert ? 'alert' : 'kai');
@@ -341,12 +367,25 @@ export const GET = authedParams<{ symbol: string }>(
         market: marketBlock(new Date(), quote.freshness),
         chart_config: {
           timeframe,
+          requested_timeframe: requestedTimeframe,
+          exact: !resolved.fell_back,
+          resolution_plain: resolved.resolution_plain,
           timeframes: TIMEFRAMES,
-          candles_path: `/api/v1/market/candles?symbol=${symbol}`,
+          // The same series, addressable: a client that refetches gets the bars
+          // the header was priced from, not a different resolution's.
+          candles_path: `/api/v1/market/candles?symbol=${symbol}&tf=${timeframe}`,
+          candles: chartCandles,
+          quote_bar_ts: chartCandles[chartCandles.length - 1]?.ts ?? null,
+          quote_series: resolved.series,
           focus_ts: triggerTs,
-          range: { from: null, to: null },
+          range: {
+            from: chartCandles[0]?.ts ?? null,
+            to: chartCandles[chartCandles.length - 1]?.ts ?? null,
+          },
           plain: speak(
-            `${symbol} on the ${timeframe === '1d' ? 'daily' : timeframe} chart. ${quote.label_plain}`,
+            `${symbol} on the ${timeframe === '1d' ? 'daily' : timeframe} chart. ${quote.label_plain}.${
+              resolved.resolution_plain ? ` ${resolved.resolution_plain}` : ''
+            }`,
             experience
           ),
         },
@@ -457,6 +496,7 @@ export const GET = authedParams<{ symbol: string }>(
         execution: {
           state: execState,
           primary_action: executionAction,
+          no_action_plain: noActionPlain,
           capability_plain: PAPER_CAPABILITY_PLAIN,
           paper: true,
         },
@@ -480,9 +520,11 @@ export const GET = authedParams<{ symbol: string }>(
           recent: [],
         },
         paper_plain: PAPER_ACCOUNT_PLAIN,
-        degraded: quote.price === null || positions.degraded,
+        degraded: quote.price === null || resolved.degraded || positions.degraded,
         degraded_reason:
-          quote.price === null ? 'I do not have a price for this one right now.' : positions.degraded_reason,
+          quote.price === null
+            ? 'I do not have a price for this one right now.'
+            : (resolved.degraded_reason ?? positions.degraded_reason),
       })
     );
   }

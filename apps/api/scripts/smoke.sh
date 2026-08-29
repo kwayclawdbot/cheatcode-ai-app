@@ -1750,7 +1750,7 @@ for a in d['annotations']:
     assert a['provenance'] in ('kai','user','community','plan')
 # paper is unmistakable and no broker is offered
 assert d['execution']['paper'] is True
-assert 'broker' not in d['execution']['primary_action']['label'].lower()
+assert d['execution']['primary_action'] is None or 'broker' not in d['execution']['primary_action']['label'].lower()
 # the round-3 landing content moved into drawers, it was not deleted
 for key in ('account','positions','open_orders','watchlist','recent'):
     assert key in d['drawers'], 'drawer missing '+key
@@ -1759,8 +1759,52 @@ print('  restored: tf', r['timeframe'], '| focus', r['focus_ts'], '| entry', r['
       'stop', r['levels']['stop'], 'targets', r['levels']['targets'])
 print('  grade snapshot:', r['grade_snapshot']['display'], r['grade_snapshot']['score'])
 print('  annotations:', [(a['kind'], a['price']) for a in d['annotations']])
-print('  execution:', d['execution']['state'], '->', d['execution']['primary_action']['label'])
+print('  execution:', d['execution']['state'], '->', (d['execution']['primary_action'] or {}).get('label') or d['execution']['no_action_plain'])
 print('  capability:', d['execution']['capability_plain'])"
+
+# --- ONE PRICE PER SYMBOL -----------------------------------------------------
+# Regression: the portal's top bar was priced from the grouped DAILY snapshot
+# while the chart under it drew intraday aggregates, so one symbol showed two
+# prices on one screen — SPY at 771.10 over a last 5m bar of 765.26. The quote
+# is now taken from the very series the payload returns, so the header and the
+# chart cannot be sourced apart (spec §9: one source timestamp per quote, and
+# nothing inferred silently).
+SPY_5M=$(curl -sS "$API_BASE/api/v1/market/candles?symbol=SPY&tf=5m" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" |
+  python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("candles") or []))' 2>/dev/null)
+echo "SPY intraday (5m) bars on this stack: ${SPY_5M:-0}"
+
+check "portal on a symbol with intraday bars" GET "/api/v1/trade/portal/SPY?timeframe=5m"
+assert_body "one price per symbol: the header IS the last bar of the series returned" '
+import json,sys
+d=json.load(sys.stdin)
+q=d["quote"]; cc=d["chart_config"]; bars=cc["candles"]
+assert bars, "the portal must return the series its header was priced from"
+last=bars[-1]
+assert q["price"] == last["c"], ("header and last bar disagree", q["price"], last["c"])
+assert cc["quote_bar_ts"] == last["ts"], (cc["quote_bar_ts"], last["ts"])
+if cc["quote_series"] == "intraday":
+    assert q["source_ts"] == last["ts"], (q["source_ts"], last["ts"])
+    assert cc["timeframe"] != "1d", cc["timeframe"]
+    assert "bar" in q["label_plain"], q["label_plain"]
+else:
+    # A daily bar is stamped at the START of its session; the quote carries that
+    # same bar restamped to its 4:00 PM ET close — never a different session.
+    assert q["source_ts"][:10] == last["ts"][:10], (q["source_ts"], last["ts"])
+    assert "close" in q["label_plain"], q["label_plain"]
+assert q["freshness"] in ("live","delayed","stale")
+assert not (q["freshness"] == "live" and q["delay_reason"]), "delayed data must never read live"
+if not cc["exact"]:
+    assert cc["timeframe"] != cc["requested_timeframe"], cc
+    assert cc["resolution_plain"], "a coarser series has to say so"
+assert d["restored"]["timeframe"] == cc["timeframe"], "restored context follows the series actually shown"
+a=d["execution"]["primary_action"]
+assert a is None or (a["enabled"] and a["route"]), "the dominant action must actually do something"
+assert a is not None or d["execution"]["no_action_plain"], "say why there is nothing to prepare"
+print("  header",q["price"],"== last bar",last["c"],"| tf",cc["timeframe"],"(asked",cc["requested_timeframe"],")")
+print("  ",q["label_plain"],"| source_ts",q["source_ts"],"| bar",cc["quote_bar_ts"])
+print("  ",cc["resolution_plain"] or "requested resolution answered exactly")
+print("  execution:",(a or {}).get("label") or d["execution"]["no_action_plain"])'
 
 # --- annotations CRUD ---------------------------------------------------------
 check "annotations for the symbol" GET "/api/v1/annotations?symbol=AMD"
