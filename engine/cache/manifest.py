@@ -45,16 +45,17 @@ def audit_symbol(symbol: str, start: str, end: str, snapshot: str | None = None)
     expected = [d for d in expected if day_int(start) <= d <= day_int(end)]
 
     rth = (s.minute >= config.RTH_OPEN_MIN) & (s.minute < config.RTH_CLOSE_MIN)
+    early_win = (s.minute >= config.RTH_OPEN_MIN) & (s.minute < config.EARLY_CLOSE_MIN)
+    late_win = (s.minute >= config.EARLY_CLOSE_MIN) & (s.minute < config.RTH_CLOSE_MIN)
     thin, early_from_tape, rth_counts = [], [], {}
     for d in present:
         a, b = bounds[d]
         n_rth = int(rth[a:b].sum())
         rth_counts[d] = n_rth
-        mins = s.minute[a:b][rth[a:b]]
-        if len(mins) == 0:
-            continue
-        last_rth_minute = int(mins.max())
-        if last_rth_minute <= config.EARLY_CLOSE_MIN:
+        n_early, n_late = int(early_win[a:b].sum()), int(late_win[a:b].sum())
+        # An early close is a full 09:30-13:00 that then essentially stops. A few
+        # stray prints after 13:00 are normal and must not read as a full day.
+        if n_early >= 190 and n_late <= 30:
             early_from_tape.append(d)
         elif n_rth < THIN_RTH_BARS:
             thin.append(d)
