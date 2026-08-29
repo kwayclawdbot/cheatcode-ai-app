@@ -36,6 +36,18 @@ export type MoveOpts = { duration?: number; jitter?: boolean };
  */
 export type ChartHandle = {
   isReady(): boolean;
+  /**
+   * Whether motion is being suppressed — the OS preference as the chart page
+   * sees it, or the app's own switch.
+   *
+   * THE HOST HAS TO KNOW. The page collapses its own tween durations to zero on
+   * its own, but half of a choreography's wall time is `wait` steps sitting on
+   * THIS side: the beat before acting, the linger afterwards, the 700ms between
+   * plan legs. Left alone they burn their full length over a chart that has
+   * already finished moving, and "reduced motion" turns into "the same nine
+   * seconds, with nothing to watch".
+   */
+  prefersReducedMotion?(): boolean;
 
   /* data */
   setData(p: {
@@ -93,13 +105,17 @@ export async function runSequence(
   steps: ChoreoStep[],
   abort?: { aborted: boolean },
 ): Promise<RunResult> {
+  const reduced = handle.prefersReducedMotion?.() ?? false;
   let completed = 0;
   for (const step of steps) {
     if (abort?.aborted) return { reason: 'superseded', completed, total: steps.length };
 
     let reason: DoneReason = 'done';
     switch (step.do) {
-      case 'wait': await sleep(step.duration); break;
+      // The pause is the motion here. Under reduced motion the whole sequence
+      // still RUNS — every level is still marked, the timeframe still changes —
+      // it just stops taking time to do it.
+      case 'wait': if (!reduced) await sleep(step.duration); break;
       case 'pointer.moveTo': reason = await handle.pointerMoveTo(step.target, { duration: step.duration }); break;
       case 'pointer.press': reason = await handle.pointerPress(step.rail); break;
       case 'pointer.hide': handle.pointerHide(); break;
@@ -224,7 +240,8 @@ export async function applyChartCommand(
 
   const now = opts.now ?? (() => Date.now());
   const since = now() - lastEndedAt;
-  if (lastEndedAt && since < CHOREO.gap) await sleep(CHOREO.gap - since);
+  const reduced = handle.prefersReducedMotion?.() ?? false;
+  if (!reduced && lastEndedAt && since < CHOREO.gap) await sleep(CHOREO.gap - since);
   if (mine.abort.aborted) return { reason: 'superseded', completed: 0, total: steps.length };
 
   const result = await runSequence(handle, steps, mine.abort);

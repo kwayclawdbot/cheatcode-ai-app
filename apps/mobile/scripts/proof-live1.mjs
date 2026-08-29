@@ -333,6 +333,50 @@ async function stage() {
 }
 
 /* ------------------------------------------------------------------ */
+/* 1b. Reduced motion                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Reduced motion means "don't move me", not "don't work".
+ *
+ * The failure mode this guards is the one that looks like a feature: durations
+ * collapse to zero AND the end state quietly stops being applied, so a user who
+ * asked their OS for less motion gets a chart that no longer marks anything. So
+ * the check is two-sided — the same six commands must finish far faster, and
+ * finish with the same levels on the chart.
+ */
+async function reducedMotion() {
+  console.log('\n[5b] reduced motion — the journey goes, the destination stays');
+  const browser = await chromium.launch();
+  const ctx = await browser.newContext({
+    viewport: { width: 1280, height: 720 },
+    reducedMotion: 'reduce',
+  });
+  await hideChrome(ctx);
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/stage-check`, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => !!window.__ccStage, null, { timeout: 20000 });
+  await page.waitForTimeout(1200);
+
+  const honoured = await page.evaluate(() => window.__ccStage.state().ready?.reducedMotion);
+  feel('the page sees the OS reduced-motion preference', honoured === true, `ready.reducedMotion = ${honoured}`);
+
+  const t0 = Date.now();
+  await page.evaluate(() => window.__ccStage.runAll());
+  await page.waitForFunction(() => window.__ccStage.state().step === -1, null, { timeout: 30000 });
+  const ms = Date.now() - t0;
+
+  const st = await page.evaluate(() => window.__ccStage.state());
+  feel('the six commands run without the motion', ms < 4000, `${ms}ms (it is ~9s with motion)`);
+  feel('and every level is still marked', st.annotations === 4, `${st.annotations} annotations on the chart`);
+  feel('and the timeframe still ended where Kai left it', st.tf === '15m', `timeframe ${st.tf}`);
+  await shot(page, 'live1-10-reduced-motion');
+
+  await ctx.close();
+  await browser.close();
+}
+
+/* ------------------------------------------------------------------ */
 /* 2. The portal, on WebKit + an iPhone descriptor                     */
 /* ------------------------------------------------------------------ */
 
@@ -391,6 +435,7 @@ async function portalOnWebKit() {
 async function main() {
   await fs.mkdir(OUT, { recursive: true });
   await stage();
+  await reducedMotion();
   await portalOnWebKit();
 
   console.log('\n──────── LIVE-1 native-feel checklist ────────');

@@ -164,6 +164,12 @@ throws('a `done` reason outside the three is refused',
 ok('`painted` carries the measurement the 400ms budget is checked against',
   bridge.ChartBridgeInbound.parse({ type: 'painted', payload: { ms: 7, bars: 1500 } }).payload.bars === 1500);
 
+// LIVE-1b (the CCA indicators) plugs the RSI heatmap in by colouring bars. The
+// hook has to exist in the contract now, or that lane starts by editing the
+// chart instead of by adding a series.
+ok('a candle may carry its own colour, for the heatmap that has not shipped yet',
+  bridge.ChartCandle.parse({ t: 1, o: 1, h: 2, l: 0.5, c: 1.5, color: '#35D07F', wickColor: '#35D07F' }).color === '#35D07F');
+
 ok('the default window per timeframe matches the brief',
   JSON.stringify(bridge.CHART_TF_DEFAULT_BARS) ===
   JSON.stringify({ '1m': 90, '5m': 78, '15m': 96, '1h': 100, '4h': 120, D: 120 }),
@@ -295,6 +301,26 @@ function fakeHandle(overrides = {}) {
   const h = fakeHandle();
   const r = await apply.runSequence(h, sequenceFor({ command: 'mark_level', annotations: [level] }), { aborted: true });
   ok('an aborted sequence never starts', r.reason === 'superseded' && r.completed === 0);
+}
+
+{
+  // Reduced motion means "don't move me", not "don't work". Half a
+  // choreography's wall time is `wait` steps on THIS side of the bridge; if
+  // they are not collapsed too, the user who asked for less motion gets the
+  // same nine seconds with nothing to watch.
+  const h = fakeHandle({ prefersReducedMotion: () => true });
+  const seq = sequenceFor({ command: 'mark_plan', annotations: [
+    { id: 'e', kind: 'entry', price: 504 },
+    { id: 's', kind: 'stop', price: 498 },
+    { id: 't', kind: 'target', price: 520 },
+  ] });
+  const t0 = Date.now();
+  const r = await apply.runSequence(h, seq);
+  const ms = Date.now() - t0;
+  ok('under reduced motion the sequence takes no time', ms < 60, `${ms}ms`);
+  ok('and still performs every step', r.reason === 'done' && r.completed === r.total);
+  ok('and still draws all three legs',
+    h.calls.filter((c) => c === 'addAnnotations').length === 3, h.calls.join(','));
 }
 
 {

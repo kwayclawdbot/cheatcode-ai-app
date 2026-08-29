@@ -107,7 +107,7 @@ export default function StageCheckScreen() {
   const [shown, setShown] = useState<Annotation[]>([]);
   const [step, setStep] = useState(-1);
   const [running, setRunning] = useState(false);
-  const [ready, setReady] = useState<{ firstPaintMs: number; version: string } | null>(null);
+  const [ready, setReady] = useState<{ firstPaintMs: number; version: string; reducedMotion: boolean } | null>(null);
   const [fps, setFps] = useState<{ fps: number; worst: number } | null>(null);
   const [painted, setPainted] = useState<{ ms: number; bars: number } | null>(null);
   /** The live camera, straight off `onViewportChange`. A ref, not state: it
@@ -170,6 +170,7 @@ export default function StageCheckScreen() {
       state: () => ({
         tf, step, annotations: shown.length, ready, fps, painted,
         bars: candles.length, viewport: viewport.current, lastResult: lastResult.current,
+        handleReduced: chart.current?.prefersReducedMotion?.() ?? null,
       }),
     };
     return () => { delete w.__ccStage; };
@@ -216,7 +217,7 @@ export default function StageCheckScreen() {
             lastPrice={508.4}
             onTimeframeChange={setTf}
             onViewportChange={(v) => { viewport.current = v; }}
-            onReady={(r) => setReady({ firstPaintMs: r.firstPaintMs, version: r.version })}
+            onReady={(r) => setReady({ firstPaintMs: r.firstPaintMs, version: r.version, reducedMotion: r.reducedMotion })}
             onFps={setFps}
             onPainted={setPainted}
           />

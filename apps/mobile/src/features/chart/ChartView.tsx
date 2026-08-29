@@ -139,6 +139,9 @@ export const ChartView = forwardRef<ChartHandle, ChartViewProps>(function ChartV
   const webRef = useRef<{ injectJavaScript: (js: string) => void } | null>(null);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const [ready, setReady] = useState(false);
+  /** What the PAGE reports about the OS preference. The app's own switch is the
+   *  `reducedMotion` prop; either one suppresses motion. */
+  const pageReducedMotion = useRef(false);
 
   /** Commands waiting for `ready`. Held, never dropped — a chart that silently
    *  swallows the first `mark_level` is worse than one that is briefly late. */
@@ -204,6 +207,7 @@ export const ChartView = forwardRef<ChartHandle, ChartViewProps>(function ChartV
     switch (msg.type) {
       case 'ready': {
         setReady(true);
+        pageReducedMotion.current = !!p.reducedMotion;
         cb.current.onReady?.({
           version: String(p.version ?? ''),
           firstPaintMs: Number(p.firstPaintMs ?? 0),
@@ -328,6 +332,7 @@ export const ChartView = forwardRef<ChartHandle, ChartViewProps>(function ChartV
 
   useImperativeHandle(ref, (): ChartHandle => ({
     isReady: () => ready,
+    prefersReducedMotion: () => reducedMotion || pageReducedMotion.current,
 
     setData: (p) => send('setData', p as unknown as Record<string, unknown>),
     updateLast: (c) => send('updateLast', { candle: c }),

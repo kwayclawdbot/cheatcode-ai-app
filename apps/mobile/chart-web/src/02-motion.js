@@ -56,16 +56,27 @@ var EASINGS = { scroll: easeOutCubic, zoom: easeOutSettle, pointer: easeOutPoint
 /* Reduced motion                                                      */
 /* ------------------------------------------------------------------ */
 
-var REDUCED = false;
+/**
+ * TWO SOURCES, OR'D — never one overwriting the other.
+ *
+ * The OS preference is read here; the app can ADD its own suppression over the
+ * top. What the app must never be able to do is turn the OS preference OFF,
+ * which is exactly what a single flag allowed: the host re-sends its own
+ * `reducedMotion` prop (false, by default) on every reload, and a single flag
+ * meant that message silently cancelled the accessibility setting the user had
+ * asked their operating system for. So the effective value is the OR, and
+ * `setReducedMotion` only ever touches the app's half.
+ */
+var OS_REDUCED = false;
+var APP_REDUCED = false;
 try {
   var mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-  REDUCED = !!mq.matches;
-  if (mq.addEventListener) mq.addEventListener('change', function (e) { REDUCED = !!e.matches; });
+  OS_REDUCED = !!mq.matches;
+  if (mq.addEventListener) mq.addEventListener('change', function (e) { OS_REDUCED = !!e.matches; });
 } catch (e) { /* no matchMedia: assume motion is fine */ }
 
-/** The host can force it too (an app-level accessibility switch outranks the OS). */
-function setReducedMotion(on) { REDUCED = !!on; }
-function reducedMotion() { return REDUCED; }
+function setReducedMotion(on) { APP_REDUCED = !!on; }
+function reducedMotion() { return OS_REDUCED || APP_REDUCED; }
 
 /**
  * ±10% jitter. Six identical `mark_level` commands with identical 420ms tweens
@@ -104,7 +115,7 @@ var Motion = {
     this.cancel('superseded');
 
     var ease = EASINGS[opts.ease] || EASINGS.scroll;
-    var dur = REDUCED ? 0 : Math.max(0, opts.duration || 0);
+    var dur = reducedMotion() ? 0 : Math.max(0, opts.duration || 0);
 
     if (dur === 0) {
       // The end state ALWAYS applies. Reduced motion removes the journey, not
