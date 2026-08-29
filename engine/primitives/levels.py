@@ -37,7 +37,8 @@ from engine.series import BarView
 
 # label -> how much authority it carries when two levels collapse into one
 PRIORITY = {"PDH": 3, "PDL": 3, "PMH": 3, "PML": 3, "ONH": 3, "ONL": 3,
-            "DPH": 2, "DPL": 2, "PH": 1, "PL": 1}
+            "DPH": 2, "DPL": 2, "H4H": 2, "H4L": 2,
+            "H1H": 1, "H1L": 1, "PH": 1, "PL": 1}
 
 
 class MajorLevel(NamedTuple):

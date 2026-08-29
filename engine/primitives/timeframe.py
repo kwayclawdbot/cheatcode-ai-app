@@ -83,3 +83,135 @@ def resampled_view(view: BarView, minutes: int = 5) -> BarView | None:
     if len(s) == 0:
         return None
     return s.view(len(s) - 1)
+
+
+# ---------------------------------------------------------------------------
+# Session-anchored aggregation — the 1h and 4h convention, written down once.
+#
+# ENGINE-3 needs 1-hour and 4-hour bars, and an ambiguous boundary silently
+# changes every trend reading in the test. So the convention is stated here and
+# used everywhere:
+#
+#   * **Regular hours only.** Buckets are built from bars with
+#     09:30 <= minute < the session's own close (13:00 on a half day). Premarket
+#     and post-market prints are excluded entirely. They are thin, they gap, and
+#     a single 04:12 print would set the high of an "08:00-12:00" bucket on a
+#     midnight-anchored grid — a wick no trader has on their chart.
+#   * **Anchored at 09:30, not at midnight.** A 4-hour bucket therefore runs
+#     09:30-13:30 and 13:30-close, which is what a US-equity chart with extended
+#     hours switched off actually draws. On the midnight grid the open would sit
+#     in the middle of an 08:00-12:00 bar.
+#   * **The day's final bucket is short, and it still counts.** 1h gives
+#     09:30, 10:30 ... 15:30, and that last bucket holds 30 minutes. 4h gives
+#     09:30 and 13:30, and that last one holds 2.5 hours. Dropping the partial
+#     would delete the afternoon from the 4h series entirely, which is a far
+#     bigger distortion than a short bar.
+#   * **A bucket is closed only once a bar in a LATER bucket has been seen.**
+#     Not "once its final clock minute printed" — that rule cannot close a
+#     session-final partial bucket, because 15:59 is not the last minute of a
+#     4-hour window. Waiting for a bar in the next bucket is strictly
+#     conservative and closes the partial correctly.
+#
+# On an early-close day the 4h series has one bucket (09:30-13:00) and the 1h
+# series has four (09:30, 10:30, 11:30, 12:30, the last of them 30 minutes).
+
+RTH_OPEN_MIN = 9 * 60 + 30
+
+
+def _rth_close_of(days: np.ndarray) -> np.ndarray:
+    """Per-bar RTH close minute, honouring half days."""
+    from engine.primitives.session import rth_close_minute
+    uniq, inv = np.unique(days, return_inverse=True)
+    vals = np.array([rth_close_minute(int(d)) for d in uniq], dtype="int32")
+    return vals[inv]
+
+
+def session_bucket_key(day: int, minute: int, minutes: int) -> int:
+    """The bucket a single (day, minute) belongs to, as a sortable key.
+
+    Premarket maps to the day's FIRST bucket (nothing of today is closed yet);
+    anything at or after the close maps past the day's last bucket (all of
+    today's buckets are closed). Both are the conservative answer.
+    """
+    from engine.primitives.session import rth_close_minute
+    if minute < RTH_OPEN_MIN:
+        return int(day) * 10_000 + RTH_OPEN_MIN
+    if minute >= rth_close_minute(int(day)):
+        return int(day) * 10_000 + 9_999
+    idx = (int(minute) - RTH_OPEN_MIN) // minutes
+    return int(day) * 10_000 + RTH_OPEN_MIN + idx * minutes
+
+
+def _aggregate(symbol: str, minutes: int, ts_ms, o, h, l, c, v, day, minute) -> BarSeries:
+    """RTH-only, 09:30-anchored aggregation of raw 1-minute arrays."""
+    day = np.asarray(day)
+    minute = np.asarray(minute)
+    keep = (minute >= RTH_OPEN_MIN) & (minute < _rth_close_of(day))
+    if not np.any(keep):
+        return BarSeries(symbol, f"{minutes}m", np.zeros(0, "int64"),
+                         *([np.zeros(0, "float64")] * 5),
+                         np.zeros(0, "int32"), np.zeros(0, "int32"))
+    idx = np.flatnonzero(keep)
+    d, m = day[idx], minute[idx]
+    start_min = (RTH_OPEN_MIN + ((m - RTH_OPEN_MIN) // minutes) * minutes).astype("int64")
+    key = d.astype("int64") * 10_000 + start_min
+
+    edges = np.flatnonzero(np.diff(key)) + 1
+    starts = np.concatenate(([0], edges))
+    stops = np.concatenate((edges, [len(key)]))
+    last = stops - 1
+
+    hi = np.asarray(h)[idx]
+    lo = np.asarray(l)[idx]
+    vol = np.asarray(v)[idx]
+    out_h = np.maximum.reduceat(hi, starts).astype("float64")
+    out_l = np.minimum.reduceat(lo, starts).astype("float64")
+    out_v = np.add.reduceat(vol, starts).astype("float64")
+
+    return BarSeries(
+        symbol, f"{minutes}m",
+        np.asarray(ts_ms)[idx][last].astype("int64").copy(),
+        np.asarray(o)[idx][starts].astype("float64").copy(),
+        out_h.copy(), out_l.copy(),
+        np.asarray(c)[idx][last].astype("float64").copy(),
+        out_v.copy(),
+        d[starts].astype("int32").copy(),
+        start_min[starts].astype("int32").copy(),
+    )
+
+
+def session_series(series: BarSeries, minutes: int) -> BarSeries:
+    """Every RTH bucket in `series`, including each day's short final one.
+
+    This is the *whole* aggregation, closed and forming alike. It is safe to
+    build once per symbol because a bucket's OHLC depends only on its own
+    minutes — nothing about bucket k is a function of bucket k+1. Choosing
+    which buckets a decision may SEE is a separate job, done by
+    `engine/backtest/mtf.py` and attacked by its tests.
+    """
+    return _aggregate(series.symbol, minutes, series.ts_ms, series.open,
+                      series.high, series.low, series.close, series.volume,
+                      series.day, series.minute)
+
+
+def session_resample(view: BarView, minutes: int) -> BarSeries:
+    """The CLOSED RTH buckets visible from `view`, streaming-style.
+
+    The bucket containing the last visible bar is dropped, because a later bar
+    could still change it. Everything before it is a fact.
+    """
+    s = _aggregate(view.symbol, minutes, view.ts_ms, view.open, view.high,
+                   view.low, view.close, view.volume, view.day, view.minute)
+    if len(s) == 0:
+        return s
+    live = session_bucket_key(int(view.day[-1]), int(view.minute[-1]), minutes)
+    keys = s.day.astype("int64") * 10_000 + s.minute.astype("int64")
+    n = int(np.searchsorted(keys, live, side="left"))
+    if n == len(s):
+        return s
+    return s.subrange(0, n)
+
+
+def session_resampled_view(view: BarView, minutes: int) -> BarView | None:
+    s = session_resample(view, minutes)
+    return s.view(len(s) - 1) if len(s) else None

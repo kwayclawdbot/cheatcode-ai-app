@@ -28,3 +28,8 @@ class Model:
 
     def params(self) -> dict:
         return {}
+
+    def finish(self) -> None:
+        """Called once when a symbol's replay ends. A model that books a day's
+        outcome only when the day is over needs somewhere to book the last one."""
+        return None

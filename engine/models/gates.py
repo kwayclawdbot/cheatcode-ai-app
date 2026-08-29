@@ -109,3 +109,57 @@ def verdict3(gates: list[GateResult], is_r, oos_r) -> str:
                    (oos_hi == oos_hi and oos_hi < MIN_EXPECTANCY_OOS)
         return "FAIL" if decisive else INCONCLUSIVE_POWER
     return "FAIL"
+
+
+# ---------------------------------------------------------------------------
+# ENGINE-3 addendum. Written before `orb_mtf.v1` was evaluated; see
+# engine/models/orb_mtf.v1/GATE.md for the reasoning.
+#
+# Exit A (flat at 15:55) is judged on G1-G5 exactly as ENGINE-2 was. Exit B
+# holds overnight, which is a hazard the day trade does not have at all, so it
+# carries two more gates. One bar cannot serve both.
+
+MAX_GAP_TAIL = 0.05          # share of Exit B trades allowed to close past -2R
+GAP_TAIL_LEVEL = -2.0
+
+
+def evaluate_swing(b_trades, a_by_key, oos_window) -> list[GateResult]:
+    """G6 and G7 — the two gates that exist only because Exit B holds overnight.
+
+    `a_by_key` maps (symbol, day) to the Exit A trade for the same entry, so G7
+    is a paired comparison rather than two distributions side by side.
+    """
+    g = []
+    n = len(b_trades)
+    tail = sum(1 for t in b_trades if t.net_r < GAP_TAIL_LEVEL)
+    frac = tail / n if n else float("nan")
+    g.append(GateResult(
+        "G6", f"trades closing worse than {GAP_TAIL_LEVEL:.1f}R",
+        f"<{MAX_GAP_TAIL:.0%}",
+        f"{frac:.1%} ({tail}/{n})" if n else "n/a",
+        n > 0 and frac < MAX_GAP_TAIL))
+
+    lo, hi = (int(x.replace("-", "")) for x in oos_window)
+    pairs = [(t.net_r, a_by_key[(t.symbol, t.day)].net_r)
+             for t in b_trades if lo <= t.day <= hi
+             and (t.symbol, t.day) in a_by_key]
+    if pairs:
+        mb = sum(p[0] for p in pairs) / len(pairs)
+        ma = sum(p[1] for p in pairs) / len(pairs)
+        ok = mb >= ma
+        obs = f"B={mb:+.3f} vs A={ma:+.3f} (n={len(pairs)})"
+    else:
+        ok, obs = False, "n/a"
+    g.append(GateResult(
+        "G7", "holding beats closing at 15:55 (out-of-sample, paired)",
+        "B >= A", obs, ok))
+    return g
+
+
+def verdict_swing(core: list[GateResult], extra: list[GateResult],
+                  is_r, oos_r) -> str:
+    """Exit B's verdict: the five carried-forward gates plus G6 and G7."""
+    v = verdict3(core, is_r, oos_r)
+    if v == "PASS" and not all(x.passed for x in extra):
+        return "FAIL"
+    return v

@@ -96,3 +96,32 @@ def r_multiples(side: Side, fill: float, exit_px: float, risk: float,
     mae_r = mae_price / risk if risk > 0 else float("nan")
     mfe_r = mfe_price / risk if risk > 0 else float("nan")
     return gross_r, net_r, gross_pct, net_pct, mae_r, mfe_r
+
+
+def exit_on_bar_gapped(side: Side, stop: float, target: float,
+                       bar_open: float, bar_high: float, bar_low: float,
+                       costs: Costs) -> tuple[str, float, bool] | None:
+    """`exit_on_bar`, with the open treated as the first price of the bar.
+
+    ENGINE-3 is the first model in the programme that holds overnight, and a
+    backtest that fills a gapped stop AT the stop price is fiction. If a
+    session opens below a long's stop, the stop became a market order at the
+    open and it filled there — worse than the level, sometimes far worse. The
+    mirror is also true and is modelled: a session that opens above a long's
+    target fills the resting limit at the open, which is better than the level.
+
+    Intraday this differs from `exit_on_bar` only in that second clause, and by
+    a tick. Across a weekend it is the whole difference between an honest number
+    and a flattering one.
+    """
+    if side == "long":
+        if bar_open <= stop:
+            return ("stop", costs.slip(bar_open, adverse_up=False), False)
+        if bar_open >= target:
+            return ("target", bar_open, False)
+    else:
+        if bar_open >= stop:
+            return ("stop", costs.slip(bar_open, adverse_up=True), False)
+        if bar_open <= target:
+            return ("target", bar_open, False)
+    return exit_on_bar(side, stop, target, bar_open, bar_high, bar_low, costs)
