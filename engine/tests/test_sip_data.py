@@ -25,6 +25,9 @@ from engine.sip import universe
 
 SNAP = scfg.SNAPSHOT
 PROBE = "AAPL"
+# names with splits in the window, where an adjusted/unadjusted mix shows up as
+# a clean 4x or 20x rather than as noise
+PROBES = ["AAPL", "TSLA", "NVDA", "AMZN", "GOOGL"]
 
 needs_open5 = pytest.mark.skipif(
     not (scfg.OPEN5_DIR / PROBE).exists(),
@@ -38,14 +41,24 @@ needs_eligible = pytest.mark.skipif(
 
 @needs_open5
 @needs_1m
-def test_the_0930_five_minute_bar_is_exactly_the_first_five_one_minute_bars():
-    ser = load(PROBE, "1m", SNAP)
+@pytest.mark.parametrize("probe", PROBES)
+def test_the_0930_five_minute_bar_is_exactly_the_first_five_one_minute_bars(probe):
+    """Also the tripwire for an adjusted/unadjusted mix.
+
+    A split-adjusted 5-minute bar against an unadjusted 1-minute cache fails
+    here as a clean ratio — 4.000 for AAPL's 2020 split — which is how the
+    `next_url` pagination bug in `sip/poly.py` was found. The probes are
+    deliberately names that split inside the window.
+    """
+    if not has_symbol(probe, "1m", SNAP) or not (scfg.OPEN5_DIR / probe).exists():
+        pytest.skip(f"{probe} not in this snapshot")
+    ser = load(probe, "1m", SNAP)
     days = sorted({int(d) for d in np.unique(ser.day)})
     con = duckdb.connect()
     checked = 0
     for day in days:
         y, h = day // 10000, 1 if (day // 100) % 100 <= 6 else 2
-        p = scfg.OPEN5_DIR / PROBE / f"{y}H{h}.parquet"
+        p = scfg.OPEN5_DIR / probe / f"{y}H{h}.parquet"
         if not p.exists():
             continue
         got = con.execute(

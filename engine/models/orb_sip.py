@@ -58,9 +58,16 @@ class OrbStocksInPlay(Model):
                    "candle closed, stop at 10% of the 14-day ATR from the fill, "
                    "no target, flat at the close")
 
-    def __init__(self, atr: dict[tuple[str, int], float]) -> None:
+    def __init__(self, atr: dict[tuple[str, int], float],
+                 stop_fraction: float = ATR_STOP_FRACTION) -> None:
         # atr: {(symbol, yyyymmdd) -> 14-day ATR as of the PRIOR close}
+        #
+        # `stop_fraction` is 0.10 — the published spec — for every evaluated
+        # run. It is a constructor argument ONLY so that the post-mortem in
+        # run_engine6_diag.py can sweep it, which is a diagnostic and is fenced
+        # as one. The pre-registered model does not read it.
         self.atr = atr
+        self.stop_fraction = float(stop_fraction)
         self.census: Counter = Counter()
         self._day = -1
         self._done = False
@@ -70,7 +77,7 @@ class OrbStocksInPlay(Model):
             "opening_range_minutes": 5,
             "direction": "sign of the 09:30-09:35 candle",
             "entry": "resting stop order at the range edge",
-            "stop": "10% of the 14-day ATR from the fill",
+            "stop": f"{self.stop_fraction:.0%} of the 14-day ATR from the fill",
             "target": "none — exit at the close",
             "flatten_min": FLATTEN_MIN,
             "selection": "top 20 of the pool by 09:35 relative volume",
@@ -133,7 +140,7 @@ class OrbStocksInPlay(Model):
         if atr is None or not (atr > 0):
             self.census["skip_no_atr"] += 1
             return None
-        stop_dist = ATR_STOP_FRACTION * float(atr)
+        stop_dist = self.stop_fraction * float(atr)
         if not (stop_dist > 0):
             self.census["skip_zero_stop"] += 1
             return None
@@ -205,7 +212,7 @@ class OrbStocksInPlayCoinflip(OrbStocksInPlay):
         if atr is None or not (atr > 0):
             self.census["skip_no_atr"] += 1
             return None
-        stop_dist = ATR_STOP_FRACTION * float(atr)
+        stop_dist = self.stop_fraction * float(atr)
         stop = entry - stop_dist if side == "long" else entry + stop_dist
         target = NO_TARGET if side == "long" else -NO_TARGET
         self.census["signals"] += 1

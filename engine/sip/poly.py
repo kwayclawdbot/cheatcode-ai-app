@@ -48,6 +48,28 @@ async def get_json(client: httpx.AsyncClient, url: str, params: dict | None,
 
 async def paginate(client: httpx.AsyncClient, key: str, url: str,
                    params: dict) -> list[dict]:
+    """Every page carries the CALLER's parameters, not just the key.
+
+    Polygon's `next_url` embeds the cursor and nothing else. A paginator that
+    forwards only the API key silently drops `adjusted` — and its default is
+    TRUE. On 2026-08-29 that produced, for one AAPL request:
+
+        page 1: 12,913 rows, adjusted=False, first open 105.45
+        page 2:  7,496 rows, adjusted=True,  first open  26.08
+
+    i.e. the tail of every multi-page response came back split-adjusted while
+    the head did not, at the 4-for-1 ratio. In an opening-VOLUME series that is
+    not a cosmetic difference: volume is scaled by the split factor too, so a
+    name whose 14-day baseline straddled a page boundary showed a 4x or
+    quarter-size relative volume that never happened, and got selected — or
+    passed over — for it.
+
+    It also drops `limit`, which quietly caps pages at ~12,000 rows: a year of
+    AAPL 5-minute bars is 4 pages with the limit forwarded and 29 without.
+
+    `tests/test_sip_data.py` checks the result against the one-minute cache
+    bar by bar, which is what caught it.
+    """
     out: list[dict] = []
     p = dict(params)
     p["apiKey"] = key
@@ -58,4 +80,5 @@ async def paginate(client: httpx.AsyncClient, key: str, url: str,
         nxt = data.get("next_url")
         if not nxt:
             return out
-        url, p = nxt, {"apiKey": key, "limit": LIMIT}
+        url = nxt
+        p = dict(p)          # same parameters, next cursor

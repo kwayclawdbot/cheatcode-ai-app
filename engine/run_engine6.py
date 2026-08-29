@@ -322,6 +322,87 @@ def write_report(sel, sip, flip, unf, sip_census, unf_census,
       f"{len(sip_hb):,} held back, {len(sip):,} in total.")
     A(f"- **Did it reproduce**: **{verdict}**.")
     A("")
+    if verdict == gates.NOT_REPRODUCED:
+        A("## This harness did not reproduce a published result — and the harness "
+          "is not the reason")
+        A("")
+        A("That first clause is the one the gate said to lead with, so it leads. "
+          "The second is what the post-mortem measured, and it is the more "
+          "useful half.")
+        A("")
+        A("**The machinery is straight.** Run the identical entries with the "
+          "stop removed — 100x the ATR, a level that can essentially never be "
+          "hit, so every trade runs to the close — and the model returns "
+          "+0.018 ATR of signed move and its coin-flip control +0.010 ATR, over "
+          "32,434 and 27,037 trades. A replay with a directional bias, a "
+          "lookahead leak or a fill model that quietly paid or charged the "
+          "trader does not land within two hundredths of an ATR of zero. That "
+          "is the same test ENGINE-1 used to certify this instrument and it "
+          "gives the same answer on this snapshot. See "
+          "[the post-mortem](orb_sip.v1.polygon-sip-v1.diagnostics.md).")
+        A("")
+        A("**What failed is the configuration as the brief specifies it, and "
+          "one number in it decides everything.** A stop at 10% of the 14-day "
+          "ATR is a median 12.5 cents here, 0.35% of price. It is hit on "
+          "**90.0%** of trades. The 09:30-09:35 candle of a stock in play is a "
+          "median **0.62 ATR** wide, so the specified stop sits at about a "
+          "sixth of the range of the very bar the trade is defined by — it is "
+          "inside the noise of its own setup. Sweeping only that number: "
+          "-0.629R gross at 0.10x ATR, -0.071R at 0.25x, **+0.005R at 0.50x**, "
+          "+0.013R at 1x. Nothing else moves.")
+        A("")
+        A("**The filter's sign flips with it, and that is the finding worth "
+          "keeping.** At the specified stop, stocks in play are **0.45R WORSE** "
+          "than the unfiltered control — the exact opposite of the published "
+          "claim, and the relative-volume deciles are monotone in the wrong "
+          "direction, from -0.27R in the lowest to -1.23R in the highest. At a "
+          "0.5x-ATR stop the same comparison is **+0.019R** (95%: +0.001 to "
+          "+0.037) and at 1x **+0.018R** (95%: +0.007 to +0.028), both in the "
+          "paper's direction. So abnormal opening volume does carry something "
+          "real — about a hundredth of an R, gross, two orders of magnitude "
+          "short of what a 2.81 Sharpe needs — and the specified stop turns it "
+          "upside down, because the days the filter selects are precisely the "
+          "days whose true range dwarfs the trailing ATR the stop is scaled by.")
+        A("")
+        A("**The direction call is worth nothing.** Paired against a coin flip "
+          "on the same symbols, days and stop distances, the model is negative "
+          "at every stop width tested, including the widest.")
+        A("")
+        A("### The candidate explanations, enumerated and measured")
+        A("")
+        A("| candidate | measured | verdict |")
+        A("|---|---|---|")
+        A("| the pool was too small | 891 of a median 892 eligible names scored "
+          "at 09:35; 100% coverage on the median day, 95% at the 10th "
+          "percentile | **not it** |")
+        A("| the cost model | zero cost gives -0.547R gross against -0.716R net "
+          "| **not it** — costs are 0.169R of it, the loss is 0.716R |")
+        A("| the fill model | unstopped, hold-to-close control returns within "
+          "0.02 ATR of zero | **not it** |")
+        A("| the window | all eleven calendar years negative, both sides "
+          "negative, held-back window negative | **not it** |")
+        A("| the selection definition | the relative-volume gradient is steep "
+          "and monotone, so the ranking is separating days powerfully — in the "
+          "wrong direction at this stop | **not it, but it is the mechanism** |")
+        A("| **the stop reading** | the brief's own table records the companion "
+          "ETF paper stopping at the **opposite extreme of the first candle**, "
+          "which on this data is a median 0.62 ATR — about **6x** the 10%-of-"
+          "ATR reading, and squarely in the range where this shape stops losing "
+          "| **the live candidate** |")
+        A("| the entry timing | the published rule may enter at the 09:35 open "
+          "rather than on a breakout beyond the range; not tested, because "
+          "testing it is a change to the model and Phase 1 did not reproduce "
+          "| **untested, and it is the second candidate** |")
+        A("")
+        A("**Phase 2 does not run.** The gate pre-authorised exactly this: if "
+          "Phase 1 does not reproduce, the owner's variations are not tested "
+          "against a baseline that is not a baseline, and no parameter is "
+          "tuned to rescue the miss. The stop sweep above is a diagnostic and "
+          "is fenced as one; **it is not a result and no verdict was reached by "
+          "way of it.** A re-run at a different stop is a NEW model with a NEW "
+          "pre-registered gate, reported beside this one rather than in place "
+          "of it.")
+        A("")
     A("## The bar, and what it observed")
     A("")
     A("| id | gate | threshold | observed | |")
@@ -506,10 +587,10 @@ def write_report(sel, sip, flip, unf, sip_census, unf_census,
           f"{len(g['extra_days'])} on a day the market was shut")
         A(f"- opening 5-minute bars: {o['sessions_with_opening_bars']:,} of "
           f"{o['expected_sessions']:,} sessions, {len(o['missing_sessions'])} missing; "
-          f"median {o['symbols_with_an_opening_bar_median']:.0f} names a day against "
-          f"a median {o['eligible_median']:.0f} eligible — "
-          f"**{o['coverage_of_eligible_median']:.0%} coverage, worst day "
-          f"{o['coverage_of_eligible_min']:.0%}**")
+          f"a median {o['eligible_median']:.0f} names a day pass the universe "
+          f"filter and **{o['coverage_of_eligible_median']:.0%} of them have a "
+          f"09:30 bar** (10th percentile {o['coverage_of_eligible_p10']:.0%}, "
+          f"worst day {o['coverage_of_eligible_min']:.0%})")
         A(f"- one-minute sessions: {one.get('symbol_days', 0):,} symbol-days, "
           f"{one.get('bars', 0):,} bars, median "
           f"{one.get('median_bars_per_session', 0):.0f} a session, "
