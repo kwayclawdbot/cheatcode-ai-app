@@ -56,7 +56,8 @@ def _longest_losing_run(rs: np.ndarray) -> int:
 
 def summarise(trades: list[Trade], label: str = "all") -> Summary:
     if not trades:
-        return Summary(label, 0, *([float("nan")] * 8), 0)
+        # nine float fields (hit_rate .. max_drawdown_r) then the run length
+        return Summary(label, 0, *([float("nan")] * 9), 0)
     r = np.array([t.net_r for t in trades], dtype="float64")
     pct = np.array([t.net_pct for t in trades], dtype="float64")
     mae = np.array([t.mae_r for t in trades], dtype="float64")

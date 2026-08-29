@@ -44,6 +44,12 @@ SELECTION_PATH = scfg.DATA_ROOT / "selection.json.gz"
 PAIRS_PATH = scfg.DATA_ROOT / "pairs.json"
 REPORT = Path(__file__).resolve().parent / "reports" / f"orb_sip.v1.{scfg.SNAPSHOT}.md"
 COSTS = Costs()
+# Sensitivities, clearly labelled and never a result. ENGINE-4 measured that
+# a proportional slippage model overcharges a cheap instrument with a tight
+# stop; a tenth of an ATR is the tightest stop this programme has traded, so
+# the same disclosure is owed here.
+FREE = Costs(commission_per_share=0.0, slippage_bps=0.0)
+CHEAP = Costs(commission_per_share=0.005, slippage_bps=0.25)
 
 ARM_SIP = "sip"
 ARM_UNFILTERED = "unfiltered"
@@ -134,9 +140,16 @@ def _atr_map(pairs: set[tuple[str, int]]) -> dict[tuple[str, int], float]:
     return out
 
 
-def _replay(days_by_symbol: dict[str, set[int]], atr: dict, model_cls) -> tuple[list, Counter, int]:
-    trades: list = []
-    census: Counter = Counter()
+def _replay(days_by_symbol: dict[str, set[int]], atr: dict,
+            configs: list[tuple[str, object, Costs]]) -> tuple[dict, dict, int]:
+    """One pass over the tape, several models on it.
+
+    Loading a symbol is the expensive part, so the model, its matched control
+    and the cost sensitivities all see the same series in the same pass. They
+    are independent replays sharing a read, not a shared replay.
+    """
+    trades: dict[str, list] = {name: [] for name, _, _ in configs}
+    census: dict[str, Counter] = {name: Counter() for name, _, _ in configs}
     missing = 0
     for i, (sym, days) in enumerate(sorted(days_by_symbol.items())):
         try:
@@ -144,14 +157,16 @@ def _replay(days_by_symbol: dict[str, set[int]], atr: dict, model_cls) -> tuple[
         except FileNotFoundError:
             missing += len(days)
             continue
-        model = model_cls(atr)
-        t, _ = run_symbol(series, model, COSTS, warmup_days=0,
-                          day_filter=lambda d, days=days: int(d) in days)
-        model.finish()
-        trades.extend(t)
-        census.update(model.census)
+        for name, model_cls, costs in configs:
+            model = model_cls(atr)
+            t, _ = run_symbol(series, model, costs, warmup_days=0,
+                              day_filter=lambda d, days=days: int(d) in days)
+            model.finish()
+            trades[name].extend(t)
+            census[name].update(model.census)
         if (i + 1) % 500 == 0:
-            print(f"  replayed {i+1:,} symbols, {len(trades):,} trades", flush=True)
+            print(f"  replayed {i+1:,} symbols, "
+                  f"{len(trades[configs[0][0]]):,} trades", flush=True)
     return trades, census, missing
 
 
@@ -192,17 +207,23 @@ def stage_run() -> None:
     for r in rows:
         arms[r["arm"]].setdefault(r["symbol"], set()).add(int(r["day"]))
 
-    print("replaying the stocks-in-play arm...", flush=True)
-    sip_trades, sip_census, sip_missing = _replay(arms[ARM_SIP], atr, OrbStocksInPlay)
-    print("replaying the matched coin-flip control...", flush=True)
-    flip_trades, _, _ = _replay(arms[ARM_SIP], atr, OrbStocksInPlayCoinflip)
+    print("replaying the stocks-in-play arm and its matched control...", flush=True)
+    a, ac, sip_missing = _replay(arms[ARM_SIP], atr, [
+        ("sip", OrbStocksInPlay, COSTS),
+        ("flip", OrbStocksInPlayCoinflip, COSTS),
+        ("sip_nocost", OrbStocksInPlay, FREE),
+        ("sip_cheap", OrbStocksInPlay, CHEAP),
+    ])
     print("replaying the unfiltered control...", flush=True)
-    unf_trades, unf_census, unf_missing = _replay(arms[ARM_UNFILTERED], atr, OrbStocksInPlay)
-    print(f"trades: sip={len(sip_trades):,} flip={len(flip_trades):,} "
-          f"unfiltered={len(unf_trades):,}", flush=True)
+    b, bc, unf_missing = _replay(arms[ARM_UNFILTERED], atr, [
+        ("unfiltered", OrbStocksInPlay, COSTS),
+    ])
+    print(f"trades: sip={len(a['sip']):,} flip={len(a['flip']):,} "
+          f"unfiltered={len(b['unfiltered']):,}", flush=True)
 
-    write_report(sel, sip_trades, flip_trades, unf_trades,
-                 sip_census, unf_census, sip_missing, unf_missing)
+    write_report(sel, a["sip"], a["flip"], b["unfiltered"],
+                 ac["sip"], bc["unfiltered"], sip_missing, unf_missing,
+                 a["sip_nocost"], a["sip_cheap"])
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +239,8 @@ def _gross_summary(trades):
 
 
 def write_report(sel, sip, flip, unf, sip_census, unf_census,
-                 sip_missing, unf_missing) -> None:
+                 sip_missing, unf_missing, sip_free=None,
+                 sip_cheap=None) -> None:
     rep_lo, rep_hi = (_d(x) for x in gates.SIP_REPLICATION_WINDOW)
     hb_lo, hb_hi = (_d(x) for x in gates.SIP_HELD_BACK)
 
@@ -375,6 +397,26 @@ def write_report(sel, sip, flip, unf, sip_census, unf_census,
           "ENGINE-5 measured twice")
         A(f"- exits: {dict(sorted(s_rep.exit_mix.items()))}")
         A(f"- trades resolved by the stop-before-target assumption: {s_rep.ambiguous_bars}")
+    A("")
+    A("## Cost sensitivity — disclosed, and not a result")
+    A("")
+    A("The pre-registered cost model is $0.005/share/side plus 1.0 bp of adverse "
+      "slippage. Cost as a fraction of risk is `cost per share / stop distance`, "
+      "and a tenth of an ATR is the tightest stop this programme has traded, so "
+      "the fraction is the largest it has been. These rows re-run the identical "
+      "selection under two other cost models. **The gate is after the "
+      "pre-registered costs and does not move.**")
+    A("")
+    A("| cost model | n | mean R | median R | hit | PF |")
+    A("|---|---|---|---|---|---|")
+    for lbl, ts in (("pre-registered (the result)", sip_rep),
+                    ("quarter-bp slippage", _window(sip_cheap or [], rep_lo, rep_hi)),
+                    ("zero cost (true gross)", _window(sip_free or [], rep_lo, rep_hi))):
+        if not ts:
+            continue
+        ss = summarise(ts, lbl)
+        A(f"| {lbl} | {ss.n} | {fmt(ss.mean_r,4)} | {fmt(ss.median_r,4)} | "
+          f"{fmt(ss.hit_rate*100,1)}% | {fmt(ss.profit_factor,2)} |")
     A("")
     A("## Census")
     A("")
