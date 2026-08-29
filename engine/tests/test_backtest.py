@@ -184,3 +184,22 @@ def test_model_only_ever_sees_bars_up_to_the_decision_bar():
     seen = m.seen_last_minutes
     assert seen == sorted(seen)
     assert seen[0] == 570 and seen[-1] == 589
+
+
+def test_regime_label_cannot_see_its_own_day():
+    """Day k's label is built from closes strictly before day k. Change day k's
+    close to anything at all and the label must not move."""
+    import numpy as np
+
+    from engine.backtest.regime import regime_from_closes
+
+    close = np.array([100.0 + i for i in range(60)], dtype="float64")
+    days = np.array([20240101 + i for i in range(60)], dtype="int32")
+    base = regime_from_closes(close, days, period=50)
+
+    poisoned = close.copy()
+    poisoned[55] = 1.0        # a catastrophic day 55
+    after = regime_from_closes(poisoned, days, period=50)
+    assert base[int(days[55])] == after[int(days[55])]
+    # ...but day 56, which is allowed to see day 55, must react
+    assert base[int(days[56])] != after[int(days[56])]
