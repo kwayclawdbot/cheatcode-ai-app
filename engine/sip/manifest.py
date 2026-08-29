@@ -54,35 +54,58 @@ def audit_grouped() -> dict:
 
 
 def audit_open5() -> dict:
+    """Coverage is an INTERSECTION, not a ratio of counts.
+
+    The store holds every name that was ever in the pool, so on any single day
+    it contains far more symbols than that day's eligible universe. The number
+    that matters is the share of THAT DAY's eligible names which actually have
+    a 09:30 bar, because a name absent from the store cannot be selected
+    however busy it was.
+    """
     con = duckdb.connect()
     q = f"""
-      SELECT day, count(*) AS n
-      FROM read_parquet('{scfg.OPEN5_DIR}/*/*.parquet')
+      SELECT day, regexp_extract(filename, '([^/]+)/[^/]+\\.parquet$', 1) AS symbol
+      FROM read_parquet('{scfg.OPEN5_DIR}/*/*.parquet', filename=true)
       WHERE minute = 570
-      GROUP BY 1 ORDER BY 1
     """
     t = con.execute(q).arrow()
     con.close()
     if hasattr(t, "read_all"):
         t = t.read_all()
     days = t.column("day").to_numpy(zero_copy_only=False)
-    n = t.column("n").to_numpy(zero_copy_only=False)
-    win = (days >= _d(scfg.START)) & (days <= _d(scfg.END))
+    syms = t.column("symbol").to_pylist()
+    lo, hi = _d(scfg.START), _d(scfg.END)
+    have: dict[int, set] = {}
+    for d, s in zip(days, syms):
+        d = int(d)
+        if lo <= d <= hi:
+            have.setdefault(d, set()).add(s)
     tab = universe.eligible_table()
-    eligible = np.array([len(tab[int(d)]["ticker"]) if int(d) in tab else 0
-                         for d in days[win]], dtype="float64")
-    have = n[win].astype("float64")
-    cover = have / np.maximum(eligible, 1.0)
+    cover, pool_cover, sizes = [], [], []
+    for d, present in have.items():
+        row = tab.get(d)
+        if row is None:
+            continue
+        el = {str(x) for x in row["ticker"]}
+        pool = {str(x) for x in row["ticker"][:scfg.POOL_N]}
+        sizes.append(len(el))
+        cover.append(len(el & present) / max(len(el), 1))
+        pool_cover.append(len(pool & present) / max(len(pool), 1))
     expected = {_d(x) for x in calendar_us.trading_days(scfg.START, scfg.END)}
+    c = np.array(cover) if cover else np.array([0.0])
+    pc = np.array(pool_cover) if pool_cover else np.array([0.0])
+    sz = np.array(sizes) if sizes else np.array([0.0])
     return {
-        "sessions_with_opening_bars": int(win.sum()),
+        "sessions_with_opening_bars": len(have),
         "expected_sessions": len(expected),
-        "missing_sessions": sorted(expected - {int(d) for d in days[win]}),
-        "symbols_with_an_opening_bar_median": float(np.median(have)) if win.any() else 0.0,
-        "symbols_with_an_opening_bar_min": float(have.min()) if win.any() else 0.0,
-        "eligible_median": float(np.median(eligible)) if win.any() else 0.0,
-        "coverage_of_eligible_median": float(np.median(cover)) if win.any() else 0.0,
-        "coverage_of_eligible_min": float(cover.min()) if win.any() else 0.0,
+        "missing_sessions": sorted(expected - set(have)),
+        "eligible_median": float(np.median(sz)),
+        "symbols_in_store_median": float(np.median([len(v) for v in have.values()])),
+        "coverage_of_eligible_median": float(np.median(c)),
+        "coverage_of_eligible_p10": float(np.quantile(c, 0.10)),
+        "coverage_of_eligible_min": float(c.min()),
+        "coverage_of_pool_median": float(np.median(pc)),
+        "coverage_of_pool_min": float(pc.min()),
     }
 
 

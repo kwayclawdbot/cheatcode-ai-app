@@ -84,7 +84,13 @@ def stage_plan() -> None:
         have = [s for s in pool if store.has(s)]
         picks = select_day(day, have, store)
         ctrl = select_day_random(day, have, store)
-        cover.append((day, len(eligible), len(pool), len(have)))
+        # "Visible to the selector" is the number of the day's ELIGIBLE names
+        # that actually got a relative-volume score — an opening bar today and a
+        # full 14-session baseline. Counting symbols present in the store would
+        # overstate it, because the store holds every name that was ever in the
+        # pool, not the ones that traded on this date.
+        scored = sum(1 for s in have if store.rvol(s, day) is not None)
+        cover.append((day, len(eligible), len(pool), scored))
         # Where in the liquidity list a selected name sits. If the picks cluster
         # against the bottom of the pool, the pool boundary is binding and a
         # bigger one would change the answer; if they are spread through it, the
@@ -295,13 +301,21 @@ def write_report(sel, sip, flip, unf, sip_census, unf_census,
     A("")
     A("## In plain English")
     A("")
-    A(f"- **Pool size**: {int(np.median(have)):,} names a day had an opening bar, "
-      f"against a median {int(np.median(el)):,} names a day that passed the paper's "
-      f"universe filter — **{100.0*float(np.median(have/np.maximum(el,1))):.0f}% of the "
-      "eligible universe was visible to the selector**. This is a weaker filter than "
-      "the paper's and the direction of the weakness is against us: the names it "
-      "misses are the smaller, more volatile ones where a doubling of opening volume "
-      "is most likely.")
+    frac = float(np.median(have / np.maximum(el, 1)))
+    A(f"- **Pool size**: a median **{int(np.median(have)):,} names a day** were scored "
+      f"and rankable at 09:35, against a median **{int(np.median(el)):,}** that passed "
+      f"the paper's universe filter — **{100.0*frac:.0f}% of the eligible universe was "
+      "visible to the selector**"
+      + (". The pool is not the binding constraint: `POOL_N` is at or above the "
+         "eligible count on the typical day, so the selector saw essentially the "
+         "whole universe the paper defines."
+         if frac >= 0.9 else
+         ". This is a weaker filter than the paper's and the direction of the "
+         "weakness is against us: the names it misses are the smaller, more "
+         "volatile ones where a doubling of opening volume is most likely."))
+    A(f"- **Universe**: {int(np.median(el)):,} names on the median day; "
+      "the distinct set over the whole window is reported under 'the data' below. "
+      "The paper's is 7,000+ US stocks over 2016-2023.")
     A(f"- **Date range**: {gates.SIP_REPLICATION_WINDOW[0]} → "
       f"{gates.SIP_HELD_BACK[1]}, {len(days_all):,} sessions.")
     A(f"- **Trade count**: {len(sip_rep):,} in the replication window, "
