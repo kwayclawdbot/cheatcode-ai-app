@@ -444,6 +444,29 @@ def write_report(sel, sip, flip, unf, sip_census, unf_census,
       "selection when the rest of the session is deleted from disk, and catches "
       "a deliberately cheating selector with the same harness")
     A("")
+    A("## The data, audited")
+    A("")
+    mp = scfg.DATA_ROOT / "manifest.json"
+    if mp.exists():
+        m = json.loads(mp.read_text())
+        g, o, one = m["grouped"], m["open5"], m["min1"]
+        A(f"- grouped daily: **{g['files']:,} of {g['expected_sessions']:,} sessions**, "
+          f"{g['rows']:,} ticker-days, {len(g['missing_days'])} missing, "
+          f"{len(g['extra_days'])} on a day the market was shut")
+        A(f"- opening 5-minute bars: {o['sessions_with_opening_bars']:,} of "
+          f"{o['expected_sessions']:,} sessions, {len(o['missing_sessions'])} missing; "
+          f"median {o['symbols_with_an_opening_bar_median']:.0f} names a day against "
+          f"a median {o['eligible_median']:.0f} eligible — "
+          f"**{o['coverage_of_eligible_median']:.0%} coverage, worst day "
+          f"{o['coverage_of_eligible_min']:.0%}**")
+        A(f"- one-minute sessions: {one.get('symbol_days', 0):,} symbol-days, "
+          f"{one.get('bars', 0):,} bars, median "
+          f"{one.get('median_bars_per_session', 0):.0f} a session, "
+          f"{one.get('empty_sessions', 0)} empty, {one.get('thin_sessions', 0)} thin, "
+          f"{len(one.get('days_the_market_was_shut', []))} on a day the market was shut")
+    else:
+        A("- `sip/manifest.py` has not been run against this snapshot.")
+    A("")
     A("## Costs and fills")
     A("")
     A(f"- ${COSTS.commission_per_share:.3f}/share/side commission, "
