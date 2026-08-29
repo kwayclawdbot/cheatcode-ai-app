@@ -1,0 +1,111 @@
+{
+  "show": "22430768-8176-4411-bdfa-a439259f26d9",
+  "frames": 76,
+  "segments": 4,
+  "symbols": [
+    "META",
+    "NVDA",
+    "QQQ",
+    "CRM"
+  ],
+  "say_frames": 20,
+  "chart_frames": 44,
+  "commands": [
+    "set_timeframe",
+    "mark_level",
+    "zoom_trigger",
+    "show_invalidation",
+    "pointer_hint"
+  ],
+  "audio": "none — captions only",
+  "killed_at_seq": 16,
+  "rejoined_from_seq": 16,
+  "finished_at_seq": 75,
+  "shots": [
+    {
+      "file": "/Users/kwaysclawd/projects/cheatcode-ai/apps/mobile/proof/live2-play-00.png",
+      "seq": 3,
+      "symbol": "META",
+      "annotations": 0,
+      "line": "Meta on the daily, and this is a stock still in a downtrend. The twenty day average is falling, price sits below it, and the last six closes are choppy, not trending. The number that matters is up at the trigger, and price is still twenty five dollars under it. Zoom into that first resistance shelf and you can see it capped price three separate times — that's the ceiling buyers have to break. Below the invalidation, this idea is dead, full stop. The first target sits well above current price, which is why the reward against risk here is attractive if the trigger ever clears. Right now this is a setup waiting for permission, not a trend in motion. A close above the trigger changes everything. A close below the invalidation ends it."
+    },
+    {
+      "file": "/Users/kwaysclawd/projects/cheatcode-ai/apps/mobile/proof/live2-play-01.png",
+      "seq": 4,
+      "symbol": "META",
+      "annotations": 1,
+      "line": "Meta on the daily, and this is a stock still in a downtrend. The twenty day average is falling, price sits below it, and the last six closes are choppy, not trending. The number that matters is up at the trigger, and price is still twenty five dollars under it. Zoom into that first resistance shelf and you can see it capped price three separate times — that's the ceiling buyers have to break. Below the invalidation, this idea is dead, full stop. The first target sits well above current price, which is why the reward against risk here is attractive if the trigger ever clears. Right now this is a setup waiting for permission, not a trend in motion. A close above the trigger changes everything. A close below the invalidation ends it."
+    },
+    {
+      "file": "/Users/kwaysclawd/projects/cheatcode-ai/apps/mobile/proof/live2-play-02.png",
+      "seq": 5,
+      "symbol": "META",
+      "annotations": 2,
+      "line": "Meta on the daily, and this is a stock still in a downtrend. The twenty day average is falling, price sits below it, and the last six closes are choppy, not trending. The number that matters is up at the trigger, and price is still twenty five dollars under it. Zoom into that first resistance shelf and you can see it capped price three separate times — that's the ceiling buyers have to break. Below the invalidation, this idea is dead, full stop. The first target sits well above current price, which is why the reward against risk here is attractive if the trigger ever clears. Right now this is a setup waiting for permission, not a trend in motion. A close above the trigger changes everything. A close below the invalidation ends it."
+    },
+    {
+      "file": "/Users/kwaysclawd/projects/cheatcode-ai/apps/mobile/proof/live2-play-03.png",
+      "seq": 6,
+      "symbol": "META",
+      "annotations": 3,
+      "line": "Meta on the daily, and this is a stock still in a downtrend. The twenty day average is falling, price sits below it, and the last six closes are choppy, not trending. The number that matters is up at the trigger, and price is still twenty five dollars under it. Zoom into that first resistance shelf and you can see it capped price three separate times — that's the ceiling buyers have to break. Below the invalidation, this idea is dead, full stop. The first target sits well above current price, which is why the reward against risk here is attractive if the trigger ever clears. Right now this is a setup waiting for permission, not a trend in motion. A close above the trigger changes everything. A close below the invalidation ends it."
+    },
+    {
+      "file": "/Users/kwaysclawd/projects/cheatcode-ai/apps/mobile/proof/live2-play-04.png",
+      "seq": 6,
+      "symbol": "META",
+      "annotations": 3,
+      "line": "Meta on the daily, and this is a stock still in a downtrend. The twenty day average is falling, price sits below it, and the last six closes are choppy, not trending. The number that matters is up at the trigger, and price is still twenty five dollars under it. Zoom into that first resistance shelf and you can see it capped price three separate times — that's the ceiling buyers have to break. Below the invalidation, this idea is dead, full stop. The first target sits well above current price, which is why the reward against risk here is attractive if the trigger ever clears. Right now this is a setup waiting for permission, not a trend in motion. A close above the trigger changes everything. A close below the invalidation ends it."
+    },
+    {
+      "file": "/Users/kwaysclawd/projects/cheatcode-ai/apps/mobile/proof/live2-play-05.png",
+      "seq": 7,
+      "symbol": "META",
+      "annotations": 4,
+      "line": "Meta on the daily, and this is a stock still in a downtrend. The twenty day average is falling, price sits below it, and the last six closes are choppy, not trending. The number that matters is up at the trigger, and price is still twenty five dollars under it. Zoom into that first resistance shelf and you can see it capped price three separate times — that's the ceiling buyers have to break. Below the invalidation, this idea is dead, full stop. The first target sits well above current price, which is why the reward against risk here is attractive if the trigger ever clears. Right now this is a setup waiting for permission, not a trend in motion. A close above the trigger changes everything. A close below the invalidation ends it."
+    },
+    {
+      "file": "/Users/kwaysclawd/projects/cheatcode-ai/apps/mobile/proof/live2-play-06.png",
+      "seq": 9,
+      "symbol": "META",
+      "annotations": 4,
+      "line": "Zoom into the hourly and this is a totally different mood than the daily. Price chopped between six fifty six and six eighty nine all session and closed near six sixty five, basically flat. Swing support sits right around six sixty five and six fifty six, swing resistance up near six eighty seven. Momentum here is neutral, volatility is neutral — this is a market taking a breath, not building a push. The real trigger is still way up at six oh one, wait, above current price near six eighty seven's neighborhood is nothing close to the actual setup trigger, so this hourly range is just noise underneath a much bigger level. What changes my mind is a real expansion in range with closes stacking above swing resistance — right now buyers and sellers are just trading the same forty dollars back and forth."
+    },
+    {
+      "file": "/Users/kwaysclawd/projects/cheatcode-ai/apps/mobile/proof/live2-play-07.png",
+      "seq": 10,
+      "symbol": "META",
+      "annotations": 5,
+      "line": "Zoom into the hourly and this is a totally different mood than the daily. Price chopped between six fifty six and six eighty nine all session and closed near six sixty five, basically flat. Swing support sits right around six sixty five and six fifty six, swing resistance up near six eighty seven. Momentum here is neutral, volatility is neutral — this is a market taking a breath, not building a push. The real trigger is still way up at six oh one, wait, above current price near six eighty seven's neighborhood is nothing close to the actual setup trigger, so this hourly range is just noise underneath a much bigger level. What changes my mind is a real expansion in range with closes stacking above swing resistance — right now buyers and sellers are just trading the same forty dollars back and forth."
+    },
+    {
+      "file": "/Users/kwaysclawd/projects/cheatcode-ai/apps/mobile/proof/live2-play-08.png",
+      "seq": 11,
+      "symbol": "META",
+      "annotations": 5,
+      "line": "Zoom into the hourly and this is a totally different mood than the daily. Price chopped between six fifty six and six eighty nine all session and closed near six sixty five, basically flat. Swing support sits right around six sixty five and six fifty six, swing resistance up near six eighty seven. Momentum here is neutral, volatility is neutral — this is a market taking a breath, not building a push. The real trigger is still way up at six oh one, wait, above current price near six eighty seven's neighborhood is nothing close to the actual setup trigger, so this hourly range is just noise underneath a much bigger level. What changes my mind is a real expansion in range with closes stacking above swing resistance — right now buyers and sellers are just trading the same forty dollars back and forth."
+    },
+    {
+      "file": "/Users/kwaysclawd/projects/cheatcode-ai/apps/mobile/proof/live2-play-09.png",
+      "seq": 12,
+      "symbol": "META",
+      "annotations": 5,
+      "line": "Zoom into the hourly and this is a totally different mood than the daily. Price chopped between six fifty six and six eighty nine all session and closed near six sixty five, basically flat. Swing support sits right around six sixty five and six fifty six, swing resistance up near six eighty seven. Momentum here is neutral, volatility is neutral — this is a market taking a breath, not building a push. The real trigger is still way up at six oh one, wait, above current price near six eighty seven's neighborhood is nothing close to the actual setup trigger, so this hourly range is just noise underneath a much bigger level. What changes my mind is a real expansion in range with closes stacking above swing resistance — right now buyers and sellers are just trading the same forty dollars back and forth."
+    },
+    {
+      "file": "/Users/kwaysclawd/projects/cheatcode-ai/apps/mobile/proof/live2-play-10.png",
+      "seq": 14,
+      "symbol": "META",
+      "annotations": 5,
+      "line": "Zoom into the fifteen minute and it's tight. Six straight closes clustered between five forty and five forty three, barely moving. Swing support sits at five thirty nine eighty seven, and price hasn't threatened it. Swing resistance up at five forty seven twenty two, then five fifty three oh eight above that, and buyers haven't tested either one with any conviction. This is a coil, not a breakout. The real trigger is way up at six oh one eighty six, still miles from this chop. What changes my mind here is a push through five forty seven with real volume — that's the first sign buyers are actually leaning in instead of drifting. Until then, this is dead air under a level that matters far more than anything happening right now. The stop underneath at five thirty seven twenty seven is still nowhere close, which is fine — patience is the trade right now."
+    },
+    {
+      "file": "/Users/kwaysclawd/projects/cheatcode-ai/apps/mobile/proof/live2-play-11.png",
+      "seq": 15,
+      "symbol": "META",
+      "annotations": 5,
+      "line": "Zoom into the fifteen minute and it's tight. Six straight closes clustered between five forty and five forty three, barely moving. Swing support sits at five thirty nine eighty seven, and price hasn't threatened it. Swing resistance up at five forty seven twenty two, then five fifty three oh eight above that, and buyers haven't tested either one with any conviction. This is a coil, not a breakout. The real trigger is way up at six oh one eighty six, still miles from this chop. What changes my mind here is a push through five forty seven with real volume — that's the first sign buyers are actually leaning in instead of drifting. Until then, this is dead air under a level that matters far more than anything happening right now. The stop underneath at five thirty seven twenty seven is still nowhere close, which is fine — patience is the trade right now."
+    }
+  ],
+  "failures": 0
+}
