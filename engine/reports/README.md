@@ -1,7 +1,7 @@
 # engine/ — what was measured, and what happened
 
-**Six models have now been measured against bars written down before each test
-was run. Five failed and one came back inconclusive.** None ships. Nothing here
+**Ten models have now been measured against bars written down before each test
+was run. Nine failed and one came back inconclusive.** None ships. Nothing here
 touches the app, and no alert has been produced.
 
 That is the intended kind of outcome. It cost a week; the alternative — the one
@@ -16,6 +16,10 @@ the existing SMS engine took — costs a paying customer.
 | ENGINE-3 | [`orb_mtf.v1`](orb_mtf.v1.polygon-v1.md) — Exit B, swing | INCONCLUSIVE (sample) |
 | ENGINE-4 | [`orb_simple_1h.v1`](orb_simple_1h.v1.polygon-deep-v1.md) — SPY, 2,081 trades | FAIL |
 | ENGINE-4 | [`orb_simple_4h.v1`](orb_simple_4h.v1.polygon-deep-v1.md) — SPY, 1,547 trades | FAIL |
+| ENGINE-5 | [`orb_1h_managed.v1`](orb_1h_managed.v1.polygon-deep-v1.md) — SPY, 2,074 trades · [basket, 11,591](orb_1h_managed.v1.polygon-v1.md) | FAIL |
+| ENGINE-5 | [`orb_1h_managed_2r.v1`](orb_1h_managed_2r.v1.polygon-deep-v1.md) — fixed 2R target | FAIL |
+| ENGINE-5 | [`orb_1h_trigcandle.v1`](orb_1h_trigcandle.v1.polygon-deep-v1.md) — ENGINE-4's stop reading | FAIL |
+| ENGINE-5 | [`orb_1h_unmanaged.v1`](orb_1h_unmanaged.v1.polygon-deep-v1.md) — no 1R partial | FAIL |
 
 Read [ENGINE-2's report](orb_htf_structural.v1.polygon-v1.md) for the finding the
 whole family turns on: the setup earns about 4.6 cents a share before costs and
@@ -317,3 +321,99 @@ no report mixes them. The NYSE holiday and early-close table was extended back
 to 2012 and the manifest audit finds it agrees with the tape on all 3,685 days —
 the only anomaly is QQQ's 216-minute session on 2013-08-22, the Nasdaq halt,
 which is real and kept.
+
+
+---
+
+## ENGINE-5 — the 1R banked instead of scored, and the stop ambiguity settled
+
+**Four models, both snapshots, all FAIL.** SPY: 2,074 trades, 2012-01-11 →
+2026-08-28. The 32-name basket: 11,591 trades, 2023-09-11 → 2026-08-28.
+
+**Gross against the matched control, which is read first and settles it.** Same
+days, same minutes, same stop distances, same target distances, same management
+rule, direction flipped:
+
+| run | pairs | model − control, gross mean R | 95% |
+|---|---|---|---|
+| SPY, all | 2,068 | **−0.004** | −0.058 to +0.050 |
+| SPY, out-of-sample | 492 | +0.108 | −0.004 to +0.219 |
+| 32-name basket, all | 11,568 | **−0.005** | −0.027 to +0.016 |
+| 32-name basket, out-of-sample | 2,545 | +0.016 | −0.030 to +0.061 |
+
+The basket interval is the tightest null this programme has produced: over
+11,568 paired trades, knowing which way to point is worth −0.005R with an
+interval 4.3 hundredths of an R wide. **The 1-hour trend filter buys nothing
+measurable.** SPY's out-of-sample +0.108R is the one number that flirts with
+significance, and after ten models an interval that just fails to exclude zero
+in one window of one symbol is what luck looks like, not what edge looks like.
+
+### Three things worth more than the verdict
+
+**1. The stop ambiguity is settled, and the owner's reading is the better one.**
+The owner said *"previous 5min h/l"* twice; ENGINE-4 used the trigger candle.
+Both readings were run. The brief's assumption that the prior candle is wider is
+false as a RULE — the trigger candle is the breakout bar and is often the bigger
+one; SPY 2012-11-19 risks $2.11 on one reading and $0.24 on the other — but it
+is true on average, and the averages are what matter:
+
+| | stop, median | vs price | cost drag | net mean R |
+|---|---|---|---|---|
+| SPY, prior candle (the owner's reading) | 43.0¢ | 0.146% | **0.182R** | −0.179 |
+| SPY, trigger candle (ENGINE-4's) | 31.0¢ | 0.104% | **0.240R** | −0.252 |
+| basket, prior candle | 67.5¢ | 0.335% | **0.131R** | −0.167 |
+| basket, trigger candle | 45.6¢ | 0.218% | **0.149R** | −0.190 |
+
+Measured on the intersection of the two trade sets, so it is the same trades.
+Paired, the prior-candle reading is worth **+0.073R** on SPY (95%: +0.040 to
++0.107 — excludes zero) and +0.023R on the basket (95%: −0.002 to +0.049).
+**Use the prior candle.** ENGINE-4's law is confirmed twice over: cost drag is
+`cost per share ÷ stop distance`, the wider stop is proportionally cheaper, and
+1.4× the stop width buys back about a quarter of the cost drag. It does not buy
+an edge — both readings still lose.
+
+**2. The management rule makes the equity curve look transformed and changes
+what it earns by nothing measurable.** Half off at +1R with the stop to
+breakeven, measured against the identical trades with the rule switched off:
+
+| | median net R | hit rate | mean net R | paired difference |
+|---|---|---|---|---|
+| SPY, unmanaged | −1.039 | 41.4% | −0.224 | |
+| SPY, managed | **+0.003** | **50.3%** | −0.201 | +0.023 (95%: −0.006 to +0.053) |
+| basket, unmanaged | −1.008 | 44.8% | −0.201 | |
+| basket, managed | **+0.067** | **53.6%** | −0.191 | +0.010 (95%: −0.004 to +0.024) |
+
+The middle trade goes from a full loss to a small win and the hit rate gains
+nine points, and the mean moves by two hundredths of an R with an interval
+containing zero. **Profit factor gets slightly WORSE** (0.65 → 0.63 on SPY),
+because the rule caps every winner at half size. A report that led with hit rate
+and median would call this a transformation. It is not one, and this is the
+clearest example in the programme of why the median and the mean have to be
+printed next to each other.
+
+**3. The scoring rule the owner asked for was not implemented, and here is what
+it would have bought.** *"Mark any trade that moves up at least 1rr as a win"* is
+the exact error behind the SMS engine's +11.93% average peak against +0.41%
+realised. **26.9%** of SPY trades touched +1R. Promoting every one of those to a
++1.000R win and leaving everything else as it resolved turns −0.201R a trade
+into −0.114R on the basket, and converts **1,666 losing trades into winners
+without a single share changing hands at a different price.** It is reported as
+a diagnostic in its own fenced section, it enters no gate, and the fence was
+written into `models/gates.py` and all four `GATE.md` files before any number
+existed.
+
+### What the four models were
+
+Each pre-registered in `d8e592b`, before any evaluation, with one change each:
+`orb_1h_managed.v1` (1-hour trend, 09:30–09:45 range, 5-minute close beyond it,
+stop at the candle before the trigger, target the nearest 1-hour level, half off
+at +1R, flat at 15:55); `orb_1h_managed_2r.v1` (fixed 2R target);
+`orb_1h_trigcandle.v1` (ENGINE-4's stop); `orb_1h_unmanaged.v1` (no partial).
+The management runner is asserted to reproduce the older runner trade for trade
+when the rule is switched off, which is what makes the unmanaged control a
+control.
+
+The gate pre-authorised this lane to stop as soon as gross-versus-control came
+back null. It did come back null. The set was completed anyway because a variant
+costs about ten seconds on this cache — no variant was added, no threshold moved
+and no parameter changed after a number was seen.

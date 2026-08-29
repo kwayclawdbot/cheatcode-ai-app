@@ -279,3 +279,43 @@ def naive_1r_scoring(trades, level: float = ONE_R) -> dict:
         "mean_r_of_touchers": (sum(t.net_r for t in touched) / len(touched)
                                if touched else float("nan")),
     }
+
+
+def naive_1r_scoring_generous(trades, level: float = ONE_R) -> dict:
+    """The SAME literal request, read the other way — and the flattering way.
+
+    Added AFTER the first evaluation, and the reason is stated so the addition
+    cannot be mistaken for tuning. `naive_1r_scoring` books -1R for every trade
+    that did not touch, which on a model whose target is often nearer than 1R
+    turns out to be HARSHER than what actually happened. That understates the
+    danger the fence exists to guard against.
+
+    The owner's words were *"even if it doesnt hit 2rr mark any trade that moves
+    up at least 1rr as a win"* — i.e. leave every other trade exactly as it
+    resolved and only PROMOTE the ones that touched. That reading can only make
+    the number better than reality, never worse, which is precisely why it is
+    the dangerous one and why it belongs in the report.
+
+    NOTHING here enters a gate. See DIAGNOSTICS_NEVER_GATED.
+    """
+    import math
+
+    rows = [t for t in trades if math.isfinite(t.mfe_r) and math.isfinite(t.net_r)]
+    n = len(rows)
+    if not n:
+        return {"n": 0}
+    promoted = [level if t.mfe_r >= level else t.net_r for t in rows]
+    realised = sorted(t.net_r for t in rows)
+    return {
+        "n": n,
+        "claimed_win_rate": sum(1 for x in promoted if x > 0) / n,
+        "claimed_mean_r": sum(promoted) / n,
+        "claimed_median_r": (sorted(promoted)[n // 2] if n % 2
+                             else 0.5 * (sorted(promoted)[n // 2 - 1]
+                                         + sorted(promoted)[n // 2])),
+        "realised_win_rate": sum(1 for t in rows if t.net_r > 0) / n,
+        "realised_mean_r": sum(realised) / n,
+        "realised_median_r": (realised[n // 2] if n % 2
+                              else 0.5 * (realised[n // 2 - 1] + realised[n // 2])),
+        "promoted": sum(1 for t in rows if t.mfe_r >= level and t.net_r < level),
+    }
