@@ -51,6 +51,20 @@ market-intelligence worker ─ setup_events (discovered / forming / ready / trig
 4. **LIVE-4 Market-hours mode (L4)** — the real-time setup loop off `setup_events`; requires Phase 3 scanner from `04_BUILD_PLAN.md`.
 5. **LIVE-5 Stage page + broadcast box → YouTube (L6, L7)**.
 6. **LIVE-6 Furniture** — cohost, intros/outros, music bed with ducking, winners leaderboard, tipping.
+7. **LIVE-7 User drawing** (§4b) — post-v1; users draw their own marks alongside Kai's.
+
+## 4b. User drawing on the chart (owner decision 2026-08-28: planned, NOT in v1)
+
+Users watching the live show — and using the Trade Portal generally — **should be able to draw on the chart themselves**: mark their own level while Kai is working, sketch a trendline, box a zone. **v1 ships without it.** Kai draws; the user watches, inspects, and hides.
+
+Deferring costs nothing structurally, because the model already carries user-authored marks:
+- `chart_annotations.provenance` is `kai | user | community | plan` and `AnnotationRow.provenance` **defaults to `'user'`** (`packages/shared/api.ts`), with `user_id` nullable for Kai's rows.
+- RLS already scopes a user's own annotations, and the client may already flip `status` to hidden/deleted on its own rows.
+- LIVE-1's annotation layer renders by `kind`, not by author, so a user-drawn level needs no new rendering.
+
+What a later **LIVE-7 (user drawing)** lane actually has to add: a drawing-tool affordance (pick kind → place by drag), price/time snapping, an edit/delete gesture, insert via the annotations API, and one product rule to settle — **visual separation of authorship**, so a user never mistakes their own line for Kai's (Kai = violet per the palette lock; the user's own marks should read as volt). During a live show the user's marks are private to them and must survive Kai's camera moves (they are price/time anchored, so they do).
+
+Do not let v1 work foreclose this: never key rendering, RLS, or the annotations API on `provenance === 'kai'`.
 
 ## 5. Rules that bind
 - Never the word "SuperTrend" — it's **CheatCode Trend Clouds**. Data is **Polygon only**.
