@@ -12,6 +12,20 @@
  *   - A CAN read its own rows (so we know the assertions above are meaningful)
  *   - a direct client insert into `messages` is rejected (api-app writes only)
  *
+ * Round 5 (0024) adds:
+ *   - push_subscriptions: owner select/delete only, no client INSERT or UPDATE
+ *     anywhere; A cannot read, update or delete B's row, and cannot register a
+ *     device in B's name
+ *   - register_push_subscription owns the (transport, handle) upsert:
+ *     re-registering a token that belongs to ANOTHER user moves that same row to
+ *     the caller and leaves it active (the device changed hands), and
+ *     re-registering a revoked token re-activates it
+ *   - revoke_push_subscription is owner-only and answers identically for a row
+ *     that is not yours and a row that does not exist
+ *   - notification_deliveries is service-role only: no policy at all, so the
+ *     owner of the notification still cannot read its ticket ids
+ *   - notification_prefs.push_enabled / .categories are owner-read, owner-write
+ *
  * Round 4 (0021) adds:
  *   - chart_annotations: owner-scoped (Kai-provenance rows included), client
  *     INSERT refused, client UPDATE limited to status hidden/deleted on own rows
@@ -191,6 +205,7 @@ const B = { email: `rls-b-${stamp}@example.com`, password: `pw-b-${stamp}!B1` };
 
 let createdIds = [];
 const liveShowIds = [];
+const notificationIds = [];
 let tmpCoreRoom = null;
 let tmpSetupRoom = null;
 let amdCircle = null;      // opened by open_setup_circle during the run
@@ -1119,6 +1134,269 @@ try {
     await serviceDelete(`subscriptions?user_id=eq.${A.id}`);
   }
 
+  // ================================================= push registry (0024)
+  console.log('\npush subscriptions: one token, one owner, and the owner is the caller:');
+  const pushSub = {};
+  {
+    const aHandle = `ExponentPushToken[rls-a-${stamp}]`;
+    const bHandle = `ExponentPushToken[rls-b-${stamp}]`;
+
+    // Registration is an RPC and not an insert, because registration is the
+    // thing that decides WHO a device belongs to.
+    const reg = await asA('rpc/register_push_subscription', {
+      method: 'POST',
+      body: JSON.stringify({
+        p_transport: 'expo', p_handle: aHandle, p_platform: 'ios', p_label: "A's phone",
+      }),
+    });
+    assert(
+      reg.status < 300 && reg.body?.user_id === A.id && reg.body?.state === 'active',
+      'register_push_subscription writes a row owned by the caller, active',
+      `status ${reg.status} body ${JSON.stringify(reg.body)}`,
+    );
+    pushSub.a = reg.body?.id;
+
+    const forOther = await asA('rpc/register_push_subscription', {
+      method: 'POST',
+      body: JSON.stringify({
+        p_transport: 'expo', p_handle: `ExponentPushToken[rls-x-${stamp}]`, p_user_id: B.id,
+      }),
+    });
+    assert(forOther.status >= 400,
+      'a client cannot register a device in somebody else\'s name',
+      `status ${forOther.status} body ${JSON.stringify(forOther.body)}`);
+
+    const bReg = await asB('rpc/register_push_subscription', {
+      method: 'POST',
+      body: JSON.stringify({
+        p_transport: 'expo', p_handle: bHandle, p_platform: 'android', p_label: "B's phone",
+      }),
+    });
+    assert(bReg.status < 300 && bReg.body?.user_id === B.id, 'B registers its own device',
+      `status ${bReg.status} body ${JSON.stringify(bReg.body)}`);
+    pushSub.b = bReg.body?.id;
+
+    const own = await asA(`push_subscriptions?id=eq.${pushSub.a}&select=id,handle,state`);
+    assert(Array.isArray(own.body) && own.body.length === 1,
+      'A can read its own subscription', JSON.stringify(own.body));
+
+    const other = await asA(`push_subscriptions?id=eq.${pushSub.b}&select=id,handle`);
+    assert(Array.isArray(other.body) && other.body.length === 0,
+      "A cannot read B's subscription — a push token is a device secret",
+      JSON.stringify(other.body));
+
+    const insForB = await asA('push_subscriptions', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: B.id, transport: 'expo', handle: `ExponentPushToken[rls-forge-${stamp}]`,
+      }),
+    });
+    assert(insForB.status >= 400,
+      "a client cannot insert a subscription carrying B's user_id",
+      `status ${insForB.status} body ${JSON.stringify(insForB.body)}`);
+
+    const insOwn = await asA('push_subscriptions', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: A.id, transport: 'expo', handle: `ExponentPushToken[rls-own-${stamp}]`,
+      }),
+    });
+    assert(insOwn.status >= 400,
+      'nor one of its own — there is no INSERT grant at all, registration is the RPC',
+      `status ${insOwn.status} body ${JSON.stringify(insOwn.body)}`);
+
+    const updOther = await asA(`push_subscriptions?id=eq.${pushSub.b}`, {
+      method: 'PATCH', body: JSON.stringify({ state: 'revoked' }),
+    });
+    assert(updOther.status >= 400, "A cannot update B's subscription",
+      `status ${updOther.status} body ${JSON.stringify(updOther.body)}`);
+
+    const updOwn = await asA(`push_subscriptions?id=eq.${pushSub.a}`, {
+      method: 'PATCH', body: JSON.stringify({ state: 'active', failure_count: 0 }),
+    });
+    assert(updOwn.status >= 400,
+      'nor its own — state and failure_count are the sender\'s bookkeeping',
+      `status ${updOwn.status} body ${JSON.stringify(updOwn.body)}`);
+
+    // DELETE is granted, so this is not refused — it simply matches no row. The
+    // assertion has to be on the data, not on the status code.
+    await asA(`push_subscriptions?id=eq.${pushSub.b}`, { method: 'DELETE' });
+    const bSurvives = await serviceGet(`push_subscriptions?id=eq.${pushSub.b}&select=id,state`);
+    assert(Array.isArray(bSurvives) && bSurvives.length === 1,
+      "A's delete of B's subscription removes nothing", JSON.stringify(bSurvives));
+
+    // THE ONE THAT MATTERS. The device changes hands (or the browser profile is
+    // shared, or the token is recycled): the same handle is registered again
+    // from A's session. The row must end up owned by A and active. Leaving it on
+    // B would push B's positions and P&L to a device A is holding.
+    const handover = await asA('rpc/register_push_subscription', {
+      method: 'POST',
+      body: JSON.stringify({
+        p_transport: 'expo', p_handle: bHandle, p_platform: 'android', p_label: 'handed over',
+      }),
+    });
+    assert(
+      handover.status < 300 && handover.body?.id === pushSub.b &&
+        handover.body?.user_id === A.id && handover.body?.state === 'active',
+      're-registering another user\'s token moves that same row to the new owner, active',
+      `status ${handover.status} body ${JSON.stringify(handover.body)}`,
+    );
+
+    const bLost = await asB(`push_subscriptions?id=eq.${pushSub.b}&select=id`);
+    assert(Array.isArray(bLost.body) && bLost.body.length === 0,
+      'and B no longer sees the device it handed over', JSON.stringify(bLost.body));
+
+    const allForHandle = await serviceGet(
+      `push_subscriptions?handle=eq.${encodeURIComponent(bHandle)}&select=id,user_id`);
+    assert(Array.isArray(allForHandle) && allForHandle.length === 1,
+      'a token is still exactly one row — the takeover is an upsert, not a second row',
+      JSON.stringify(allForHandle));
+
+    // Revoking: owner-only, and a row that is not yours answers exactly like a
+    // row that does not exist.
+    const revOther = await asB('rpc/revoke_push_subscription', {
+      method: 'POST', body: JSON.stringify({ p_id: pushSub.a }),
+    });
+    assert(revOther.status >= 400, "B cannot revoke A's device",
+      `status ${revOther.status} body ${JSON.stringify(revOther.body)}`);
+
+    const revGhost = await asB('rpc/revoke_push_subscription', {
+      method: 'POST', body: JSON.stringify({ p_id: '00000000-0000-4000-8000-000000000000' }),
+    });
+    assert(
+      revGhost.status === revOther.status &&
+        JSON.stringify(revGhost.body?.message) === JSON.stringify(revOther.body?.message),
+      'and gets the same answer as for a subscription that does not exist',
+      `${revOther.status}/${JSON.stringify(revOther.body)} vs ${revGhost.status}/${JSON.stringify(revGhost.body)}`,
+    );
+
+    const untouched = await serviceGet(`push_subscriptions?id=eq.${pushSub.a}&select=state`);
+    assert(untouched?.[0]?.state === 'active', "A's device is still active after B tried",
+      JSON.stringify(untouched));
+
+    const revMine = await asA('rpc/revoke_push_subscription', {
+      method: 'POST', body: JSON.stringify({ p_id: pushSub.a }),
+    });
+    assert(revMine.status < 300 && revMine.body?.state === 'revoked',
+      'A can turn its own device off', `status ${revMine.status} body ${JSON.stringify(revMine.body)}`);
+
+    const reReg = await asA('rpc/register_push_subscription', {
+      method: 'POST', body: JSON.stringify({ p_transport: 'expo', p_handle: aHandle }),
+    });
+    assert(
+      reReg.status < 300 && reReg.body?.id === pushSub.a && reReg.body?.state === 'active' &&
+        reReg.body?.device_label === "A's phone",
+      'and turning it back on re-activates that same row without losing the device label',
+      `status ${reReg.status} body ${JSON.stringify(reReg.body)}`,
+    );
+
+    const anonReg = await fetch(`${URL_BASE}/rest/v1/rpc/register_push_subscription`, {
+      method: 'POST',
+      headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_transport: 'expo', p_handle: `anon-${stamp}` }),
+    });
+    assert(anonReg.status >= 400, 'anon cannot register a device at all', `status ${anonReg.status}`);
+
+    const anonRead = await fetch(`${URL_BASE}/rest/v1/push_subscriptions?select=id`, {
+      headers: { apikey: ANON, Authorization: `Bearer ${ANON}` },
+    });
+    assert(anonRead.status >= 400 || (await anonRead.json()).length === 0,
+      'anon reads no subscriptions', `status ${anonRead.status}`);
+  }
+
+  // ===================================== notification_deliveries (0024)
+  console.log('\nnotification_deliveries is the sender\'s ledger, not user data:');
+  {
+    const note = await serviceInsert('notifications', {
+      user_id: A.id, channel: 'push', kind: 'alert_trigger',
+      payload: { route: '/alerts', title_plain: 'META crossed 604.50' },
+    });
+    notificationIds.push(note.id);
+
+    const queued = await serviceInsert('notification_deliveries', {
+      notification_id: note.id, subscription_id: pushSub.a, transport: 'expo',
+      state: 'queued', ticket_id: `ticket-${stamp}`,
+    });
+
+    // Not owner-scoped — NOT READABLE AT ALL. The table has RLS on and no
+    // policy for `authenticated`, which is the statement being made: ticket ids
+    // and provider errors are operational data about a third party.
+    const mine = await asA('notification_deliveries?select=id,ticket_id');
+    assert(
+      mine.status >= 400 || (Array.isArray(mine.body) && mine.body.length === 0),
+      'even the owner of the notification cannot read its delivery rows',
+      `status ${mine.status} body ${JSON.stringify(mine.body)}`,
+    );
+
+    const byId = await asA(`notification_deliveries?id=eq.${queued.id}&select=ticket_id`);
+    assert(
+      byId.status >= 400 || (Array.isArray(byId.body) && byId.body.length === 0),
+      'not even by guessing the id', `status ${byId.status} body ${JSON.stringify(byId.body)}`,
+    );
+
+    const insDelivery = await asA('notification_deliveries', {
+      method: 'POST',
+      body: JSON.stringify({ notification_id: note.id, transport: 'expo', state: 'delivered' }),
+    });
+    assert(insDelivery.status >= 400, 'nor mark one delivered',
+      `status ${insDelivery.status} body ${JSON.stringify(insDelivery.body)}`);
+
+    // A push we decided not to send is a record with a reason, never a drop —
+    // and it carries no device, because the decision was made before one was
+    // chosen (brief §3).
+    const suppressed = await serviceInsert('notification_deliveries', {
+      notification_id: note.id, transport: 'none', state: 'suppressed', reason: 'quiet_hours',
+    });
+    assert(suppressed.subscription_id === null && suppressed.reason === 'quiet_hours',
+      'a user-level suppression records its reason and no device', JSON.stringify(suppressed));
+
+    // The in-app row always survives, and so does the history of what we tried:
+    // pruning a dead token unlinks the ledger rather than erasing them.
+    await serviceDelete(`push_subscriptions?id=eq.${pushSub.a}`);
+    const orphan = await serviceGet(
+      `notification_deliveries?id=eq.${queued.id}&select=subscription_id,ticket_id`);
+    assert(orphan?.[0] && orphan[0].subscription_id === null && orphan[0].ticket_id === `ticket-${stamp}`,
+      'deleting a device keeps its delivery history, unlinked', JSON.stringify(orphan));
+
+    const stillThere = await asA(`notifications?id=eq.${note.id}&select=id`);
+    assert(Array.isArray(stillThere.body) && stillThere.body.length === 1,
+      'and the notification itself is still in the inbox', JSON.stringify(stillThere.body));
+  }
+
+  // ================================ notification_prefs push switch (0024)
+  console.log('\nnotification_prefs carries the push master switch, owner-only:');
+  {
+    const mine = await asA(`notification_prefs?user_id=eq.${A.id}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ push_enabled: false, categories: { trade_alerts: false } }),
+    });
+    assert(
+      mine.status < 300 && mine.body?.[0]?.push_enabled === false &&
+        mine.body[0].categories?.trade_alerts === false,
+      'a user can turn push off and switch a category off for themselves',
+      `status ${mine.status} body ${JSON.stringify(mine.body)}`,
+    );
+
+    // Granted UPDATE, so RLS filters rather than refusing: assert on the data.
+    await asA(`notification_prefs?user_id=eq.${B.id}`, {
+      method: 'PATCH', body: JSON.stringify({ push_enabled: false }),
+    });
+    const bPrefs = await serviceGet(
+      `notification_prefs?user_id=eq.${B.id}&select=push_enabled,categories`);
+    assert(bPrefs?.[0]?.push_enabled === true,
+      "and cannot turn somebody else's push off", JSON.stringify(bPrefs));
+    assert(
+      bPrefs?.[0] && JSON.stringify(bPrefs[0].categories) === '{}',
+      'a fresh user has no category overrides, which means all on (brief §4.5)',
+      JSON.stringify(bPrefs),
+    );
+
+    const bReads = await asB(`notification_prefs?user_id=eq.${A.id}&select=push_enabled`);
+    assert(Array.isArray(bReads.body) && bReads.body.length === 0,
+      "B cannot read A's notification prefs", JSON.stringify(bReads.body));
+  }
+
   // ============================================ rule_adherence_v (0021)
   console.log('\nrule_adherence_v counts a user\'s own sessions only:');
   {
@@ -1181,6 +1459,9 @@ try {
     await serviceDelete(`debriefs?user_id=eq.${id}`);
     await serviceDelete(`positions?user_id=eq.${id}`);
   }
+  // notifications has no FK to profiles either, and notification_deliveries
+  // cascades from it. push_subscriptions goes with the profile.
+  for (const id of notificationIds) await serviceDelete(`notifications?id=eq.${id}`);
   for (const id of createdIds) await deleteUser(id);
 }
 

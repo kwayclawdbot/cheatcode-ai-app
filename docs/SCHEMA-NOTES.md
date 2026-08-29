@@ -11,10 +11,11 @@ Companion to `docs/01_DATA_MODEL.md`. Two kinds of entry, written per round:
 Sections 1 and 2 cover the v1 slice (`0001…0016`); sections 3 and 4 cover round 2
 (`0017`, `0018`); sections 5 and 6 cover round 3 (`0020`, paper execution);
 sections 7 and 8 cover round 4 (`0021`, the Prototype: alerts as trade objects,
-chart annotations, circles, conversation drawer). All continue the same
-numbering.
+chart annotations, circles, conversation drawer). Later rounds are filed under
+their migration number: `0023` (live shows) and `0024` (push notifications). All
+continue the same numbering.
 
-Migrations live in `supabase/migrations/0001…0021`, applied in filename order.
+Migrations live in `supabase/migrations/0001…0024`, applied in filename order.
 
 ---
 
@@ -1188,3 +1189,143 @@ Decisions worth knowing, and the reason for each:
 than serving it, so a contract change that forgets the writer shows up as one
 loud frame rather than a client rendering nothing — but the store itself would
 accept `{}`.
+
+## 0024 — push notifications (round 5, SCHEMA-5)
+
+`push_subscriptions` · `notification_deliveries`, plus `notification_prefs`
+gaining `push_enabled boolean not null default true` and
+`categories jsonb not null default '{}'`. Brief: `docs/BUILD-BRIEF-round-5-push.md`
+§5. Contract in `packages/shared/api.ts` (API-5); the sender is
+`apps/api/src/lib/push/**`.
+
+### 1.53 A token has exactly one owner, and re-registering it hands the row over
+
+`unique (transport, handle)` is GLOBAL, not per user, so re-registering a handle
+can collide with a row belonging to somebody else — a handed-down phone, a
+shared browser profile, a demo device, a recycled token. Three resolutions were
+possible and only one of them is safe:
+
+- **Leave `user_id` on the previous owner** (what a plain "insert, ignore
+  conflicts" would do). The previous owner's alerts, fills and P&L then get
+  pushed to a device the new owner is holding. This is a disclosure, and it is
+  the reason the upsert is a function rather than a policy.
+- **Refuse the registration.** No disclosure, but the new owner silently gets no
+  push forever while the old owner keeps buzzing a phone they no longer have.
+- **Take the row over** — what `register_push_subscription` does. The token
+  addresses whoever is holding the device now, so the row must too:
+  `user_id = excluded.user_id`, `state = 'active'`, `failure_count = 0`, and
+  `last_success_at` cleared when the owner changed (a delivery history belongs
+  to the account that earned it). The optional fields are `coalesce`d so a
+  client that sends fewer arguments does not blank a device label.
+
+The trade this makes, stated plainly: A holding B's token can move it to A and
+stop B's device buzzing. That is a **denial**, not a disclosure — B's next app
+launch re-registers and takes it back — and it is strictly better than the
+disclosure the other two options buy. Verified in `scripts/rls-test.mjs`
+("re-registering another user's token moves that same row to the new owner").
+
+Two consequences worth knowing:
+
+- The function is `security definer` **because** of this case, not decoratively:
+  the conflicting row is invisible to the caller under the owner-select policy,
+  so an RLS-constrained `on conflict do update` would find nothing to update and
+  fail as a bare unique violation.
+- `push_subscriptions` therefore has **no client INSERT grant at all**. An insert
+  policy with `check (user_id = auth.uid())` would still let a client claim a
+  colliding handle and get a raw 23505 instead of the takeover. Registration is
+  the RPC; there is no second door.
+
+### 1.54 `register_push_subscription` derives the owner from `auth.uid()`
+
+The brief's signature is five arguments and no user id. A sixth, `p_user_id`,
+was added **last and defaulted**, and is consulted only when `auth.uid()` is
+null — i.e. a `service_role` call. That is not a loophole, it is the only way
+the API can register at all: `apps/api/src/lib/db.ts` has exactly one client and
+it is the service role, so a function that read `auth.uid()` and nothing else
+would be uncallable from `POST /api/v1/push/subscriptions`. A JWT that passes a
+`p_user_id` other than its own is refused with `forbidden` (42501) rather than
+silently ignored. Same shape as 0018's `join_core_room`, and the rls test covers
+both halves.
+
+`revoke_push_subscription` answers identically for a row that is not yours and a
+row that does not exist (`subscription_not_found`, 42501). Distinguishing them
+would make the function an oracle for which push tokens exist. `service_role`
+may revoke any row, which is how a `DeviceNotRegistered` ticket retires a token
+nobody asked us to retire. It revokes rather than deletes: the ledger points at
+the row, "this device was turned off" is a truer record than "this device never
+existed", and a re-register brings the same row back to `active`.
+
+### 1.55 `notification_deliveries` has RLS on and **no policy at all**
+
+Not owner-select — none. There is no user-facing question this table answers
+that the `notifications` row does not, and it carries provider ticket ids,
+receipt state and third-party error strings. The absence of a policy is the
+statement being made; a table with RLS enabled and no policy returns nothing to
+anyone but a role that bypasses RLS. The rls test asserts the owner of a
+notification cannot read its own delivery rows, by listing and by guessing the id.
+
+`subscription_id` is nullable and `on delete set null` for two reasons that both
+matter: a user-level suppression (push off, category off, quiet hours, budget,
+no device) is decided **before** any device is chosen, and a pruned token must
+not take the record of what we tried with it. `transport` is `not null` per the
+brief, so a user-level suppression records **`'none'`** — no check constraint was
+added to `notification_deliveries.transport`, because the closed half of the
+vocabulary is ours and the open half is Expo's. Same reasoning for `reason`,
+which is free text: constraining a vocabulary a third party owns means a
+migration every time a provider adds a code.
+
+`notification_deliveries` carries no `user_id`. The daily-budget count joins
+through `notifications` (already indexed on `(user_id, created_at desc)`), which
+is one join rather than a denormalised column that can disagree.
+
+### 1.56 `notification_prefs.categories` is jsonb, and empty means all on
+
+Deliberately not five boolean columns and not a row-per-category table: the set
+of categories is a product decision that will move (brief §4.5 names five),
+absence is the default rather than a value to backfill, and nothing ever filters
+or joins on a category. `push_enabled` is a **separate question from OS
+permission** — permission lives on the device, this is the user's intent, and it
+is what we honour when the two disagree. No grant or policy change was needed:
+0014 row 1 already gives the owner table-level read/write on `notification_prefs`.
+
+### 1.57 `scripts/rls-test.mjs` — round 5
+
+30 new assertions (137 → 167, all green on a fresh `supabase db reset`), in three
+blocks: the push registry (owner isolation in both directions, no INSERT and no
+UPDATE for anyone, the handover case above, revoke symmetry, anon shut out), the
+delivery ledger (unreadable by the notification's own owner, unwritable, a
+suppression keeps its reason, a pruned device leaves its history unlinked while
+the inbox row survives), and the prefs switch. Cleanup gained
+`notifications?id=eq.…` because `notifications` has no FK to `profiles` and would
+otherwise outlive the test users, the same way `positions`/`debriefs` do (gap 2.9).
+
+### 0024 — known gaps (owner decides)
+
+### 2.31 A web subscription with null `keys` is accepted and undeliverable
+
+`web-push` cannot encrypt without the browser's `{p256dh, auth}` pair, so a
+`transport = 'web'` row with `keys is null` can never be sent to. No check
+constraint enforces it, because §6 of the brief types the field as
+`keys?: {...} | null` — optional — and a database check would contradict the
+shared contract the API lane is building against. `register_push_subscription`
+validates transport, handle and platform but deliberately not this. **The sender
+must skip (and ideally mark `stale`) a web row with no keys.** If the owner would
+rather have the store refuse it, the fix is one `check` plus a `keys_required`
+error in the RPC, and a change to the contract's optionality.
+
+### 2.32 Nothing constrains `notification_prefs.categories` to the five categories
+
+`{"trade_alerts": false}` and `{"trade_alerts": "no"}` and `{"nonsense": true}`
+are all accepted. The resolver treats an absent or non-`false` key as on, so junk
+degrades to "notify me", which is the safe direction — but a typo'd category
+name silently never takes effect. Same class of gap as 2.10
+(`rooms.config` carrying behaviour in unconstrained jsonb).
+
+### 2.33 `notifications.sent_at` still has no writer in SQL
+
+0008 left `notifications.sent_at` and `notifications.delivery` for "a future push
+sender". This migration builds the ledger that sender writes, but does not touch
+either column — deciding what `sent_at` means when one notification fans out to
+three devices with three different outcomes is the sender's call (API-5), not the
+schema's. Left as-is rather than guessed at. If it stays unwritten after round 5,
+it should be dropped in favour of the `notification_deliveries` join.

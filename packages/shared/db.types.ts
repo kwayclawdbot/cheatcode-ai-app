@@ -1421,6 +1421,202 @@ export type Database = {
           },
         ]
       }
+      live_frames: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          payload: Json
+          segment_id: string | null
+          seq: number
+          show_id: string
+          t_offset_ms: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          payload: Json
+          segment_id?: string | null
+          seq: number
+          show_id: string
+          t_offset_ms?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          payload?: Json
+          segment_id?: string | null
+          seq?: number
+          show_id?: string
+          t_offset_ms?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_frames_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "live_segments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "live_frames_show_id_fkey"
+            columns: ["show_id"]
+            isOneToOne: false
+            referencedRelation: "live_shows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      live_requests: {
+        Row: {
+          created_at: string
+          id: string
+          note: string | null
+          presented_segment_id: string | null
+          show_id: string | null
+          status: string
+          symbol: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          presented_segment_id?: string | null
+          show_id?: string | null
+          status?: string
+          symbol: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          presented_segment_id?: string | null
+          show_id?: string | null
+          status?: string
+          symbol?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_requests_presented_segment_id_fkey"
+            columns: ["presented_segment_id"]
+            isOneToOne: false
+            referencedRelation: "live_segments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "live_requests_show_id_fkey"
+            columns: ["show_id"]
+            isOneToOne: false
+            referencedRelation: "live_shows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "live_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "live_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      live_segments: {
+        Row: {
+          cost_usd: number | null
+          created_at: string
+          ended_at: string | null
+          id: string
+          meta: Json
+          prepared_at: string | null
+          seq: number
+          show_id: string
+          source: string
+          started_at: string | null
+          state: string
+          symbol: string
+        }
+        Insert: {
+          cost_usd?: number | null
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          meta?: Json
+          prepared_at?: string | null
+          seq: number
+          show_id: string
+          source: string
+          started_at?: string | null
+          state?: string
+          symbol: string
+        }
+        Update: {
+          cost_usd?: number | null
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          meta?: Json
+          prepared_at?: string | null
+          seq?: number
+          show_id?: string
+          source?: string
+          started_at?: string | null
+          state?: string
+          symbol?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_segments_show_id_fkey"
+            columns: ["show_id"]
+            isOneToOne: false
+            referencedRelation: "live_shows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      live_shows: {
+        Row: {
+          created_at: string
+          ended_at: string | null
+          id: string
+          meta: Json
+          mode: string
+          started_at: string | null
+          status: string
+          title: string | null
+        }
+        Insert: {
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          meta?: Json
+          mode: string
+          started_at?: string | null
+          status?: string
+          title?: string | null
+        }
+        Update: {
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          meta?: Json
+          mode?: string
+          started_at?: string | null
+          status?: string
+          title?: string | null
+        }
+        Relationships: []
+      }
       market_memory: {
         Row: {
           as_of: string
@@ -1608,24 +1804,93 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_deliveries: {
+        Row: {
+          attempts: number
+          created_at: string
+          error: string | null
+          id: string
+          next_attempt_at: string | null
+          notification_id: string
+          reason: string | null
+          receipt_checked_at: string | null
+          state: string
+          subscription_id: string | null
+          ticket_id: string | null
+          transport: string
+          updated_at: string | null
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          id?: string
+          next_attempt_at?: string | null
+          notification_id: string
+          reason?: string | null
+          receipt_checked_at?: string | null
+          state: string
+          subscription_id?: string | null
+          ticket_id?: string | null
+          transport: string
+          updated_at?: string | null
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          id?: string
+          next_attempt_at?: string | null
+          notification_id?: string
+          reason?: string | null
+          receipt_checked_at?: string | null
+          state?: string
+          subscription_id?: string | null
+          ticket_id?: string | null
+          transport?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_deliveries_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_deliveries_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "push_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_prefs: {
         Row: {
+          categories: Json
           created_at: string
           per_mode: Json
+          push_enabled: boolean
           quiet_hours: Json | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
+          categories?: Json
           created_at?: string
           per_mode?: Json
+          push_enabled?: boolean
           quiet_hours?: Json | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
+          categories?: Json
           created_at?: string
           per_mode?: Json
+          push_enabled?: boolean
           quiet_hours?: Json | null
           updated_at?: string | null
           user_id?: string
@@ -2111,6 +2376,69 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      push_subscriptions: {
+        Row: {
+          created_at: string
+          device_label: string | null
+          failure_count: number
+          handle: string
+          id: string
+          keys: Json | null
+          last_seen_at: string | null
+          last_success_at: string | null
+          platform: string | null
+          state: string
+          transport: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          device_label?: string | null
+          failure_count?: number
+          handle: string
+          id?: string
+          keys?: Json | null
+          last_seen_at?: string | null
+          last_success_at?: string | null
+          platform?: string | null
+          state?: string
+          transport: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          device_label?: string | null
+          failure_count?: number
+          handle?: string
+          id?: string
+          keys?: Json | null
+          last_seen_at?: string | null
+          last_success_at?: string | null
+          platform?: string | null
+          state?: string
+          transport?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "push_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       reports: {
         Row: {
@@ -3317,6 +3645,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      live_can_watch_market: { Args: never; Returns: boolean }
       next_room_message_seq: { Args: { p_room: string }; Returns: number }
       next_user_event_seq: { Args: { p_user: string }; Returns: number }
       notify: {
@@ -3548,7 +3877,62 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      register_push_subscription: {
+        Args: {
+          p_handle: string
+          p_keys?: Json
+          p_label?: string
+          p_platform?: string
+          p_transport: string
+          p_user_id?: string
+        }
+        Returns: {
+          created_at: string
+          device_label: string | null
+          failure_count: number
+          handle: string
+          id: string
+          keys: Json | null
+          last_seen_at: string | null
+          last_success_at: string | null
+          platform: string | null
+          state: string
+          transport: string
+          updated_at: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "push_subscriptions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       reset_paper_account: { Args: { p_user_id: string }; Returns: Json }
+      revoke_push_subscription: {
+        Args: { p_id: string }
+        Returns: {
+          created_at: string
+          device_label: string | null
+          failure_count: number
+          handle: string
+          id: string
+          keys: Json | null
+          last_seen_at: string | null
+          last_success_at: string | null
+          platform: string | null
+          state: string
+          transport: string
+          updated_at: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "push_subscriptions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       set_room_mute: {
         Args: { p_room_id: string; p_until: string; p_user_id: string }
         Returns: {
