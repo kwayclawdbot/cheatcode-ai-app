@@ -6,7 +6,7 @@ import { Button } from '../../../ui/Button';
 import { Sheet } from '../../../ui/Sheet';
 import { DataRow, Rule } from '../../../ui/DataRow';
 import { alpha, color, space } from '../../../ui/tokens';
-import { Board, Section, stamp, useSources, useSyncRunner, when } from '../../../features/admin';
+import { Board, Section, stamp, useSources, useStaffRole, useSyncRunner, when } from '../../../features/admin';
 
 /**
  * SOURCES — three connectors, one of them switched on.
@@ -33,6 +33,9 @@ export default function AdminSources() {
   const router = useRouter();
   const { data, loading, error, notAvailable, reload } = useSources();
   const runner = useSyncRunner(reload);
+  // An ingest writes to every person in the CRM, so running one is `admin` and
+  // above. `support` sees the same state and the same counts.
+  const { canWrite } = useStaffRole();
 
   return (
     <Board
@@ -95,7 +98,7 @@ export default function AdminSources() {
             <T size={12.5} c={color.muted} style={{ paddingVertical: space.x10 }}>This source has never run.</T>
           )}
 
-          {s.configured ? (
+          {s.configured && canWrite ? (
             <View style={{ flexDirection: 'row', gap: space.x10, marginTop: space.x12 }}>
               <Button
                 testID={`sync-${s.source}`}

@@ -430,6 +430,32 @@ const main = async () => {
       else fail(`the deep link went somewhere unexpected: ${landed}`);
       await shot(member.page, 'admin-14-deeplink');
     }
+    console.log('\n[14] the same person as `support` — the same boards, without the admin controls');
+    const down = await rest('rpc/set_staff_role', {
+      method: 'POST',
+      body: JSON.stringify({ p_user_id: s1.user_id, p_role: 'support', p_actor_user_id: ownerId, p_reason: 'ADMIN-4 proof: role check' }),
+    });
+    if (down?.role === 'support') pass('role changed to support');
+    else fail(`could not downgrade: ${JSON.stringify(down).slice(0, 140)}`);
+
+    await go(staff.page, `${BASE}/admin/sources`, 4000);
+    if (await seen(staff.page, 'screen-admin-sources', 'sync-app')) {
+      fail('a support member is still shown "Sync now", which the API would refuse');
+    } else pass('"Sync now" is not drawn for support — the API refuses it, so the button is not there to fail');
+    if (await seen(staff.page, 'screen-admin-sources', 'source-app')) pass('and support still sees every source and its counts');
+    else fail('support lost the sources board entirely');
+    await shot(staff.page, 'admin-15-support-sources');
+
+    await go(staff.page, `${BASE}/admin/invites`, 4000);
+    if (await seen(staff.page, 'screen-admin-invites', 'cta-make-invite')) fail('support is still shown the code maker');
+    else pass('support cannot see the code maker');
+    const invText = await staff.page.locator('[data-testid="screen-admin-invites"]').innerText().catch(() => '');
+    if (/see every code and who used it/.test(invText)) pass('and is told what it can do instead');
+    await shot(staff.page, 'admin-16-support-invites');
+
+    const refused = await apiCall(s1.token, '/admin/sync', { method: 'POST', body: JSON.stringify({ source: 'app' }) });
+    if (refused.status >= 400) pass(`and the API refuses it anyway: ${refused.status} ${refused.json?.error?.code}`);
+    else fail('the API let a support member run a sync');
   } catch (e) {
     fail(`run aborted: ${e.message}`);
     await shot(staff.page, 'admin-99-aborted').catch(() => {});

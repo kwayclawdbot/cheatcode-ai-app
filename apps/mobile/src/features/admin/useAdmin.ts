@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import type {
   AdminAuditPage, AdminAuditRow, AdminInviteRow, AdminInvitesPage, AdminOverview,
-  AdminPeopleFilter, AdminPersonRow, AdminPerson, AdminSegmentRow, AdminSourceState,
+  AdminPeopleFilter, AdminPersonRow, AdminPerson, AdminSegmentRow, AdminSourceState, StaffRole,
 } from '../../lib/types';
 
 /**
@@ -208,4 +208,25 @@ export function useSyncRunner(onDone: () => void) {
   }, [onDone]);
 
   return { run, running, result, dismiss: () => setResult(null) };
+}
+
+/**
+ * WHICH ACTIONS TO DRAW — a courtesy, exactly like the door itself.
+ *
+ * `support` reads the CRM and writes notes and tags; `admin` and `owner` also
+ * make invites, grant entitlements and run a source. The API already refuses
+ * the difference (`{ min: 'admin' }` on those routes, re-checked against
+ * `staff_members` every time), so nothing here is a permission — it is the
+ * difference between a board with three buttons and a board with three buttons
+ * that fail. A control that cannot work should not be on the screen.
+ */
+export function useStaffRole(): { role: StaffRole | null; canWrite: boolean } {
+  const [role, setRole] = useState<StaffRole | null>(null);
+  useEffect(() => {
+    let alive = true;
+    if (!api.available()) return;
+    api.me().then((m) => { if (alive) setRole(m.staff.role); }).catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
+  return { role, canWrite: role === 'admin' || role === 'owner' };
 }

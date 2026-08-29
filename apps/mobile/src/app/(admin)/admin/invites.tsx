@@ -7,7 +7,7 @@ import { Button } from '../../../ui/Button';
 import { Segmented } from '../../../ui/Segmented';
 import { DataRow, Rule, VRule } from '../../../ui/DataRow';
 import { color, space } from '../../../ui/tokens';
-import { Board, Section, stamp, useInvites, when } from '../../../features/admin';
+import { Board, Section, stamp, useInvites, useStaffRole, when } from '../../../features/admin';
 import type { AdminInviteRow } from '../../../lib/types';
 
 /**
@@ -43,6 +43,7 @@ async function copy(text: string): Promise<boolean> {
 export default function AdminInvites() {
   const router = useRouter();
   const { invites, totals, loading, error, notAvailable, create, revoke, busy, actionError } = useInvites();
+  const { canWrite } = useStaffRole();
 
   const [label, setLabel] = useState('');
   const [tier, setTier] = useState<'free' | 'premium'>('premium');
@@ -95,6 +96,7 @@ export default function AdminInvites() {
         </View>
       ) : null}
 
+      {canWrite ? (
       <Section label="MAKE A CODE" note="Send it however you like. Codes are unguessable and have no ambiguous glyphs, so one survives being read down a phone.">
         <View style={{ gap: space.x12, paddingTop: space.x8 }}>
           <Field
@@ -135,6 +137,11 @@ export default function AdminInvites() {
           <Button testID="cta-make-invite" label="Make the code" kind="volt" height={52} loading={busy} onPress={submit} />
         </View>
       </Section>
+      ) : (
+        <T size={12.5} c={color.muted} lh={19}>
+          Making and switching off codes is an admin act. You can see every code and who used it.
+        </T>
+      )}
 
       {made ? (
         <View style={{ gap: 8, paddingVertical: space.x12 }} testID="invite-made">
@@ -164,7 +171,7 @@ export default function AdminInvites() {
             sub={i.label ?? undefined}
             meta={`${i.tier} · ${i.redeemed_count}${i.max_redemptions ? ` of ${i.max_redemptions}` : ''} redeemed · ${STATE_WORD[i.state]}${i.expires_at ? ` · until ${stamp(i.expires_at)}` : ''}`}
             valueNode={
-              i.state === 'open' ? (
+              i.state === 'open' && canWrite ? (
                 <Pressable
                   testID={`invite-revoke-${i.code}`}
                   accessibilityRole="button"

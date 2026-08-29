@@ -10,7 +10,7 @@ import { alpha, color, space } from '../../../../ui/tokens';
 import { api } from '../../../../lib/api';
 import {
   Board, Section, StatusMark, IDENTITY_LABEL, money, personName, sourceLabel, stamp,
-  statusLabel, usePerson, when,
+  statusLabel, usePerson, useStaffRole, when,
 } from '../../../../features/admin';
 
 /**
@@ -35,6 +35,10 @@ export default function AdminPerson() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data, loading, error, notAvailable, reload } = usePerson(id ?? '');
+  // `support` reads and writes notes and tags. Granting access and making codes
+  // are `admin` and above, refused by the API either way — so the buttons are
+  // simply not drawn rather than drawn and refused.
+  const { canWrite } = useStaffRole();
 
   const [note, setNote] = useState('');
   const [tag, setTag] = useState('');
@@ -152,7 +156,7 @@ export default function AdminPerson() {
                 last={i === data.entitlements.length - 1}
               />
             ))}
-            {appUserId ? (
+            {appUserId && canWrite ? (
               <View style={{ flexDirection: 'row', gap: space.x10, marginTop: space.x12 }}>
                 <Button
                   testID="cta-grant"
@@ -176,7 +180,9 @@ export default function AdminPerson() {
               </View>
             ) : (
               <T size={11.5} c={color.dim} lh={17} style={{ marginTop: space.x8 }}>
-                There is no app account on this person yet, so there is nothing to grant. Send them a code instead.
+                {canWrite
+                  ? 'There is no app account on this person yet, so there is nothing to grant. Send them a code instead.'
+                  : 'Changing what somebody can reach is an admin act. You can read this file and write on it.'}
               </T>
             )}
           </Section>
@@ -292,6 +298,7 @@ export default function AdminPerson() {
               />
             ))}
             {!data.redemptions.length ? <T size={12.5} c={color.muted}>No codes redeemed.</T> : null}
+            {canWrite ? (
             <Button
               testID="cta-person-invite"
               label="Make a code for this person"
@@ -309,6 +316,7 @@ export default function AdminPerson() {
                 return `Code ${inv.code}. It resolves back to this person when it is redeemed.`;
               })}
             />
+            ) : null}
           </Section>
 
           <Section label="TIMELINE" note="Every source, one thread.">
