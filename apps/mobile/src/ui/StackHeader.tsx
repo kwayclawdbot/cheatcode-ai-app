@@ -60,7 +60,7 @@ export function StackHeader({
       </Pressable>
 
       <View style={{ flex: 1 }}>
-        <T size={17} weight="bold" ls={-0.17}>{title}</T>
+        <T size={17} weight="bold" ls={-0.17} numberOfLines={1}>{title}</T>
         {subtitleNode ?? (subtitle ? <T size={10} c={color.muted} style={{ marginTop: 2 }}>{subtitle}</T> : null)}
       </View>
 

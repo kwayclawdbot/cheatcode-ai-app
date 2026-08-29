@@ -350,6 +350,13 @@ export type Me = {
   entitlements: EntitlementFlag[];
   memory_enabled: boolean;
   settings: AppSettings;
+  /**
+   * Round 6. Whether to DRAW the operator's row in Account — a courtesy, not a
+   * control (brief §3). It is re-derived by the server on every `/me`, and it
+   * unlocks nothing: every admin byte still comes from a `staffed()` route that
+   * asks `staff_members` again. An API that predates 0025 answers `false`.
+   */
+  staff: StaffBlock;
 };
 
 export type NotificationGroup = 'action_required' | 'changes' | 'fyi';
@@ -763,3 +770,276 @@ export type KaiProfile = {
 };
 
 export type RuleAdherence = { sessions: number; followed: number };
+
+/* ==================================================================== */
+/* Round 6 — the operator's door (docs/BUILD-BRIEF-round-6-admin-crm.md) */
+/*                                                                      */
+/* Local mirrors of the ADMIN-2 contracts, for the same reason the       */
+/* round-5 push types are local: the screens read THESE, the adapter     */
+/* absorbs whatever the server sends, and a build whose API predates     */
+/* 0025 still renders a screen that says so. `packages/shared/api.ts` is  */
+/* another lane's file this round.                                       */
+/*                                                                      */
+/* THE HONESTY RULE LIVES IN THE TYPE. `AdminMetric.value` is nullable   */
+/* and sits beside `tracked` precisely so no screen can coalesce an      */
+/* unmeasured metric to zero by accident (brief §8).                     */
+/* ==================================================================== */
+
+export type StaffRole = 'support' | 'admin' | 'owner';
+
+/** What `/me` says about the caller. Grants nothing — the routes re-ask. */
+export type StaffBlock = { is_staff: boolean; role: StaffRole | null; plain: string };
+
+export type CrmStatus =
+  | 'lead' | 'invited' | 'signed_up' | 'onboarded'
+  | 'activated' | 'paying' | 'churned' | 'blocked';
+
+export type CrmIdentityKind =
+  | 'email' | 'phone' | 'app_user' | 'stripe_customer'
+  | 'kai_user' | 'os_user' | 'invite_code';
+
+export type CrmEventSource = 'app' | 'kai_sms' | 'stripe' | 'admin' | 'import';
+
+export type SyncSourceName = 'app' | 'kai_sms' | 'stripe';
+
+/** `value: null` ALWAYS means `tracked: false`. Render "not tracked yet". */
+export type AdminMetric = {
+  key: string;
+  label: string;
+  value: number | null;
+  tracked: boolean;
+  unit: 'count' | 'cents' | 'percent';
+  plain: string;
+};
+
+export type AdminFunnelRow = { status: CrmStatus; position: number; people: number };
+export type AdminDailyRow = { day: string; signups: number; leads: number };
+export type AdminSourceMixRow = { source: string | null; people: number };
+export type AdminInviteTotals = { outstanding: number; redeemed: number; revoked: number; expired: number };
+
+export type AdminSyncCounts = {
+  scanned: number; created: number; resolved: number; conflicted: number; skipped: number;
+};
+
+export type AdminSyncRun = {
+  id: string;
+  source: SyncSourceName;
+  state: 'running' | 'ok' | 'failed';
+  dry_run: boolean;
+  started_at: string;
+  finished_at: string | null;
+  counts: AdminSyncCounts;
+  error: string | null;
+};
+
+/** A source that is switched off is still a source — `reason` says which (§5). */
+export type AdminSourceState = {
+  source: SyncSourceName;
+  configured: boolean;
+  reason: string | null;
+  last_run: AdminSyncRun | null;
+  plain: string;
+};
+
+export type AdminOverview = {
+  funnel: AdminFunnelRow[];
+  metrics: AdminMetric[];
+  daily: AdminDailyRow[];
+  source_mix: AdminSourceMixRow[];
+  invites: AdminInviteTotals;
+  sources: AdminSourceState[];
+  generated_at: string | null;
+  plain: string;
+};
+
+export type AdminPersonRow = {
+  id: string;
+  display_name: string | null;
+  primary_email: string | null;
+  primary_phone_e164: string | null;
+  status: CrmStatus;
+  primary_tier: string | null;
+  source: string | null;
+  tags: string[];
+  first_seen_at: string | null;
+  last_active_at: string | null;
+  app_user_id: string | null;
+  plain: string;
+};
+
+export type AdminPeopleFilter = {
+  q?: string;
+  status?: CrmStatus;
+  tier?: string;
+  source?: string;
+  tag?: string;
+  segment_id?: string;
+  cursor?: string;
+};
+
+export type AdminPeoplePage = {
+  people: AdminPersonRow[];
+  next_cursor: string | null;
+  /** Null means "more than we counted", never "unknown". */
+  total: number | null;
+  /** Exactly which fields the search touched, so the screen claims no more. */
+  searched: string[];
+  plain: string;
+};
+
+/** Nine numbers this app does not compute. `tracked:false` until a connector does. */
+export type AdminScores = {
+  engagement: number | null;
+  buy_propensity: number | null;
+  churn_risk: number | null;
+  upsell_propensity: number | null;
+  crosssell_propensity: number | null;
+  responsiveness: number | null;
+  predicted_ltv_cents: number | null;
+  predicted_days_to_churn: number | null;
+  updated_at: string | null;
+  tracked: boolean;
+  plain: string;
+};
+
+export type AdminIdentityRow = {
+  id: string;
+  kind: CrmIdentityKind;
+  value: string;
+  source: string | null;
+  verified: boolean;
+  created_at: string | null;
+};
+
+export type AdminTimelineRow = {
+  id: string;
+  type: string;
+  category: string | null;
+  source: CrmEventSource;
+  value_cents: number | null;
+  occurred_at: string | null;
+  plain: string;
+};
+
+export type AdminNoteRow = {
+  id: string;
+  body: string;
+  author_user_id: string | null;
+  author_name: string | null;
+  created_at: string | null;
+};
+
+export type AdminRedemptionRow = {
+  id: string;
+  invite_id: string;
+  code: string | null;
+  label: string | null;
+  redeemed_at: string | null;
+};
+
+/** Counts and timestamps. There is no message body here, by design (brief §3). */
+export type AdminKaiActivity = {
+  conversations: number;
+  messages: number;
+  last_message_at: string | null;
+  plain: string;
+};
+
+export type AdminPersonDetail = AdminPersonRow & {
+  inbound_count: number;
+  outbound_count: number;
+  last_inbound_at: string | null;
+  last_outbound_at: string | null;
+  total_paid_cents: number | null;
+  total_refunded_cents: number | null;
+  current_mrr_cents: number | null;
+  ltv_cents: number | null;
+  merged_into: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type AdminPerson = {
+  person: AdminPersonDetail;
+  identities: AdminIdentityRow[];
+  timeline: AdminTimelineRow[];
+  timeline_next_cursor: string | null;
+  notes: AdminNoteRow[];
+  redemptions: AdminRedemptionRow[];
+  subscription: {
+    tier: 'free' | 'premium';
+    status: string;
+    current_period_end: string | null;
+    stripe_customer_id: string | null;
+  } | null;
+  entitlements: { key: string; value_plain: string }[];
+  scores: AdminScores;
+  kai: AdminKaiActivity;
+  merged_from: { id: string; display_name: string | null }[];
+  merge_conflicts: AdminTimelineRow[];
+  plain: string;
+};
+
+export type AdminInviteState = 'open' | 'revoked' | 'expired' | 'exhausted';
+
+export type AdminInviteRow = {
+  id: string;
+  code: string;
+  label: string | null;
+  tier: 'free' | 'premium';
+  max_redemptions: number | null;
+  redeemed_count: number;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string | null;
+  state: AdminInviteState;
+  /** A PATH — `/join/<code>`. The host belongs to whoever is sharing it. */
+  link: string;
+  plain: string;
+};
+
+export type AdminInvitesPage = {
+  invites: AdminInviteRow[];
+  next_cursor: string | null;
+  totals: AdminInviteTotals;
+  plain: string;
+};
+
+export type AdminAuditRow = {
+  id: string;
+  actor_user_id: string | null;
+  actor_name: string | null;
+  action: string;
+  target_kind: string | null;
+  target_id: string | null;
+  reason: string | null;
+  request_id: string | null;
+  ip: string | null;
+  created_at: string | null;
+  plain: string;
+};
+
+export type AdminAuditPage = {
+  entries: AdminAuditRow[];
+  next_cursor: string | null;
+  plain: string;
+};
+
+export type AdminSegmentRow = {
+  id: string;
+  name: string;
+  filter: AdminPeopleFilter;
+  created_at: string | null;
+  /** Keys in the stored filter the API ignores rather than runs. */
+  ignored_keys: string[];
+};
+
+/** What a redemption gave the person who typed the code. */
+export type InviteRedeemResult = {
+  already_redeemed: boolean;
+  invite_id: string;
+  label: string | null;
+  tier: 'free' | 'premium';
+  subscription_plain: string;
+  plain: string;
+};

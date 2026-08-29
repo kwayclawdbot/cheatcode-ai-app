@@ -17,6 +17,10 @@ import {
   adaptAlertsRound4, adaptConversations, adaptExperience, adaptFocus, adaptKaiProfile,
   adaptRuleAdherence, adaptTickerPage,
 } from './adapters';
+import {
+  adaptAuditPage, adaptInviteRow, adaptInvitesPage, adaptOverview, adaptPeoplePage,
+  adaptPerson, adaptRedeem, adaptSegments, adaptSourceState, adaptSources, adaptSyncRun,
+} from './adapters';
 import type {
   AlertDetail, AlertDraftPreview, AlertLifecycle, AlertsPayload, AlertsRound4, AlertsSimple,
   AlertTab, Candle, ConversationsPayload, Experience, ExplainLevel, FocusKey, GoalMode,
@@ -24,6 +28,11 @@ import type {
   PushDevice, PushPlatform, PushRegistry, PushTestResult, PushTransport, Quote,
   RuleAdherence, SearchResult, SetupDetail, SymbolDetail, SymbolWorkspace, TickerPage,
   TradeLanding,
+} from './types';
+import type {
+  AdminAuditPage, AdminInviteRow, AdminInvitesPage, AdminOverview, AdminPeopleFilter,
+  AdminPeoplePage, AdminPerson, AdminSegmentRow, AdminSourceState, AdminSyncRun,
+  InviteRedeemResult,
 } from './types';
 
 export class ApiError extends Error {
@@ -336,6 +345,137 @@ export const api = {
    */
   pushTest: async (): Promise<PushTestResult> =>
     adaptPushTest(await request<unknown>('/push/test', { method: 'POST', body: '{}' })),
+
+  /* ---------------- Round 6 · the operator's door ---------------- */
+
+  /**
+   * EVERY CALL BELOW IS A `staffed()` ROUTE, AND THAT IS THE WHOLE SECURITY
+   * MODEL. This client is not a boundary: it hides the door for a non-staff
+   * user as a courtesy, and if it forgot to, the API would still answer
+   * NOT_FOUND — which is also why a non-staff caller here sees the app's
+   * ordinary "that part of the service isn't live yet", exactly as intended.
+   *
+   * READS ARE ACTS. Opening the overview, a person, or the audit log writes an
+   * audit row server-side. Nothing on this lane may poll them.
+   */
+  adminOverview: async (): Promise<AdminOverview> =>
+    adaptOverview(await request<unknown>('/admin/overview')),
+
+  adminPeople: async (f: AdminPeopleFilter = {}, limit = 50): Promise<AdminPeoplePage> => {
+    const qs = new URLSearchParams({ limit: String(limit) });
+    // The cursor is OPAQUE and round-trips untouched. There is no offset to
+    // raise and none is constructed here — never an unbounded list (brief §7).
+    (['q', 'status', 'tier', 'source', 'tag', 'segment_id', 'cursor'] as const).forEach((k) => {
+      const v = f[k];
+      if (v) qs.set(k, v);
+    });
+    return adaptPeoplePage(await request<unknown>(`/admin/people?${qs.toString()}`));
+  },
+
+  adminPerson: async (id: string, timelineCursor?: string): Promise<AdminPerson> =>
+    adaptPerson(await request<unknown>(
+      `/admin/people/${encodeURIComponent(id)}${timelineCursor ? `?timeline_cursor=${encodeURIComponent(timelineCursor)}` : ''}`
+    )),
+
+  adminAddNote: async (id: string, body: string): Promise<AdminPerson['notes'][number]> => {
+    const r = await request<Record<string, unknown>>(`/admin/people/${encodeURIComponent(id)}/notes`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    });
+    const n = (r?.note ?? {}) as Record<string, unknown>;
+    return {
+      id: String(n.id ?? ''),
+      body: String(n.body ?? body),
+      author_user_id: typeof n.author_user_id === 'string' ? n.author_user_id : null,
+      author_name: typeof n.author_name === 'string' ? n.author_name : null,
+      created_at: typeof n.created_at === 'string' ? n.created_at : null,
+    };
+  },
+
+  adminTags: async (id: string, patch: { add?: string[]; remove?: string[] }): Promise<string[]> => {
+    const r = await request<{ tags?: unknown }>(`/admin/people/${encodeURIComponent(id)}/tags`, {
+      method: 'POST',
+      body: JSON.stringify(patch),
+    });
+    return Array.isArray(r?.tags) ? r.tags.filter((t): t is string => typeof t === 'string') : [];
+  },
+
+  adminInvites: async (state?: string, cursor?: string): Promise<AdminInvitesPage> => {
+    const qs = new URLSearchParams({ limit: '50' });
+    if (state) qs.set('state', state);
+    if (cursor) qs.set('cursor', cursor);
+    return adaptInvitesPage(await request<unknown>(`/admin/invites?${qs.toString()}`));
+  },
+
+  /** `person_id` makes it PERSONAL: the code becomes that person's identity. */
+  adminCreateInvite: async (body: {
+    label?: string;
+    tier: 'free' | 'premium';
+    duration_days?: number;
+    max_redemptions?: number | null;
+    expires_in_days?: number;
+    person_id?: string;
+  }): Promise<AdminInviteRow> => {
+    const r = await request<Record<string, unknown>>('/admin/invites', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    return adaptInviteRow(r?.invite);
+  },
+
+  adminRevokeInvite: async (id: string, reason?: string): Promise<AdminInviteRow> => {
+    const r = await request<Record<string, unknown>>(`/admin/invites/${encodeURIComponent(id)}/revoke`, {
+      method: 'POST',
+      body: JSON.stringify(reason ? { reason } : {}),
+    });
+    return adaptInviteRow(r?.invite);
+  },
+
+  /** Grant or revoke a tier by hand. The REASON is required by the contract. */
+  adminEntitlement: (userId: string, body: {
+    action: 'grant' | 'revoke';
+    tier: 'free' | 'premium';
+    duration_days?: number | null;
+    reason: string;
+  }) =>
+    request<unknown>(`/admin/users/${encodeURIComponent(userId)}/entitlements`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  adminAudit: async (filter: { action?: string; target_id?: string; cursor?: string } = {}, limit = 50): Promise<AdminAuditPage> => {
+    const qs = new URLSearchParams({ limit: String(limit) });
+    if (filter.action) qs.set('action', filter.action);
+    if (filter.target_id) qs.set('target_id', filter.target_id);
+    if (filter.cursor) qs.set('cursor', filter.cursor);
+    return adaptAuditPage(await request<unknown>(`/admin/audit?${qs.toString()}`));
+  },
+
+  adminSources: async (): Promise<AdminSourceState[]> =>
+    adaptSources(await request<unknown>('/admin/sync')),
+
+  /** `dry_run` reports what it WOULD change and writes nothing (brief §5). */
+  adminSync: async (source: string, dryRun = false): Promise<{ run: AdminSyncRun | null; source: AdminSourceState; plain: string }> => {
+    const r = await request<Record<string, unknown>>('/admin/sync', {
+      method: 'POST',
+      body: JSON.stringify({ source, dry_run: dryRun }),
+    });
+    return {
+      run: adaptSyncRun(r?.run),
+      source: adaptSourceState(r?.source),
+      plain: typeof r?.plain === 'string' ? r.plain : '',
+    };
+  },
+
+  adminSegments: async (): Promise<AdminSegmentRow[]> =>
+    adaptSegments(await request<unknown>('/admin/segments')),
+
+  /** Public, and authenticated: the first request a new session makes (§6). */
+  redeemInvite: async (code: string): Promise<InviteRedeemResult> =>
+    adaptRedeem(await request<unknown>('/invites/redeem', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    })),
 
   /** DEV_TOOLS=1 on the api-app only. */
   simulateClosedTrade: (symbol?: string) =>

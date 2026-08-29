@@ -15,6 +15,21 @@ import { fixtureAlertsRound4 } from '../../lib/fixtures';
  * It resolves to a `<Redirect>` rather than calling `router.replace` in an
  * effect — landing on this URL directly can run the effect before the root
  * layout has mounted a navigator.
+ *
+ * ROUND 6 FIX — IT ASKS ABOUT THE ALERT, NOT ABOUT THE LIST.
+ *
+ * This used to resolve the symbol by scanning `GET /alerts` for the id. The one
+ * link that matters most is the push notification for an alert armed seconds
+ * earlier, and that is exactly the alert the list is most likely to answer
+ * without: the tabs are lifecycle buckets, they are capped, and "active" is a
+ * state the new alert has not reached yet. So the tap landed on `/alerts` —
+ * technically a fallback, in practice a broken notification.
+ *
+ * `GET /alerts/:id` answers about one alert by id. It is the direct question,
+ * it cannot be crowded out by other rows, and it is the same route the detail
+ * adapter already reads `refs.symbol` from. The list scan stays underneath it
+ * as a second chance, and `/alerts` stays underneath that — a deep link should
+ * degrade, but only after it has actually asked.
  */
 export default function AlertRedirect() {
   const { id, symbol } = useLocalSearchParams<{ id: string; symbol?: string }>();
@@ -29,6 +44,14 @@ export default function AlertRedirect() {
     if (!id) { setHref('/alerts'); return; }
 
     (async () => {
+      if (api.available()) {
+        try {
+          const detail = await api.alertDetail(id);
+          if (alive && detail.symbol) { setHref(portal(detail.symbol)); return; }
+        } catch {
+          /* the alert may be gone, or this build may not serve /alerts/:id */
+        }
+      }
       try {
         const cards = api.available() ? await api.alertsRound4() : fixtureAlertsRound4;
         const found = [...cards.active, ...cards.watching, ...cards.history].find((a) => a.id === id);

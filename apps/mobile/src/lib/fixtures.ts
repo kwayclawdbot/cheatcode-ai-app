@@ -395,6 +395,11 @@ export const fixtureMe: Me = {
     push_enabled: true,
     notification_categories: {},
   },
+  // Round 6. THE SAMPLE ACCOUNT IS NOT STAFF, and never will be: fixtures mode
+  // is the owner-preview and Playwright path, and an operator's board rendered
+  // over sample people would show sample revenue and a sample audit trail that
+  // look exactly like real ones. Staff is a fact about a database row.
+  staff: { is_staff: false, role: null, plain: 'You do not have staff access.' },
 };
 
 export const fixtureNotifications: NotificationRow[] = [

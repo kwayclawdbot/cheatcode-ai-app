@@ -27,6 +27,13 @@ import type {
   PushSubscriptionState, PushSuppression, PushTestResult, PushTransport, Quote,
   SetupState, WatchingItem,
 } from './types';
+import type {
+  AdminAuditPage, AdminInviteRow, AdminInvitesPage, AdminInviteTotals, AdminMetric,
+  AdminOverview, AdminPeopleFilter, AdminPeoplePage, AdminPerson, AdminPersonRow,
+  AdminScores, AdminSegmentRow, AdminSourceState, AdminSyncRun, AdminTimelineRow,
+  CrmEventSource, CrmIdentityKind, CrmStatus, InviteRedeemResult, StaffBlock,
+  StaffRole, SyncSourceName,
+} from './types';
 
 const money = (n: number | null | undefined) =>
   n == null ? null : `$${Math.round(n).toLocaleString('en-US')}`;
@@ -849,6 +856,24 @@ export function adaptMe(v: unknown): Me {
       push_enabled: bool(settings.push_enabled, true),
       notification_categories: adaptNotificationCategories(settings.notification_categories),
     },
+    // Round 6. The DEFAULT IS NOT STAFF, and it is the default for every way
+    // this can be unknown: an API that predates 0025, a malformed block, a
+    // fixture. A door that appears when we are unsure is a door.
+    staff: adaptStaff(r.staff),
+  };
+}
+
+/** `/me.staff` → whether Account draws the operator's row. Never inferred. */
+export function adaptStaff(v: unknown): StaffBlock {
+  const s = obj(v);
+  const role = str(s.role);
+  const known: StaffRole | null =
+    role === 'support' || role === 'admin' || role === 'owner' ? role : null;
+  const isStaff = bool(s.is_staff) && known !== null;
+  return {
+    is_staff: isStaff,
+    role: isStaff ? known : null,
+    plain: str(s.plain, isStaff ? 'You have staff access.' : 'You do not have staff access.'),
   };
 }
 
@@ -1402,4 +1427,379 @@ export function adaptRuleAdherence(raw: unknown): RuleAdherence | null {
   if (sessions == null || followed == null) return null;
   if (o.show === false) return { sessions: 0, followed: 0 };
   return { sessions, followed };
+}
+
+/* ==================================================================== */
+/* Round 6 — the operator's door                                         */
+/*                                                                      */
+/* The same job as every adapter above: absorb whatever the server sends */
+/* so a screen never reads a raw payload. Two rules are specific to this */
+/* round and are enforced HERE rather than in the screens, because a     */
+/* screen is where they get forgotten:                                   */
+/*                                                                      */
+/*   1. A METRIC MAY BE NULL. `value` is never coalesced to 0 and never  */
+/*      invented; `tracked:false` survives to the render.                */
+/*   2. NO LABEL IS MADE UP. Every heading a screen draws is either a    */
+/*      constant in this app's own vocabulary (the funnel statuses) or a */
+/*      string the API sent. There is no fallback that guesses a name.   */
+/* ==================================================================== */
+
+const a6 = (v: unknown): Obj => obj(v);
+const a6n = (v: unknown): number => nNum(v) ?? 0;
+
+/** Status → the operator's word for it. The eight the API constrains, no more. */
+export const CRM_STATUS_LABEL: Record<CrmStatus, string> = {
+  lead: 'Lead',
+  invited: 'Invited',
+  signed_up: 'Signed up',
+  onboarded: 'Onboarded',
+  activated: 'Activated',
+  paying: 'Paying',
+  churned: 'Churned',
+  blocked: 'Blocked',
+};
+
+const CRM_STATUS = (v: unknown): CrmStatus => {
+  const s = str(v);
+  return s in CRM_STATUS_LABEL ? (s as CrmStatus) : 'lead';
+};
+
+const SYNC_SOURCE = (v: unknown): SyncSourceName => {
+  const s = str(v);
+  return s === 'kai_sms' || s === 'stripe' ? s : 'app';
+};
+
+const EVENT_SOURCE = (v: unknown): CrmEventSource => {
+  const s = str(v);
+  return s === 'kai_sms' || s === 'stripe' || s === 'admin' || s === 'import' ? s : 'app';
+};
+
+const IDENTITY_KIND = (v: unknown): CrmIdentityKind => {
+  const s = str(v);
+  return s === 'email' || s === 'phone' || s === 'app_user' || s === 'stripe_customer'
+    || s === 'kai_user' || s === 'os_user' || s === 'invite_code'
+    ? s
+    : 'email';
+};
+
+export function adaptSyncRun(v: unknown): AdminSyncRun | null {
+  const r = a6(v);
+  if (!str(r.id)) return null;
+  const c = a6(r.counts);
+  return {
+    id: str(r.id),
+    source: SYNC_SOURCE(r.source),
+    state: str(r.state) === 'ok' ? 'ok' : str(r.state) === 'failed' ? 'failed' : 'running',
+    dry_run: bool(r.dry_run),
+    started_at: str(r.started_at),
+    finished_at: nStr(r.finished_at),
+    counts: {
+      scanned: a6n(c.scanned), created: a6n(c.created), resolved: a6n(c.resolved),
+      conflicted: a6n(c.conflicted), skipped: a6n(c.skipped),
+    },
+    error: nStr(r.error),
+  };
+}
+
+export function adaptSourceState(v: unknown): AdminSourceState {
+  const s = a6(v);
+  return {
+    source: SYNC_SOURCE(s.source),
+    configured: bool(s.configured),
+    reason: nStr(s.reason),
+    last_run: adaptSyncRun(s.last_run),
+    plain: str(s.plain),
+  };
+}
+
+export function adaptSources(v: unknown): AdminSourceState[] {
+  return arr(a6(v).sources).map(adaptSourceState);
+}
+
+function adaptInviteTotals(v: unknown): AdminInviteTotals {
+  const t = a6(v);
+  return {
+    outstanding: a6n(t.outstanding), redeemed: a6n(t.redeemed),
+    revoked: a6n(t.revoked), expired: a6n(t.expired),
+  };
+}
+
+/**
+ * A metric keeps its ignorance. `tracked` comes from the server when the
+ * server says so, and otherwise from whether there is a number at all — the
+ * one thing that must never happen is `value: 0, tracked: true` invented here.
+ */
+function adaptMetric(v: unknown): AdminMetric {
+  const m = a6(v);
+  const value = nNum(m.value);
+  const unit = str(m.unit);
+  return {
+    key: str(m.key),
+    label: str(m.label),
+    value,
+    tracked: typeof m.tracked === 'boolean' ? m.tracked : value !== null,
+    unit: unit === 'cents' || unit === 'percent' ? unit : 'count',
+    plain: str(m.plain),
+  };
+}
+
+export function adaptOverview(v: unknown): AdminOverview {
+  const r = a6(v);
+  return {
+    funnel: arr(r.funnel).map((raw) => {
+      const f = a6(raw);
+      return { status: CRM_STATUS(f.status), position: a6n(f.position), people: a6n(f.people) };
+    }),
+    metrics: arr(r.metrics).map(adaptMetric).filter((m) => m.key && m.label),
+    daily: arr(r.daily).map((raw) => {
+      const d = a6(raw);
+      return { day: str(d.day), signups: a6n(d.signups), leads: a6n(d.leads) };
+    }).filter((d) => d.day),
+    source_mix: arr(r.source_mix).map((raw) => {
+      const s = a6(raw);
+      return { source: nStr(s.source), people: a6n(s.people) };
+    }),
+    invites: adaptInviteTotals(r.invites),
+    sources: arr(r.sources).map(adaptSourceState),
+    generated_at: nStr(r.generated_at),
+    plain: str(r.plain),
+  };
+}
+
+export function adaptPersonRow(v: unknown): AdminPersonRow {
+  const p = a6(v);
+  return {
+    id: str(p.id),
+    display_name: nStr(p.display_name),
+    primary_email: nStr(p.primary_email),
+    primary_phone_e164: nStr(p.primary_phone_e164),
+    status: CRM_STATUS(p.status),
+    primary_tier: nStr(p.primary_tier),
+    source: nStr(p.source),
+    tags: arr(p.tags).map((t) => str(t)).filter(Boolean),
+    first_seen_at: nStr(p.first_seen_at),
+    last_active_at: nStr(p.last_active_at),
+    app_user_id: nStr(p.app_user_id),
+    plain: str(p.plain),
+  };
+}
+
+export function adaptPeoplePage(v: unknown): AdminPeoplePage {
+  const r = a6(v);
+  return {
+    people: arr(r.people).map(adaptPersonRow).filter((p) => p.id),
+    next_cursor: nStr(r.next_cursor),
+    total: nNum(r.total),
+    searched: arr(r.searched).map((s) => str(s)).filter(Boolean),
+    plain: str(r.plain),
+  };
+}
+
+function adaptTimelineRow(v: unknown): AdminTimelineRow {
+  const t = a6(v);
+  return {
+    id: str(t.id),
+    type: str(t.type),
+    category: nStr(t.category),
+    source: EVENT_SOURCE(t.source),
+    value_cents: nNum(t.value_cents),
+    occurred_at: nStr(t.occurred_at),
+    plain: str(t.plain),
+  };
+}
+
+function adaptScores(v: unknown): AdminScores {
+  const s = a6(v);
+  return {
+    engagement: nNum(s.engagement),
+    buy_propensity: nNum(s.buy_propensity),
+    churn_risk: nNum(s.churn_risk),
+    upsell_propensity: nNum(s.upsell_propensity),
+    crosssell_propensity: nNum(s.crosssell_propensity),
+    responsiveness: nNum(s.responsiveness),
+    predicted_ltv_cents: nNum(s.predicted_ltv_cents),
+    predicted_days_to_churn: nNum(s.predicted_days_to_churn),
+    updated_at: nStr(s.updated_at),
+    tracked: bool(s.tracked),
+    plain: str(s.plain),
+  };
+}
+
+export function adaptPerson(v: unknown): AdminPerson {
+  const r = a6(v);
+  const p = a6(r.person);
+  const sub = a6(r.subscription);
+  const row = adaptPersonRow(p);
+  return {
+    person: {
+      ...row,
+      inbound_count: a6n(p.inbound_count),
+      outbound_count: a6n(p.outbound_count),
+      last_inbound_at: nStr(p.last_inbound_at),
+      last_outbound_at: nStr(p.last_outbound_at),
+      total_paid_cents: nNum(p.total_paid_cents),
+      total_refunded_cents: nNum(p.total_refunded_cents),
+      current_mrr_cents: nNum(p.current_mrr_cents),
+      ltv_cents: nNum(p.ltv_cents),
+      merged_into: nStr(p.merged_into),
+      created_at: nStr(p.created_at),
+      updated_at: nStr(p.updated_at),
+    },
+    identities: arr(r.identities).map((raw) => {
+      const i = a6(raw);
+      return {
+        id: str(i.id),
+        kind: IDENTITY_KIND(i.kind),
+        value: str(i.value),
+        source: nStr(i.source),
+        verified: bool(i.verified),
+        created_at: nStr(i.created_at),
+      };
+    }).filter((i) => i.value),
+    timeline: arr(r.timeline).map(adaptTimelineRow).filter((t) => t.id),
+    timeline_next_cursor: nStr(r.timeline_next_cursor),
+    notes: arr(r.notes).map((raw) => {
+      const n = a6(raw);
+      return {
+        id: str(n.id),
+        body: str(n.body),
+        author_user_id: nStr(n.author_user_id),
+        author_name: nStr(n.author_name),
+        created_at: nStr(n.created_at),
+      };
+    }).filter((n) => n.body),
+    redemptions: arr(r.redemptions).map((raw) => {
+      const d = a6(raw);
+      return {
+        id: str(d.id),
+        invite_id: str(d.invite_id),
+        code: nStr(d.code),
+        label: nStr(d.label),
+        redeemed_at: nStr(d.redeemed_at),
+      };
+    }).filter((d) => d.id),
+    subscription: Object.keys(sub).length
+      ? {
+          tier: str(sub.tier) === 'premium' ? 'premium' : 'free',
+          status: str(sub.status, 'none'),
+          current_period_end: nStr(sub.current_period_end),
+          stripe_customer_id: nStr(sub.stripe_customer_id),
+        }
+      : null,
+    // The flag map arrives keyed; the screen renders it as a list of the keys
+    // the server actually resolved. Nothing is added that is not in the map.
+    entitlements: Object.entries(a6(r.entitlements)).map(([key, val]) => ({
+      key,
+      value_plain:
+        typeof val === 'boolean' ? (val ? 'Included' : 'Not included')
+          : val == null ? '—'
+          : typeof val === 'object' ? str(a6(val).value_plain, JSON.stringify(val))
+          : String(val),
+    })),
+    scores: adaptScores(r.scores),
+    kai: (() => {
+      const k = a6(r.kai);
+      return {
+        conversations: a6n(k.conversations),
+        messages: a6n(k.messages),
+        last_message_at: nStr(k.last_message_at),
+        plain: str(k.plain),
+      };
+    })(),
+    merged_from: arr(r.merged_from).map((raw) => {
+      const m = a6(raw);
+      return { id: str(m.id), display_name: nStr(m.display_name) };
+    }).filter((m) => m.id),
+    merge_conflicts: arr(r.merge_conflicts).map(adaptTimelineRow).filter((t) => t.id),
+    plain: str(r.plain),
+  };
+}
+
+export function adaptInviteRow(v: unknown): AdminInviteRow {
+  const i = a6(v);
+  const state = str(i.state);
+  const code = str(i.code);
+  return {
+    id: str(i.id),
+    code,
+    label: nStr(i.label),
+    tier: str(i.tier) === 'premium' ? 'premium' : 'free',
+    max_redemptions: nNum(i.max_redemptions),
+    redeemed_count: a6n(i.redeemed_count),
+    expires_at: nStr(i.expires_at),
+    revoked_at: nStr(i.revoked_at),
+    created_at: nStr(i.created_at),
+    state: state === 'revoked' || state === 'expired' || state === 'exhausted' ? state : 'open',
+    // The server sends a PATH. If a build ever sends nothing, the path is
+    // reconstructed from the code rather than left blank — the link is the
+    // product, and `/join/<code>` is this app's own route either way.
+    link: nStr(i.link) ?? (code ? `/join/${code}` : ''),
+    plain: str(i.plain),
+  };
+}
+
+export function adaptInvitesPage(v: unknown): AdminInvitesPage {
+  const r = a6(v);
+  return {
+    invites: arr(r.invites).map(adaptInviteRow).filter((i) => i.code),
+    next_cursor: nStr(r.next_cursor),
+    totals: adaptInviteTotals(r.totals),
+    plain: str(r.plain),
+  };
+}
+
+export function adaptAuditPage(v: unknown): AdminAuditPage {
+  const r = a6(v);
+  return {
+    entries: arr(r.entries).map((raw) => {
+      const e = a6(raw);
+      return {
+        id: str(e.id),
+        actor_user_id: nStr(e.actor_user_id),
+        actor_name: nStr(e.actor_name),
+        action: str(e.action),
+        target_kind: nStr(e.target_kind),
+        target_id: nStr(e.target_id),
+        reason: nStr(e.reason),
+        request_id: nStr(e.request_id),
+        ip: nStr(e.ip),
+        created_at: nStr(e.created_at),
+        plain: str(e.plain),
+      };
+    }).filter((e) => e.action),
+    next_cursor: nStr(r.next_cursor),
+    plain: str(r.plain),
+  };
+}
+
+export function adaptSegments(v: unknown): AdminSegmentRow[] {
+  return arr(a6(v).segments).map((raw) => {
+    const s = a6(raw);
+    const f = a6(s.filter);
+    const filter: AdminPeopleFilter = {};
+    if (nStr(f.q)) filter.q = str(f.q);
+    if (nStr(f.status)) filter.status = CRM_STATUS(f.status);
+    if (nStr(f.tier)) filter.tier = str(f.tier);
+    if (nStr(f.source)) filter.source = str(f.source);
+    if (nStr(f.tag)) filter.tag = str(f.tag);
+    return {
+      id: str(s.id),
+      name: str(s.name),
+      filter,
+      created_at: nStr(s.created_at),
+      ignored_keys: arr(s.ignored_keys).map((k) => str(k)).filter(Boolean),
+    };
+  }).filter((s) => s.id && s.name);
+}
+
+export function adaptRedeem(v: unknown): InviteRedeemResult {
+  const r = a6(v);
+  return {
+    already_redeemed: bool(r.already_redeemed),
+    invite_id: str(r.invite_id),
+    label: nStr(r.label),
+    tier: str(r.tier) === 'premium' ? 'premium' : 'free',
+    subscription_plain: str(a6(r.subscription).plain),
+    plain: str(r.plain),
+  };
 }

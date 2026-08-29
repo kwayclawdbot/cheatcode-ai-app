@@ -237,6 +237,28 @@ export default function Account() {
           <NavRow testID="nav-subscription" icon={<Lock size={14} color={color.muted} />} label="Plan" value={tier === 'premium' ? 'Premium' : 'Free'} onPress={() => router.push('/account/subscription')} last />
         </RowList>
 
+        {/* THE OPERATOR'S DOOR. Drawn only when `/me` says this account holds a
+            staff row — a courtesy, not a control (brief §3): the board behind
+            it has no data of its own and every route it calls re-asks
+            `staff_members` before answering. Volt because the whole surface is
+            the operator's own action. */}
+        {data?.staff.is_staff ? (
+          <>
+            <Eyebrow c={color.volt}>OPERATOR</Eyebrow>
+            <RowList testID="staff-entry">
+              <NavRow
+                testID="nav-admin"
+                icon={<Bars size={14} color={color.volt} />}
+                label="Admin & CRM"
+                value={data.staff.role ?? undefined}
+                onPress={() => router.push('/admin')}
+                last
+              />
+            </RowList>
+            <T size={10.5} c={color.dim} lh={16} style={{ marginTop: -4 }}>{data.staff.plain}</T>
+          </>
+        ) : null}
+
         <Eyebrow>CONNECTED</Eyebrow>
         <RowList>
           <Row last>

@@ -22,6 +22,12 @@ const STACK_GROUPS = new Set([
   'room', 'debrief', 'contributor',            // MOBILE-B round 2
   'order', 'plan', 'position',                 // MOBILE-B round 3 (paper execution)
   'trade', 'circle',                           // MOBILE-B round 4 (portal + circles)
+  // Round 6. `(admin)` is a GROUP, so it is what `useSegments()[0]` reports for
+  // every operator board. Allowing it here only lets the route mount — the
+  // group's own layout then asks `/me` whether to draw anything, and the six
+  // screens behind it hold no data that did not come from a `staffed()` route.
+  // `join` is the other end of an invite link and is deliberately not staff-only.
+  '(admin)', 'join',
 ]);
 
 /**
