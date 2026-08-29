@@ -1,8 +1,8 @@
 # engine/ — what was measured, and what happened
 
-**Three models have now been measured against bars written down before each
-test was run. All three failed.** None ships. Nothing here touches the app, and
-no alert has been produced.
+**Four models have now been measured against bars written down before each test
+was run. Three failed and the fourth came back inconclusive.** None ships.
+Nothing here touches the app, and no alert has been produced.
 
 That is the intended kind of outcome. It cost a week; the alternative — the one
 the existing SMS engine took — costs a paying customer.
@@ -12,11 +12,16 @@ the existing SMS engine took — costs a paying customer.
 | ENGINE-1 | [`orb_reclaim.v1`](orb_reclaim.v1.polygon-v1.md) | FAIL |
 | ENGINE-1 | [`sweep_displacement_fvg.v1`](sweep_displacement_fvg.v1.polygon-v1.md) | FAIL |
 | ENGINE-2 | [`orb_htf_structural.v1`](orb_htf_structural.v1.polygon-v1.md) | FAIL — but the first to beat its control before costs |
+| ENGINE-3 | [`orb_mtf.v1`](orb_mtf.v1.polygon-v1.md) — Exit A, day trade | INCONCLUSIVE (sample) |
+| ENGINE-3 | [`orb_mtf.v1`](orb_mtf.v1.polygon-v1.md) — Exit B, swing | INCONCLUSIVE (sample) |
 
-Read [ENGINE-2's report](orb_htf_structural.v1.polygon-v1.md) for the newest and
-most useful finding: the setup earns about 4.6 cents a share before costs and
+Read [ENGINE-2's report](orb_htf_structural.v1.polygon-v1.md) for the finding the
+whole family turns on: the setup earns about 4.6 cents a share before costs and
 pays about 5.6 cents to trade, and no choice of stop placement changes that
-subtraction.
+subtraction. Read [ENGINE-3's](orb_mtf.v1.polygon-v1.md) for what happened when
+the stop and target were moved onto the 1-hour and 4-hour charts to make the move
+bigger: they barely moved at all, because four stops in five landed on a
+prior-day or overnight level that the 5-minute version was already using.
 
 ---
 
@@ -167,3 +172,64 @@ at +0.044R gross against the filtered +0.063R — a hint that the filter buys
 accuracy, well inside the noise. Swapping the structural stop for a range-edge
 stop on an identical trade set costs 0.042R a trade, which is the direction the
 owner's rule predicted and the largest single improvement either change made.
+
+---
+
+# ENGINE-3 — two charts must agree, and both exits measured
+
+Brief: [`docs/BUILD-BRIEF-engine-3-orb-multi-tf.md`](../../docs/BUILD-BRIEF-engine-3-orb-multi-tf.md).
+Gate: [`../models/orb_mtf.v1/GATE.md`](../models/orb_mtf.v1/GATE.md), committed
+at `1021168`, before the evaluation ran.
+
+`orb_mtf.v1` is the owner's correction to ENGINE-2, taken literally: the 1-hour
+and 4-hour charts must both be in confirmed structure and must point the same
+way, and the stop and target come from 1h/4h levels rather than 5-minute ones —
+because ENGINE-2 proved that only a bigger move, not a wider stop, can change
+the sign. One entry, two exits, measured on the same trades: flat at 15:55, or
+held to target or stop for at most five sessions with overnight gaps filled at
+the next session's open.
+
+| | Exit A (15:55) | Exit B (swing) |
+|---|---|---|
+| trades | 448 (338 IS / 110 OOS) | the same 448 |
+| mean net R, in-sample | −0.081 | −0.064 |
+| mean net R, out-of-sample | +0.070 | +0.009 |
+| verdict | **INCONCLUSIVE (sample)** | **INCONCLUSIVE (sample)** |
+
+The double trend gate cut 23,904 symbol-days to 448 trades — 338 in-sample
+against a pre-registered floor of 400. G1 fails on the low side, which the gate
+defined in advance as inconclusive rather than failure. **Exit A's out-of-sample
++0.070R clears the +0.05R expectancy bar and this is deliberately not reported
+as a pass**, because the sample rule was written down first and a 110-trade tail
+whose interval runs from −0.271R to +0.410R decides nothing.
+
+Four findings worth more than the verdict:
+
+1. **The correction did not move the stop.** Median risk went from ENGINE-2's
+   0.187% of price to 0.229% — wider, but nowhere near the 1%-ish the argument
+   needed. On only **19% of trades** was the nearest level beyond entry actually
+   a 1-hour or 4-hour pivot; on the other 81% it was a prior-day, premarket,
+   overnight or daily level that ENGINE-2's family already contained, so the
+   stop landed exactly where it landed before. The gate named this as the way
+   the correction could fail quietly, before the run.
+2. **The ablation agrees.** Holding the trade set fixed and swapping in
+   ENGINE-2's 5-minute levels moves median risk by 0.004 percentage points and
+   scores +0.024R (95%: −0.092R to +0.140R) *in favour of the 5-minute version*.
+   Moving to higher-timeframe levels bought nothing measurable.
+3. **The cents-per-share view and the R view now disagree in sign, and that is
+   the finding.** The average trade finishes +1.53¢ ahead; the middle trade
+   finishes 25¢ behind. Three trades out of 448 contributed $36.52 a share
+   between them while the other 445 lost $29.67. Mean net R — the unit a
+   position-sized trader actually lives in — is −0.044R. A positive average
+   carried by three outliers is a fat tail, not an edge.
+4. **"Close it or let it run" is nearly a no-op for this setup.** 408 of the 448
+   trades are the same trade either way: the stop or the target was reached
+   before 15:55. Of the 40 still live at the bell, holding helped 17 and hurt 23.
+   Overnight gaps are modelled honestly — 22 trades were stopped at a session's
+   opening print rather than at the stop price — and cost about 0.02R extra
+   each. No trade finished worse than −2R.
+
+The direction edge over the matched control shrank rather than grew: +0.052R
+gross on Exit A (95%: −0.139R to +0.244R) against ENGINE-2's +0.099R, and it is
+negative out-of-sample. Adding the second trend filter did not sharpen the
+direction call; it mostly removed trades.
