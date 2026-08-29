@@ -51,10 +51,33 @@ export const PUT = authed(async (req: NextRequest, ctx: Ctx) => {
     }
   }
 
-  if (body.quiet_hours !== undefined || body.notifications) {
+  const touchesNotifications =
+    body.quiet_hours !== undefined ||
+    body.notifications !== undefined ||
+    body.push_enabled !== undefined ||
+    body.notification_categories !== undefined;
+
+  if (touchesNotifications) {
     const patch: Record<string, unknown> = { user_id: ctx.user.id };
     if (body.quiet_hours !== undefined) patch.quiet_hours = body.quiet_hours;
     if (body.notifications) patch.per_mode = body.notifications.per_mode;
+    if (body.push_enabled !== undefined) patch.push_enabled = body.push_enabled;
+    // Round 5: categories are MERGED, never replaced. Two switches flipped from
+    // two screens must not clobber each other, and an absent key means "on" —
+    // so a patch of `{community:false}` has to leave the other four absent
+    // rather than writing four `true`s that would then have to be maintained.
+    if (body.notification_categories) {
+      const { data: existing } = await db
+        .from('notification_prefs')
+        .select('categories')
+        .eq('user_id', ctx.user.id)
+        .maybeSingle();
+      const current = ((existing as { categories?: Record<string, boolean> } | null)?.categories ?? {}) as Record<
+        string,
+        boolean
+      >;
+      patch.categories = { ...current, ...body.notification_categories };
+    }
     const { error } = await db.from('notification_prefs').upsert(patch as never, { onConflict: 'user_id' });
     if (error) {
       throw new ApiError('INTERNAL', 'We could not save that change. Please try again.', { detail: error.message });
@@ -73,7 +96,7 @@ export const PUT = authed(async (req: NextRequest, ctx: Ctx) => {
   const updated = await loadProfile(ctx.user.id);
   const np = await db
     .from('notification_prefs')
-    .select('per_mode,quiet_hours')
+    .select('per_mode,quiet_hours,push_enabled,categories')
     .eq('user_id', ctx.user.id)
     .maybeSingle();
   const row = (np.data as Record<string, unknown> | null) ?? null;
@@ -97,6 +120,10 @@ export const PUT = authed(async (req: NextRequest, ctx: Ctx) => {
         quiet_hours: (row?.quiet_hours as never) ?? null,
         notifications: { per_mode: (row?.per_mode as Record<string, unknown>) ?? {} },
         accessibility: readPrefs(updated.onboarding).accessibility,
+        // No row yet means the user has never said no: 0024's column default is
+        // `true` and the absence of a row means the same thing.
+        push_enabled: row ? row.push_enabled !== false : true,
+        notification_categories: (row?.categories as Record<string, boolean>) ?? {},
       },
       plain: 'Saved.',
     })

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/v1/internal/paper/tick",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/v1/internal/push/drain",
+      "schedule": "* * * * *"
+    }
+  ]
+}

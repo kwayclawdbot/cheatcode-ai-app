@@ -1691,12 +1691,43 @@ export const Accessibility = z.object({
 });
 export type Accessibility = z.infer<typeof Accessibility>;
 
+/**
+ * `start`/`end` are wall-clock `HH:MM` in `timezone` (IANA). The window may
+ * wrap past midnight — 22:00→07:00 is the ordinary case, not the edge one.
+ * `timezone` null means "use the profile's timezone".
+ */
 export const QuietHours = z.object({
   start: z.string().nullable(),
   end: z.string().nullable(),
   timezone: z.string().nullable(),
 });
 export type QuietHours = z.infer<typeof QuietHours>;
+
+/**
+ * What a user can switch off (round 5 §4.5). Each `NotifyKind` maps to exactly
+ * one of these; the map itself lives server-side in `lib/push/policy.ts`,
+ * because it is a policy decision and not a wire shape.
+ *
+ * An ABSENT key means ON. `notification_prefs.categories` starts `{}` and a
+ * user who has never opened the switches gets everything — the default is the
+ * absence of a decision, not a row of `true`s to keep in sync.
+ */
+export const NotificationCategory = z.enum([
+  'trade_alerts',
+  'order_status',
+  'community',
+  'coaching',
+  'system',
+]);
+export type NotificationCategory = z.infer<typeof NotificationCategory>;
+
+/**
+ * `partialRecord`, not `record`: a `z.record` keyed by an enum is EXHAUSTIVE in
+ * zod 4 — it demands every category be present — and the whole point of this
+ * map is that an absent key means on. `{}` must parse.
+ */
+export const NotificationCategoryMap = z.partialRecord(NotificationCategory, z.boolean());
+export type NotificationCategoryMap = z.infer<typeof NotificationCategoryMap>;
 
 export const SubscriptionBlock = z.object({
   tier: z.enum(['free', 'premium']),
@@ -1731,6 +1762,10 @@ export const MeResponse = z.object({
     quiet_hours: QuietHours.nullable(),
     notifications: z.object({ per_mode: z.record(z.string(), z.unknown()) }),
     accessibility: Accessibility,
+    /** Round 5: the master push switch. Separate from OS permission. */
+    push_enabled: z.boolean(),
+    /** Round 5: absent key = on. */
+    notification_categories: NotificationCategoryMap,
   }),
   broker: z.object({ connected: z.boolean(), plain: z.string() }),
   dev_tools: z.boolean(),
@@ -1765,6 +1800,10 @@ export const SettingsResponse = z.object({
     quiet_hours: QuietHours.nullable(),
     notifications: z.object({ per_mode: z.record(z.string(), z.unknown()) }),
     accessibility: Accessibility,
+    /** Round 5: the master push switch. Separate from OS permission. */
+    push_enabled: z.boolean(),
+    /** Round 5: absent key = on. */
+    notification_categories: NotificationCategoryMap,
   }),
   plain: z.string(),
 });
@@ -2769,6 +2808,17 @@ export const SettingsRound4Request = z
     experience: OnboardingExperience.optional(),
     focus: z.array(FocusKey).max(6).optional(),
     mode: AppMode.optional(),
+    /**
+     * Round 5. `push_enabled` is the priming screen's master switch — the
+     * user's INTENT, which is a different question from whether the OS has
+     * granted permission. It survives a reinstall; permission does not.
+     *
+     * `notification_categories` is a PATCH, not a replacement: sending
+     * `{community:false}` switches that one off and leaves the rest alone, so
+     * two switches flipped from two screens cannot clobber each other.
+     */
+    push_enabled: z.boolean().optional(),
+    notification_categories: NotificationCategoryMap.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'Nothing to change here yet.' });
 export type SettingsRound4Request = z.infer<typeof SettingsRound4Request>;
@@ -3788,3 +3838,136 @@ export const TradeDefaultResponse = z.object({
   label_plain: z.string(),
 });
 export type TradeDefaultResponse = z.infer<typeof TradeDefaultResponse>;
+
+/* ------------------------------------------------------------------ */
+/* Round 5 — push: the registry, the test, the drain, the health board  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * ONE NOTIFICATION, TWO TRANSPORTS (round-5 brief §3). Nothing in this section
+ * carries a title or a body. The banner says exactly what the inbox row says
+ * because it IS the inbox row — `payload.title_plain` / `payload.body_plain`
+ * off `NotificationRow`, built once in `lib/push/payload.ts`. A second, punchier
+ * copy path for banners is how an app ends up lying to itself about what it
+ * told the user.
+ */
+export const PushTransport = z.enum(['expo', 'web']);
+export type PushTransport = z.infer<typeof PushTransport>;
+
+export const PushPlatform = z.enum(['ios', 'android', 'web']);
+export type PushPlatform = z.infer<typeof PushPlatform>;
+
+export const PushSubscriptionState = z.enum(['active', 'stale', 'revoked']);
+export type PushSubscriptionState = z.infer<typeof PushSubscriptionState>;
+
+/** The browser's own encryption keys. We hold them; we never generate them. */
+export const WebPushKeys = z.object({
+  p256dh: z.string().min(1),
+  auth: z.string().min(1),
+});
+export type WebPushKeys = z.infer<typeof WebPushKeys>;
+
+export const PushSubscribeRequest = z.object({
+  transport: PushTransport,
+  /** `ExponentPushToken[...]` for expo; the endpoint URL for web. */
+  handle: z.string().min(1).max(2048),
+  /**
+   * Web only, and OPTIONAL by contract — which means a web row with no keys is
+   * storable and undeliverable. The sender's job is to skip it and mark it
+   * stale, not to throw (brief §12.1).
+   */
+  keys: WebPushKeys.nullable().optional(),
+  platform: PushPlatform.optional(),
+  /** "iPhone" / "Chrome on macOS" — so the user can turn off the right device. */
+  device_label: z.string().max(120).optional(),
+});
+export type PushSubscribeRequest = z.infer<typeof PushSubscribeRequest>;
+
+/**
+ * Never carries `handle` or `keys`. A push token is a capability to buzz a
+ * device; there is no screen that needs to render one, so it does not leave
+ * the server.
+ */
+export const PushSubscriptionRow = z.object({
+  id: z.string(),
+  transport: PushTransport,
+  platform: PushPlatform.nullable(),
+  device_label: z.string().nullable(),
+  state: PushSubscriptionState,
+  created_at: z.string(),
+  last_success_at: z.string().nullable(),
+  /** "This device" when it matches the handle the caller just registered. */
+  plain: z.string(),
+});
+export type PushSubscriptionRow = z.infer<typeof PushSubscriptionRow>;
+
+export const PushSubscribeResponse = z.object({
+  subscription: PushSubscriptionRow,
+  plain: z.string(),
+});
+export type PushSubscribeResponse = z.infer<typeof PushSubscribeResponse>;
+
+export const PushSubscriptionsResponse = z.object({
+  subscriptions: z.array(PushSubscriptionRow),
+  push_enabled: z.boolean(),
+  /**
+   * Null when the server has no VAPID key pair configured. The web client must
+   * read this rather than assume — subscribing against a key the server cannot
+   * sign for produces an endpoint that silently never delivers.
+   */
+  vapid_public_key: z.string().nullable(),
+  plain: z.string(),
+});
+export type PushSubscriptionsResponse = z.infer<typeof PushSubscriptionsResponse>;
+
+export const PushSubscriptionDeleteResponse = z.object({
+  revoked: z.number(),
+  plain: z.string(),
+});
+export type PushSubscriptionDeleteResponse = z.infer<typeof PushSubscriptionDeleteResponse>;
+
+export const PushTestRequest = z.object({}).optional();
+export type PushTestRequest = z.infer<typeof PushTestRequest>;
+
+/**
+ * A suppression is a RECORD, not a drop. This is the shape that lets the UI say
+ * "you are in quiet hours right now" instead of appearing broken, which is the
+ * entire reason the test route exists.
+ */
+export const PushSuppression = z.object({
+  reason: z.string(),
+  plain: z.string(),
+  subscription_id: z.string().nullable(),
+});
+export type PushSuppression = z.infer<typeof PushSuppression>;
+
+export const PushTestResponse = z.object({
+  sent: z.number(),
+  suppressed: z.array(PushSuppression),
+  plain: z.string(),
+});
+export type PushTestResponse = z.infer<typeof PushTestResponse>;
+
+export const PushHealthResponse = z.object({
+  transports: z.object({
+    expo: z.object({ configured: z.boolean(), dry_run: z.boolean(), plain: z.string() }),
+    web: z.object({ configured: z.boolean(), vapid: z.boolean(), plain: z.string() }),
+  }),
+  queue: z.object({ queued: z.number(), awaiting_receipt: z.number(), failed_24h: z.number() }),
+  last_drain_at: z.string().nullable(),
+  dev_drainer: z.object({ on: z.boolean(), interval_s: z.number() }),
+  plain: z.string(),
+});
+export type PushHealthResponse = z.infer<typeof PushHealthResponse>;
+
+export const PushDrainResponse = z.object({
+  claimed: z.number(),
+  sent: z.number(),
+  failed: z.number(),
+  retried: z.number(),
+  receipts_checked: z.number(),
+  delivered: z.number(),
+  revoked: z.number(),
+  plain: z.string(),
+});
+export type PushDrainResponse = z.infer<typeof PushDrainResponse>;

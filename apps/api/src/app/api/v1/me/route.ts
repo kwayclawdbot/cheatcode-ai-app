@@ -39,7 +39,11 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
       .order('created_at', { ascending: true })
       .limit(1)
       .maybeSingle(),
-    db.from('notification_prefs').select('per_mode,quiet_hours').eq('user_id', ctx.user.id).maybeSingle(),
+    db
+      .from('notification_prefs')
+      .select('per_mode,quiet_hours,push_enabled,categories')
+      .eq('user_id', ctx.user.id)
+      .maybeSingle(),
     countBlock(ctx.user.id),
     ruleAdherence(ctx.user.id),
   ]);
@@ -94,6 +98,12 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
         quiet_hours: (np?.quiet_hours as never) ?? null,
         notifications: { per_mode: (np?.per_mode as Record<string, unknown>) ?? {} },
         accessibility: prefs.accessibility,
+        // Round 5. `push_enabled` is INTENT, not OS permission — it survives a
+        // reinstall and is what the app honours when the two disagree. An empty
+        // `notification_categories` is a user who has never touched the
+        // switches, and every category is on.
+        push_enabled: np ? np.push_enabled !== false : true,
+        notification_categories: (np?.categories as Record<string, boolean>) ?? {},
       },
       broker: { connected: false, plain: 'None — add a broker (later release).' },
       dev_tools: env('DEV_TOOLS') === '1',

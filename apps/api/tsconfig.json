@@ -10,6 +10,10 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
+    // `scripts/*.ts` are run directly by tsx (npm test) and import source with
+    // an explicit `.ts`, exactly as workers/kai-live's contract checks do.
+    // Harmless under noEmit; Next's own build never sees these files.
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
