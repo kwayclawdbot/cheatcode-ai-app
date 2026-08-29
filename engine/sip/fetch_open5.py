@@ -171,8 +171,14 @@ def plan_jobs() -> list[tuple[str, str]]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--reverse", action="store_true",
+                    help="work the same job list from the other end, so a second "
+                         "process can share the download; writes are atomic and "
+                         "both skip what is already on disk")
     a = ap.parse_args()
     jobs = plan_jobs()
+    if a.reverse:
+        jobs = list(reversed(jobs))
     syms = len({s for s, _ in jobs})
     print(f"plan: {len(jobs)} symbol-chunks across {syms} distinct symbols", flush=True)
     if a.dry_run:
