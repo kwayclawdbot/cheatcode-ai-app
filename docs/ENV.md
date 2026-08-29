@@ -40,6 +40,41 @@ native token to send to and Expo Go cannot receive push at all. And web push
 needs a secure origin — desktop `localhost` qualifies, a phone does not until
 the app is hosted.
 
+### Round 6 — admin + CRM (nothing is required; both sources are OFF)
+
+Round 6 adds NO required variable. The `app` source reads this database and
+needs no credentials, and the two deferred connectors stay switched off until
+these appear — which is what `GET /api/v1/admin/sync` reports, with the exact
+reason, rather than hiding them.
+
+```
+STRIPE_CRM_READONLY_KEY=       # rk_… a RESTRICTED key. NOT sk_… — see below.
+KAI_SMS_SUPABASE_URL=          # the K.AI project ryprohqthwflinadqotj
+KAI_SMS_SUPABASE_SERVICE_ROLE_KEY=
+```
+
+| Variable | What it does |
+|---|---|
+| `STRIPE_CRM_READONLY_KEY` | the `stripe` CRM source's key. It is deliberately NOT `STRIPE_SECRET_KEY`: the CRM's key is a weaker key than the one billing uses, and sharing the name is how a full-access key ends up in a read-only place. **A `sk_live_` full-access key exists in `~/breakout-alert-system/.env` and must not be reused here.** Create a restricted key (customers, subscriptions, charges: **read**) at dashboard.stripe.com → Developers → API keys → restricted. A CRM never needs write access to money — and `plan()` checks: a key beginning `sk_` is reported as a misconfiguration rather than accepted. |
+| `KAI_SMS_SUPABASE_URL` / `KAI_SMS_SUPABASE_SERVICE_ROLE_KEY` | the K.AI SMS project's own connection, never this app's. Setting both moves that source from "not authorised" to "credentials present, connector not written" — the body is still deferred (brief §5). When it is written it copies **counts and timestamps only**, never the text of `conversation_history`. |
+| `INTERNAL_SECRET` | already present — also authenticates `POST /api/v1/internal/crm/sync`. Unset it and that route answers 404, as if it did not exist. |
+
+**Hosted, the ingest is a cron** — `apps/api/vercel.json`, alongside the paper
+tick and the push drain:
+
+```json
+{ "path": "/api/v1/internal/crm/sync", "schedule": "0 * * * *" }
+```
+
+Hourly is enough: the funnel state it derives changes on the scale of a person's
+day, and a second run inside the same hour creates zero rows anyway.
+
+**Owner blockers, recorded not worked around:** the 2,507-row K.AI import needs
+hosting (the Supabase org invoice, above) AND the owner's decision to authorise
+reading another project's database; the Stripe source needs the restricted key;
+and `cheatcode-crm`'s live Stripe webhook still points at the old system, so
+until it is repointed, two systems both believe they are the CRM.
+
 ## workers/kai-live/.env.local (never commit — LIVE-2)
 
 The show worker reads THIS file first and then `apps/api/.env.local`, without

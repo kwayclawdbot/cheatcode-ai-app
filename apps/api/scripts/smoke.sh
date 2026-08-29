@@ -2684,6 +2684,489 @@ else
   red "FAIL  the drain refused the internal secret (${DRAIN##*$'\n'})"; FAIL=$((FAIL+1))
 fi
 
+# =============================================================================
+# ROUND 6 — the admin backend and the CRM (ADMIN-2)
+#
+# What this block is really testing, in order of how badly it would hurt to get
+# it wrong:
+#
+#   1. THE WALL. An ordinary signed-in user, and an unauthenticated one, get
+#      404 from every admin path — not 403. An admin route must not confirm it
+#      exists, and the two answers must be byte-identical to the answer for a
+#      path this app really does not serve.
+#   2. THE RE-CHECK. A role revoked in the database shuts the door on the SAME
+#      access token, immediately. If this passed by luck of an expired JWT the
+#      whole surface would be an hour late to every revoke.
+#   3. THE AUDIT. Reads write rows too. A grant without a reason is refused by
+#      the request shape, not by an `if`.
+#   4. IDEMPOTENCE. A second sync of the `app` source creates ZERO rows. That is
+#      the claim the two deferred connectors will inherit by construction.
+#   5. HONESTY. MRR and churn report "not tracked yet" rather than 0, because
+#      nothing has fed them, and the two deferred sources report configured
+#      false with the exact reason rather than being absent.
+#   6. PRIVACY. A person's detail page carries conversation COUNTS and no words.
+# =============================================================================
+hr; echo "ROUND 6 — admin + CRM (the wall · the audit · idempotence · invites)"; hr
+
+ADMIN_TMP="$(mktemp -d)"
+
+admin_user() { # admin_user <label>  ->  ADMIN_USER_ID + ADMIN_TOKEN
+  local label="$1" email pw created
+  email="smoke-admin-$label+$(date +%s)$RANDOM@cheatcode.test"
+  pw="Smoke-Admin-$RANDOM-7z!"
+  created=$(curl -sS -X POST "$SUPABASE_URL/auth/v1/admin/users" \
+    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+    -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$email\",\"password\":\"$pw\",\"email_confirm\":true,\"user_metadata\":{\"display_name\":\"Admin $label\"}}")
+  ADMIN_USER_ID=$(printf '%s' "$created" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
+  ADMIN_TOKEN=$(curl -sS -X POST "$SUPABASE_URL/auth/v1/token?grant_type=password" \
+    -H "apikey: $SUPABASE_ANON_KEY" -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$email\",\"password\":\"$pw\"}" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
+  if [ -z "$ADMIN_USER_ID" ] || [ -z "$ADMIN_TOKEN" ]; then
+    red "FAIL  could not create the admin test account '$label'"; FAIL=$((FAIL+1))
+  fi
+}
+
+sb_rpc() { # sb_rpc <function> <json>
+  curl -sS -X POST "$SUPABASE_URL/rest/v1/rpc/$1" \
+    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+    -H 'Content-Type: application/json' -d "$2"
+}
+
+# --- 1. the wall: 404, never 403 ----------------------------------------------
+# This user is the ordinary account this whole script has been using. It is a
+# real, signed-in, entitled user of the app, and to it the admin surface simply
+# does not exist.
+for P in /api/v1/admin/overview /api/v1/admin/people /api/v1/admin/invites /api/v1/admin/audit /api/v1/admin/sync /api/v1/admin/segments; do
+  expect "an ordinary user cannot see that $P exists" 404 GET "$P"
+done
+ANON_ADMIN=$(curl -sS "$API_BASE/api/v1/admin/overview" -w '\n%{http_code}')
+if [ "${ANON_ADMIN##*$'\n'}" = "404" ]; then
+  green "PASS  404  GET /api/v1/admin/overview with no token at all (not 401 — that would confirm the path)"; PASS=$((PASS+1))
+else
+  red "FAIL  an unauthenticated admin request answered ${ANON_ADMIN##*$'\n'}, which tells an attacker the path is real"; FAIL=$((FAIL+1))
+fi
+expect "and a write is just as invisible" 404 POST /api/v1/admin/invites '{"tier":"premium"}'
+
+# `profiles` is client-patchable, and this is the reason `staff_members` is its
+# own table: there is no staff column here to set.
+check "/me reports no staff access for an ordinary user" GET /api/v1/me
+assert_body "the ordinary user is told, plainly, that they are not staff" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["staff"]["is_staff"] is False, d["staff"]
+assert d["staff"]["role"] is None, d["staff"]
+print("  ",d["staff"]["plain"])'
+USER_TOKEN="$ACCESS_TOKEN"
+
+# --- 2. staff, granted the way the schema says --------------------------------
+# The first owner is seeded by migration for the app owner's email, which does
+# not exist in a fresh database. So this bootstraps its OWN throwaway owner
+# through the service role and then uses `set_staff_role` for everything else —
+# which is the point: the RPC refuses any actor who is not an active owner, and
+# that rule lives in SQL rather than in a route.
+admin_user owner; OWNER_ID="$ADMIN_USER_ID"
+sb_post "staff_members" "{\"user_id\":\"$OWNER_ID\",\"role\":\"owner\"}"
+admin_user admin;   STAFF_ID="$ADMIN_USER_ID";   STAFF_TOKEN="$ADMIN_TOKEN"
+admin_user support; SUPPORT_ID="$ADMIN_USER_ID"; SUPPORT_TOKEN="$ADMIN_TOKEN"
+sb_rpc set_staff_role "{\"p_user_id\":\"$STAFF_ID\",\"p_role\":\"admin\",\"p_actor_user_id\":\"$OWNER_ID\",\"p_reason\":\"smoke\"}" > "$ADMIN_TMP/grant.json"
+sb_rpc set_staff_role "{\"p_user_id\":\"$SUPPORT_ID\",\"p_role\":\"support\",\"p_actor_user_id\":\"$OWNER_ID\",\"p_reason\":\"smoke\"}" > /dev/null
+python3 -c "
+import json
+r=json.load(open('$ADMIN_TMP/grant.json'))
+assert r['role']=='admin', r
+assert r['granted_by']=='$OWNER_ID', r
+assert r['revoked_at'] is None, r
+print('  granted:',r['role'],'by',r['granted_by'][:8])"
+if [ $? -eq 0 ]; then green "PASS  set_staff_role grants, and records who granted it"; PASS=$((PASS+1));
+else red "FAIL  set_staff_role did not grant"; FAIL=$((FAIL+1)); fi
+
+# An admin is not an owner, and the ladder is enforced in SQL rather than only
+# in a route: this is the RPC refusing, not a handler.
+NOT_OWNER=$(sb_rpc set_staff_role "{\"p_user_id\":\"$SUPPORT_ID\",\"p_role\":\"owner\",\"p_actor_user_id\":\"$STAFF_ID\"}")
+if printf '%s' "$NOT_OWNER" | grep -q 'not_owner'; then
+  green "PASS  an admin cannot grant staff — set_staff_role refuses any actor that is not an active owner"; PASS=$((PASS+1))
+else
+  red "FAIL  an admin was able to grant staff"; echo "$NOT_OWNER" | head -c 200; FAIL=$((FAIL+1)); fi
+
+ACCESS_TOKEN="$STAFF_TOKEN"
+check "/me reports the staff role" GET /api/v1/me
+assert_body "the door is offered to the person who has it" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["staff"]["is_staff"] is True, d["staff"]
+assert d["staff"]["role"] == "admin", d["staff"]
+print("  ",d["staff"]["plain"])'
+
+# --- 3. THE RE-CHECK: a revoked role, the same token ---------------------------
+# The token below was minted BEFORE the revoke and is still cryptographically
+# valid for another hour. If `staffed()` read a claim instead of the table, this
+# would answer 200.
+check "staff can open the overview" GET /api/v1/admin/overview
+printf '%s' "$BODY" > "$ADMIN_TMP/overview.json"
+sb_rpc set_staff_role "{\"p_user_id\":\"$STAFF_ID\",\"p_role\":\"revoked\",\"p_actor_user_id\":\"$OWNER_ID\",\"p_reason\":\"smoke: proving the re-check\"}" > /dev/null
+expect "a revoked role shuts the door on the SAME token, immediately" 404 GET /api/v1/admin/overview
+sb_rpc set_staff_role "{\"p_user_id\":\"$STAFF_ID\",\"p_role\":\"admin\",\"p_actor_user_id\":\"$OWNER_ID\"}" > /dev/null
+check "and re-granting opens it again" GET /api/v1/admin/overview
+
+# --- 4. the overview, and the metrics that refuse to be zero -------------------
+assert_body "MRR and churn say NOT TRACKED rather than 0, and the funnel is real" '
+import json,sys
+d=json.load(sys.stdin)
+m={x["key"]:x for x in d["metrics"]}
+for k in ("mrr_cents","churn_30d"):
+    assert m[k]["tracked"] is False, (k, m[k])
+    assert m[k]["value"] is None, "%s rendered a number nobody measured: %r" % (k, m[k])
+    assert m[k]["plain"], k
+assert m["people_total"]["tracked"] is True and isinstance(m["people_total"]["value"], int)
+assert {f["status"] for f in d["funnel"]} == {"lead","invited","signed_up","onboarded","activated","paying","churned","blocked"}
+print("  people:",m["people_total"]["value"],"| activation:",m["activation_rate"]["value"])
+print("  ",m["mrr_cents"]["plain"])
+print("  ",m["churn_30d"]["plain"])'
+
+assert_body "the two deferred sources are registered, switched off, and say why" '
+import json,sys
+d=json.load(sys.stdin)
+s={x["source"]:x for x in d["sources"]}
+assert set(s) == {"app","kai_sms","stripe"}, list(s)
+assert s["app"]["configured"] is True, s["app"]
+for k in ("kai_sms","stripe"):
+    assert s[k]["configured"] is False, s[k]
+    assert s[k]["reason"], "a switched-off source with no reason is a missing feature"
+    print("  ",k,"OFF —",s[k]["reason"])'
+
+# --- 5. the internal driver, and idempotence -----------------------------------
+SYNC_UNAUTH=$(curl -sS -X POST "$API_BASE/api/v1/internal/crm/sync" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' -d '{}' -w '\n%{http_code}')
+if [ "${SYNC_UNAUTH##*$'\n'}" = "404" ]; then
+  green "PASS  404  POST /api/v1/internal/crm/sync without the internal secret"; PASS=$((PASS+1))
+else
+  red "FAIL  the CRM sync answered ${SYNC_UNAUTH##*$'\n'} to a signed-in user with no internal secret"; FAIL=$((FAIL+1)); fi
+
+crm_sync() { # crm_sync <json>
+  curl -sS -X POST "$API_BASE/api/v1/internal/crm/sync" \
+    -H "x-internal-secret: $INTERNAL_SECRET" -H 'Content-Type: application/json' -d "$1"
+}
+crm_sync '{"source":"app"}' > "$ADMIN_TMP/sync1.json"
+sb_get "crm_people?select=id&limit=100000" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' > "$ADMIN_TMP/n1.txt"
+sb_get "crm_events?select=id&limit=100000" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' >> "$ADMIN_TMP/n1.txt"
+crm_sync '{"source":"app"}' > "$ADMIN_TMP/sync2.json"
+sb_get "crm_people?select=id&limit=100000" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' > "$ADMIN_TMP/n2.txt"
+sb_get "crm_events?select=id&limit=100000" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' >> "$ADMIN_TMP/n2.txt"
+python3 -c "
+import json
+r1=json.load(open('$ADMIN_TMP/sync1.json'))['runs'][0]
+r2=json.load(open('$ADMIN_TMP/sync2.json'))['runs'][0]
+n1=[int(x) for x in open('$ADMIN_TMP/n1.txt')]
+n2=[int(x) for x in open('$ADMIN_TMP/n2.txt')]
+assert r1['state']=='ok' and r2['state']=='ok', (r1['state'], r2['state'])
+assert r1['counts']['scanned']>0, 'the app source scanned nothing'
+assert r2['counts']['created']==0, 'the SECOND run created %d rows - the ingest is not idempotent' % r2['counts']['created']
+assert r2['counts']['resolved']>0, 'the second run resolved nobody, so it did not really look'
+assert n1==n2, 'row counts moved on the second run: %r -> %r' % (n1,n2)
+print('  run 1:',r1['counts'])
+print('  run 2:',r2['counts'],'- and people/events unchanged at',n2)"
+if [ $? -eq 0 ]; then
+  green "PASS  a second sync of the app source creates ZERO rows"; PASS=$((PASS+1))
+else
+  red "FAIL  the app sync is not idempotent"; FAIL=$((FAIL+1)); fi
+
+crm_sync '{"source":"app","dry_run":true}' > "$ADMIN_TMP/dry.json"
+crm_sync '{"source":"stripe"}' > "$ADMIN_TMP/stripe.json"
+python3 -c "
+import json
+d=json.load(open('$ADMIN_TMP/dry.json'))['runs'][0]
+assert d['dry_run'] is True and d['state']=='ok', d
+s=json.load(open('$ADMIN_TMP/stripe.json'))['runs'][0]
+assert s['state']=='failed', 'a source with no credentials reported a successful sync of nothing'
+assert 'restricted' in (s['error'] or '').lower(), s['error']
+print('  dry run:',d['counts'])
+print('  stripe :',s['error'])"
+if [ $? -eq 0 ]; then
+  green "PASS  a dry run is recorded and writes nothing; a deferred source fails with its reason rather than faking a green run"; PASS=$((PASS+1))
+else
+  red "FAIL  the dry run or the deferred source misreported"; FAIL=$((FAIL+1)); fi
+
+# --- 6. people: paged, never the whole table -----------------------------------
+check "people, first page" GET "/api/v1/admin/people?limit=3"
+printf '%s' "$BODY" > "$ADMIN_TMP/p1.json"
+PCUR=$(python3 -c "import json;print(json.load(open('$ADMIN_TMP/p1.json'))['next_cursor'] or '')")
+assert_body "the response says which fields the search really covers" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["searched"] == ["display_name","primary_email","primary_phone_e164"], d["searched"]
+assert len(d["people"]) <= 3
+print("  searched:",", ".join(d["searched"]))'
+if [ -n "$PCUR" ]; then
+  check "people, second page" GET "/api/v1/admin/people?limit=3&cursor=$PCUR"
+  printf '%s' "$BODY" > "$ADMIN_TMP/p2.json"
+  python3 -c "
+import json
+a={p['id'] for p in json.load(open('$ADMIN_TMP/p1.json'))['people']}
+b={p['id'] for p in json.load(open('$ADMIN_TMP/p2.json'))['people']}
+assert a and b, (len(a), len(b))
+assert not (a & b), 'the cursor returned %d of the same people twice' % len(a & b)
+print('  two pages,',len(a|b),'distinct people, no overlap')"
+  if [ $? -eq 0 ]; then green "PASS  the keyset cursor pages forward without repeating or dropping anybody"; PASS=$((PASS+1));
+  else red "FAIL  the people cursor overlapped"; FAIL=$((FAIL+1)); fi
+fi
+expect "there is no limit big enough to fetch the whole table" 400 GET "/api/v1/admin/people?limit=5000"
+
+# --- 7. one person, without one word they wrote --------------------------------
+PERSON_ID=$(python3 -c "import json;print(json.load(open('$ADMIN_TMP/p1.json'))['people'][0]['id'])")
+check "one person's file" GET "/api/v1/admin/people/$PERSON_ID"
+assert_body "counts and timestamps for Kai, and no message body anywhere in the response" '
+import json,sys
+raw=sys.stdin.read()
+d=json.loads(raw)
+assert "kai" in d and isinstance(d["kai"]["conversations"], int)
+assert "content" not in raw, "a conversation body reached the CRM response"
+assert d["scores"]["tracked"] is False, "a score was reported that nothing computes"
+assert all(d["scores"][k] is None for k in ("engagement","churn_risk","predicted_ltv_cents"))
+print("  kai:",d["kai"]["plain"])
+print("  scores:",d["scores"]["plain"])'
+
+# READING A PERSON IS AN ACT. This is the assertion the whole audit design
+# exists for: a log of writes would show the last twenty minutes as empty.
+sb_get "admin_audit_log?select=action,actor_user_id,target_id&action=eq.crm.person.read&actor_user_id=eq.$STAFF_ID&order=created_at.desc&limit=1" \
+  | python3 -c "
+import json,sys
+rows=json.load(sys.stdin)
+assert rows, 'opening a person wrote no audit row'
+assert rows[0]['target_id']=='$PERSON_ID', rows[0]
+print('  logged:',rows[0]['action'],'->',rows[0]['target_id'][:8])"
+if [ $? -eq 0 ]; then green "PASS  READING a person's page is audited, not only writing to it"; PASS=$((PASS+1));
+else red "FAIL  a person detail read left no audit row"; FAIL=$((FAIL+1)); fi
+
+check "a note about them" POST "/api/v1/admin/people/$PERSON_ID/notes" '{"body":"Smoke note - staff only."}'
+check "tags are add/remove, never a replacement" POST "/api/v1/admin/people/$PERSON_ID/tags" '{"add":["smoke","beta"]}'
+check "and removing one leaves the other" POST "/api/v1/admin/people/$PERSON_ID/tags" '{"remove":["beta"]}'
+assert_body "the tag came off and the other stayed" '
+import json,sys
+d=json.load(sys.stdin)
+assert "smoke" in d["tags"] and "beta" not in d["tags"], d["tags"]
+print("  ",d["tags"])'
+expect "a transcript without a reason is refused by the request shape" 400 POST \
+  "/api/v1/admin/people/$PERSON_ID/transcript" '{"conversation_id":"00000000-0000-0000-0000-000000000000"}'
+
+# --- 8. support reads, admin acts ----------------------------------------------
+ACCESS_TOKEN="$SUPPORT_TOKEN"
+check "support can read the people list" GET "/api/v1/admin/people?limit=1"
+check "support can leave a note" POST "/api/v1/admin/people/$PERSON_ID/notes" '{"body":"Smoke note from support."}'
+expect "support cannot make an invite" 403 POST /api/v1/admin/invites '{"tier":"premium"}'
+expect "support cannot grant an entitlement" 403 POST "/api/v1/admin/users/$SUPPORT_ID/entitlements" \
+  '{"action":"grant","reason":"support should not be able to do this"}'
+assert_body "and the refusal tells them what they DO have, rather than a mystery" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["error"]["code"] == "FORBIDDEN", d
+print("  ",d["error"]["message_plain"])'
+ACCESS_TOKEN="$STAFF_TOKEN"
+
+# --- 9. an invite, end to end ---------------------------------------------------
+check "make a code" POST /api/v1/admin/invites \
+  '{"label":"smoke invite","tier":"premium","duration_days":30,"max_redemptions":1,"expires_in_days":7}'
+printf '%s' "$BODY" > "$ADMIN_TMP/invite.json"
+INVITE_CODE=$(python3 -c "import json;print(json.load(open('$ADMIN_TMP/invite.json'))['invite']['code'])")
+INVITE_ID=$(python3 -c "import json;print(json.load(open('$ADMIN_TMP/invite.json'))['invite']['id'])")
+assert_body "the code is unambiguous out loud and carries its grant" '
+import json,sys
+d=json.load(sys.stdin)["invite"]
+assert len(d["code"]) >= 10, d["code"]
+assert not (set(d["code"]) & set("01OILU")), "the code contains a glyph somebody will mis-read: %s" % d["code"]
+assert d["entitlements"]["duration_days"] == 30, d["entitlements"]
+assert d["state"] == "open" and d["link"].endswith(d["code"])
+print("  ",d["code"],"->",d["link"],"|",d["plain"])'
+
+admin_user redeemer; REDEEMER_ID="$ADMIN_USER_ID"
+ACCESS_TOKEN="$ADMIN_TOKEN"
+check "the new account is free before redeeming" GET /api/v1/me
+assert_body "free, as a new account should be" '
+import json,sys
+assert json.load(sys.stdin)["subscription"]["tier"] == "free"
+print("  free")'
+check "redeem it" POST /api/v1/invites/redeem "{\"code\":\"$INVITE_CODE\"}"
+assert_body "one call granted the tier and told the truth about what is now on the account" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["already_redeemed"] is False, d
+assert d["tier"] == "premium", d
+assert d["subscription"]["tier"] == "premium", d["subscription"]
+assert d["granted"]["duration_days"] == 30, d["granted"]
+print("  ",d["plain"])
+print("  until:",d["subscription"]["current_period_end"])'
+check "and /me agrees" GET /api/v1/me
+assert_body "premium, read back from the same row the app gates on" '
+import json,sys
+assert json.load(sys.stdin)["subscription"]["tier"] == "premium"
+print("  premium")'
+check "a retried redemption is the SAME redemption, not a second seat" POST /api/v1/invites/redeem "{\"code\":\"$INVITE_CODE\"}"
+assert_body "it says so, and spends nothing" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["already_redeemed"] is True, d
+print("  ",d["plain"])'
+
+sb_get "invite_redemptions?select=id,user_id,person_id,granted&invite_id=eq.$INVITE_ID" > "$ADMIN_TMP/red.json"
+sb_get "crm_people?select=id,status,source&app_user_id=eq.$REDEEMER_ID" > "$ADMIN_TMP/person.json"
+sb_get "crm_events?select=type,source,external_id&type=eq.invite_redeemed&order=occurred_at.desc&limit=1" > "$ADMIN_TMP/rev.json"
+sb_get "admin_audit_log?select=action,target_id&action=eq.invite.redeem&target_id=eq.$INVITE_ID&limit=1" > "$ADMIN_TMP/raud.json"
+python3 -c "
+import json
+red=json.load(open('$ADMIN_TMP/red.json'))
+assert len(red)==1, 'a retried redemption made %d rows' % len(red)
+assert red[0]['user_id']=='$REDEEMER_ID' and red[0]['person_id'], red[0]
+per=json.load(open('$ADMIN_TMP/person.json'))
+assert len(per)==1 and per[0]['status']=='signed_up', per
+ev=json.load(open('$ADMIN_TMP/rev.json'))
+assert ev and ev[0]['external_id'].startswith('invite_redemption:'), ev
+aud=json.load(open('$ADMIN_TMP/raud.json'))
+assert aud, 'a redemption granted premium and wrote no audit row'
+print('  ledger:',red[0]['id'][:8],'| person:',per[0]['status'],'| event:',ev[0]['external_id'][:28],'| audited')"
+if [ $? -eq 0 ]; then
+  green "PASS  one redemption: entitlement granted, ledger written, person moved, timeline keyed, audited"; PASS=$((PASS+1))
+else
+  red "FAIL  the redemption did not leave the rows it claims to"; FAIL=$((FAIL+1)); fi
+
+# --- 10. every refusal says which one it is ------------------------------------
+admin_user spare; ACCESS_TOKEN="$ADMIN_TOKEN"
+expect "an exhausted code is refused" 409 POST /api/v1/invites/redeem "{\"code\":\"$INVITE_CODE\"}"
+assert_body "and it says which refusal, in words a person can act on" '
+import json,sys
+d=json.load(sys.stdin)["error"]
+assert d["detail"]["reason"] == "invite_exhausted", d
+print("  ",d["message_plain"])'
+expect "a code that does not exist is a 404, not a 409" 404 POST /api/v1/invites/redeem '{"code":"ZZZZZZZZZZZZ"}'
+assert_body "unknown, and it does not hint that some other code would work" '
+import json,sys
+d=json.load(sys.stdin)["error"]
+assert d["detail"]["reason"] == "invite_not_found", d
+print("  ",d["message_plain"])'
+
+ACCESS_TOKEN="$STAFF_TOKEN"
+check "make one to switch off" POST /api/v1/admin/invites '{"label":"smoke revoke","tier":"premium"}'
+REVOKE_CODE=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["invite"]["code"])')
+REVOKE_ID=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["invite"]["id"])')
+check "switch it off" POST "/api/v1/admin/invites/$REVOKE_ID/revoke" '{"reason":"smoke"}'
+check "switching it off twice changes nothing and does not error" POST "/api/v1/admin/invites/$REVOKE_ID/revoke" '{}'
+check "make one to expire" POST /api/v1/admin/invites '{"label":"smoke expire","tier":"premium"}'
+EXPIRE_CODE=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["invite"]["code"])')
+EXPIRE_ID=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["invite"]["id"])')
+sb_patch "invites?id=eq.$EXPIRE_ID" '{"expires_at":"2020-01-04T00:00:00Z"}'
+
+ACCESS_TOKEN="$ADMIN_TOKEN"
+expect "a revoked code is refused" 409 POST /api/v1/invites/redeem "{\"code\":\"$REVOKE_CODE\"}"
+assert_body "revoked, and it says so" '
+import json,sys
+d=json.load(sys.stdin)["error"]
+assert d["detail"]["reason"] == "invite_revoked", d
+print("  ",d["message_plain"])'
+expect "an expired code is refused" 409 POST /api/v1/invites/redeem "{\"code\":\"$EXPIRE_CODE\"}"
+assert_body "expired, with the date, so the UI can say WHEN" '
+import json,sys
+d=json.load(sys.stdin)["error"]
+assert d["detail"]["reason"] == "invite_expired", d
+assert d["detail"]["expires_at"], d
+print("  ",d["message_plain"],"(",d["detail"]["expires_at"][:10],")")'
+
+# --- 11. entitlements: the reason is not optional -------------------------------
+ACCESS_TOKEN="$STAFF_TOKEN"
+expect "a grant with no reason does not reach the handler" 400 POST \
+  "/api/v1/admin/users/$REDEEMER_ID/entitlements" '{"action":"grant","tier":"premium"}'
+check "a grant with one does" POST "/api/v1/admin/users/$REDEEMER_ID/entitlements" \
+  '{"action":"grant","tier":"premium","duration_days":7,"reason":"smoke: proving a reasoned grant"}'
+check "and so does taking it away" POST "/api/v1/admin/users/$REDEEMER_ID/entitlements" \
+  '{"action":"revoke","reason":"smoke: proving a reasoned revoke"}'
+assert_body "the account is free again, read back rather than predicted" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["subscription"]["tier"] == "free", d["subscription"]
+print("  ",d["plain"])'
+sb_get "admin_audit_log?select=action,reason,before,after&target_id=eq.$REDEEMER_ID&target_kind=eq.user&order=created_at.desc&limit=2" \
+  | python3 -c '
+import json,sys
+rows=json.load(sys.stdin)
+assert len(rows)==2, rows
+assert {r["action"] for r in rows} == {"entitlement.grant","entitlement.revoke"}, rows
+for r in rows:
+    assert r["reason"], "an entitlement change was logged with no reason"
+    assert r["after"] is not None, r
+print("  both changes logged with the reason and the before/after")'
+if [ $? -eq 0 ]; then green "PASS  every entitlement change is on the record, with a reason and both states"; PASS=$((PASS+1));
+else red "FAIL  an entitlement change was not properly audited"; FAIL=$((FAIL+1)); fi
+
+# --- 12. the audit screen, and reading it is logged too -------------------------
+check "the audit log" GET "/api/v1/admin/audit?limit=5"
+assert_body "entries carry an actor, an action and a plain line" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["entries"], "the audit log is empty after all of the above"
+e=d["entries"][0]
+assert e["action"] and e["plain"], e
+print("  newest:",e["plain"])'
+check "filtered to one action" GET "/api/v1/admin/audit?action=invite.create&limit=3"
+sb_get "admin_audit_log?select=action&action=eq.admin.audit.read&order=created_at.desc&limit=1" | python3 -c '
+import json,sys
+assert json.load(sys.stdin), "reading the audit log left no trace of who read it"
+print("  reading the log is itself on the log")'
+if [ $? -eq 0 ]; then green "PASS  looking through the audit trail is itself audited"; PASS=$((PASS+1));
+else red "FAIL  the audit read was not logged"; FAIL=$((FAIL+1)); fi
+
+# APPEND-ONLY, INCLUDING FOR US. The API runs as service_role; an audit log
+# service_role can rewrite is not an audit log.
+AUD_ID=$(sb_get "admin_audit_log?select=id&limit=1" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["id"])')
+AUD_PATCH=$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH "$SUPABASE_URL/rest/v1/admin_audit_log?id=eq.$AUD_ID" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  -H 'Content-Type: application/json' -d '{"reason":"rewritten"}')
+AUD_DELETE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "$SUPABASE_URL/rest/v1/admin_audit_log?id=eq.$AUD_ID" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY")
+if [ "$AUD_PATCH" != "204" ] && [ "$AUD_PATCH" != "200" ] && [ "$AUD_DELETE" != "204" ] && [ "$AUD_DELETE" != "200" ]; then
+  green "PASS  the audit log cannot be updated ($AUD_PATCH) or deleted ($AUD_DELETE) by the role this API runs as"; PASS=$((PASS+1))
+else
+  red "FAIL  service_role rewrote the audit log (patch $AUD_PATCH, delete $AUD_DELETE)"; FAIL=$((FAIL+1)); fi
+
+# --- 13. segments are saved filters, not a query language -----------------------
+check "save a segment" POST /api/v1/admin/segments \
+  "{\"name\":\"Smoke segment $RANDOM\",\"filter\":{\"status\":\"signed_up\"}}"
+SEG_ID=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["segment"]["id"])')
+check "and apply it to the People list" GET "/api/v1/admin/people?segment_id=$SEG_ID&limit=3"
+assert_body "the segment filtered, rather than being executed" '
+import json,sys
+d=json.load(sys.stdin)
+assert all(p["status"] == "signed_up" for p in d["people"]), [p["status"] for p in d["people"]]
+print("  ",len(d["people"]),"people matched the saved filter")'
+sb_patch "crm_segments?id=eq.$SEG_ID" '{"filter":{"status":"signed_up","drop_table":"x"}}'
+check "a stored filter with a key the API does not know" GET /api/v1/admin/segments
+SEG_ID="$SEG_ID" assert_body "the unknown key is reported and ignored, never run" '
+import json,os,sys
+d=json.load(sys.stdin)
+seg=[s for s in d["segments"] if s["id"]==os.environ["SEG_ID"]][0]
+assert seg["ignored_keys"] == ["drop_table"], seg
+assert "drop_table" not in seg["filter"], seg["filter"]
+print("  ignored:",seg["ignored_keys"])'
+
+# --- 14. the sync board -----------------------------------------------------------
+check "the sources board" GET /api/v1/admin/sync
+assert_body "every source has a last run, or an honest null" '
+import json,sys
+d=json.load(sys.stdin)
+s={x["source"]:x for x in d["sources"]}
+assert s["app"]["last_run"] is not None, "the app source has run and reports no run"
+assert s["app"]["last_run"]["counts"]["scanned"] >= 0
+print("  app last run:",s["app"]["last_run"]["state"],s["app"]["last_run"]["counts"])
+print("  ",d["plain"])'
+check "sync now, as a dry run" POST /api/v1/admin/sync '{"source":"app","dry_run":true}'
+assert_body "a dry run reports what it would do and says it wrote nothing" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["run"]["dry_run"] is True, d["run"]
+assert "nothing was written" in d["plain"], d["plain"]
+print("  ",d["plain"])'
+
+ACCESS_TOKEN="$USER_TOKEN"
+rm -rf "$ADMIN_TMP"
+
 hr
 echo "passed: $PASS   failed: $FAIL"
 hr

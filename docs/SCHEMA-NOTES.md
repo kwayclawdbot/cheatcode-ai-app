@@ -1643,3 +1643,105 @@ does not know about is ignored rather than erroring, and
 rides into the redemption receipt uninterpreted. Deliberate — §4 calls segments
 "saved filters, not a query language", and nothing here evaluates jsonb as SQL —
 but a typo'd filter key silently matches everybody.
+
+### 0025 — gaps found while building the API (round 6, ADMIN-2)
+
+These are things the ROUTES ran into, recorded here because they are properties
+of the schema and its data rather than of any one handler.
+
+### 2.39 Gap 2.34 is wrong about `pg_trgm` — it IS installed
+
+2.34 says "there is no trigram index (`pg_trgm` is not installed by 0001)" and
+concludes that People search is a sequential scan. The first half is not true on
+this stack: `pg_trgm` is present in the `extensions` schema, and 0021 already
+uses it — `conversations_title_trgm_idx gin (title gin_trgm_ops)`.
+
+The CONCLUSION still stands, because nothing indexes the three columns
+`GET /admin/people` actually searches. But the fix is smaller than 2.34 says: no
+`create extension` is needed, only
+
+```sql
+create index crm_people_name_trgm_idx  on crm_people using gin (display_name gin_trgm_ops);
+create index crm_people_email_trgm_idx on crm_people using gin (primary_email gin_trgm_ops);
+create index crm_people_phone_trgm_idx on crm_people using gin (primary_phone_e164 gin_trgm_ops);
+```
+
+Left undone deliberately: at 33 rows locally and 2,507 after the import it is
+ceremony, and the migration belongs to whoever runs that import.
+
+### 2.40 A person created by `redeem_invite` has no email until the next sync
+
+`redeem_invite` inserts `crm_people (display_name, status, source, app_user_id,
+…)` with no `primary_email` and writes only the `app_user` and `invite_code`
+identities. It cannot do better: `auth.users` is not in a PostgREST-exposed
+schema and a `security definer` function in `public` reading `auth.users` for an
+email would be a second place that knows how to do that.
+
+The result is a real, correct person row whose email is blank until the `app`
+source next runs, at which point it resolves on the `app_user` identity and
+fills `primary_email` in. Self-correcting rather than wrong, and worth knowing
+before somebody searches for a fresh redeemer by email and finds nothing.
+
+### 2.41 The `app` source's email map is memoised for 60 seconds
+
+Same cause as 2.40. `auth.users` can only be read through the GoTrue admin API,
+which pages by page NUMBER and has no per-id batch call — so one
+`getUserById` per profile would be 2,507 round trips. `lib/crm/sources/app.ts`
+sweeps `listUsers` once and memoises the map for 60 seconds.
+
+A user created DURING a run therefore gets their `crm_people` row on that run
+and their `email` identity on the next one. Deliberate and self-correcting; the
+alternative makes the sync unusable. It is also the reason a test that creates a
+user and immediately syncs will not see an email identity for that user.
+
+### 2.42 `paying_people` and `mrr_cents` are gated on a successful `stripe` run,
+not on the view returning rows
+
+`crm_mrr_v` is honest but empty: it counts only people carrying a
+`stripe_customer` identity, and on this database it returns zeros. A zero from a
+view nobody has fed is not a measurement, so `GET /admin/overview` reports both
+metrics as `tracked: false` until `sync_runs` holds at least one non-dry `ok`
+run for the `stripe` source (gap 2.36's rule, applied).
+
+The consequence to know about: the `app` source DOES write a `stripe_customer`
+identity when `subscriptions.stripe_customer_id` is set, so the view could have
+people in it before the Stripe connector exists — and the overview will still
+say "not tracked yet", because nothing has written `current_mrr_cents` and a
+`$0` MRR next to eleven paying customers is the more misleading of the two
+answers. It becomes a live number with no code change the day that connector
+completes a run.
+
+### 2.43 `AdminPeopleResponse.total` is an ESTIMATE, and null whenever filtered
+
+`count: 'estimated'` on the unfiltered set (PostgREST reads the planner's row
+estimate rather than scanning), and `null` the moment any filter or search term
+is applied. Making an operator wait on an exact count of a set they are about to
+filter again is worse than saying nothing; `null` means "not counted", not
+"zero", and the UI must render it as an absent number.
+
+### 2.44 `staffed()` costs one extra round trip per admin request, on purpose
+
+Every request to `/api/v1/admin/**` calls `staff_role(user_id)` before the
+handler runs. There is no memo — not even a 30-second one — because a 30-second
+cache is a 30-second window in which a revoke has not happened yet, and this is
+the one surface where that trade is not worth making. Measured against the
+alternative it is a few milliseconds on a route that is already reading other
+people's data.
+
+### 2.45 `resolve()` lives in the runner, not on each `Source`
+
+Brief §5 describes the connector interface as `plan() -> pull(cursor) ->
+resolve()`. `resolve()` is implemented ONCE in `lib/crm/run.ts` and is not a
+method on `Source`, because per-connector resolution is exactly how connectors
+drift apart — and the identity rules are the part that must be identical in all
+three. A source answers "what does my system know"; who that is, and whether two
+of them are the same person, is not a per-source opinion.
+
+### 2.46 There is no route that writes `crm_people.status = 'churned'`
+
+Nothing derives it (the `app` source deliberately does not — gap 2.36), and the
+ingest treats `churned` and `blocked` as terminal and never overwrites either.
+So `blocked` is reachable only by a direct `service_role` write today: there is
+no admin route that blocks a person. Not built because brief §7 does not list
+one and blocking is a decision with product consequences nobody has specified —
+recorded here so it is a choice rather than an oversight.
