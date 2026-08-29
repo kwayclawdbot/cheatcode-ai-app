@@ -266,3 +266,26 @@ notification renders, the click lands on the deep-linked route. Screenshots into
    Supabase invoice.
 3. **The sender only runs while something ticks.** Hosted, that is the Vercel
    cron; locally it is the dev interval on a laptop. No cron, no push.
+
+---
+
+## 12. Addenda after SCHEMA-5 landed (`0024_push.sql`, commit 368a06b) — binding on API-5
+
+1. **A web subscription with null `keys` is storable and undeliverable.** No check
+   constraint was added, deliberately, because §6 types `keys` as optional. The
+   sender must therefore skip such a row and mark it `state='stale'` with reason
+   `keys_missing`, rather than throwing inside the drain.
+2. **`notification_deliveries.transport = 'none'`** for a suppression decided
+   before any transport is chosen (quiet hours, prefs off, budget, no device).
+   `resolveDelivery()` returns those with `subscription: null`.
+3. **`notifications.sent_at` semantics (decided here, not left to the lane):** set
+   it to the timestamp of the FIRST successful send to any transport, and leave it
+   null when every delivery was suppressed or failed. It answers "did this ever
+   reach them", not "did it reach all of their devices" — the per-device truth
+   lives in `notification_deliveries` and belongs nowhere else.
+4. `register_push_subscription` takes a 6th, defaulted `p_user_id` consulted only
+   when `auth.uid()` is null (the API calls it with the service-role client). Pass
+   the authenticated user's id from the route; a JWT sending someone else's id is
+   refused with 42501.
+5. A token already registered to another user is **taken over** by the new
+   registrant (device handover). Do not treat a takeover as an error.
