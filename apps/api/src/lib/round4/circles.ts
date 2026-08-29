@@ -593,15 +593,9 @@ export async function joinCircle(opts: {
     throw new ApiError('NOT_FOUND', 'That is not a circle. Core rooms are joined from the Community board.');
   }
 
-  const cfg = ((room.config as Record<string, unknown>) ?? {}) as Record<string, unknown>;
-  const { expired } = timeLeftPlain(expiryOf(room));
-  if (expired || cfg.closed_at) {
-    throw new ApiError(
-      'ROOM_RESTRICTED',
-      'That circle has closed. You can still read everything that was said in it, but it is not taking new members.'
-    );
-  }
-
+  // Membership is settled BEFORE the clock. Somebody already in a circle that
+  // has since closed is still in it — the room went read-only, it did not throw
+  // its members out — so re-asking is a 200 that says so, never a 403.
   const before = await db
     .from('room_members')
     .select('role,banned')
@@ -611,6 +605,15 @@ export async function joinCircle(opts: {
   const prior = (before.data as Record<string, unknown>) ?? null;
   if (prior?.banned) throw new ApiError('ROOM_RESTRICTED', 'You cannot join that circle.');
   if (prior) return { room, already_member: true };
+
+  const cfg = ((room.config as Record<string, unknown>) ?? {}) as Record<string, unknown>;
+  const { expired } = timeLeftPlain(expiryOf(room));
+  if (expired || cfg.closed_at) {
+    throw new ApiError(
+      'ROOM_RESTRICTED',
+      'That circle has closed. You can still read everything that was said in it, but it is not taking new members.'
+    );
+  }
 
   const { error } = await db
     .from('room_members')

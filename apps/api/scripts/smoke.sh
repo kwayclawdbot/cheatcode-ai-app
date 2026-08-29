@@ -288,6 +288,42 @@ import json,sys
 d=json.load(sys.stdin)
 print("  %d bars from %s"%(len(d["candles"]),d["source"]))'
 
+# The portal's rail offers 1m/5m/15m/1h/4h/D. Four of those used to answer 400
+# and the client quietly redrew a coarser bar labelled "not exact", so the two
+# that carry the most weight are asserted to come back with real bars.
+#
+# The retry is not a fudge: the Polygon plan allows 5 requests a rolling minute,
+# and a cold cache asking for six resolutions in a row will legitimately spend
+# the budget. The bucket refills; the assertion is still "bars, or fail".
+candles_with_bars() { # candles_with_bars <tf>
+  local tf="$1" tries=0
+  while [ "$tries" -lt 4 ]; do
+    BODY=$(curl -sS "$API_BASE/api/v1/market/candles?symbol=META&tf=$tf" -H "Authorization: Bearer $ACCESS_TOKEN")
+    if printf '%s' "$BODY" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+c=d["candles"]
+assert d["timeframe"] == "'"$tf"'", d["timeframe"]
+assert c, "no bars"
+assert c[0]["c"] is not None and c[-1]["ts"] > c[0]["ts"], "bars are not ordered oldest-first"
+print("  %s: %d bars from %s | %s"%(d["timeframe"],len(c),d["source"],d["freshness"]))' 2>/dev/null; then
+      return 0
+    fi
+    tries=$((tries+1))
+    sleep 15
+  done
+  printf '%s' "$BODY" | head -c 300; echo
+  return 1
+}
+
+for TF in 15m 1h; do
+  if candles_with_bars "$TF"; then
+    green "PASS  200  GET /api/v1/market/candles?tf=$TF — the portal resolution returns real bars"; PASS=$((PASS+1))
+  else
+    red   "FAIL  GET /api/v1/market/candles?tf=$TF returned no bars"; FAIL=$((FAIL+1))
+  fi
+done
+
 hr; echo "ROUND 2 — setups detail, follow, theses"; hr
 
 check "setups list (post-refresh levels)" GET "/api/v1/setups?mode=day_trade"
@@ -1463,9 +1499,11 @@ print("  explanation level:",d["prefs"]["explanation_level"])'
 # Asserting the Watching contract needs a symbol the user has nothing riding on,
 # and AMD is that symbol: a seeded `forming` setup, no plan, no position.
 # `supabase db reset` is not run between smoke runs, so a previous run's
-# arrangements are still on the AMD setup (it ends this script `ready` at grade
-# A, with a circle that was expired on purpose). Put both back the way the seed
-# left them, or the test is measuring the last run instead of this one.
+# arrangements are still on the AMD setup (it ends this script `invalidated`,
+# with a circle that was expired and closed on purpose — the close test needs a
+# setup that is genuinely over, because a circle whose setup is still live is
+# now RE-OPENED by the tick rather than left closed). Put both back the way the
+# seed left them, or the test is measuring the last run instead of this one.
 AMD_SETUP_ID='11111111-1111-4111-8111-000000000003'
 sb_patch "setups?id=eq.$AMD_SETUP_ID" '{"state":"forming","score":58,"grade_display":"C+","grade_band":"C","discussion_room_id":null}'
 AMD_OLD_CIRCLE=$(sb_get "rooms?type=eq.setup&setup_id=eq.$AMD_SETUP_ID&select=id" | python3 -c '
@@ -1871,6 +1909,27 @@ assert [o["key"] for o in d["ttl_options"]] == ["24h","3d","7d"], d["ttl_options
 print("  can_create:",d["can_create"],"|",d["create_hint"][:90])
 print("  circles:",[(c["name"],c["time_left_plain"]) for c in d["circles"]])'
 
+# The SAME reader on the SAME database, upgraded. The gate is a row, not a
+# constant, so premium must flip `can_create` without a deploy — a seeded flag
+# nobody's tier can reach is the same bug as no flag at all.
+sb_post "subscriptions" "{\"user_id\":\"$USER_ID\",\"tier\":\"premium\",\"status\":\"active\"}"
+check "circles list for a premium account" GET /api/v1/circles
+assert_body "a premium tier reads circles_create true and gets the create copy" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["can_create"] is True, "premium must read circles_create true: %r" % (d["create_hint"],)
+assert "Premium" not in d["create_hint"], d["create_hint"]
+print("  can_create:",d["can_create"],"|",d["create_hint"][:90])'
+
+# Back to free for the rest of the run — the tier is arranged, not granted.
+sb_delete "subscriptions?user_id=eq.$USER_ID"
+check "circles list is gated again once the subscription is gone" GET /api/v1/circles
+assert_body "dropping the subscription puts the gate straight back" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["can_create"] is False, "the gate did not come back"
+print("  can_create:",d["can_create"])'
+
 # A ready A-grade setup is the reason a circle exists, so the tick opens one.
 # META and NVDA already have a seeded circle, so opening one has to be proven on
 # a setup that does not: AMD.
@@ -1903,7 +1962,79 @@ print("  ",c["name"],"|",c["time_left_plain"],"|",c["members"],"members |",c["ro
 import pathlib; pathlib.Path("/tmp/smoke-r4-circle.json").write_text(json.dumps(c["id"]))'
 R4_CIRCLE=$(python3 -c 'import json;print(json.load(open("/tmp/smoke-r4-circle.json")))')
 
-# Run the clock out and let the tick close it. Nothing is deleted.
+# A circle nobody can get into is a wall. `join_core_room` refuses type='setup'
+# by design, so the door is /circles/:id/join — and /rooms/:id/join forwards
+# setup rooms to it, which is the call the mobile Community screen makes.
+expect "joining a circle" 201 POST "/api/v1/circles/$R4_CIRCLE/join"
+assert_body "the join answers with the room, the membership and a plain line" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["joined"] is True and d["already_member"] is False, d
+assert d["room"]["type"] == "setup", d["room"]["type"]
+assert d["room"]["member_count"] >= 1, "member_count is wrong straight after the insert: %r" % (d["room"],)
+print("  ",d["plain"],"| members",d["room"]["member_count"])'
+
+expect "joining the same circle twice" 200 POST "/api/v1/circles/$R4_CIRCLE/join"
+assert_body "a second join is idempotent, not a duplicate and not an error" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["already_member"] is True and d["joined"] is True, d
+assert d["room"]["member_count"] == 1, "a second join added a second row: %r" % (d["room"]["member_count"],)
+print("  ",d["plain"],"| members",d["room"]["member_count"])'
+
+expect "the old room route still works on a circle" 200 POST "/api/v1/rooms/$R4_CIRCLE/join"
+assert_body "/rooms/:id/join forwards a setup room instead of refusing it" '
+import json,sys
+d=json.load(sys.stdin)
+assert d["room"]["type"] == "setup" and d["joined"] is True, d
+assert d["room"]["member_count"] == 1, d["room"]["member_count"]
+print("  ",d["plain"])'
+
+check "the circle counts its member" GET /api/v1/circles
+assert_body "the member shows up in the circle row on the board" "
+import json,sys
+d=json.load(sys.stdin)
+c=[x for x in d['circles'] if x['id'] == '$R4_CIRCLE']
+assert c, 'the joined circle fell off the board'
+assert c[0]['members'] == 1, 'member count on the board is wrong: %r' % (c[0]['members'],)
+assert c[0]['joined'] is True, c[0]
+print('  ',c[0]['name'],'|',c[0]['members'],'member |joined',c[0]['joined'])"
+
+# THE 2020 BUG. An expiry in the past on a circle whose SETUP IS STILL LIVE is a
+# bug, not a state — it used to get closed on the next tick and the room a ready
+# A-grade setup was about vanished from the board. The tick now re-derives the
+# clock and puts it back.
+sb_patch "rooms?id=eq.$R4_CIRCLE" '{"expires_at":"2020-01-01T00:00:00Z"}'
+curl -sS -o /dev/null -X POST "$API_BASE/api/v1/internal/paper/tick" \
+  -H "x-internal-secret: $INTERNAL_SECRET" -H 'Content-Type: application/json' -d '{}'
+sb_get "rooms?type=eq.setup&select=id,name,expires_at,setup_id,config" | python3 -c '
+import json,sys,datetime
+rows=json.load(sys.stdin)
+now=datetime.datetime.now(datetime.timezone.utc)
+def when(r):
+    e=r.get("expires_at") or (r.get("config") or {}).get("expires_at")
+    return datetime.datetime.fromisoformat(e.replace("Z","+00:00")) if e else None
+past=[(r["name"], r.get("expires_at")) for r in rows if when(r) and when(r) <= now]
+assert not past, "a circle is still carrying an expiry in the past after a tick: %r" % (past,)
+print("  circles on the clock:", [(r["name"], str(when(r))[:16]) for r in rows])'
+if [ $? -eq 0 ]; then
+  green "PASS  no circle carries an expiry in the past after a tick"; PASS=$((PASS+1))
+else
+  red "FAIL  a circle is still expiring in the past after a tick"; FAIL=$((FAIL+1))
+fi
+
+check "the revived circle is back on the board" GET /api/v1/circles
+assert_body "a live setup's circle is re-opened rather than closed" "
+import json,sys
+d=json.load(sys.stdin)
+c=[x for x in d['circles'] if x['id'] == '$R4_CIRCLE']
+assert c, 'the circle for a still-ready setup was closed instead of extended'
+assert c[0]['expired'] is False and 'left' in c[0]['time_left_plain'], c[0]['time_left_plain']
+print('  ',c[0]['name'],'|',c[0]['time_left_plain'])"
+
+# Now the honest close: the SETUP is over, so there is nothing left to talk
+# about and the clock is allowed to run out for good. Nothing is deleted.
+sb_patch "setups?id=eq.$R4_SETUP" '{"state":"invalidated"}'
 sb_patch "rooms?id=eq.$R4_CIRCLE" '{"expires_at":"2020-01-01T00:00:00Z"}'
 R4_TICK3=$(curl -sS -X POST "$API_BASE/api/v1/internal/paper/tick" \
   -H "x-internal-secret: $INTERNAL_SECRET" -H 'Content-Type: application/json' -d '{}')
@@ -1913,10 +2044,22 @@ d=json.load(sys.stdin)
 assert d["circles_closed"] >= 1, "the expired circle was not closed by the tick"
 print("  tick closed",d["circles_closed"],"circle(s)")'
 if [ $? -eq 0 ]; then
-  green "PASS  an expired circle is closed by the tick"; PASS=$((PASS+1))
+  green "PASS  an expired circle whose setup is over is closed by the tick"; PASS=$((PASS+1))
 else
   red "FAIL  the tick left an expired circle open"; FAIL=$((FAIL+1))
 fi
+
+# Someone who is NOT in the closed circle cannot get in. (The smoke user joined
+# it while it was open, and staying a member of a room that went read-only is
+# correct — so step out first and then try the door.)
+sb_delete "room_members?room_id=eq.$R4_CIRCLE&user_id=eq.$USER_ID"
+expect "a closed circle does not take new members" 403 POST "/api/v1/circles/$R4_CIRCLE/join"
+assert_body "the refusal says the thread is still readable" '
+import json,sys
+e=json.load(sys.stdin)["error"]
+assert e["code"] == "ROOM_RESTRICTED", e["code"]
+assert "read" in e["message_plain"], e["message_plain"]
+print("  ",e["message_plain"])'
 
 check "the expired circle is out of the row" GET /api/v1/circles
 assert_body "a closed circle leaves the row but the room is not deleted" "
