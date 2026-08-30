@@ -176,7 +176,7 @@ def two_way_keys(base, opp) -> set[tuple[str, int]]:
     return _keys(base) & _keys(opp)
 
 
-def two_way_block(A, v: Variant, window_label: str, ts_base, ts_opp, ts_model):
+def two_way_block(A, v: Variant, trend, window_label: str, ts_base, ts_opp, ts_model):
     """The subset ENGINE-7 diagnosed, before and after the filter."""
     both = two_way_keys(ts_base, ts_opp)
     base_by, opp_by = _by_key(ts_base), _by_key(ts_opp)
@@ -229,28 +229,40 @@ def two_way_block(A, v: Variant, window_label: str, ts_base, ts_opp, ts_model):
         A("")
 
     # Does the trend point at the side that actually paid? A diagnostic, and a
-    # NEW model if anyone ever wanted to trade it, so it is fenced as one.
-    agree = [t for t in tw_base if t.meta.get("daily_trend") == (
-        "up" if t.side == "long" else "down")]
+    # NEW model if anyone ever wanted to trade it, so it is fenced as one. The
+    # trend is read from the map rather than from a trade's meta, because the
+    # 5-minute base arm is ENGINE-7's own class and does not carry one — and
+    # substituting a different class for it, however provably identical, would
+    # weaken the claim that this is v2's trade set.
+    def _tr(t):
+        return trend.get((t.symbol, int(t.day)), "none")
+
+    agree = [t for t in tw_base if _tr(t) == ("up" if t.side == "long" else "down")]
     oppose_keys = [(t.symbol, t.day) for t in tw_base
-                   if t.meta.get("daily_trend") == (
-                       "down" if t.side == "long" else "up")]
+                   if _tr(t) == ("down" if t.side == "long" else "up")]
     took_other = [opp_by[k] for k in oppose_keys if k in opp_by]
-    if agree and took_other:
+    if agree and took_other and tw_opp:
+        uncond = _mean_net(tw_opp)
         A("*Diagnostic, fenced: not a gate, and trading it would be a NEW model "
-          "needing its own pre-registration.* On the two-way-break mornings the "
-          "trend has three states. Where it agreed with the candle, the "
-          f"candle's side returned {_mean_net(agree):+.4f}R net ({_money(_mean_net(agree))} "
-          f"per $1,000, n={len(agree):,}). Where it OPPOSED the candle — the "
-          "mornings v3 sits out — the side the trend pointed at instead "
-          f"returned {_mean_net(took_other):+.4f}R ({_money(_mean_net(took_other))}, "
-          f"n={len(took_other):,}). "
-          + ("So the trend was pointing at the better end of a two-way break, "
-             "and the model that acts on that is not this one — this one only "
-             "declines to take the worse end."
-             if _mean_net(took_other) > _mean_net(agree) else
-             "So following the trend onto the other side would not have been "
-             "better than what the model does, which is to sit out."))
+          "needing its own pre-registration.* On a two-way-break morning the "
+          "trend has three states, and the question is whether it knows which "
+          "end of the whipsaw pays. Where the trend AGREED with the candle, the "
+          f"candle's side returned {_mean_net(agree):+.4f}R net "
+          f"({_money(_mean_net(agree))} per $1,000, n={len(agree):,}). Where it "
+          f"OPPOSED the candle — the mornings the model sits out — the side the "
+          f"trend pointed at instead returned {_mean_net(took_other):+.4f}R "
+          f"({_money(_mean_net(took_other))}, n={len(took_other):,}). **The "
+          f"number to compare that against is not the first one, it is "
+          f"{uncond:+.4f}R — what the other end of the range returned on ALL "
+          "two-way-break mornings, trend or no trend.** "
+          + ("The trend-selected version is materially better than that, which "
+             "would mean the trend does carry information about which end pays."
+             if took_other and uncond == uncond
+             and _mean_net(took_other) - uncond > 0.10 else
+             "The two are close, so what is being measured is that the other "
+             "end of a two-way break is less bad than the candle's end — which "
+             "ENGINE-7 already knew — and NOT that the daily trend can tell "
+             "which end that is."))
         A("")
     return both
 
@@ -485,6 +497,16 @@ def write_report(sel, variants: list[Variant], atr, trend, tcensus,
           f"held-back year returned **{pf.total_return:+.1%}** "
           f"(${100_000*(1+pf.total_return):,.0f}) at a Sharpe of "
           f"{pf.sharpe:.2f} with a worst drawdown of {pf.max_drawdown:.1%}.")
+        bd = _bd(v.model)
+        pf_bd = run_portfolio(bd, days_bd)
+        bs = summarise(bd, "build")
+        A(f"- **And the four years before it, which the verdict does not "
+          f"read**: {bs.mean_r:+.4f}R a trade ({_money(bs.mean_r)} per $1,000) "
+          f"over {bs.n:,} trades, and a portfolio of "
+          f"**{pf_bd.total_return:+.1%}** at a Sharpe of {pf_bd.sharpe:.2f}. "
+          "The gate is the held-back year and it stays the gate — but a reader "
+          "who sees only the held-back column is seeing one year in five, and "
+          "the other four are on the page for that reason.")
         A(f"- **Verdict**: **{verdict}**. " + " ".join(
             f"{x.id} {'passed' if x.passed else 'FAILED'} ({x.name})."
             for x in rows))
@@ -505,10 +527,10 @@ def write_report(sel, variants: list[Variant], atr, trend, tcensus,
     for v in variants:
         A(f"### `{v.model_id}`")
         A("")
-        two_way_block(A, v, f"Held back, {gates.SIPV3_HELD_BACK[0]} → "
+        two_way_block(A, v, trend, f"Held back, {gates.SIPV3_HELD_BACK[0]} → "
                       f"{gates.SIPV3_HELD_BACK[1]}",
                       _hb(v.base), _hb(v.opp), _hb(v.model))
-        two_way_block(A, v, f"Build window, {gates.SIPV3_BUILD[0]} → "
+        two_way_block(A, v, trend, f"Build window, {gates.SIPV3_BUILD[0]} → "
                       f"{gates.SIPV3_BUILD[1]}",
                       _bd(v.base), _bd(v.opp), _bd(v.model))
 
@@ -815,6 +837,19 @@ def write_report(sel, variants: list[Variant], atr, trend, tcensus,
           f"interval on the held-back mean net R is {lo:+.4f} to {hi:+.4f} "
           + ("— it CONTAINS zero." if lo <= 0 <= hi else "— it excludes zero.")
           + f" Verdict: **{verdict}**.")
+    for v in variants:
+        yrs = sorted(split_by(v.model, lambda t: str(t.day)[:4]).items())
+        pos = [k for k, ts in yrs if summarise(ts, "").mean_r > 0]
+        allm = summarise(v.model, "all")
+        A(f"- **`{v.model_id}` across the whole five years**: {allm.mean_r:+.4f}R "
+          f"a trade ({_money(allm.mean_r)} per $1,000) over {allm.n:,} trades, "
+          f"positive in {len(pos)} of the {len(yrs)} calendar years it touches "
+          f"({', '.join(pos) if pos else 'none'}). The held-back year is drawn "
+          "from the positive end of that spread, which is a fact about this "
+          "test and not a criticism of it — the window was fixed in advance by "
+          "the owner and by the calendar, not chosen. It does mean the "
+          "held-back number should be read as one draw from a distribution "
+          "whose other draws are printed above.")
     A("- **Twelve months is one regime.** Trades on the same day are not "
       "independent of each other, which is why the random-20 comparison is "
       "paired by day rather than by trade. A trade count in the thousands "

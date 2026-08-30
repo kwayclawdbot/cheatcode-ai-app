@@ -1,11 +1,18 @@
 # engine/ — what was measured, and what happened
 
-**Twelve models have now been measured against bars written down before each
+**Fourteen models have now been measured against bars written down before each
 test was run. Nine failed, one came back inconclusive on both of its exits, the
 eleventh — a replication of a published, peer-reviewed result — came back NOT
-REPRODUCED, and the twelfth, the same published model read the other way, came
-back PARTIAL on a window held back for it.**
+REPRODUCED, and the last three came back PARTIAL, which the gates defined in
+advance as not a pass.**
 None ships. Nothing here touches the app, and no alert has been produced.
+
+**Ten models in, the same sentence keeps coming back: this programme has never
+once measured a directional filter worth anything.** ENGINE-2 (daily structure),
+ENGINE-3 (1h and 4h agreeing), ENGINE-5 (1h), and now ENGINE-8 (daily structure
+again, on the one base that clears zero) have all returned nulls, and ENGINE-8's
+is the cleanest of them because it was aimed at a failure that had already been
+located precisely and it missed anyway.
 
 **Read [ENGINE-6](orb_sip.v1.polygon-sip-v1.md) and
 [ENGINE-7](orb_sip.v2.polygon-sip-v1.md) together if you read only one thing.**
@@ -39,6 +46,8 @@ the existing SMS engine took — costs a paying customer.
 | ENGINE-5 | [`orb_1h_unmanaged.v1`](orb_1h_unmanaged.v1.polygon-deep-v1.md) — no 1R partial | FAIL |
 | ENGINE-6 | [`orb_sip.v1`](orb_sip.v1.polygon-sip-v1.md) — the published stocks-in-play ORB, 32,434 trades | **NOT REPRODUCED** |
 | ENGINE-7 | [`orb_sip.v2`](orb_sip.v2.polygon-sip-v1.md) — the same model, stopped at the opposite extreme of the opening candle, 10,545 held-back trades | **PARTIAL** — money and the filter, but the direction call lost to a coin flip |
+| ENGINE-8 | [`orb_sip.v3`](orb_sip.v3.polygon-sip-v1.md) — the same model again, with a daily-trend-agreement gate, 996 held-back trades | **PARTIAL** — and the filter did not fix the failure it was aimed at |
+| ENGINE-8 | [`orb_sip.v3_15m`](orb_sip.v3.polygon-sip-v1.md) — the same gate on a 15-minute opening range, 892 held-back trades | **PARTIAL** — same three gates failed |
 
 Read [ENGINE-2's report](orb_htf_structural.v1.polygon-v1.md) for the finding the
 whole family turns on: the setup earns about 4.6 cents a share before costs and
@@ -696,3 +705,131 @@ volatile names of the morning; and costs already eat more than half the gross
 edge (+0.0437R at zero cost against +0.0199R at the pre-registered model). The
 honest summary is that **one published claim survived a held-back test at about a
 fiftieth of an R a trade, and two others did not.**
+
+---
+
+# ENGINE-8 — the daily trend had to agree, and it did not help
+
+Brief: [`docs/BUILD-BRIEF-engine-8-sip-trend-filter.md`](../../docs/BUILD-BRIEF-engine-8-sip-trend-filter.md).
+Gates: [`../models/orb_sip.v3/GATE.md`](../models/orb_sip.v3/GATE.md) and
+[`../models/orb_sip.v3_15m/GATE.md`](../models/orb_sip.v3_15m/GATE.md), both
+committed at `6dc2a50`, before any number existed.
+
+The owner's rule, verbatim: *"adding a filter for trades that are already in
+momentum going in the direction of the breakout.. so bullish orb + bullish
+trend. If daily trend bearish and bullish orb dont take the trade"*, on
+*"only... data from past 5 years"*. `orb_sip.v3` is `orb_sip.v2` with exactly
+that gate added — long only in a confirmed daily uptrend, short only in a
+confirmed daily downtrend, sideways or opposing is no trade rather than a
+smaller one — read on the last fully closed daily bar, using ENGINE-2's
+structure definition without a number changed. `orb_sip.v3_15m` is the same
+model on a 15-minute opening range, added by the owner mid-lane. Build window
+2021-08-29 → 2025-08-28; verdict window 2025-08-29 → 2026-08-28, held back until
+both gates were committed.
+
+## The answer, in one line
+
+**The filter removes three trades in four and does not improve what is left. On
+the mornings it was specifically brought in to fix — the ones that break both
+ends of the opening range — the trades it keeps return −0.723R and the trades it
+removes return −0.729R. It is not telling them apart.**
+
+| | `orb_sip.v3` (5m) | `orb_sip.v3_15m` (15m) |
+|---|---|---|
+| held-back trades | 996 | 892 |
+| mean net R | **+0.0356** (+$36 per $1,000 risked) | **+0.0062** (+$6) |
+| 95% interval | −0.0324 to +0.1035 — **contains zero** | −0.0482 to +0.0606 — **contains zero** |
+| median net R | −0.1003 | −0.0334 |
+| hit rate / stopped | 45.7% / 30.6% | 47.5% / 19.3% |
+| portfolio, held back | +18.8%, Sharpe 0.69 | −6.5%, Sharpe −0.16 |
+| portfolio, four build years | **−67.3%**, Sharpe −0.57 | **−50.0%**, Sharpe −0.51 |
+| verdict | **PARTIAL** (T3, T4, T5 failed) | **PARTIAL** (U3, U4, U5 failed) |
+
+Both cleared the sample floor and both had a positive mean, so neither is a
+FAILED. Both lost all three mechanism gates: the direction call against a coin
+flip, the stocks-in-play filter against twenty random names, and the portfolio.
+**PARTIAL is not a pass and the gate said so before the run.**
+
+## Four findings, and the second is the one to keep
+
+**1. The two-way-break diagnosis is confirmed, and it is enormous.** 1,565 of
+the 3,969 held-back mornings (39.4%) broke both ends of the 5-minute opening
+range. On those the candle's side returned **−0.728R** and the other end
+**−0.308R**. On the 2,404 mornings only one end broke, the candle's side
+returned **+0.501R**. The entire model is one good trade and one catastrophic
+one, sorted by a fact — whether the range gets whipsawed — that is not knowable
+at 09:35. ENGINE-7 saw a random half of these through its coin flip; this lane
+put a resting order at each end and counted all of them.
+
+**2. The daily trend cannot tell which end of a whipsaw pays, and that is the
+finding.** Of the 1,565 two-way mornings the filter kept 373 and removed 1,192.
+Kept **−0.7228R**, removed **−0.7293R**, difference **+0.0065R** (95%: −0.090 to
++0.103). On the build window, over 6,799 such mornings, the difference is
+**−0.0132R** (95%: −0.053 to +0.026). Both intervals sit on zero. And the fenced
+diagnostic closes the door on the obvious follow-up: on the mornings where the
+trend pointed the *other* way, taking the trend's side returned −0.269R against
+the −0.308R that the other side returned on **all** two-way mornings regardless
+of trend. The other end of a whipsaw is less bad than the candle's end — which
+ENGINE-7 already knew — and the daily trend adds nothing to knowing that.
+
+**3. The filter discards winners, and the gate required this sentence.** It
+removes **75%** of the base model's trades. Over the four-year build window the
+5-minute model kept **−0.0168R** and removed **+0.0302R**, a difference of
+**−0.047R** whose 95% interval (−0.088 to −0.006) **excludes zero in the wrong
+direction**. Restricted to the mornings where only one end broke — where there
+was never a side to choose — it is **−0.0625R** (95%: −0.115 to −0.010), again
+excluding zero the wrong way. The held-back year's version of the same numbers
+is +0.025R and −0.016R with intervals spanning zero. **Four years say mildly
+harmful; one year says nothing. Neither says it helps.**
+
+**4. The held-back year is the good year, and the whole window says so.** Across
+the full five years `orb_sip.v3` returns **−0.0067R** over 5,148 trades and is
+positive in **2 of the 6** calendar years it touches. The verdict window was
+fixed by the owner and by the calendar rather than chosen, so this is not
+cherry-picking — but a reader who sees only +$36 a trade is seeing one year in
+five, and the other four are printed beside it.
+
+## What was NOT established, and what it cost to find out
+
+The lane cost one run and no new data: ENGINE-6's selection was reused byte for
+byte, the daily bars came from grouped files already in the snapshot, and nothing
+was downloaded. The trend definition was taken as already written — ENGINE-2's
+`daily_structure` at pivot_n=2 and lookback=120 — precisely so that this lane
+could not answer a null by inventing a third definition.
+
+Three honest limits, all pre-registered rather than added afterwards. **The
+held-back year is not virgin data**: ENGINE-7's diagnosis was measured on
+2024-01-01 → 2026-08-28, which contains it, so the *decision to try a trend
+filter* was taken after looking at data that includes the verdict window —
+suggestive, not conclusive. **Two models on one year** carry about a 10% chance
+that one clears zero by luck; both were reported regardless and neither was led
+with. **The sample floor moved** from ENGINE-7's 5,000 to 750, for the
+arithmetic reason that twenty picks over ~251 sessions is a ceiling of ~5,000
+before any filter — 750 is set from power and buys a ±0.086R half-width, which
+is enough to see an edge worth trading and deliberately not enough to resolve
+v2's +0.02R.
+
+Two judgement calls are recorded as calls. The **15-minute stop** is the
+opposite extreme of the whole 09:30-09:45 range rather than of the last
+five-minute candle inside it, because the bar that defines the trade is the bar
+the stop belongs to; the other reading is a different model and no number here
+speaks to it. And the **selection stays ENGINE-6's, at 09:35, for both
+variants**, because the one-minute cache exists only for the symbol-days that
+selection named — not lookahead, since 09:35 is strictly less information than
+09:45, but a deviation, and it makes the two variants a comparison of range
+length and nothing else.
+
+## The prior, and whether it moved
+
+| lane | filter | result |
+|---|---|---|
+| ENGINE-2 | confirmed daily structure, 32 names | removing it moved the gross mean by +0.019R — inside the noise |
+| ENGINE-3 | 1h and 4h must both agree | the edge over the control SHRANK, +0.099R → +0.052R |
+| ENGINE-5 | 1h structure, 11,568 paired trades | −0.005R (95%: −0.027 to +0.016) — the tightest null in the programme |
+| **ENGINE-8** | **daily structure, on the one base that clears zero** | **removes 75% of trades and does not improve what is left** |
+
+ENGINE-3's and ENGINE-5's nulls were measured on a fixed 32-name basket with a
+stop ENGINE-6 later showed was wrong — a filter on a broken base measures the
+base, so they did not settle this. ENGINE-8 ran the same idea on the base that
+does clear zero, with a survivorship-free universe and the stocks-in-play
+selection, and got the same answer. **The prior was a null and it did not move.**
