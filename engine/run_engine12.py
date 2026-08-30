@@ -177,6 +177,57 @@ def reached_1r(trades) -> tuple[int, float, float]:
             (won / len(reach)) if reach else float("nan"))
 
 
+def sip_v2_1r() -> list[tuple[str, int, float, float]]:
+    """The same 1R statistic for `orb_sip.v2` on the stocks it actually picks,
+    computed here from its committed trade dump rather than quoted, so the two
+    sit on one definition. Nothing of ENGINE-7's is re-run."""
+    path = REPORTS / "orb_sip.v2.polygon-sip-v1.trades.csv.gz"
+    if not path.exists():
+        return []
+    import csv
+    n = {"2016-2023": 0, "2024-2026": 0}
+    reach = dict.fromkeys(n, 0)
+    won = dict.fromkeys(n, 0)
+    with gzip.open(path, "rt") as f:
+        for row in csv.DictReader(f):
+            if row["model_id"] != "orb_sip.v2" or row["arm"] != "sip":
+                continue
+            w = "2024-2026" if int(row["day"]) >= 20240101 else "2016-2023"
+            n[w] += 1
+            if float(row["mfe_r"]) >= 1.0:
+                reach[w] += 1
+                if float(row["net_r"]) > 0:
+                    won[w] += 1
+    return [(w, n[w], reach[w] / n[w] if n[w] else float("nan"),
+             won[w] / reach[w] if reach[w] else float("nan"))
+            for w in ("2016-2023", "2024-2026")]
+
+
+def pair_split(a, b) -> dict:
+    """The H3 diagnostic ENGINE-7 wrote down and this lane inherits.
+
+    The coin flip only trades when the side it drew actually broke, so the
+    paired set splits in two: pairs where it drew the SAME side are literally
+    the same trade and contribute exactly zero, and the whole of the paired
+    difference comes from the pairs where it drew the OTHER side — which are, by
+    construction, the mornings on which BOTH ends of the opening range broke.
+    """
+    ctl = {(t.symbol, t.day): t for t in b}
+    same, other_model, other_flip = 0, [], []
+    for t in a:
+        c = ctl.get((t.symbol, t.day))
+        if c is None:
+            continue
+        if c.side == t.side:
+            same += 1
+        else:
+            other_model.append(t.gross_r)
+            other_flip.append(c.gross_r)
+    return {"same": same, "other": len(other_model),
+            "model": float(np.mean(other_model)) if other_model else float("nan"),
+            "flip": float(np.mean(other_flip)) if other_flip else float("nan")}
+
+
 def stop_geometry(trades, atr: dict[int, float]) -> dict:
     if not trades:
         return {}
@@ -455,6 +506,23 @@ def write_report(results: dict) -> None:
       f"+0.0199R (**+20 dollars** per $1,000 risked) over 10,545 held-back "
       f"trades with a 95% range of -2 to +42 dollars — an interval that also "
       f"contains zero. This lane's numbers are printed beside it below.")
+    A(f"- **Compared with ENGINE-4**, which traded SPY every day on this same "
+      f"cache with a 15-minute range, a trend filter, a 2R target and a much "
+      f"tighter stop: it lost -0.359R in sample and -0.154R out of sample. This "
+      f"lane, with the stop that rescued the stocks model, lost "
+      f"{fmt(full_s.mean_r,3)}R. **Two different specs, the same sign, on the "
+      f"same instrument, fifteen years apart in construction** — and both of "
+      f"them carrying a stop far inside the losing zone of ENGINE-6's sweep.")
+    A("")
+    A("**The mechanism, in one sentence.** Entry sits at one end of the opening "
+      "five-minute candle and the stop at the other, so a stop-out needs a move "
+      f"of only one candle width — {fmt(full_stop['cents'],0)} cents, "
+      f"{fmt(full_stop['pct'],3)}% of price, "
+      f"{fmt(full_stop['atr'],2)} of a 14-day ATR — and SPY delivers that many "
+      f"times an ordinary morning. It duly happens on "
+      f"{fmt(stopped_share(full_tr)*100,1)}% of trades, against 31.6% on the "
+      "stocks the strategy actually picks, whose opening candles are four and a "
+      "half times wider in ATR terms.")
     A("")
     if disagree:
         A("> **The two windows disagree in sign, and the gate said in advance "
@@ -486,6 +554,20 @@ def write_report(results: dict) -> None:
         arm_table(A, j["trades"], window(spy["model_gross"], j["window"]),
                   window(spy["flip"], j["window"]),
                   window(spy["flip_gross"], j["window"]))
+        A("")
+        ps = pair_split(window(spy["model_gross"], j["window"]),
+                        window(spy["flip_gross"], j["window"]))
+        A(f"*The pairing, unpacked — ENGINE-7's diagnostic, inherited.* Of the "
+          f"{ps['same'] + ps['other']:,} paired sessions, **{ps['same']:,} agree** "
+          f"— the flip drew the same side, the two arms are literally the same "
+          f"trade, and they contribute exactly zero to the difference. The whole "
+          f"of it comes from the **{ps['other']:,} that disagree**, which are by "
+          f"construction the mornings on which BOTH ends of the opening range "
+          f"broke: on those the model's side returned {fmt(ps['model'],4)} gross "
+          f"and the opposite side {fmt(ps['flip'],4)}. That is why the unpaired "
+          f"means in the table above and the paired number in the gate can point "
+          f"different ways, and the gate is the paired one because that is what "
+          f"was written down.")
         A("")
 
     # --- every window, side by side ----------------------------------------
@@ -544,13 +626,26 @@ def write_report(results: dict) -> None:
       "that ever traded 1R in their favour went on to finish winners; it is the "
       "most stable statistic in the programme.")
     A("")
-    A("| window | trades | reached 1R in their favour | of those, finished green |")
-    A("|---|---|---|---|")
+    A("| | window | trades | reached 1R in their favour | of those, finished green |")
+    A("|---|---|---|---|---|")
     for name in ("untouched", "build", "held_back", "full"):
         tr = window(spy["model"], WINDOWS[name])
         n, share, won = reached_1r(tr)
-        A(f"| {name} | {len(tr):,} | {n:,} ({fmt(share*100,1)}%) | "
-          f"**{fmt(won*100,1)}%** |")
+        A(f"| `orb_spy.v1` on SPY | {name} | {len(tr):,} | {n:,} "
+          f"({fmt(share*100,1)}%) | **{fmt(won*100,1)}%** |")
+    for w, n, share, won in sip_v2_1r():
+        A(f"| `orb_sip.v2` on stocks in play | {w} | {n:,} | {n * share:,.0f} "
+          f"({fmt(share*100,1)}%) | **{fmt(won*100,1)}%** |")
+    A("")
+    A("The `orb_sip.v2` rows are computed here from its committed trade dump on "
+      "the identical definition, not quoted; nothing of ENGINE-7's is re-run. "
+      "**The statistic does not hold on SPY.** On the stocks the strategy picks, "
+      "four trades in five that ever traded a full unit of risk in their favour "
+      "went on to finish green. On SPY it is roughly one in two — a coin toss. "
+      "A trade that gets 1R ahead on SPY and is then left to run to the bell "
+      "gives it back about half the time, which is what a stop only 0.16 of an "
+      "average day's range wide does to a position: the trade is never far "
+      "enough ahead, in the money that matters, to survive the walk back.")
     A("")
 
     # --- cost drag ---------------------------------------------------------
@@ -571,6 +666,12 @@ def write_report(results: dict) -> None:
         A(f"| {name} | {fmt(st.get('cents', float('nan')),1)} cents | "
           f"{fmt(st.get('commission_r', float('nan')),4)}R | {fmt(gm,4)} | "
           f"{fmt(s.mean_r,4)} | {fmt(gm - s.mean_r,4)}R |")
+    A("")
+    A("The stop looks nearly four times wider in the verdict year than in the "
+      "untouched span, and it is not: SPY is about five times the price it was "
+      "in 2012, so the same move costs more cents. In ATR units — the unit that "
+      "decides anything — it is unchanged across every window, which is why the "
+      "result is too.")
     A("")
     A("### Cost sensitivity — disclosed, and not a result")
     A("")
@@ -645,6 +746,17 @@ def write_report(results: dict) -> None:
     for sym in SYMBOLS:
         for name in ("held_back", "untouched"):
             A(f"| {sym} | {name} | {results[sym]['judge'][name]['verdict']} |")
+    A("")
+    A("**Read a PARTIAL here for exactly what it is.** It means the first two "
+      "gates cleared on that window — the arm made money gross and net — and "
+      "that at least one of the coin-flip, interval and portfolio gates did "
+      "not. Every PARTIAL in the table above is a mean within a few tens of "
+      "dollars of zero on $1,000 risked, with a 95% interval that spans it. "
+      "None of them is a finding, none of them survives the other window, and "
+      "the gate said in advance that PARTIAL is not a pass. The one thing worth "
+      "keeping from this table is the last column: the opening candle is a "
+      "narrow stop on all three index ETFs, and all three behave the same way "
+      "because of it.")
     A("")
 
     # --- mechanics ---------------------------------------------------------

@@ -1,14 +1,14 @@
 # engine/ — what was measured, and what happened
 
-**Nineteen models have now been measured against bars written down before each
-test was run. Ten failed, one came back inconclusive on both of its exits, one —
+**Twenty models have now been measured against bars written down before each
+test was run. Eleven failed, one came back inconclusive on both of its exits, one —
 a replication of a published, peer-reviewed result — came back NOT REPRODUCED,
 and four came back PARTIAL, which the gates defined in advance as not a pass.
 The last four were challengers to the one component this programme has ever
 measured as working, and all four lost to it.**
 None ships. Nothing here touches the app, and no alert has been produced.
 
-**Eleven lanes in, the same sentence keeps coming back: this programme has never
+**Twelve lanes in, the same sentence keeps coming back: this programme has never
 once measured a directional filter worth anything.** ENGINE-2 (daily structure),
 ENGINE-3 (1h and 4h agreeing), ENGINE-5 (1h), ENGINE-8 (daily structure again, on
 the one base that clears zero) and now ENGINE-11 (the same daily trend as a
@@ -62,6 +62,25 @@ evidence points the wrong way), and it did so through the mechanism that has
 explained every result here: it narrowed the median stop from 164 to 145 cents
 and tilted the book long, into the weaker of the two sides.
 
+**[ENGINE-12](orb_spy.v1.polygon-deep-v1.md) answers the owner's question about
+SPY, and the answer is a clean no.** The stocks-in-play strategy has never once
+selected SPY — 0 trades out of 42,937 — so ENGINE-6 through ENGINE-11 are silent
+about it. ENGINE-12 deletes the selection step, keeps every other rule byte for
+byte (a subclass that overrides nothing but its name, with tests asserting it),
+and trades SPY every session for fifteen years. It lost **$208 per $1,000
+risked** across 3,445 trades and was negative in **all fifteen calendar years**,
+on the owner's verdict year and on the 2012–2021 span no lane had ever read.
+**The reason is the same one parameter as always, and it was written into the
+gate as a disclosure trigger before the run:** the stop here is the width of the
+opening five-minute candle, and SPY's is a median **0.16 of a 14-day ATR** —
+against 0.72 on the stocks the strategy picks. Putting the wide stop on SPY is
+not possible, because SPY does not have a wide opening range; a stock selected
+for abnormal opening activity does, and that is what the selection is buying.
+The knock-out rate follows exactly: 76.2% against 31.6%. So does the one
+statistic that had been stable everywhere else — of the trades that ever get a
+full unit of risk ahead, 78–83% finish green on stocks in play and **45.6%** on
+SPY.
+
 That is the intended kind of outcome. It cost a week; the alternative — the one
 the existing SMS engine took — costs a paying customer.
 
@@ -90,6 +109,8 @@ the existing SMS engine took — costs a paying customer.
 | ENGINE-11 | [`orb_trend_str.v1`](orb_trend_str.v1.polygon-sip-v1.md) — `rank`, the forty busiest re-ordered by trend strength, 3,995 held-back trades | **LOST to the incumbent** — −$1 per $1,000, −$22 a trade against the baseline |
 | ENGINE-11 | [`orb_trend_str.v1`](orb_trend_str.v1.polygon-sip-v1.md) — `gate_strong`, the same twenty cut at +0.20 strength, 1,265 held-back trades | **LOST to the incumbent** — +$46 per $1,000 but an interval spanning zero, and it discards winners over the four build years |
 | ENGINE-11 | [`orb_trend_str.v1`](orb_trend_str.v1.polygon-sip-v1.md) — **the gradient**, across ten strength deciles | **NO GRADIENT** — +$33 a trade strong-half-minus-weak-half, 95%: −$41 to +$107 |
+| ENGINE-12 | [`orb_spy.v1`](orb_spy.v1.polygon-deep-v1.md) — the working spec on SPY alone, 240 trades in the owner's verdict year | **FAILED** — −$200 per $1,000 risked |
+| ENGINE-12 | [`orb_spy.v1`](orb_spy.v1.polygon-deep-v1.md) — the same, on the untouched 2012–2021 span, 2,267 trades | **FAILED** — −$236 per $1,000 risked, 0 of 15 calendar years positive |
 
 Read [ENGINE-2's report](orb_htf_structural.v1.polygon-v1.md) for the finding the
 whole family turns on: the setup earns about 4.6 cents a share before costs and
