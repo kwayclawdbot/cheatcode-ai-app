@@ -92,6 +92,34 @@ def _paired_by_day(a, b):
     return [x[k] - y[k] for k in sorted(set(x) & set(y))]
 
 
+def _atr_for(pairs, snapshot):
+    """ATR keyed per snapshot, not per environment.
+
+    `run_engine6._atr_map` reads `universe.eligible_table()`, which resolves via
+    `scfg.DATA_ROOT` — the snapshot named in the ENVIRONMENT. This lane replays
+    two snapshots in one process, so that would silently attach one window's ATR
+    to the other window's trades. ATR is reporting-only in `orb_sip.v2`, so it
+    could not change a trade — but the "in 14-day ATRs" column IS this lane's
+    pre-registered mechanism, so a wrong one would corrupt the table the verdict
+    is explained by.
+    """
+    tab = universe.eligible_table(
+        str(ROOT / "data" / snapshot / "eligible.parquet"))
+    want = {}
+    for sym, day in pairs:
+        want.setdefault(int(day), set()).add(sym)
+    out = {}
+    for day, syms in want.items():
+        row = tab.get(day)
+        if row is None:
+            continue
+        for t, a in zip(row["ticker"], row["atr"]):
+            t = str(t)
+            if t in syms:
+                out[(t, day)] = float(a)
+    return out
+
+
 def _plan_path(snapshot):
     return ROOT / "data" / snapshot / "us500_plan.json"
 
@@ -206,7 +234,7 @@ def stage_run() -> None:
             sel = json.load(f)
         inc = sorted({(r["symbol"], int(r["day"])) for r in sel["rows"]
                       if r["arm"] == ARM_SIP and _d(wlo) <= int(r["day"]) <= _d(whi)})
-        atr = _atr_map(set(top10) | set(top20) | set(inc))
+        atr = _atr_for(set(top10) | set(top20) | set(inc), snap)
         print(f"  [{label}] {snap}: incumbent={len(inc):,} top10={len(top10):,} "
               f"top20={len(top20):,} symbol-days", flush=True)
         arms = {G.INCUMBENT: inc, G.TOP10: top10, G.TOP20: top20, G.FLIP: top10}
