@@ -1,9 +1,11 @@
 # engine/ — what was measured, and what happened
 
-**Sixteen models have now been measured against bars written down before each
+**Eighteen models have now been measured against bars written down before each
 test was run. Ten failed, one came back inconclusive on both of its exits, one —
 a replication of a published, peer-reviewed result — came back NOT REPRODUCED,
-and four came back PARTIAL, which the gates defined in advance as not a pass.**
+and four came back PARTIAL, which the gates defined in advance as not a pass.
+The last two were challengers to the one component this programme has ever
+measured as working, and both lost to it.**
 None ships. Nothing here touches the app, and no alert has been produced.
 
 **Ten models in, the same sentence keeps coming back: this programme has never
@@ -31,6 +33,17 @@ supplied rather than from the sweep, and both readings landed exactly where the
 sweep said they would — which makes stop width the only parameter this programme
 has ever found that decides what a model earns, and it does so out of sample.
 
+**[ENGINE-9](orb_kai_sel.v1.polygon-sip-v1.md) is the first lane to put the
+company's own shipped number on the stand.** ENGINE-7 established that the
+SELECTOR is what makes the stocks-in-play ORB work, so ENGINE-9 asked whether
+Kai's breakout score — ported bar for bar from `cheatcode_scanner.py`, defects
+included — picks a better twenty than abnormal opening volume does. It does not.
+It loses to the incumbent by $73 a trade on $1,000 of risk with an interval
+entirely below zero, and against ENGINE-6's random-20 coin toss it is $19 behind
+with an interval that spans zero. **As a day-trade selector the score is not
+distinguishable from drawing names out of a hat.** That is a good outcome for the
+programme and a bad one for the alert engine, and the report says both.
+
 That is the intended kind of outcome. It cost a week; the alternative — the one
 the existing SMS engine took — costs a paying customer.
 
@@ -51,6 +64,9 @@ the existing SMS engine took — costs a paying customer.
 | ENGINE-7 | [`orb_sip.v2`](orb_sip.v2.polygon-sip-v1.md) — the same model, stopped at the opposite extreme of the opening candle, 10,545 held-back trades | **PARTIAL** — money and the filter, but the direction call lost to a coin flip |
 | ENGINE-8 | [`orb_sip.v3`](orb_sip.v3.polygon-sip-v1.md) — the same model again, with a daily-trend-agreement gate, 996 held-back trades | **PARTIAL** — and the filter did not fix the failure it was aimed at |
 | ENGINE-8 | [`orb_sip.v3_15m`](orb_sip.v3.polygon-sip-v1.md) — the same gate on a 15-minute opening range, 892 held-back trades | **PARTIAL** — same three gates failed |
+| ENGINE-9 | [`orb_kai_sel.v1`](orb_kai_sel.v1.polygon-sip-v1.md) — `relvol`, the incumbent selector, 3,969 held-back trades | **RELVOL HOLDS** — +$17 per $1,000 risked |
+| ENGINE-9 | [`orb_kai_sel.v1`](orb_kai_sel.v1.polygon-sip-v1.md) — `kai`, Kai's own breakout score, 4,225 held-back trades | **LOST to the incumbent** — −$54 per $1,000, and not distinguishable from a coin toss |
+| ENGINE-9 | [`orb_kai_sel.v1`](orb_kai_sel.v1.polygon-sip-v1.md) — `both`, the score and the volume together, 4,079 held-back trades | **LOST to the incumbent** — −$15 per $1,000, interval spans zero |
 | ENGINE-10 | [`orb_sip.v4_trigger`](orb_sip.v4.polygon-sip-v1.md) — the owner's candle stop, literal reading, 3,969 held-back trades | **FAILED** — stopped out on 85.8% of trades, −$605 per $1,000 risked |
 | ENGINE-10 | [`orb_sip.v4_prior`](orb_sip.v4.polygon-sip-v1.md) — the owner's candle stop, the other reading, 3,967 held-back trades | **PARTIAL** — +$15 per $1,000, indistinguishable from v2 and from zero |
 
