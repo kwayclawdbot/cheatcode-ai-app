@@ -18,15 +18,31 @@ wrong for one name on a couple of days. That is noise. The other is bias.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-SNAPSHOT = "polygon-sip-v1"
+# --- snapshot identity, overridable for a SEPARATE snapshot ------------------
+# ENGINE-15 needs an out-of-sample window that no lane has ever read, and the
+# only one available is EARLIER in time (there is no forward data: the tape ends
+# on the last completed session). It must not be mixed into `polygon-sip-v1`,
+# because rule 1 of this directory is that a result names its snapshot and
+# quietly widening what a snapshot name covers breaks every report that already
+# cites it. So the identity and the window are read from the environment, with
+# the ENGINE-6 values as defaults, and an early snapshot is fetched under its
+# own name into its own directory:
+#
+#   SIP_SNAPSHOT=polygon-sip-early-v1 SIP_WARMUP_START=2011-10-03 \
+#   SIP_START=2012-01-01 SIP_END=2015-12-31 .venv/bin/python sip/fetch_grouped.py
+#
+# Nothing reads these implicitly: every report prints `scfg.SNAPSHOT`, so a run
+# under the wrong override names itself in its own output.
+SNAPSHOT = os.environ.get("SIP_SNAPSHOT", "polygon-sip-v1")
 
 # grouped daily bars are fetched from WARMUP_START so that the first trading day
 # of the window already has 20 prior sessions of volume and 14 of ATR
-WARMUP_START = "2015-10-01"
-START = "2016-01-01"
-END = "2026-08-28"
+WARMUP_START = os.environ.get("SIP_WARMUP_START", "2015-10-01")
+START = os.environ.get("SIP_START", "2016-01-01")
+END = os.environ.get("SIP_END", "2026-08-28")
 
 # the paper's window; everything after it is held back and reported separately
 REPLICATION_END = "2023-12-31"
