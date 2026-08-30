@@ -80,7 +80,8 @@ def stage_score() -> None:
 
     cols: dict[str, list] = {k: [] for k in
                              ["symbol", "day", "asof", "candidate", "bullish",
-                              "score", "rsi", "vol_ratio"] + list(kscore.COMPONENTS)}
+                              "score", "rsi_value", "vol_ratio"]
+                             + list(kscore.COMPONENTS)}
     missing = 0
     for i, (sym, sess) in enumerate(sorted(per_symbol.items())):
         got = kscore.score_symbol(book, sym, np.array(sess, dtype="int64"))
@@ -94,7 +95,9 @@ def stage_score() -> None:
         cols["candidate"].extend(np.asarray(got["candidate"], dtype=bool).tolist())
         cols["bullish"].extend(np.asarray(got["bullish"], dtype=bool).tolist())
         cols["score"].extend(np.asarray(got["score"], dtype="int64").tolist())
-        cols["rsi"].extend(np.asarray(got["rsi"], dtype="float64").tolist())
+        # NOT "rsi": that is also the name of the SCORE component, and one
+        # dict key cannot hold both the reading and the points it earned.
+        cols["rsi_value"].extend(np.asarray(got["rsi"], dtype="float64").tolist())
         cols["vol_ratio"].extend(np.asarray(got["vol_ratio"], dtype="float64").tolist())
         for c in kscore.COMPONENTS:
             cols[c].extend(np.asarray(got["components"][c], dtype="int64").tolist())
@@ -104,7 +107,7 @@ def stage_score() -> None:
     schema = pa.schema(
         [("symbol", pa.string()), ("day", pa.int64()), ("asof", pa.int64()),
          ("candidate", pa.bool_()), ("bullish", pa.bool_()), ("score", pa.int64()),
-         ("rsi", pa.float64()), ("vol_ratio", pa.float64())]
+         ("rsi_value", pa.float64()), ("vol_ratio", pa.float64())]
         + [(c, pa.int64()) for c in kscore.COMPONENTS])
     table = pa.table({f.name: pa.array(cols[f.name], type=f.type) for f in schema},
                      schema=schema)
@@ -218,6 +221,29 @@ def _stopped(trades) -> float:
 
 def _money(r: float) -> str:
     return f"{r * RISK_DOLLARS:+,.0f} dollars"
+
+
+def _matches_engine6(sel) -> tuple[int, int]:
+    """How often the `relvol` arm picks exactly the names ENGINE-6 picked.
+
+    The incumbent has to be the incumbent. If this is not ~100% then the
+    candidate pond has moved and the comparison is against something ENGINE-7
+    never reported."""
+    path = scfg.DATA_ROOT / "selection.json.gz"
+    if not path.exists():
+        return 0, 0
+    with gzip.open(path, "rt") as f:
+        old = json.load(f)
+    o: dict[int, set[str]] = {}
+    for r in old["rows"]:
+        if r["arm"] == "sip":
+            o.setdefault(int(r["day"]), set()).add(r["symbol"])
+    n: dict[int, set[str]] = {}
+    for r in sel["rows"]:
+        if r["arm"] == kcfg.ARM_RELVOL:
+            n.setdefault(int(r["day"]), set()).add(r["symbol"])
+    shared = sorted(set(o) & set(n))
+    return sum(1 for d in shared if o[d] == n[d]), len(shared)
 
 
 def stage_run() -> None:
@@ -467,6 +493,34 @@ def write_report(sel, trades, census, missing, extra, atr) -> None:
       "is a comparison of the few names they disagree about, whatever the trade "
       "count says.")
     A("")
+    A("### And what kind of name does each one pick")
+    A("")
+    A("| arm | median relative volume | median Kai score | share with a Kai score |")
+    A("|---|---|---|---|")
+    for a in ARM_ORDER:
+        rs = [float(r["rvol"]) for r in sel["rows"]
+              if r["arm"] == a and hb_lo <= int(r["day"]) <= hb_hi]
+        sc = [int(r["score"]) for r in sel["rows"]
+              if r["arm"] == a and hb_lo <= int(r["day"]) <= hb_hi]
+        scored_only = [x for x in sc if x >= 0]
+        A(f"| {a} | {np.median(rs) if rs else float('nan'):.2f}x | "
+          + (f"{np.median(scored_only):.0f}" if scored_only else "n/a")
+          + f" | {100.0*len(scored_only)/max(len(sc),1):.0f}% |")
+    A("")
+    A("The two keys are measuring different things, and this is the table that "
+      "says so: a name can be the busiest stock of the morning and have no Kai "
+      "score at all, because Kai's score requires a fresh trend-cloud flip on "
+      "the DAILY chart and most busy mornings do not come with one.")
+    A("")
+    ident, total = _matches_engine6(sel)
+    if total:
+        A(f"**The incumbent arm is not a re-implementation of ENGINE-6's "
+          f"selector; it is the same one.** On the {total:,} sessions the two "
+          f"lanes share, the `relvol` picks here are identical to the names "
+          f"ENGINE-6 wrote to `selection.json.gz` on **{ident:,}** of them "
+          f"({100.0*ident/total:.2f}%). Anything the challengers gain or lose is "
+          "measured against the thing ENGINE-7 actually reported.")
+        A("")
 
     # --- portfolio ---------------------------------------------------------
     A("## The portfolio")
