@@ -26,7 +26,7 @@ models/          model specs + GATES.md and per-model GATE.md, the bars
 reports/         measured results, per-trade dumps, equity curves
 sip/             ENGINE-6 only: the market-wide universe, the stocks-in-play
                  selection, and the three fetch stages behind them
-tests/           409 tests
+tests/           434 tests
 ```
 
 ## The as-of contract
@@ -71,6 +71,11 @@ python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python sip/manifest.py         # audit before believing anything
 .venv/bin/python run_engine6.py --stage run              # ENGINE-6
 .venv/bin/python run_engine6_diag.py                     # its post-mortem
+
+# ENGINE-7 changes ONE rule of ENGINE-6 — the stop moves to the opposite
+# extreme of the opening candle — and reuses ENGINE-6's selection file byte
+# for byte. Nothing is re-downloaded and there is no parameter to vary.
+.venv/bin/python run_engine7.py                          # ENGINE-7
 ```
 
 The Polygon key is read from `apps/api/.env.local` and never written anywhere.

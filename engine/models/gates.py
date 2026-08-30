@@ -401,3 +401,97 @@ def verdict_sip(gates: list[GateResult]) -> str:
     if not (by_id["R2"].passed and by_id["R3"].passed and by_id["R4"].passed):
         return NOT_REPRODUCED
     return REPRODUCED if by_id["R5"].passed else PARTIALLY_REPRODUCED
+
+
+# ---------------------------------------------------------------------------
+# ENGINE-7 addendum. Written before `orb_sip.v2` produced a number; see
+# engine/models/orb_sip.v2/GATE.md for the reasoning and the git log for the
+# ordering.
+#
+# `orb_sip.v2` is `orb_sip.v1` with one change — the stop moves from 10% of the
+# 14-day ATR to the opposite extreme of the 09:30-09:35 candle. That change was
+# pointed at by TWO things: the companion ETF paper's own wording, which is
+# clean, and a stop-width sweep the ENGINE-6 post-mortem ran on the 2016-2023
+# replication window, which is not. The two cannot be separated after the fact.
+#
+# So the windows swap roles. The replication window is CONTAMINATED for this
+# model and is a disclosure; the verdict is the held-back window, which the
+# sweep never touched. H1-H5 are R1-R5 unchanged in kind and in number — the
+# only thing that moves is which window they are read on, and it moves to the
+# harder one.
+
+SIPV2_HELD_BACK = ("2024-01-01", "2026-08-28")        # the verdict window
+SIPV2_CONTAMINATED = ("2016-01-01", "2023-12-31")     # disclosed, never a verdict
+
+SIPV2_MIN_TRADES = SIP_MIN_TRADES     # 5,000, carried over unchanged
+SIPV2_MIN_SHARPE = SIP_MIN_SHARPE     # 1.0, carried over unchanged
+
+# Not a gate. ENGINE-6 was stopped out on 90.1% of trades and the post-mortem
+# blamed the stop for the result. If v2's stopped share is still at or above
+# this level, that diagnosis was wrong and the report is required to say so in
+# those words regardless of what the verdict says. It is a DISCLOSURE TRIGGER.
+SIPV2_DIAGNOSIS_WRONG_IF_STOPPED_ABOVE = 0.85
+
+CONFIRMED_OOS = "CONFIRMED OUT OF SAMPLE"
+PARTIAL_OOS = "PARTIAL"
+FAILED_OOS = "FAILED"
+
+
+def evaluate_sip_v2(summary, gross_mean_r, control_paired_diff,
+                    unfiltered_diff, portfolio) -> list[GateResult]:
+    """H1-H5, read on the HELD-BACK window and nowhere else.
+
+    Arguments have the same meanings as `evaluate_sip`; the caller is
+    responsible for handing in held-back trades, and `run_engine7.py` does that
+    in one place so the two cannot drift.
+    """
+    g = []
+    g.append(GateResult(
+        "H1", "sample (held back)",
+        f">={SIPV2_MIN_TRADES} trades in {SIPV2_HELD_BACK[0]}..{SIPV2_HELD_BACK[1]}",
+        f"n={summary.n}", summary.n >= SIPV2_MIN_TRADES))
+    g.append(GateResult(
+        "H2", "sign (held back)", "mean gross R > 0 AND mean net R > 0",
+        f"gross={gross_mean_r:+.4f}, net={summary.mean_r:+.4f}",
+        gross_mean_r > 0 and summary.mean_r > 0))
+
+    lo, hi = mean_ci95(control_paired_diff)
+    m = (sum(control_paired_diff) / len(control_paired_diff)) if control_paired_diff else float("nan")
+    g.append(GateResult(
+        "H3", "direction beats a coin flip (held back, paired, gross)",
+        "95% interval excludes zero, in the model's favour",
+        f"{m:+.4f} (95%: {lo:+.4f} to {hi:+.4f}, n={len(control_paired_diff)})",
+        len(control_paired_diff) > 1 and lo > 0))
+
+    lo2, hi2 = mean_ci95(unfiltered_diff)
+    m2 = (sum(unfiltered_diff) / len(unfiltered_diff)) if unfiltered_diff else float("nan")
+    g.append(GateResult(
+        "H4", "the filter is the thing (held back, net R, in play minus random 20)",
+        "95% interval excludes zero, in the model's favour",
+        f"{m2:+.4f} (95%: {lo2:+.4f} to {hi2:+.4f}, n={len(unfiltered_diff)})",
+        len(unfiltered_diff) > 1 and lo2 > 0))
+
+    g.append(GateResult(
+        "H5", "portfolio (held back)",
+        f"total return > 0 AND Sharpe >= {SIPV2_MIN_SHARPE:.1f}",
+        f"total={portfolio.total_return:+.1%}, Sharpe={portfolio.sharpe:.2f}, "
+        f"maxDD={portfolio.max_drawdown:.1%}",
+        portfolio.total_return > 0 and portfolio.sharpe >= SIPV2_MIN_SHARPE))
+    return g
+
+
+def verdict_sip_v2(gates: list[GateResult]) -> str:
+    """The four-way verdict, fixed before any count was known.
+
+    PARTIAL is NOT a pass. It means the money is there out of sample but at
+    least one claim about WHERE it comes from is not established, and the report
+    is required to name which.
+    """
+    by_id = {g.id: g for g in gates}
+    if not by_id["H1"].passed:
+        return INCONCLUSIVE_SAMPLE
+    if not by_id["H2"].passed:
+        return FAILED_OOS
+    if all(x.passed for x in gates):
+        return CONFIRMED_OOS
+    return PARTIAL_OOS
