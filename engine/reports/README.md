@@ -1,19 +1,22 @@
 # engine/ — what was measured, and what happened
 
-**Eighteen models have now been measured against bars written down before each
+**Nineteen models have now been measured against bars written down before each
 test was run. Ten failed, one came back inconclusive on both of its exits, one —
 a replication of a published, peer-reviewed result — came back NOT REPRODUCED,
 and four came back PARTIAL, which the gates defined in advance as not a pass.
-The last two were challengers to the one component this programme has ever
-measured as working, and both lost to it.**
+The last four were challengers to the one component this programme has ever
+measured as working, and all four lost to it.**
 None ships. Nothing here touches the app, and no alert has been produced.
 
-**Ten models in, the same sentence keeps coming back: this programme has never
+**Eleven lanes in, the same sentence keeps coming back: this programme has never
 once measured a directional filter worth anything.** ENGINE-2 (daily structure),
-ENGINE-3 (1h and 4h agreeing), ENGINE-5 (1h), and now ENGINE-8 (daily structure
-again, on the one base that clears zero) have all returned nulls, and ENGINE-8's
-is the cleanest of them because it was aimed at a failure that had already been
-located precisely and it missed anyway.
+ENGINE-3 (1h and 4h agreeing), ENGINE-5 (1h), ENGINE-8 (daily structure again, on
+the one base that clears zero) and now ENGINE-11 (the same daily trend as a
+CONTINUOUS strength, used to rank rather than to gate) have all returned nulls.
+ENGINE-8's was the cleanest of them because it was aimed at a failure that had
+already been located precisely and it missed anyway; ENGINE-11's is the most
+complete, because it does not merely report that a filter failed — it reports the
+whole curve of outcome against trend strength and finds no gradient in it.
 
 **Read [ENGINE-6](orb_sip.v1.polygon-sip-v1.md) and
 [ENGINE-7](orb_sip.v2.polygon-sip-v1.md) together if you read only one thing.**
@@ -44,6 +47,21 @@ with an interval that spans zero. **As a day-trade selector the score is not
 distinguishable from drawing names out of a hat.** That is a good outcome for the
 programme and a bad one for the alert engine, and the report says both.
 
+**[ENGINE-11](orb_trend_str.v1.polygon-sip-v1.md) is the answer to "does the
+strength of the trend matter, rather than just its direction".** It builds a
+continuous daily-chart strength — distance from a 20-day EMA in ATRs, that EMA's
+ten-session slope, and the twenty-day up-close share — signs it by the break
+direction, and reports what happens across its ten deciles. **The curve is flat
+and not monotonic**: the weakest tenth of the incumbent's trades returned +$19
+per $1,000 risked and the strongest tenth −$5, and measured properly — the
+stronger half of each morning's picks against the weaker half of the same morning
+— the difference is +$33 with a 95% range of −$41 to +$107, which contains zero.
+Re-ordering the day's forty busiest names by strength returned $22 a trade LESS
+than leaving them alone (95%: −$60 to +$16, so not a measured loss, but the
+evidence points the wrong way), and it did so through the mechanism that has
+explained every result here: it narrowed the median stop from 164 to 145 cents
+and tilted the book long, into the weaker of the two sides.
+
 That is the intended kind of outcome. It cost a week; the alternative — the one
 the existing SMS engine took — costs a paying customer.
 
@@ -69,6 +87,9 @@ the existing SMS engine took — costs a paying customer.
 | ENGINE-9 | [`orb_kai_sel.v1`](orb_kai_sel.v1.polygon-sip-v1.md) — `both`, the score and the volume together, 4,079 held-back trades | **LOST to the incumbent** — −$15 per $1,000, interval spans zero |
 | ENGINE-10 | [`orb_sip.v4_trigger`](orb_sip.v4.polygon-sip-v1.md) — the owner's candle stop, literal reading, 3,969 held-back trades | **FAILED** — stopped out on 85.8% of trades, −$605 per $1,000 risked |
 | ENGINE-10 | [`orb_sip.v4_prior`](orb_sip.v4.polygon-sip-v1.md) — the owner's candle stop, the other reading, 3,967 held-back trades | **PARTIAL** — +$15 per $1,000, indistinguishable from v2 and from zero |
+| ENGINE-11 | [`orb_trend_str.v1`](orb_trend_str.v1.polygon-sip-v1.md) — `rank`, the forty busiest re-ordered by trend strength, 3,995 held-back trades | **LOST to the incumbent** — −$1 per $1,000, −$22 a trade against the baseline |
+| ENGINE-11 | [`orb_trend_str.v1`](orb_trend_str.v1.polygon-sip-v1.md) — `gate_strong`, the same twenty cut at +0.20 strength, 1,265 held-back trades | **LOST to the incumbent** — +$46 per $1,000 but an interval spanning zero, and it discards winners over the four build years |
+| ENGINE-11 | [`orb_trend_str.v1`](orb_trend_str.v1.polygon-sip-v1.md) — **the gradient**, across ten strength deciles | **NO GRADIENT** — +$33 a trade strong-half-minus-weak-half, 95%: −$41 to +$107 |
 
 Read [ENGINE-2's report](orb_htf_structural.v1.polygon-v1.md) for the finding the
 whole family turns on: the setup earns about 4.6 cents a share before costs and

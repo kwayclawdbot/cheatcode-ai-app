@@ -728,6 +728,46 @@ def write_report(sel, trades, census, missing, extra, atr, smap, side_seen,
       "the right way, and no gradient at all is a third answer worth more than "
       "any verdict.")
     A("")
+    A("**G5 and G6 are read across all three arms, so read them per arm before "
+      "concluding anything.** " + " ".join(
+        f"`{a}` made {'money' if g_hb[a][0] > 0 else 'a loss'} gross "
+        f"({g_hb[a][0]:+.4f}R) and "
+        f"{'money' if s_hb[a].mean_r > 0 else 'a loss'} net "
+        f"({s_hb[a].mean_r:+.4f}R, {_money(s_hb[a].mean_r)} a trade) and "
+        f"returned {pf_hb[a].total_return:+.1%} as a portfolio at a Sharpe of "
+        f"{pf_hb[a].sharpe:.2f}." for a in ARM_ORDER))
+    A("")
+    best_pf = max(ARM_ORDER, key=lambda a: pf_hb[a].sharpe)
+    if pf_hb[best_pf].sharpe >= gates11.MIN_SHARPE:
+        lo, hi = gates11.mean_ci95([t.net_r for t in hb[best_pf]])
+        A(f"**One arm's portfolio row will catch the eye and it must be read "
+          f"with its own error bar and its own leverage.** `{best_pf}` returned "
+          f"{pf_hb[best_pf].total_return:+.1%} at a Sharpe of "
+          f"{pf_hb[best_pf].sharpe:.2f} on the held-back year — the only arm "
+          "here that clears the Sharpe the gate asks for. A portfolio Sharpe "
+          "above 1.0 has not been enough before: `orb_sip.v2` returned +223.9% "
+          "at a Sharpe of 1.27 on ENGINE-7's held-back window and still came "
+          "back PARTIAL. Three things stop this one being a result. **First, "
+          "its own "
+          f"per-trade interval contains zero** ({_money(lo)} to {_money(hi)}), "
+          "so the edge underneath the portfolio is not distinguishable from "
+          "breaking even. **Second, it did not beat the incumbent**: paired day "
+          "by day the difference is "
+          f"{_money(float(np.mean(paired[tcfg.ARM_GATE])) if paired.get(tcfg.ARM_GATE) else float('nan'))} "
+          "a trade with an interval spanning zero, which is the comparison G3 "
+          "asks for and the reason the verdict is what it is. **Third, and "
+          "mechanically, it is a less levered portfolio**: it takes "
+          f"{len(hb[best_pf])/max(pf_hb[best_pf].n_days,1):.1f} positions a day "
+          f"against the baseline's "
+          f"{len(hb[tcfg.ARM_BASELINE])/max(pf_hb[tcfg.ARM_BASELINE].n_days,1):.1f}, "
+          f"so the 4x gross cap bound on {pf_hb[best_pf].capped_days} of "
+          f"{pf_hb[best_pf].n_days} days against "
+          f"{pf_hb[tcfg.ARM_BASELINE].capped_days} — a portfolio whose positions "
+          "are almost never scaled down is not comparable, on this line, with "
+          "one whose positions are scaled down on nine days in ten. The "
+          "per-trade table is the comparison; the portfolio table is a "
+          "consequence of it and of the cap.")
+        A("")
 
     # --- the bar -----------------------------------------------------------
     A("## The bar, and what it observed")
@@ -896,6 +936,41 @@ def write_report(sel, trades, census, missing, extra, atr, smap, side_seen,
               "play for this arm, in either direction.")
             A("")
 
+    A("### The second mechanism: which side of the book the ranking fills")
+    A("")
+    A("A strength ranking is not side-neutral in a year when most charts point "
+      "one way. In a rising market more names carry positive strength, so a "
+      "ranking that prefers strength in the break direction quietly buys more "
+      "and shorts less — and in this model the two sides do not pay the same.")
+    A("")
+    A("| arm | long share of trades (held back) | mean net R, long | "
+      "mean net R, short |")
+    A("|---|---|---|---|")
+    for a in ARM_ORDER:
+        lg = [t for t in hb[a] if t.side == "long"]
+        sh = [t for t in hb[a] if t.side == "short"]
+        if not (lg and sh):
+            continue
+        A(f"| {a} | {len(lg)/len(hb[a]):.1%} | "
+          f"{float(np.mean([t.net_r for t in lg])):+.4f} "
+          f"({float(np.mean([t.net_r for t in lg]))*RISK_DOLLARS:+,.0f}) | "
+          f"{float(np.mean([t.net_r for t in sh])):+.4f} "
+          f"({float(np.mean([t.net_r for t in sh]))*RISK_DOLLARS:+,.0f}) |")
+    A("")
+    b_long = sum(1 for t in hb[tcfg.ARM_BASELINE] if t.side == "long") \
+        / max(len(hb[tcfg.ARM_BASELINE]), 1)
+    r_long = sum(1 for t in hb[tcfg.ARM_RANK] if t.side == "long") \
+        / max(len(hb[tcfg.ARM_RANK]), 1)
+    if r_long - b_long > 0.02:
+        A(f"**The `rank` arm tilts the book long** — {r_long:.1%} of its trades "
+          f"against the incumbent's {b_long:.1%} — and on this year the long "
+          "side was the weaker of the two for the incumbent as well. So the "
+          "re-ordering does two things at once: it narrows the stop, and it "
+          "moves trades onto the side that paid less. Neither was the intention "
+          "and both are consequences of ranking on a number that is mostly "
+          "positive in a rising market.")
+        A("")
+
     # --- what the gate removed --------------------------------------------
     A("## What `gate_strong` removed, and what those trades did")
     A("")
@@ -1046,6 +1121,18 @@ def write_report(sel, trades, census, missing, extra, atr, smap, side_seen,
       "concurrent positions, not about the per-trade edge. The per-trade edge is "
       "the table above it.")
     A("")
+    A("**And read the cap-binding column before comparing two rows.** An arm "
+      "that trades fewer names a day asks for less gross exposure, so the 4x cap "
+      "scales it down on fewer days, so more of its per-trade edge — whatever "
+      "sign that edge has — reaches the equity curve. "
+      + " ".join(f"`{a}` took "
+                 f"{len(hb[a])/max(pf_hb[a].n_days,1):.1f} positions a day and "
+                 f"was capped on {pf_hb[a].capped_days} of {pf_hb[a].n_days} "
+                 "days." for a in ARM_ORDER)
+      + " Two rows of this table are only comparable to the extent those "
+        "numbers are, which is why the verdict is decided on the per-trade "
+        "comparison and not here.")
+    A("")
 
     # --- build window ------------------------------------------------------
     A(f"## The build window, {gates11.BUILD[0]} → {gates11.BUILD[1]} — "
@@ -1127,6 +1214,14 @@ def write_report(sel, trades, census, missing, extra, atr, smap, side_seen,
     A(f"| symbol-days with no cached bars | "
       + " | ".join(f"{missing[a]:,}" for a in ARM_ORDER) + " |")
     A("")
+    A("**Why `rank` skips no doji candles.** A name whose opening candle closed "
+      "exactly where it opened has no break direction, so the ranking puts it at "
+      "the back of the pond by construction — and with forty names competing for "
+      "twenty places it never reaches the front. That is not the arm dodging a "
+      "bad trade with information it should not have: the model would have "
+      "skipped those names anyway, and the count of them is the "
+      "`skip_doji_opening_candle` row in the baseline column.")
+    A("")
 
     # --- cost sensitivity --------------------------------------------------
     A("## Cost sensitivity — disclosed, and not a result")
@@ -1167,6 +1262,19 @@ def write_report(sel, trades, census, missing, extra, atr, smap, side_seen,
       "above inherits the contamination for 2021-2023.")
     A("- **Three comparisons, one year.** The Bonferroni column is the size of "
       "that problem, printed rather than argued about.")
+    kept_bd = float(np.mean([t.net_r for t in bd[tcfg.ARM_GATE]])) \
+        if bd[tcfg.ARM_GATE] else float("nan")
+    rem_bd = float(np.mean([t.net_r for t in removed_bd])) if removed_bd \
+        else float("nan")
+    A("- **The two windows disagree about `gate_strong`, and the disagreement "
+      "is the finding.** On the held-back year the cut kept the better trades "
+      f"({s_hb[tcfg.ARM_GATE].mean_r:+.4f}R kept against "
+      f"{float(np.mean([t.net_r for t in removed_hb])):+.4f}R removed). On the "
+      f"four build years it kept the worse ones ({kept_bd:+.4f}R kept against "
+      f"{rem_bd:+.4f}R removed) — the same shape of failure ENGINE-8 had, on "
+      "four times the sample. One year agreeing and four disagreeing is what a "
+      "threshold with no real edge behind it looks like, and it is the single "
+      "strongest reason not to read the held-back column as a discovery.")
     A(f"- **The two free numbers are two guesses.** A pond of {tcfg.POND_K} and "
       f"a cut at +{tcfg.GATE_STRENGTH:.2f} were fixed in the gate before "
       "anything ran and neither was swept — which protects the result from being "
