@@ -409,20 +409,22 @@ def write_report(sel, trades, census, missing, extra, atr) -> None:
         m = float(np.mean(d)) if d else float("nan")
         lo, hi = gates9.mean_ci95(d)
         blo, bhi = gates9.mean_ci(d, gates9.Z_BONFERRONI)
-        A(f"- **{a} minus relvol**, paired day by day: {m:+.4f}R "
-          f"(**{_money(m)}** on $1,000 of risk), 95% {lo:+.4f} to {hi:+.4f}, "
-          f"over {len(d):,} days both arms traded. "
-          + ("The 95% interval excludes zero in the challenger's favour"
-             + ("; and it still does at the interval corrected for two "
-                f"comparisons ({blo:+.4f} to {bhi:+.4f})."
+        A(f"- **{a} minus relvol**, paired day by day: **{_money(m)}** a trade "
+          f"on $1,000 of risk ({m:+.4f}R), with a 95% range of "
+          f"{_money(lo)} to {_money(hi)}, over {len(d):,} days both arms "
+          "traded. "
+          + ("That range excludes zero, in the challenger's favour"
+             + ("; and it still does once corrected for taking two shots "
+                f"({_money(blo)} to {_money(bhi)})."
                 if blo > 0 else
-                f" — but NOT at the interval corrected for two comparisons "
-                f"({blo:+.4f} to {bhi:+.4f}), so this margin is inside the "
-                "multiplicity problem.")
+                " — but NOT once corrected for taking two shots "
+                f"({_money(blo)} to {_money(bhi)}), so this margin sits inside "
+                "the multiplicity problem.")
              if lo > 0 else
-             "The 95% interval contains zero" + (" and the challenger's middle "
-             "number is negative, so it did worse." if m < 0 else
-             ", so no difference is established.")))
+             "That range contains zero" + (
+                 ", and the challenger's middle number is negative — it did "
+                 "worse, and by more than a rounding error." if m < 0 else
+                 ", so no difference is established either way.")))
     A("")
     A(f"- **Verdict**: **{verdict}**.")
     A("")
