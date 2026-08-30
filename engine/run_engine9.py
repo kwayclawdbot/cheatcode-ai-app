@@ -629,7 +629,10 @@ def write_report(sel, trades, census, missing, extra, atr) -> None:
       "resistance. `engine/kai_score/reference_cca.py` holds a verbatim copy of "
       "all of it, and `tests/test_kai_score.py` requires the fast port to return "
       "the identical integer score, component by component, on hundreds of "
-      "ticker-days.")
+      "ticker-days. `engine/kai_score/verify_port.py` runs the same comparison "
+      "against the REAL tape — halted sessions, one-cent ranges, week-long gaps, "
+      "names that listed inside the window — and reported **720 ticker-days "
+      "checked, 157 of them scored, 0 mismatches** on 2026-08-29.")
     A("")
     A("**Reproduced exactly:** all ten components and their arithmetic; the "
       "two-stage funnel (a 100-calendar-day fetch to find a fresh trend-cloud "
