@@ -82,14 +82,16 @@ def _resistance_scores(high: np.ndarray, low: np.ndarray, close: np.ndarray,
     """
     out = np.zeros(len(high), dtype="int64")
     for i in rows:
-        h = high[i, -60:]
-        lo = low[i, -60:]
-        c = close[i, -60:]
-        if not np.isfinite(h).all():
-            out[i] = 0                      # the reference's except-branch
-            continue
+        # `find_support_resistance` slices `[-60:]` off whatever frame it is
+        # given, so a window with fewer than 60 bars is scanned whole. Padding
+        # is never part of it.
+        n_valid = int(np.isfinite(close[i]).sum())
+        span = min(60, n_valid)
+        h = high[i, -span:]
+        lo = low[i, -span:]
+        c = close[i, -span:]
         pivots = []
-        for k in range(3, 57):
+        for k in range(3, span - 3):
             if h[k] == h[k - 3:k + 4].max():
                 pivots.append((h[k], k, "high"))
             if lo[k] == lo[k - 3:k + 4].min():
@@ -103,7 +105,7 @@ def _resistance_scores(high: np.ndarray, low: np.ndarray, close: np.ndarray,
         current = float(c[-1])
         # only the six strongest clusters survive upstream, and the nearest
         # resistance is chosen from those six — not from all of them
-        levels = _clusters(raw, current)
+        levels = _clusters(raw, current, span)
         res = [lv for lv in levels if lv[1] == "resistance" and lv[0] > current * 1.005]
         if not res:
             out[i] = 5
@@ -114,7 +116,7 @@ def _resistance_scores(high: np.ndarray, low: np.ndarray, close: np.ndarray,
     return out
 
 
-def _clusters(raw: list[tuple[float, int, str]], current: float):
+def _clusters(raw: list[tuple[float, int, str]], current: float, span: int):
     """The reference's cluster -> KeyLevel -> sort -> `[:6]` pipeline."""
     used = [False] * len(raw)
     levels = []
@@ -144,7 +146,7 @@ def _clusters(raw: list[tuple[float, int, str]], current: float):
         else:
             ltype = "support" if "low" in types else "resistance"
         levels.append((round(float(avg), 2), ltype, min(5, len(prices)),
-                       59 - max(idxs)))
+                       span - 1 - max(idxs)))
     levels.sort(key=lambda lv: (-lv[2], lv[3]))
     return levels[:6]
 

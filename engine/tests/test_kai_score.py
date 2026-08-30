@@ -292,6 +292,22 @@ def test_resistance_room_matches_the_reference():
         assert int(got) == int(want), seed
 
 
+@pytest.mark.parametrize("n", [52, 55, 60, 61, 130])
+def test_resistance_room_on_a_window_shorter_than_sixty_bars(n):
+    """`find_support_resistance` slices `[-60:]` off whatever it is given, so a
+    name with 52 bars of history is scanned whole. The padded matrix must not
+    let the pad leak into that slice."""
+    w = _walk(n, 41)
+    frame = pd.DataFrame({"Open": w["open"], "High": w["high"], "Low": w["low"],
+                          "Close": w["close"], "Volume": w["volume"]})
+    want = ref.calculate_resistance_proximity(frame)["resistance_score"]
+    pad = 8
+    row = lambda k: np.concatenate([np.full(pad, np.nan), w[k]])[None, :]  # noqa: E731
+    got = ks._resistance_scores(row("high"), row("low"), row("close"),
+                                np.array([0]))[0]
+    assert int(got) == int(want), n
+
+
 @pytest.mark.parametrize("floor,field", [(kcfg.MIN_PRICE, "close"),
                                          (kcfg.MIN_AVG_VOLUME, "volume")])
 def test_the_live_floors_are_applied(floor, field):
