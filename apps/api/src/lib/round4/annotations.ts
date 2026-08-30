@@ -41,6 +41,10 @@ const SEMANTIC: Record<AnnotationKind, AnnotationRow['semantic']> = {
   trendline: 'level',
   box: 'level',
   vertical: 'level',
+  // Shapes assert no financial meaning of their own; the level they were built
+  // from already carries it.
+  circle: 'level',
+  arrow: 'level',
 };
 
 export function toAnnotationRow(row: Record<string, unknown>): AnnotationRow {

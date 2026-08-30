@@ -35,6 +35,16 @@ export type MoveOpts = { duration?: number; jitter?: boolean };
  * it stopped — that return value is the whole interruption story.
  */
 export type ChartHandle = {
+  /**
+   * Whether the chart owns the whole screen.
+   *
+   * Embedded in a scrolling page it must NOT take vertical drags — the page
+   * needs them. On the stage it must, or the price axis cannot be panned and
+   * the chart feels stuck. Same chart, different citizenship.
+   */
+  setGestures?: (own: boolean) => void;
+  /** Kai is talking: the chart's own controls step back out of the way. */
+  setBroadcast?: (on: boolean) => void;
   isReady(): boolean;
   /**
    * Whether motion is being suppressed — the OS preference as the chart page

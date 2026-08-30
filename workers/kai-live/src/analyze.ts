@@ -31,7 +31,7 @@ import { config } from './config.ts';
 import { log } from './log.ts';
 import { Budget, anthropicCostUsd } from './budget.ts';
 import {
-  MARKER_GRAMMAR,
+  WRITING_FOR_A_CHART,
   SHOW_VOICE,
   TTS_RULES,
   registerViolations,
@@ -91,7 +91,7 @@ const STATIC_SYSTEM = `You are Kai, the analyst presenting Cheat Code's market s
 
 ${SHOW_VOICE}
 
-${MARKER_GRAMMAR}
+${WRITING_FOR_A_CHART}
 
 ${TTS_RULES}
 
@@ -183,6 +183,61 @@ function timeframeBlock(tf: MarketTf, label: string): string {
   return parts.join('\n');
 }
 
+
+/** "60.8B", "6.23", "—". The units a person says, not the units a filing uses. */
+function big(n: number | null): string {
+  if (n === null || !Number.isFinite(n)) return '—';
+  const a = Math.abs(n);
+  if (a >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+  if (a >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (a >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return String(Number(n.toFixed(2)));
+}
+
+/**
+ * The business behind the chart, as filed.
+ *
+ * Given to Kai on every segment whether or not he uses it. THE POINT IS THAT HE
+ * DECIDES: a name that just reported gets a sentence about the quarter, a name
+ * three weeks from earnings probably does not, and neither call can be made by
+ * a rule up here. Kai gets the same table either way and says what is worth
+ * saying — the director downstream then decides whether it is worth SHOWING.
+ *
+ * Newest quarter first, with the change on the one before it worked out here
+ * rather than left as arithmetic for a language model to get wrong.
+ */
+function fundamentalsBlock(m: MarketBundle): string | null {
+  const qs = (m.fundamentals ?? []).filter((q) => q.revenue !== null || q.eps_basic !== null);
+  if (!qs.length) return null;
+  const rows = qs.slice(0, 5).map((q, i) => {
+    const prev = qs[i + 1];
+    const growth =
+      prev && q.revenue !== null && prev.revenue ? ` (${(((q.revenue - prev.revenue) / Math.abs(prev.revenue)) * 100).toFixed(1)}% on the quarter before)` : '';
+    return `  ${q.fiscal_period} ${q.fiscal_year} (ended ${q.end_date}): revenue ${big(q.revenue)}${growth}; gross profit ${big(q.gross_profit)}; net income ${big(q.net_income)}; EPS ${q.eps_basic === null ? '—' : q.eps_basic.toFixed(2)}`;
+  });
+  return `THE BUSINESS, AS FILED (newest first — these numbers ARE real and you may say them):\n${rows.join('\n')}`;
+}
+
+/**
+ * What has been said about this name lately.
+ *
+ * Sentiment is Polygon's, attached to a named article with its own stated
+ * reason. Kai may report what a story said and who said it. He may NOT quote a
+ * number out of a headline as though this show measured it — a claim inside an
+ * article is that article's claim, and the number check will not vouch for it.
+ */
+function catalystBlock(m: MarketBundle): string | null {
+  const n = m.news ?? [];
+  if (!n.length) return null;
+  const rows = n.slice(0, 5).map((a) => {
+    const when = a.published_utc.slice(0, 10);
+    const read = a.sentiment ? ` [${a.sentiment}]` : '';
+    const why = a.sentiment_reasoning ? ` — ${a.sentiment_reasoning.slice(0, 150)}` : '';
+    return `  ${when}${read} ${a.title}${a.publisher ? ` (${a.publisher})` : ''}${why}`;
+  });
+  return `RECENT HEADLINES (newest first; the read in brackets is the wire's, not yours):\n${rows.join('\n')}\nYou may say what a story said and who said it. Do NOT repeat a number out of a headline as a fact — it is their figure, not ours.`;
+}
+
 function candidateBlock(c: Candidate, m: MarketBundle): string {
   const parts: string[] = [];
   // The name the model is told is the name a person would say out loud —
@@ -202,6 +257,10 @@ function candidateBlock(c: Candidate, m: MarketBundle): string {
   if (c.narration) parts.push(`STATE IN PLAIN ENGLISH: ${c.narration}`);
   if (c.why_plain) parts.push(`WHY IT MATTERS: ${c.why_plain}`);
   if (c.outcome) parts.push(`WHAT ACTUALLY HAPPENED: ${c.outcome.plain}`);
+  const fundamentals = fundamentalsBlock(m);
+  if (fundamentals) parts.push(fundamentals);
+  const catalysts = catalystBlock(m);
+  if (catalysts) parts.push(catalysts);
   if (c.evidence.length) {
     parts.push(
       `EVIDENCE THE SCANNER RECORDED:\n${c.evidence.map((e) => `  ${e.ok ? 'yes' : 'no'} — ${e.label}${e.detail_plain ? `: ${e.detail_plain}` : ''}`).join('\n')}`
@@ -231,7 +290,7 @@ function sourceReason(c: Candidate): string {
 
 type CallResult<T> = { value: T; usd: number };
 
-async function ask<T>(opts: {
+export async function ask<T>(opts: {
   budget: Budget;
   segment: number;
   kind: 'analysis' | 'script';
@@ -239,6 +298,12 @@ async function ask<T>(opts: {
   user: string;
   maxTokens: number;
   parse: (raw: string) => T | null;
+  /**
+   * Replaces Kai's system prompt entirely. The director is not Kai — handing it
+   * his voice, his register rules and his TTS phonetics is both confusing and
+   * billed on every call.
+   */
+  system?: string;
 }): Promise<CallResult<T> | null> {
   const model = config.kaiModel();
   let usd = 0;
@@ -248,7 +313,7 @@ async function ask<T>(opts: {
       model,
       max_tokens: opts.maxTokens,
       output_config: { effort: 'low' },
-      system: system(),
+      system: opts.system ?? system(),
       messages: [{ role: 'user', content: attempt === 0 ? opts.user : `${opts.user}\n\nYour last answer was not valid JSON. Answer with JSON only.` }],
     });
 
@@ -478,14 +543,36 @@ WHAT KAI SAID ON EACH TIMEFRAME:
 ${opts.analyses.map((a) => `  ${a.rail} (${a.bias}): ${a.conclusion}`).join('\n')}
 
 YOUR JOB
-Reconcile all of that into ONE read on ${opts.name}. Sixty to a hundred and ten
+Reconcile all of that into ONE read on ${opts.name}. Ninety to a hundred and fifty
 words. Say what the timeframes agree on, name the one level that decides it, and
 say plainly what would prove the idea wrong. If the timeframes disagree, say they
 disagree and say which one you are trusting — do not average them into mush. If
 there is no clean idea here, say that; "nothing to do" is a legitimate read and
 the audience is better served by it than by a manufactured one.
 
-You may use [MARK:...] markers on levels that exist. Do not write a price.
+THIS IS ALSO THE ONE BEAT THAT LOOKS UP FROM THE CHART. The timeframe reads above
+already covered the price action; repeating them here wastes the only place in
+the segment where the business and the news can be said at all. So account for
+WHY THIS NAME, in a sentence or two, using the filed quarters and the recent
+headlines you were given:
+
+  - Is the business behind this actually growing, flat, or shrinking? Say it in
+    the plain terms a person uses — revenue, profit, earnings per share.
+  - Is there something in the headlines that explains the tape, or that is
+    sitting in front of it? Say what the story said and who said it.
+  - Does any of it argue WITH the chart? A coiling chart under a deteriorating
+    business is a different idea from the same chart with a growing one, and
+    saying so is the most useful thing you can do here.
+
+Judge it. A quarter that changed nothing and headlines that say nothing are not
+worth a sentence — skip them and spend the words on the chart. But if the
+business or the news is material to this idea, it belongs in this beat and
+nowhere else.
+
+Do not write markers or brackets of any kind — a director adds every chart
+action afterwards, and a marker you write by hand arrives carrying a price and
+corrupts the sentence around it. Do not write a price either. Filed revenue,
+profit and earnings per share you may say plainly.
 
 Answer with JSON only: {"thesis": "..."}`;
 

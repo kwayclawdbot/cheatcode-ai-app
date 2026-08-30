@@ -42,6 +42,10 @@ import { Num, T } from '../ui/Text';
 import { alpha, color, radius } from '../ui/tokens';
 import { ChartView } from '../features/chart/ChartView';
 import { AnnotationRail } from '../features/chart/AnnotationRail';
+import { ShowPanel, type PanelName } from '../features/live/ShowPanel';
+
+/** Bar-anchored drawings. They belong to the timeframe they were drawn on. */
+const SHAPE_KINDS = new Set(['circle', 'arrow', 'box', 'trendline', 'vertical']);
 import { applyChartCommand, resetChartCommandQueue } from '../features/chart/apply';
 import type { ChartHandle } from '../features/chart/apply';
 import { fixtureAnnotations } from '../features/portal/fixtures';
@@ -431,11 +435,15 @@ function LiveStage({
     candles: [],
   });
   const { symbol, tf, candles } = view;
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const [headline, setHeadline] = useState<string>('');
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [line, setLine] = useState<SayFrame | null>(null);
   const [transcript, setTranscript] = useState<SayFrame[]>([]);
   const [rail, setRail] = useState<Record<string, unknown> | null>(null);
+  /** The panel currently up, if any. Cleared by `[SLIDE:clear]`. */
+  const [panel, setPanel] = useState<{ name: PanelName; payload: Record<string, unknown> } | null>(null);
   const [cursor, setCursor] = useState(Number(since ?? -1));
   const [status, setStatus] = useState<string>('connecting');
   const [error, setError] = useState<string | null>(null);
@@ -497,12 +505,50 @@ function LiveStage({
         },
         overlay: (f: OverlayFrame) => {
           if (f.overlay === 'ticker_rail') setRail(f.payload as Record<string, unknown>);
-          if (f.overlay === 'clear') setRail(null);
+          if (f.overlay === 'clear') {
+            setRail(null);
+            setPanel(null);
+          }
+          if (f.overlay === 'fundamentals' || f.overlay === 'news' || f.overlay === 'evidence' || f.overlay === 'scorecard') {
+            setPanel({ name: f.overlay, payload: (f.payload ?? {}) as Record<string, unknown> });
+          }
         },
         annotations: (rows) =>
           setAnnotations((prev) => [...prev, ...rows.filter((r) => !prev.some((p) => p.id === r.id))]),
-        applied: (_f: LiveFrame, c: number) => {
-          if (!cancelled) setCursor(c);
+        /**
+         * A TIMEFRAME CHANGE IS A DATA CHANGE, NOT A LABEL CHANGE.
+         *
+         * `set_timeframe` used to switch the rail and nothing else, so Kai
+         * would say "down to the fifteen" and the chart went on showing the
+         * same daily candles under a new caption. Bars for the new timeframe
+         * are fetched here, the way `present` fetches them for a new symbol —
+         * the show only ever had bars for whatever the segment opened on.
+         */
+        applied: (f: LiveFrame, c: number) => {
+          if (cancelled) return;
+          setCursor(c);
+          if (f.kind !== 'chart' || f.command !== 'set_timeframe') return;
+          const next = (f.payload as { timeframe?: string })?.timeframe as PortalTimeframe | undefined;
+          const now = viewRef.current;
+          if (!next || next === now.tf) return;
+          setView((v) => ({ ...v, tf: next }));
+          /**
+           * Shapes do not survive a timeframe change, and that is correctness
+           * before it is tidiness: a circle is anchored to ONE BAR, and that bar
+           * does not exist on the next rail down — the ring would sit over a
+           * candle it was never about. Price levels do survive; a trigger is the
+           * same number on every timeframe, and Kai goes on referring to it.
+           * Clearing the shapes is also what lets him draw fresh ones without
+           * the chart silting up.
+           */
+          setAnnotations((prev) => prev.filter((a) => !SHAPE_KINDS.has(a.kind)));
+          void fetchCandles({ apiBase, token, symbol: now.symbol, timeframe: next })
+            .then((bars) => {
+              if (!cancelled) setView((v) => (v.symbol === now.symbol ? { ...v, tf: next, candles: bars } : v));
+            })
+            .catch((e) => {
+              if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+            });
         },
       },
     });
@@ -586,6 +632,7 @@ function LiveStage({
             annotations={annotations}
             onTimeframeChange={(next) => setView((v) => ({ ...v, tf: next }))}
           />
+          {panel ? <ShowPanel key={panel.name} name={panel.name} payload={panel.payload} /> : null}
         </View>
 
         {/* The line Kai is saying, as a lower third. LIVE-5 makes this a real

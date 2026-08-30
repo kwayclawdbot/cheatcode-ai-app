@@ -52,6 +52,10 @@ function handle(msg) {
       }
 
       case 'setReducedMotion': setReducedMotion(p.on); return done(id, 'done');
+      // The chart owns the screen (the stage) or is embedded in a page.
+      case 'setGestures': c.setGestures(p.own); return done(id, 'done');
+      // Kai is talking; the chart's own controls step back.
+      case 'setBroadcast': c.setBroadcast(p.on); return done(id, 'done');
       case 'setVolume': c.setVolume(p.on); return done(id, 'done');
       case 'setData': c.setData(p); return done(id, 'done');
       case 'updateLast': c.updateLast(p.candle || p); return done(id, 'done');

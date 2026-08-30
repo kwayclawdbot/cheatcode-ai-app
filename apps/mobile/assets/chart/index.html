@@ -523,6 +523,7 @@ var Motion = {
  * nothing sends a shape name twice:
  *   kind 'trendline' → two anchors     kind 'box'      → time × price rectangle
  *   kind 'vertical'  → a time marker   kind 'note'     → anchored text
+ *   kind 'circle'    → a ring on one bar kind 'arrow'    → price → a level
  *   price + price2   → a zone          price only      → a level
  */
 
@@ -533,6 +534,8 @@ function shapeOf(a) {
   if (a.kind === 'trendline') return 'trendline';
   if (a.kind === 'box') return 'box';
   if (a.kind === 'vertical') return 'vertical';
+  if (a.kind === 'circle') return 'circle';
+  if (a.kind === 'arrow') return 'arrow';
   if (a.kind === 'note') return 'note';
   if (a.price != null && a.price2 != null) return 'zone';
   return 'level';
@@ -590,6 +593,51 @@ AnnotationLayer.prototype.detached = function () {
   this._chart = null; this._series = null; this._requestUpdate = null;
 };
 AnnotationLayer.prototype.updateAllViews = function () { /* geometry is read at draw time */ };
+
+/**
+ * THE PRICE SCALE HAS TO FIT WHAT KAI DREW, NOT JUST THE CANDLES.
+ *
+ * Without this the scale autoscales to the visible bars and nothing else, so an
+ * annotation outside that range is drawn — correctly, at the right price — off
+ * the top or bottom of the pane, where nobody will ever see it. It is not
+ * clipped, logged or reported. The line simply is not on the screen.
+ *
+ * It went unnoticed because the show runs on a daily chart, where a trigger a
+ * few percent away is comfortably inside the visible range. An ANSWER runs on
+ * whatever the user is looking at, and on a 5-minute chart the visible range is
+ * often under a percent — so every level Kai marked was off-screen and the only
+ * thing left was an arrow rising from the last price toward one of them. A
+ * vertical line labelled "To go", and nothing else. Which is exactly what it
+ * looked like.
+ *
+ * NO CLAMP ON HOW FAR THIS WILL STRETCH, deliberately. Capping the expansion
+ * would put back the silent failure it exists to remove: a level just past the
+ * cap would be invisible again with nothing to indicate it. A squashed chart is
+ * bad; a chart quietly missing the level being discussed is worse, because the
+ * user believes what they can see. If it stretches too far, the annotations
+ * toggle already turns them off.
+ */
+AnnotationLayer.prototype.autoscaleInfo = function () {
+  if (this._hidden) return null;
+  var lo = Infinity, hi = -Infinity, n = 0;
+  for (var i = 0; i < this._items.length; i++) {
+    var a = this._items[i];
+    if (!a || a.status === 'hidden' || a.status === 'deleted') continue;
+    var ps = [a.price, a.price2];
+    for (var k = 0; k < ps.length; k++) {
+      var v = ps[k];
+      if (typeof v !== 'number' || !isFinite(v)) continue;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+      n++;
+    }
+  }
+  if (!n || !isFinite(lo) || !isFinite(hi)) return null;
+  // A hair of headroom so a level never draws flush against the pane edge,
+  // where it reads as a border rather than a price.
+  var pad = Math.max((hi - lo) * 0.04, Math.abs(hi) * 0.001, 0.01);
+  return { priceRange: { minValue: lo - pad, maxValue: hi + pad } };
+};
 
 /** The library asks for views; we hand it one, in the normal layer. */
 AnnotationLayer.prototype.paneViews = function () {
@@ -853,6 +901,48 @@ AnnotationLayer.prototype._draw = function (target) {
         ctx.beginPath(); ctx.moveTo(vx, H * (1 - grown)); ctx.lineTo(vx, H); ctx.stroke();
         ctx.setLineDash([]);
         self._chipAt(ctx, a, col, vx + 5, claimY(12), chip, base, hit, dead, W);
+
+      } else if (shape === 'circle') {
+        // A ring around the bar being talked about. The RADIUS IS PRESENTATION,
+        // not data — it is a constant in pixels, so the circle cannot be read as
+        // a claim about how wide a zone is. Everything asserted (which bar,
+        // which price) is the centre.
+        var cx = toX(a.ts_from), cy = toY(a.price);
+        if (cx == null || cy == null) continue;
+        var rr0 = 26;
+        // Drawn as a slightly out-of-round ellipse and started from the top:
+        // a perfect circle appearing all at once reads as a UI element, and a
+        // hand-drawn ring reads as someone marking up a chart.
+        ctx.globalAlpha = base * 0.9;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rr0 * 1.15, rr0 * 0.8, -0.12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * grown);
+        ctx.stroke();
+        self._chipAt(ctx, a, col, cx + rr0 * 1.15 + 4, claimY(cy), chip, base, hit, dead, W);
+
+      } else if (shape === 'arrow') {
+        // From where price is to the level it has not reached. Both ends are
+        // real: the arrow says "this far to go" and cannot say it about a
+        // number nobody stored.
+        var ax = toX(a.ts_from), ax2 = toX(a.ts_to);
+        var ay = toY(a.price), ay2 = toY(a.price2);
+        if (ay == null || ay2 == null) continue;
+        if (ax == null) ax = W * 0.72;
+        if (ax2 == null) ax2 = ax;
+        var ex = ax + (ax2 - ax) * grown, ey = ay + (ay2 - ay) * grown;
+        ctx.globalAlpha = base;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ex, ey); ctx.stroke();
+        // Head, oriented along the shaft rather than assumed vertical.
+        var ang = Math.atan2(ey - ay, ex - ax);
+        var hd = 7;
+        ctx.beginPath();
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(ex - hd * Math.cos(ang - 0.42), ey - hd * Math.sin(ang - 0.42));
+        ctx.lineTo(ex - hd * Math.cos(ang + 0.42), ey - hd * Math.sin(ang + 0.42));
+        ctx.closePath();
+        ctx.fill();
+        self._chipAt(ctx, a, col, ex + 6, claimY((ay + ey) / 2), chip, base, hit, dead, W);
 
       } else if (shape === 'note') {
         var nx = toX(a.ts_from);
@@ -1317,9 +1407,16 @@ function Chart(root) {
       secondsVisible: false,
       lockVisibleTimeRangeOnResize: true,
     },
-    // The brokerage gesture set. Vertical touch-drag is OFF so a finger moving
-    // down the glass never fights the price scale mid-swipe; pinch stays on and
-    // anchors on the pinch centre, which is the library's own behaviour.
+    // The brokerage gesture set, EMBEDDED. Vertical touch-drag is off because
+    // the chart sits inside a scrolling page here: a finger moving down the
+    // glass belongs to the page, and a chart that grabbed it would make the
+    // screen impossible to scroll past.
+    //
+    // That is a property of being embedded, not of the chart, so the stage
+    // turns it back on the moment the chart owns the whole screen — see
+    // `setGestures`. It is the whole reason "I can't scroll vertically" was
+    // true: nothing was broken, the chart was being a good citizen in a page
+    // that no longer exists once you expand it.
     handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
     handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true, axisDoubleClickReset: true },
     kineticScroll: { touch: true, mouse: false },
@@ -1357,6 +1454,9 @@ function Chart(root) {
     visible: false,
   });
   this.chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.86, bottom: 0 } });
+
+  this.owns = false;
+  this.autoScaleOn = true;
 
   this.session = new SessionShading();
   this.series.attachPrimitive(this.session);
@@ -1406,6 +1506,35 @@ Chart.prototype._bindInterrupt = function () {
     }
   };
   var release = function () { self._userTouching = false; };
+
+  /**
+   * A vertical drag on the stage is the user claiming the price axis.
+   *
+   * Only when the chart OWNS the screen — embedded, a vertical finger belongs
+   * to the page — and only when the movement is actually vertical, so a
+   * slightly wonky horizontal scroll does not silently switch the scale to
+   * manual and leave the next level Kai draws off the pane.
+   */
+  var startY = null;
+  var startX = null;
+  var onStart = function (e) {
+    var t = e.touches && e.touches[0];
+    startY = t ? t.clientY : e.clientY;
+    startX = t ? t.clientX : e.clientX;
+  };
+  var onMove = function (e) {
+    if (!self.owns || startY == null || !self.autoScaleOn) return;
+    var t = e.touches && e.touches[0];
+    var y = t ? t.clientY : e.clientY;
+    var x = t ? t.clientX : e.clientX;
+    if (Math.abs(y - startY) > 12 && Math.abs(y - startY) > Math.abs(x - startX)) {
+      self.setAutoScale(false);
+    }
+  };
+  this.host.addEventListener('touchstart', onStart, { passive: true });
+  this.host.addEventListener('pointerdown', onStart, { passive: true });
+  this.host.addEventListener('touchmove', onMove, { passive: true });
+  this.host.addEventListener('pointermove', onMove, { passive: true });
   this.host.addEventListener('pointerdown', grab, { passive: true });
   this.host.addEventListener('touchstart', grab, { passive: true });
   this.host.addEventListener('wheel', grab, { passive: true });
@@ -1525,6 +1654,86 @@ Chart.prototype.setData = function (p) {
       payload: { ms: Math.round(((window.performance || Date).now()) - t0), bars: bars.length },
     });
   });
+};
+
+/**
+ * Hand the chart its full gesture set, or take it back.
+ *
+ * `own: true` is the chart on its own screen: vertical drag pans the price
+ * axis, and a pinch scales both axes from the pinch centre. `own: false` is the
+ * embedded chart inside a scrolling page, where the vertical axis belongs to
+ * the page.
+ *
+ * The price scale's own autoscale is switched off while the user is panning it
+ * by hand, because an autoscale that keeps re-fitting under a finger is a chart
+ * fighting the person holding it. It comes back on `own: false`, and the double
+ * tap on the axis restores it at any time.
+ */
+Chart.prototype.setGestures = function (own) {
+  this.owns = !!own;
+  this.chart.applyOptions({
+    handleScroll: {
+      mouseWheel: true,
+      pressedMouseMove: true,
+      horzTouchDrag: true,
+      vertTouchDrag: !!own,
+    },
+    handleScale: {
+      axisPressedMouseMove: own ? { time: true, price: true } : true,
+      mouseWheel: true,
+      pinch: true,
+      axisDoubleClickReset: true,
+    },
+  });
+  // Leaving the stage hands the vertical axis back to autoscale, so the
+  // embedded chart is never left holding a range the user panned to on a
+  // screen they have since closed.
+  if (!own) this.setAutoScale(true);
+};
+
+/**
+ * AUTOSCALE AND MANUAL PANNING ARE THE SAME CONTROL, AND ONLY ONE CAN WIN.
+ *
+ * `vertTouchDrag` alone does nothing while the price scale is auto-fitting:
+ * the scale re-derives its range from the visible bars every frame, so a
+ * finger drags the chart and the next frame puts it straight back. Measured —
+ * the axis did not move by a pixel. Whoever set `vertTouchDrag` first was not
+ * wrong, just incomplete, which is why "I can't scroll vertically" survived a
+ * flag that looks like it fixes it.
+ *
+ * SO THE RULE IS WHOSE RANGE IT IS. Autoscale on means the CHART decides, and
+ * that is what has to be true when Kai draws — it is the only reason a level
+ * he marks is guaranteed to be on screen (see `autoscaleInfo`). The moment the
+ * user drags the axis, it becomes THEIRS: autoscale off, their range stands,
+ * and it keeps standing until they double-tap the axis or Kai starts talking
+ * again. A chart that silently re-fits under someone's finger is a chart
+ * arguing with them.
+ */
+Chart.prototype.setAutoScale = function (on) {
+  this.autoScaleOn = !!on;
+  this.chart.priceScale('right').applyOptions({ autoScale: !!on });
+};
+
+/**
+ * Broadcast mode: the chart's own furniture gets out of the way.
+ *
+ * Only the timeframe rail lives inside this page, so only it is hidden here.
+ * The rail is a CONTROL, and a control sitting on screen while Kai is talking
+ * invites a tap that would interrupt him — the point of the mode is that there
+ * is nothing to do but watch. Everything else about the chart is unchanged: the
+ * candles, the levels and the pointer are the show, not chrome.
+ */
+Chart.prototype.setBroadcast = function (on) {
+  this.broadcast = !!on;
+  // Kai is about to draw. Give the scale back to the chart so everything he
+  // marks is inside the pane, even if the user had panned away from it.
+  if (on) this.setAutoScale(true);
+  if (this.rail && this.rail.el) {
+    this.rail.el.style.transition = 'opacity 260ms ease, transform 260ms ease';
+    this.rail.el.style.opacity = on ? '0' : '1';
+    this.rail.el.style.transform = on ? 'translateY(6px)' : 'translateY(0)';
+    this.rail.el.style.pointerEvents = on ? 'none' : 'auto';
+  }
 };
 
 /** Replace or append the newest bar without touching the camera. */
@@ -1824,6 +2033,10 @@ function handle(msg) {
       }
 
       case 'setReducedMotion': setReducedMotion(p.on); return done(id, 'done');
+      // The chart owns the screen (the stage) or is embedded in a page.
+      case 'setGestures': c.setGestures(p.own); return done(id, 'done');
+      // Kai is talking; the chart's own controls step back.
+      case 'setBroadcast': c.setBroadcast(p.on); return done(id, 'done');
       case 'setVolume': c.setVolume(p.on); return done(id, 'done');
       case 'setData': c.setData(p); return done(id, 'done');
       case 'updateLast': c.updateLast(p.candle || p); return done(id, 'done');

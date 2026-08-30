@@ -11,6 +11,13 @@
  * bundling them is one Postgres round trip per timeframe and, at most, one
  * Polygon call per timeframe that is actually stale.
  *
+ * IT ALSO CARRIES WHAT THE CHART CANNOT SAY. Earnings and headlines are the two
+ * things a viewer asks about that no amount of price action answers — "why did
+ * it move", "is the business actually growing". Both ride this same round trip:
+ * financials change once a quarter and are cached for a day, news for ten
+ * minutes, so neither meaningfully costs a segment. Kai is handed all of it and
+ * decides what is worth saying; the director decides what is worth showing.
+ *
  * BARS ARE TRIMMED PER TIMEFRAME. The model does not need 1,500 one-minute bars
  * to say what the hour is doing, and every bar sent is tokens paid for on every
  * segment of every show. The trim keeps the NEWEST bars, like the chart's own
@@ -24,6 +31,8 @@ import { internalRoute } from '../../_lib/internal';
 import { isCandleTimeframe } from '../../_lib/rundown';
 import {
   getCandles,
+  getFinancials,
+  getNews,
   resolveQuote,
   TF_DEFAULT_SPAN_DAYS,
   type CandleTimeframe,
@@ -105,7 +114,13 @@ export const GET = internalRoute(async (req: NextRequest) => {
     });
   }
 
-  const q = await resolveQuote(symbol, { timeframe: '1d' }).catch(() => null);
+  // Fetched together: neither blocks the other, and a failure in either is a
+  // missing section rather than a failed segment.
+  const [q, fin, nws] = await Promise.all([
+    resolveQuote(symbol, { timeframe: '1d' }).catch(() => null),
+    getFinancials(symbol, 5).catch(() => ({ quarters: [], degraded: true })),
+    getNews(symbol, 6).catch(() => ({ news: [], degraded: true })),
+  ]);
 
   /**
    * The prior session, as two real timestamps.
@@ -138,6 +153,10 @@ export const GET = internalRoute(async (req: NextRequest) => {
     },
     timeframes,
     prior_session: priorSession,
+    /** Newest first. Empty when the plan or the filing calendar says nothing. */
+    fundamentals: fin.quarters,
+    /** Newest first. `sentiment` is Polygon's, per this ticker, with its reason. */
+    news: nws.news,
     degraded,
     degraded_reason: degradedReason,
   });

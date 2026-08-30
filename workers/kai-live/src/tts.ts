@@ -27,17 +27,20 @@
  * nullable in the contract: a credit outage should cost the audio, not the show.
  */
 import { createHash } from 'node:crypto';
+import {
+  audioKeyFor,
+  estimateDurationMs,
+  instructionsFor,
+  wavDurationMs,
+  type SpeechResult,
+} from '../../../packages/shared/tts.ts';
 import { config } from './config.ts';
 import { log } from './log.ts';
 import { db } from './db.ts';
 import { Budget, ttsCostUsd } from './budget.ts';
 
-export type SpeechResult = {
-  audio_url: string | null;
-  duration_ms: number;
-  state: 'ready' | 'estimated' | 'failed';
-  cached: boolean;
-};
+export type { SpeechResult };
+export { estimateDurationMs, wavDurationMs };
 
 export type TtsStatus = { available: boolean; reason: string | null };
 
@@ -59,60 +62,6 @@ function disable(reason: string): void {
 
 export function ttsStatus(): TtsStatus {
   return status;
-}
-
-/** Roughly 165 words a minute plus a beat per sentence. Only used with no audio. */
-export function estimateDurationMs(text: string): number {
-  const words = text.trim().split(/\s+/).filter(Boolean).length;
-  const sentences = (text.match(/[.!?]/g) ?? []).length;
-  return Math.max(900, Math.round((words / 165) * 60_000 + sentences * 280));
-}
-
-/**
- * Duration from a RIFF/WAVE header. Returns null for anything it does not
- * recognise rather than guessing — a wrong duration is worse than a known
- * estimate, because it is trusted.
- */
-export function wavDurationMs(buf: Buffer): number | null {
-  if (buf.length < 44) return null;
-  if (buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') return null;
-
-  let byteRate = 0;
-  let offset = 12;
-  while (offset + 8 <= buf.length) {
-    const id = buf.toString('ascii', offset, offset + 4);
-    const size = buf.readUInt32LE(offset + 4);
-    const body = offset + 8;
-    if (id === 'fmt ' && body + 16 <= buf.length) {
-      byteRate = buf.readUInt32LE(body + 8);
-    } else if (id === 'data') {
-      // The header's size is not to be trusted: streamed WAVs carry 0xFFFFFFFF.
-      const real = Math.min(size === 0xffffffff ? Infinity : size, buf.length - body);
-      if (!byteRate) return null;
-      return Math.round((real / byteRate) * 1000);
-    }
-    if (size === 0xffffffff) break;
-    offset = body + size + (size % 2);
-  }
-  return null;
-}
-
-function keyFor(text: string, voice: string, model: string, speed: number): string {
-  const h = createHash('sha256').update(`${model}|${voice}|${speed}|${text}`).digest('hex').slice(0, 32);
-  return `${voice}/${h}.wav`;
-}
-
-/**
- * The delivery note handed to the TTS engine.
- *
- * Not the same for both voices: Kai is the analyst working the chart and the
- * cohost frames and hands over, and reading both at the same energy is what
- * makes a two-voice show sound like one person doing an accent.
- */
-function instructionsFor(voice: 'kai' | 'cohost'): string {
-  return voice === 'kai'
-    ? 'A market analyst talking to a camera. Direct, unhurried, certain. Land on the numbers. Let a short sentence sit before the next one.'
-    : 'A show host framing a segment and handing over. Warm, brisk, welcoming. Never breathless.';
 }
 
 async function existingUrl(path: string): Promise<string | null> {
@@ -148,7 +97,7 @@ export async function speak(opts: {
   const model = config.ttsModel();
   const voiceName = opts.voice === 'kai' ? config.ttsVoiceKai() : config.ttsVoiceCohost();
   const speed = Number(process.env.LIVE_TTS_SPEED ?? 1.0);
-  const path = keyFor(text, voiceName, model, speed);
+  const path = audioKeyFor({ text, voice: voiceName, model, speed, sha256: (i) => createHash('sha256').update(i).digest('hex') });
 
   const key = config.openaiKey();
   if (!key) {

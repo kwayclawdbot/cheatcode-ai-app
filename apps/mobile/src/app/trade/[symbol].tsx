@@ -23,6 +23,7 @@ import type { GoalMode } from '../../lib/types';
 import { ChartView } from '../../features/chart/ChartView';
 import { AnnotationRail } from '../../features/chart/AnnotationRail';
 import { applyChartCommand } from '../../features/chart/apply';
+import { ChartStage } from '../../features/chart/ChartStage';
 import type { ChartHandle } from '../../features/chart/apply';
 import {
   AnnotationSheet, ContextSwitcher, PortalTopBar, TickerSwitcherSheet, TimeframeRail,
@@ -33,6 +34,7 @@ import {
 } from '../../features/portal/panels';
 import { usePortal, usePortalCandles } from '../../features/portal/usePortal';
 import { planCommand, useKaiPortal } from '../../features/portal/useKaiPortal';
+import type { PortalCommandResult } from '../../features/portal/useKaiPortal';
 import { rememberSymbol } from '../../features/portal/last-symbol';
 import type { Annotation, ChartCommand, PortalContext, PortalTimeframe } from '../../features/portal/types';
 
@@ -40,6 +42,18 @@ const readCtx = (v: unknown): PortalContext | null => {
   const s = String(v ?? '');
   return s === 'kai' || s === 'alert' || s === 'plan' || s === 'community' ? s : null;
 };
+
+/**
+ * The question the Kai Live button asks.
+ *
+ * Phrased as a person would phrase it, because it goes through the SAME path a
+ * typed question does — the model reads it, writes the answer, and the director
+ * places the gestures. A terse instruction ("analyze chart") produces a terse
+ * answer and a chart that barely moves; asking him to walk through it is what
+ * earns the camera moves.
+ */
+export const KAI_LIVE_QUESTION = (symbol: string) =>
+  `Walk me through this ${symbol} chart — what matters on it right now, and why?`;
 
 export default function TradePortalScreen() {
   const router = useRouter();
@@ -77,6 +91,17 @@ export default function TradePortalScreen() {
 
   const { candles, exact } = usePortalCandles(symbol, tf);
   const chart = useRef<ChartHandle | null>(null);
+  const [stageOpen, setStageOpen] = useState(false);
+  /**
+   * THE CHART KAI IS DRIVING, which is not always the same object.
+   *
+   * The stage mounts its own `ChartView`. While it is open that is the chart the
+   * user is looking at, so it is the one every command has to perform on —
+   * otherwise Kai narrates beautifully over a full-screen chart while marking
+   * levels on the small one hidden behind it.
+   */
+  const stageChart = useRef<ChartHandle | null>(null);
+  const activeChart = () => (stageOpen ? stageChart.current ?? chart.current : chart.current);
 
   /**
    * One chart command → the chart PERFORMS it, and Kai says what he did.
@@ -87,7 +112,7 @@ export default function TradePortalScreen() {
    * state is committed AFTERWARDS, so the annotation set stays the source of
    * truth without the levels snapping into existence before Kai gets there.
    */
-  const applyCommand = useCallback((c: ChartCommand): string | null => {
+  const applyCommand = useCallback((c: ChartCommand): PortalCommandResult | null => {
     const p = planCommand(c, data, annotations);
     if (!p) return null;
 
@@ -95,14 +120,19 @@ export default function TradePortalScreen() {
     if (p.focusTs) setFocusTs(p.focusTs);
     if (p.upsert.length) setHideAnnotations(false);
 
-    const handle = chart.current;
+    const handle = activeChart();
     const commit = () => {
       p.upsert.forEach(upsertAnnotation);
       p.remove.forEach((id) => setAnnotationStatus(id, 'deleted'));
     };
 
+    // The choreography, so a caller that is running a SEQUENCE of commands — a
+    // directed answer (LIVE-8) — can wait for one gesture before starting the
+    // next. `applyChartCommand` keeps a queue of one and supersedes, so an
+    // un-awaited second command silently drops the first one's level.
+    let done: Promise<unknown> = Promise.resolve();
     if (handle) {
-      void applyChartCommand(handle, {
+      done = applyChartCommand(handle, {
         command: c.command,
         payload: c.payload,
         annotations: p.upsert.map((a) => ({
@@ -121,10 +151,10 @@ export default function TradePortalScreen() {
     }
 
     if (p.route) router.push(p.route as never);
-    return p.narration;
+    return { narration: p.narration, done };
   }, [data, annotations, upsertAnnotation, setAnnotationStatus, router]);
 
-  const { turns, send, streaming, narrate } = useKaiPortal({
+  const { turns, send, streaming, narrate, answer } = useKaiPortal({
     mode,
     portal: data,
     symbol,
@@ -224,6 +254,42 @@ export default function TradePortalScreen() {
           onToggleAnnotations={() => setHideAnnotations((h) => !h)}
         />
 
+        {/*
+          KAI LIVE (LIVE-8). Not a second feature — the same tool the composer
+          reaches, with the question already written. Kai takes the chart over
+          and works through it: camera, marks, the candle ringed, narrated as it
+          goes. It is a button because "read this chart to me" is the question
+          people ask most and should not have to type.
+
+          IT OPENS THE STAGE FIRST. Watching Kai work a 248-pixel chart wedged
+          between a rail and a context switcher is watching a preview of the
+          thing rather than the thing. He gets the screen.
+        */}
+        <View style={{ flexDirection: 'row', gap: 9 }}>
+          <Button
+            label="Kai Live"
+            kind="kai"
+            height={38}
+            full={false}
+            disabled={streaming}
+            testID="portal-kai-live"
+            accessibilityHint={`Kai walks you through the ${data.symbol} chart, marking what he talks about.`}
+            onPress={() => {
+              setStageOpen(true);
+              askKai(KAI_LIVE_QUESTION(data.symbol));
+            }}
+          />
+          <Button
+            label="Expand"
+            kind="outline"
+            height={38}
+            full={false}
+            testID="portal-expand-chart"
+            accessibilityHint="Opens the chart full screen. Turn the phone sideways for a wider view."
+            onPress={() => setStageOpen(true)}
+          />
+        </View>
+
         <ContextSwitcher
           value={ctx}
           onChange={setCtx}
@@ -281,6 +347,33 @@ export default function TradePortalScreen() {
         {data.notice ? <PortalNotice text={data.notice} /> : null}
         {data.is_fixture ? <PortalNotice text="Example data — no account is connected on this build." /> : null}
       </ScrollView>
+
+      {/*
+        THE STAGE. Mounted at the end so it covers the screen, and given the SAME
+        annotation set and timeframe state as the embedded chart — it is the same
+        chart with more room, not a second one with its own opinions.
+
+        `live` is what puts it into broadcast: Kai answering is the trigger, not
+        a mode the user has to find and switch on.
+      */}
+      <ChartStage
+        open={stageOpen}
+        onClose={() => setStageOpen(false)}
+        symbol={data.symbol}
+        name={data.name}
+        timeframe={tf ?? data.chart.timeframe}
+        timeframes={data.chart.timeframes}
+        candles={candles}
+        annotations={visibleAnnotations}
+        hideAnnotations={hideAnnotations}
+        focusTs={focusTs}
+        lastPrice={data.quote?.price ?? null}
+        onTimeframeChange={setTf}
+        onSelectAnnotation={setInspecting}
+        onChart={(h) => { stageChart.current = h; }}
+        live={Boolean(answer?.live)}
+        caption={answer?.text ?? null}
+      />
 
       {/* The composer is persistent: the chart stays visible while you talk. */}
       <View style={{ paddingHorizontal: 16, paddingBottom: 12, paddingTop: 4 }}>

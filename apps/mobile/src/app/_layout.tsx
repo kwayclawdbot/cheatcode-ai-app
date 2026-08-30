@@ -4,6 +4,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAppFonts } from '../ui/fonts';
+import { lockPortrait } from '../features/chart/orientation';
 import { color } from '../ui/tokens';
 import { SessionProvider, useSession } from '../lib/session';
 import { env } from '../lib/env';
@@ -65,6 +66,17 @@ function Gate({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   // Font gate: NEVER `return null` on web (kills clicks after hydration).
   const { blocking } = useAppFonts();
+
+  /**
+   * PORTRAIT IS THE APP'S DEFAULT AND THE APP ENFORCES IT.
+   *
+   * `app.json` declares `default` so the binary is ALLOWED to rotate — on iOS
+   * the plist is a ceiling nothing at runtime can raise. Every screen is still
+   * portrait; the chart stage is the one that unlocks, and it locks back when
+   * it closes. Doing it here rather than per screen means a screen that forgets
+   * cannot leave the whole app sideways.
+   */
+  useEffect(() => { void lockPortrait(); }, []);
 
   return (
     <SafeAreaProvider>

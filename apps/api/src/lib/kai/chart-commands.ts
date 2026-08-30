@@ -22,6 +22,7 @@ import {
   type AnnotationRow,
   type ChartCommandFrame,
 } from '@shared/api';
+import { LIVE_ZONE_TARGETS } from '@shared/live';
 import { z } from 'zod';
 import { levels, isLong } from '../setups';
 import type { SetupRow } from './context';
@@ -88,15 +89,39 @@ export type ChartContext = {
   resistances: number[];
   /** Prior session, for `compare_prior`. */
   priorSession: { from: string; to: string } | null;
+  /**
+   * The window the stored bars actually cover, and the last close.
+   *
+   * A LINE NEEDS ONLY A PRICE; A SHAPE NEEDS A TIME AS WELL. A box has to span
+   * something, a ring has to sit on a bar, and an arrow has to start somewhere.
+   * Inventing either end would put a rectangle over a stretch of chart that
+   * means nothing, so both come from the candles `loadChartContext` already
+   * fetched and a shape without them is dropped like any other unresolvable
+   * reference.
+   */
+  bars: { firstTs: string | null; lastTs: string | null; lastPrice: number | null };
+  /**
+   * The timeframe the LEVELS were measured on — not the one the user is
+   * looking at. `loadChartContext` computes support and resistance from daily
+   * bars and reads plan and setup levels off rows graded the same way, so every
+   * number here is a daily number whatever `timeframe` happens to say.
+   *
+   * ANNOTATIONS ARE STORED AGAINST THIS ONE. They used to be stored against
+   * whatever the chart was showing, which meant the same trigger was written
+   * once as a 5m row and again as a 1d row the next time the user was on the
+   * daily — `upsertAnnotation` matches on (user, symbol, timeframe, kind,
+   * price), so it deduped against neither. Two rows, two lines, one price.
+   */
+  levelTimeframe: string;
 };
 
-type Resolved = { price: number; label: string; kind: AnnotationKind; reason: string; provenance: string };
+export type Resolved = { price: number; label: string; kind: AnnotationKind; reason: string; provenance: string };
 
 /**
  * Resolve one named level against the real objects. Returns null when nothing
  * in the loaded context defines it — which is a refusal, not a failure.
  */
-function resolveLevel(ctx: ChartContext, key: string): Resolved | null {
+export function resolveLevel(ctx: ChartContext, key: string): Resolved | null {
   const k = String(key).toLowerCase() as LevelKey;
   const setupLevels = ctx.setup ? levels(ctx.setup) : { entry: null, stop: null, targets: [], perShare: null, rr: null };
   const long = ctx.setup ? isLong(ctx.setup.intent) : true;
@@ -203,6 +228,130 @@ function resolveLevel(ctx: ChartContext, key: string): Resolved | null {
 }
 
 /* ------------------------------------------------------------------ */
+/* Shapes                                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A ring, an arrow and a band — the three things a person at a whiteboard draws
+ * that a horizontal rule cannot say.
+ *
+ * ANCHORED, NEVER FREEHAND. A circle's centre is a stored level at a stored bar.
+ * An arrow runs from the last stored close to a stored level. A band's two edges
+ * are both levels that could have been drawn as lines on their own. So a shape
+ * asserts nothing that a `mark_level` would not have asserted already — it just
+ * says it in the form the sentence is actually using.
+ *
+ * They ride `mark_level` rather than getting commands of their own, exactly as
+ * they do in the show: it is the command that means "put this annotation on the
+ * chart and point at it", and the client's choreography already stages one
+ * annotation as a single gesture. A shape is not a new kind of chart action, it
+ * is a new kind of thing to draw.
+ */
+async function markShape(
+  ctx: ChartContext,
+  shape: string,
+  level: string,
+  say: (fallback: string) => string
+): Promise<ChartCommandFrame | null> {
+  const v = level.trim().toLowerCase();
+  const base = {
+    symbol: ctx.symbol,
+    timeframe: ctx.levelTimeframe,
+    provenance: 'kai' as const,
+    source_alert_id: ctx.alertId,
+    source_setup_id: ctx.setup?.id ?? null,
+    source_plan_id: ctx.planId,
+  };
+
+  if (shape === 'zone') {
+    const pair = (LIVE_ZONE_TARGETS as Record<string, readonly string[]>)[v];
+    if (!pair) return null;
+    const [aName, bName] = pair;
+    const a = resolveLevel(ctx, aName);
+    const b = resolveLevel(ctx, bName);
+    if (!a || !b || !ctx.bars.firstTs || !ctx.bars.lastTs) return null;
+    const text = v === 'risk' ? 'At risk' : v === 'reward' ? 'To target' : 'Range';
+    const ann = await upsertAnnotation(ctx.userId, {
+      ...base,
+      kind: 'box',
+      price: a.price,
+      price2: b.price,
+      ts_from: ctx.bars.firstTs,
+      ts_to: ctx.bars.lastTs,
+      text,
+      reason: `The band between the ${aName} and the ${bName}. Both edges are stored levels: ${a.reason}`,
+    });
+    if (!ann) return null;
+    return {
+      type: 'chart_command',
+      command: 'mark_level',
+      payload: { shape: 'zone', level: v, price: a.price, price2: b.price, symbol: ctx.symbol, timeframe: ctx.timeframe },
+      annotations: [ann],
+      narration: say(`I shaded the band between the ${aName} and the ${bName}.`),
+      provenance: `${a.provenance} and ${b.provenance}, over the stored bars.`,
+    };
+  }
+
+  const lv = resolveLevel(ctx, v);
+  if (!lv) return null;
+
+  if (shape === 'circle') {
+    // The bar that made the level matter, falling back to the most recent one —
+    // the same rule `zoom_trigger` already uses, so the two never disagree about
+    // which candle a level belongs to.
+    const ts = ctx.triggerTs ?? ctx.bars.lastTs;
+    if (!ts) return null;
+    const ann = await upsertAnnotation(ctx.userId, {
+      ...base,
+      kind: 'circle',
+      price: lv.price,
+      ts_from: ts,
+      text: lv.label,
+      reason: `Ringing the bar this ${v} comes from. ${lv.reason}`,
+    });
+    if (!ann) return null;
+    return {
+      type: 'chart_command',
+      command: 'mark_level',
+      payload: { shape: 'circle', level: v, price: lv.price, focus_ts: ts, symbol: ctx.symbol, timeframe: ctx.timeframe },
+      annotations: [ann],
+      narration: say(`This bar — where the ${v} comes from.`),
+      provenance: `${lv.provenance} Centred on a stored bar.`,
+    };
+  }
+
+  if (shape === 'arrow') {
+    const from = ctx.bars.lastPrice;
+    const ts = ctx.bars.lastTs;
+    if (from === null || ts === null) return null;
+    // An arrow from a price to itself is a dot, and a dot claiming to be an
+    // arrow is worse than no gesture at all.
+    if (Math.abs(from - lv.price) < Math.max(0.01, Math.abs(lv.price) * 0.0005)) return null;
+    const ann = await upsertAnnotation(ctx.userId, {
+      ...base,
+      kind: 'arrow',
+      price: from,
+      price2: lv.price,
+      ts_from: ts,
+      ts_to: ts,
+      text: 'To go',
+      reason: `How far price still has to travel to the ${v}. ${lv.reason}`,
+    });
+    if (!ann) return null;
+    return {
+      type: 'chart_command',
+      command: 'mark_level',
+      payload: { shape: 'arrow', level: v, price: from, price2: lv.price, symbol: ctx.symbol, timeframe: ctx.timeframe },
+      annotations: [ann],
+      narration: say(`That is the distance still to travel to the ${v}.`),
+      provenance: `The last stored close and the ${v}. ${lv.provenance}`,
+    };
+  }
+
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
 /* Execution                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -222,11 +371,15 @@ export async function executeChartCommand(
     switch (req.command) {
       case 'mark_level': {
         const key = String(args.level ?? args.name ?? args.kind ?? 'trigger');
+        // A shape rides this command; see `markShape`. Everything below is the
+        // horizontal rule that `mark_level` has always drawn.
+        const shape = typeof args.shape === 'string' ? args.shape.trim().toLowerCase() : null;
+        if (shape) return await markShape(ctx, shape, key, say);
         const r = resolveLevel(ctx, key);
         if (!r) return null;
         const ann = await upsertAnnotation(ctx.userId, {
           symbol: ctx.symbol,
-          timeframe: ctx.timeframe,
+          timeframe: ctx.levelTimeframe,
           kind: r.kind,
           price: r.price,
           text: r.label,
@@ -255,7 +408,7 @@ export async function executeChartCommand(
         const anns = await markPlanLevels({
           userId: ctx.userId,
           symbol: ctx.symbol,
-          timeframe: ctx.timeframe,
+          timeframe: ctx.levelTimeframe,
           entry,
           stop,
           invalidation: stop,
@@ -283,7 +436,7 @@ export async function executeChartCommand(
         if (!r) return null;
         const ann = await upsertAnnotation(ctx.userId, {
           symbol: ctx.symbol,
-          timeframe: ctx.timeframe,
+          timeframe: ctx.levelTimeframe,
           kind: 'invalidation',
           price: r.price,
           text: 'Invalidation',
@@ -317,18 +470,29 @@ export async function executeChartCommand(
       }
 
       case 'zoom_trigger': {
-        const ts = ctx.triggerTs;
-        const r = resolveLevel(ctx, 'trigger');
+        // NAMED, NOT ALWAYS THE TRIGGER. It is called `zoom_trigger` because the
+        // trigger is what it was first asked to frame, but "take me to the
+        // resistance" is the same camera move over a different level — and
+        // ignoring `args.level`, as this did, silently flew to the trigger while
+        // Kai was talking about something else. The default is unchanged, so
+        // every existing caller behaves exactly as it did.
+        const key = typeof args.level === 'string' && args.level.trim() ? args.level : 'trigger';
+        const r = resolveLevel(ctx, key);
+        // Only the trigger has a stored candle of its own on this side; any
+        // other level is framed by price, which is a real number either way.
+        const ts = r && (key === 'trigger' || key === 'entry') ? ctx.triggerTs : null;
         if (!ts && !r) return null;
         return {
           type: 'chart_command',
           command: 'zoom_trigger',
-          payload: { focus_ts: ts, price: r?.price ?? null, symbol: ctx.symbol, timeframe: ctx.timeframe },
+          payload: { level: key, focus_ts: ts, price: r?.price ?? null, symbol: ctx.symbol, timeframe: ctx.timeframe },
           annotations: [],
           narration: say(
-            ts ? 'I zoomed the chart to the candle where this triggered.' : 'I centred the chart on the trigger level.'
+            ts
+              ? 'I zoomed the chart to the candle where this triggered.'
+              : `I centred the chart on the ${String(r?.label ?? key).toLowerCase()}.`
           ),
-          provenance: ts ? 'The trigger timestamp on the alert.' : 'The setup entry condition.',
+          provenance: ts ? 'The trigger timestamp on the alert.' : (r?.provenance ?? 'The setup entry condition.'),
         };
       }
 
@@ -349,7 +513,7 @@ export async function executeChartCommand(
         if (!r) return null;
         const ann = await upsertAnnotation(ctx.userId, {
           symbol: ctx.symbol,
-          timeframe: ctx.timeframe,
+          timeframe: ctx.levelTimeframe,
           kind: 'note',
           price: r.price,
           text: 'Community level',
@@ -586,7 +750,11 @@ turn a level into a watch, or prepare the trade — emit ONE fenced block:
 \`\`\`
 
 Rules, and they are strict:
-- NEVER put a price in args. Name the level: ${ctx.available.join(', ')}. The server
+- NEVER put a price in args. ${
+    ctx.available.length
+      ? `Name the level. THESE ARE THE ONES THIS CHART ACTUALLY HAS: ${ctx.available.join(', ')} — naming any other draws nothing.`
+      : 'No named level resolves on this chart right now, so nothing can be marked on it. Say so rather than naming one.'
+  } The server
   looks the number up in the setup, the plan or the room and draws it. A number
   you write is discarded, and a level that is not in the data is not drawn at all.
 - One command per reply. Say your sentence in the text BEFORE the block — the
@@ -605,6 +773,80 @@ Rules, and they are strict:
 - alert_from_level and prepare_trade PROPOSE. They do not arm a watch and they
   do not place an order. Say so.
 - Community levels are labelled as the room's opinion, never as your analysis.`;
+}
+
+/**
+ * The one tool that answers instead of describing (LIVE-8).
+ *
+ * A `chart_command` is a single action the user asked for: "mark the trigger",
+ * "switch to the hourly". `answer_on_chart` is a different thing entirely — the
+ * user asked a QUESTION, and the reply is Kai working the chart while he talks:
+ * camera moves, the level he is naming marked as he names it, the candle he is
+ * pointing at ringed. The whole answer is directed and timed server-side by the
+ * same director the live show runs.
+ *
+ * WHY THE MODEL ONLY WRITES PROSE INTO IT. Placing the markers is a second job,
+ * and a model concentrating on prose does that one badly — measured across the
+ * show's build, markers written inline came out sparse and evenly spread, and
+ * instructions to write more of them moved the count without ever moving the
+ * judgement. So the model writes what Kai says and nothing else. It is also the
+ * anti-invention rule doing its work one more time: a writer that never places a
+ * marker never writes `[MARK:resistance:625.66]`, and a price that is never
+ * written cannot be wrong.
+ */
+export function chartAnswerProtocol(ctx: { symbol: string; timeframe: string; available: string[] }): string {
+  return `ANSWERING ON THE CHART
+
+When the user asks a QUESTION about this ${ctx.symbol} chart — why the grade is
+what it is, what would change it, where the risk is, what happened at some point
+on it, what you make of it — do not reply with a paragraph. Answer ON the chart:
+
+\`\`\`answer_on_chart
+{ "answer": "Two things hold it back. It has not cleared the resistance, and it is still a long way under the trigger, so the entry is not live yet. The stop is where the idea stops being true." }
+\`\`\`
+
+The server directs that prose: it moves the camera, marks the levels you named as
+you name them, rings the candle and paces every gesture to the word it belongs
+to. You write the words. That is the whole job.
+
+Rules:
+- NEVER write a price, and NEVER write a marker like [MARK:trigger]. Name levels
+  in plain English. ${
+    ctx.available.length
+      ? `THIS CHART HAS: ${ctx.available.join(', ')}. Those are the words that draw something — name any other level and nothing appears.`
+      : 'This chart has no named level that resolves right now, so talk about what price has done rather than about levels.'
+  } A level you name that is not in the data is simply not
+  drawn; nothing is invented to fill it.
+- Two to four sentences. This is fifteen to thirty seconds of speech, not a
+  segment. Say the thing and stop.
+- Do NOT ask for a different timeframe. They are looking at the ${ctx.timeframe}
+  chart and asked about it.
+- Put nothing outside the block. The prose inside it IS your reply — it is shown
+  to the user as you say it.
+- USE IT EVEN WHEN THERE IS NO GRADED SETUP ON THIS SYMBOL. A chart with support
+  and resistance on it is a chart you can answer about: those levels came from
+  stored bars and are already drawn.
+- OPEN WITH THE ANSWER, NOT WITH A DISCLAIMER. Do not begin "I don't have a
+  graded setup on this, but..." — the user asked about the chart, not about your
+  coverage, and leading with what you lack reads as a refusal even when the
+  answer follows it. Mention the missing grade only if they asked for one.
+
+WHICH BLOCK, AND THIS IS NOT A JUDGEMENT CALL:
+
+  They told you to change the chart   -> one chart_command block.
+      "mark the trigger", "switch to the hourly", "show me the invalidation",
+      "clear that line". An instruction, in the imperative.
+
+  ANYTHING ELSE THEY ASK       -> answer_on_chart. This is the DEFAULT.
+      "why is this only a B?", "what do you make of it?", "what would change
+      your mind?", "is this a good entry?", "what happened here?", "walk me
+      through it", "what am I looking at?", "should I be worried?"
+
+If you are about to write prose ABOUT this chart, that prose belongs inside an
+answer_on_chart block. Plain prose with no block leaves the chart sitting still
+while you describe things the user cannot see — you are standing at a chart with
+your hands in your pockets. Prose on its own is only right when the question is
+not about the chart at all.`;
 }
 
 export const CHART_LEVEL_KEYS = LEVEL_KEYS;

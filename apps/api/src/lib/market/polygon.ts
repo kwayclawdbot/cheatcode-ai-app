@@ -82,7 +82,15 @@
  *     authority, `/v1/marketstatus/now` refines it opportunistically when it
  *     has been called recently, and every payload carries `holidays_known:false`.
  */
-import type { Freshness, DelayReason, MarketQuote, MarketStatus, Candle, NewsItem } from '@shared/api';
+import type {
+  Freshness,
+  DelayReason,
+  MarketQuote,
+  MarketStatus,
+  Candle,
+  NewsItem,
+  FinancialQuarter,
+} from '@shared/api';
 import { env } from '../env';
 import { log } from '../log';
 import { serviceClient } from '../db';
@@ -1574,6 +1582,8 @@ type NewsBody = {
     description?: string;
     tickers?: string[];
     publisher?: { name?: string };
+    /** Polygon's per-ticker read on the article. Carried, never computed here. */
+    insights?: { ticker?: string; sentiment?: string; sentiment_reasoning?: string }[];
   }[];
 };
 
@@ -1598,9 +1608,98 @@ export async function getNews(symbol: string, limit = 5): Promise<{ news: NewsIt
     published_utc: a.published_utc,
     tickers: a.tickers ?? [],
     description: a.description ?? null,
+    ...(() => {
+      // The insight for THIS ticker, not the first one in the array: an article
+      // about three hyperscalers carries three, and reading someone else's is
+      // how a show ends up quoting a bullish note about Amazon under Meta.
+      const mine = (a.insights ?? []).find(
+        (i) => String(i.ticker ?? '').toUpperCase() === symbol.toUpperCase(),
+      );
+      const sent = String(mine?.sentiment ?? '').toLowerCase();
+      return {
+        sentiment: sent === 'positive' || sent === 'negative' || sent === 'neutral' ? sent : null,
+        sentiment_reasoning: mine?.sentiment_reasoning ?? null,
+      };
+    })(),
   }));
   newsCache.set(key, { at: Date.now(), value: news });
   return { news, degraded: false };
+}
+
+/* ------------------------------------------------------------------ */
+/* Financials: /vX/reference/financials                                 */
+/* ------------------------------------------------------------------ */
+
+type FinancialsBody = {
+  results?: {
+    fiscal_period?: string;
+    fiscal_year?: string;
+    end_date?: string;
+    filing_date?: string;
+    financials?: {
+      income_statement?: Record<string, { value?: number } | undefined>;
+    };
+  }[];
+};
+
+const financialsCache = new Map<string, Cached<FinancialQuarter[]>>();
+
+/**
+ * A quarter is reported once and then never changes, so this is cached for a
+ * day rather than for minutes. The show asks for it on every segment; the API
+ * should see it roughly once per symbol per broadcast.
+ */
+const FINANCIALS_TTL_MS = 24 * 60 * 60_000;
+
+const figure = (inc: Record<string, { value?: number } | undefined> | undefined, key: string): number | null => {
+  const v = inc?.[key]?.value;
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+};
+
+/**
+ * The last few reported quarters, newest first.
+ *
+ * Returns an empty list rather than throwing when the plan says no: a show that
+ * cannot talk about earnings is a show that talks about the chart, which is
+ * what it did before this existed.
+ */
+export async function getFinancials(
+  symbol: string,
+  quarters = 5,
+): Promise<{ quarters: FinancialQuarter[]; degraded: boolean }> {
+  const key = `${symbol.toUpperCase()}:${quarters}`;
+  const hit = fresh(financialsCache.get(key), FINANCIALS_TTL_MS);
+  if (hit) return { quarters: hit, degraded: false };
+
+  const r = await polyGet<FinancialsBody>('/vX/reference/financials', {
+    ticker: symbol.toUpperCase(),
+    limit: quarters,
+    timeframe: 'quarterly',
+    order: 'desc',
+    sort: 'period_of_report_date',
+  });
+  if (!r.ok) return { quarters: [], degraded: true };
+
+  const out: FinancialQuarter[] = (r.data.results ?? [])
+    .filter((q) => q.end_date)
+    .map((q) => {
+      const inc = q.financials?.income_statement;
+      return {
+        fiscal_period: q.fiscal_period ?? '',
+        fiscal_year: q.fiscal_year ?? '',
+        end_date: q.end_date as string,
+        filing_date: q.filing_date ?? null,
+        revenue: figure(inc, 'revenues'),
+        gross_profit: figure(inc, 'gross_profit'),
+        operating_income: figure(inc, 'operating_income_loss'),
+        net_income: figure(inc, 'net_income_loss'),
+        eps_basic: figure(inc, 'basic_earnings_per_share'),
+        eps_diluted: figure(inc, 'diluted_earnings_per_share'),
+      };
+    });
+
+  financialsCache.set(key, { at: Date.now(), value: out });
+  return { quarters: out, degraded: false };
 }
 
 /* ------------------------------------------------------------------ */

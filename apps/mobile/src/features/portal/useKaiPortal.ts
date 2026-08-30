@@ -21,8 +21,20 @@ import type { GoalMode } from '../../lib/types';
 import type {
   Annotation, ChartCommand, ChartCommandName, PortalTimeframe, TradePortal,
 } from './types';
-import { KIND_LABEL } from './types';
+import { CHART_COMMAND_NAMES, KIND_LABEL } from './types';
 import { subscribeAsk } from './ask-bus';
+import { runChartAnswer, type AnswerRun } from '../chart/answer';
+import { playAnswer } from '../chart/answer-audio';
+
+/**
+ * What the screen hands back after performing one command.
+ *
+ * `done` is the CHOREOGRAPHY finishing — the pointer has travelled, the line has
+ * drawn, the camera has landed. An answer needs it because `applyChartCommand`
+ * keeps a queue of one: firing the next gesture without waiting for this one
+ * supersedes it, and the level it was drawing is silently never drawn.
+ */
+export type PortalCommandResult = { narration: string | null; done: Promise<unknown> };
 
 export type PortalTurn =
   | { kind: 'user'; id: string; text: string }
@@ -40,12 +52,10 @@ function readCommand(f: unknown): ChartCommand | null {
   const r = (f ?? {}) as Record<string, unknown>;
   const inner = (r.chart_command ?? r.payload ?? r) as Record<string, unknown>;
   const name = String(r.command ?? inner.command ?? '');
-  const ALL: ChartCommandName[] = [
-    'mark_level', 'set_timeframe', 'show_invalidation', 'mark_plan', 'zoom_trigger',
-    'compare_prior', 'highlight_community', 'annotation_remove', 'annotation_explain',
-    'alert_from_level', 'prepare_trade',
-  ];
-  if (!(ALL as string[]).includes(name)) return null;
+  // `CHART_COMMAND_NAMES` rather than a list kept here: this one had fallen a
+  // whole release behind and silently rejected every camera command LIVE-1
+  // added, which is most of what a directed answer is made of.
+  if (!(CHART_COMMAND_NAMES as string[]).includes(name)) return null;
   const payload = { ...((inner.payload ?? inner) as Record<string, unknown>) };
   // The frame carries the annotations the server ALREADY persisted. Those are
   // the authoritative geometry — the client draws them rather than re-deriving
@@ -56,6 +66,43 @@ function readCommand(f: unknown): ChartCommand | null {
     payload,
     narration: typeof r.narration === 'string' && r.narration ? r.narration : null,
   };
+}
+
+/**
+ * A whole answer, directed server-side (LIVE-8).
+ *
+ * The user asked a question about this chart and the reply is not a paragraph —
+ * it is Kai working the chart while he talks. The server ran the same director
+ * the live show runs over the prose, resolved every marker against the same real
+ * rows every other chart command goes through, and put a millisecond on each
+ * action. Nothing here decides WHAT happens; this only reads it off the wire.
+ */
+export type ChartAnswer = {
+  spoken: string;
+  durationMs: number;
+  /** Kai speaking it. Null when voice is off or the TTS could not — the chart
+   *  still performs and the words are still on screen. */
+  audioUrl: string | null;
+  actions: { t_offset_ms: number; command: ChartCommand }[];
+};
+
+const isAnswerFrame = (f: KaiFrame): boolean => (f as { type?: string }).type === 'chart_answer';
+
+export function readAnswer(f: unknown): ChartAnswer | null {
+  const r = (f ?? {}) as Record<string, unknown>;
+  const spoken = typeof r.spoken === 'string' ? r.spoken : '';
+  if (!spoken.trim()) return null;
+  const raw = Array.isArray(r.actions) ? (r.actions as Record<string, unknown>[]) : [];
+  const actions = raw
+    .map((a) => {
+      const command = readCommand(a.frame);
+      const t = Number(a.t_offset_ms);
+      return command && Number.isFinite(t) ? { t_offset_ms: Math.max(0, Math.round(t)), command } : null;
+    })
+    .filter((a): a is { t_offset_ms: number; command: ChartCommand } => a != null);
+  const durationMs = Number(r.duration_ms);
+  const audioUrl = typeof r.audio_url === 'string' && r.audio_url ? r.audio_url : null;
+  return { spoken, durationMs: Number.isFinite(durationMs) ? durationMs : 0, audioUrl, actions };
 }
 
 /* ------------------------------------------------------------------ */
@@ -108,7 +155,7 @@ export function useKaiPortal(opts: {
   symbol: string;
   alertId?: string | null;
   opening?: string | null;
-  onCommand: (c: ChartCommand) => string | null;
+  onCommand: (c: ChartCommand) => PortalCommandResult | null;
 }) {
   const { mode, portal, symbol, alertId, opening, onCommand } = opts;
   const [turns, setTurns] = useState<PortalTurn[]>([]);
@@ -118,6 +165,25 @@ export function useKaiPortal(opts: {
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const cmdRef = useRef(onCommand);
   cmdRef.current = onCommand;
+  /**
+   * The answer currently performing on the chart, if any.
+   *
+   * A SECOND QUESTION ABANDONS THE FIRST. Two answers running at once would race
+   * for the same chart and `applyChartCommand` would supersede half of each, so
+   * the older one is cancelled the moment a new question is sent — and again on
+   * unmount, so a run does not go on drawing on a screen that is gone.
+   */
+  const answerRun = useRef<AnswerRun | null>(null);
+  /**
+   * What Kai is saying RIGHT NOW, for the stage's lower third.
+   *
+   * State rather than a ref because a caption has to re-render as it changes,
+   * and `live` is separate from `streaming`: the model finishes streaming long
+   * before the chart has finished performing, and the caption belongs to the
+   * PERFORMANCE. Ending it when the text stopped arriving would drop the
+   * subtitle halfway through the answer it is subtitling.
+   */
+  const [answer, setAnswer] = useState<{ text: string; live: boolean } | null>(null);
   const portalRef = useRef(portal);
   portalRef.current = portal;
 
@@ -128,6 +194,7 @@ export function useKaiPortal(opts: {
 
   useEffect(() => () => {
     abort.current?.abort();
+    answerRun.current?.cancel();
     if (timer.current) clearInterval(timer.current);
   }, []);
 
@@ -142,6 +209,12 @@ export function useKaiPortal(opts: {
   const send = useCallback(async (text: string) => {
     const body = text.trim();
     if (!body || streaming) return;
+    // Asking again abandons whatever the last answer was still drawing. The
+    // newest question is the one the user is owed, and two answers on one chart
+    // would supersede each other's gestures half-finished.
+    answerRun.current?.cancel();
+    answerRun.current = null;
+    setAnswer(null);
     const typingId = nid();
     setTurns((p) => [...p, { kind: 'user', id: nid(), text: body }, { kind: 'typing', id: typingId }]);
     setStreaming(true);
@@ -153,10 +226,69 @@ export function useKaiPortal(opts: {
       started = true;
       setTurns((p) => p.map((t) => (t.id === typingId ? { kind: 'kai', id: replyId, text: '', streaming: true } : t)));
     };
-    const applyCommand = (c: ChartCommand) => {
+    const applyCommand = (c: ChartCommand): Promise<unknown> => {
       sawCommand = true;
-      const said = cmdRef.current(c);
-      if (said) narrate(said);
+      const r = cmdRef.current(c);
+      if (!r) return Promise.resolve();
+      if (r.narration) narrate(r.narration);
+      return r.done;
+    };
+
+    /**
+     * Perform a directed answer.
+     *
+     * The prose is streamed into the reply like any other text — the user reads
+     * the same words the chart is performing — and the actions run against the
+     * clock the server timed them on. Not awaited by the frame handler: the
+     * stream keeps arriving while the chart works, and the run is cancelled by
+     * the next question rather than by the end of this one.
+     */
+    const performAnswer = (a: ChartAnswer) => {
+      sawCommand = true;
+      if (!started) start();
+      patch(replyId, a.spoken);
+      answerRun.current?.cancel();
+
+      /**
+       * KAI SPEAKS AND THE GESTURES FOLLOW HIS VOICE, not a stopwatch started
+       * next to it. `playAnswer` hands back the playhead as the clock, so a
+       * file that loads late or stalls mid-sentence takes the whole chart with
+       * it rather than leaving the hand a second ahead of the words. With no
+       * audio it hands back a wall clock and nothing else changes — the answer
+       * plays silently, exactly as it did before there was a voice.
+       */
+      setAnswer({ text: a.spoken, live: true });
+      const voice = playAnswer(a.audioUrl);
+      const run = runChartAnswer({
+        actions: a.actions.map((x) => ({ t_offset_ms: x.t_offset_ms, frame: x.command })),
+        now: voice.now,
+        perform: (c) => {
+          const r = cmdRef.current(c);
+          if (!r) return Promise.resolve();
+          // The command's own sentence is NOT narrated here. The answer's prose
+          // already said it, in Kai's words, and repeating the server's fallback
+          // line under it reads as the chart talking over him.
+          return r.done;
+        },
+      });
+      const finish = () => {
+        voice.stop();
+        // The words stay on screen; only the LIVE state ends. A caption that
+        // vanishes on the last gesture takes the answer with it before anyone
+        // has finished reading the sentence.
+        setAnswer((prev) => (prev ? { ...prev, live: false } : prev));
+      };
+      void run.done.then(finish, finish);
+      answerRun.current = {
+        done: run.done,
+        // Cancelling stops the voice too. An abandoned answer that keeps talking
+        // over the next one is the single most obvious way this could feel
+        // broken.
+        cancel: () => {
+          run.cancel();
+          voice.stop();
+        },
+      };
     };
     const finish = () => {
       setTurns((p) => p.map((t) => (t.kind === 'kai' && t.id === replyId ? { ...t, streaming: false } : t)));
@@ -164,7 +296,7 @@ export function useKaiPortal(opts: {
       // the level the user asked for is already loaded on this screen.
       if (!sawCommand) {
         const inferred = inferCommand(body, portalRef.current);
-        if (inferred) applyCommand(inferred);
+        if (inferred) void applyCommand(inferred);
       }
       setStreaming(false);
     };
@@ -182,7 +314,7 @@ export function useKaiPortal(opts: {
         timer.current = setInterval(() => {
           if (i >= words.length) {
             if (timer.current) clearInterval(timer.current);
-            if (inferred) applyCommand(inferred);
+            if (inferred) void applyCommand(inferred);
             finish();
             return;
           }
@@ -196,10 +328,25 @@ export function useKaiPortal(opts: {
     /* ---------------- live stream ---------------- */
     try {
       if (!convo.current) {
+        /**
+         * `portal` IS NOT A CONTEXT KIND THE SERVER ACCEPTS.
+         *
+         * It only takes symbol | setup | alert | order | position | room | home,
+         * so this call answered 400 and the whole chat died with a validation
+         * error the moment it was reached. It hid because the portal payload
+         * normally arrives WITH a conversation already made for it, so this
+         * branch only runs when that one is missing — a degraded portal, which
+         * is exactly when a working chat matters most.
+         *
+         * `alert` when the portal was opened over one, `symbol` otherwise, which
+         * is the same sheet the server stamps when it makes this conversation
+         * itself. The two paths now produce the same conversation either way.
+         */
+        const openedOver = alertId ?? portalRef.current?.alert?.id ?? null;
         const created = await api.createConversation(
           mode,
-          { symbols: [symbol], ...(portalRef.current?.alert?.id ? {} : null) },
-          { kind: 'portal', symbol, id: alertId ?? portalRef.current?.alert?.id },
+          { symbols: [symbol] },
+          openedOver ? { kind: 'alert', symbol, id: openedOver } : { kind: 'symbol', symbol },
         );
         convo.current = created.id;
       }
@@ -209,9 +356,14 @@ export function useKaiPortal(opts: {
         body,
         {
           onFrame: (f: KaiFrame) => {
+            if (isAnswerFrame(f)) {
+              const a = readAnswer(f);
+              if (a) performAnswer(a);
+              return;
+            }
             if (isCommandFrame(f)) {
               const c = readCommand(f);
-              if (c) applyCommand(c);
+              if (c) void applyCommand(c);
               return;
             }
             const type = (f as { type?: string }).type;
@@ -224,7 +376,7 @@ export function useKaiPortal(opts: {
               // annotations; treat it as a mark_level batch.
               if (env.type === 'chart_response') {
                 const c = readCommand({ command: 'mark_level', payload: env.payload ?? env, narration: null });
-                if (c) applyCommand(c);
+                if (c) void applyCommand(c);
               }
             } else if (type === 'error') {
               if (!started) start();
@@ -250,195 +402,7 @@ export function useKaiPortal(opts: {
   sendRef.current = send;
   useEffect(() => subscribeAsk((q) => { void sendRef.current(q); }), []);
 
-  return { turns, send, streaming, narrate };
+  return { turns, send, streaming, narrate, answer };
 }
 
-/* ------------------------------------------------------------------ */
-/* Applying a command to the annotation set                            */
-/* ------------------------------------------------------------------ */
-
-const num = (v: unknown): number | null =>
-  typeof v === 'number' && Number.isFinite(v) ? v
-    : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null;
-
-/**
- * Turn one command into the state changes the screen must make.
- * Returns the annotations to upsert, an optional timeframe switch, an optional
- * focus timestamp, and the sentence to narrate. Everything is derived from the
- * portal payload — no price is created here.
- */
-export function planCommand(c: ChartCommand, p: TradePortal | null, existing: Annotation[]): {
-  upsert: Annotation[];
-  remove: string[];
-  timeframe: PortalTimeframe | null;
-  focusTs: string | null;
-  compare: boolean;
-  route: string | null;
-  narration: string;
-} | null {
-  const empty = { upsert: [] as Annotation[], remove: [] as string[], timeframe: null, focusTs: null, compare: false, route: null };
-  const sym = p?.symbol ?? '';
-  const now = new Date().toISOString();
-  const mk = (
-    kind: Annotation['kind'], price: number, opts: Partial<Annotation> = {},
-  ): Annotation => ({
-    id: `kai-${kind}-${price}`,
-    symbol: sym,
-    timeframe: null,
-    kind,
-    price,
-    price2: null,
-    ts_from: null,
-    ts_to: null,
-    text: `${KIND_LABEL[kind]} ${price}`,
-    reason: null,
-    provenance: 'kai',
-    status: 'valid',
-    source_alert_id: p?.alert?.id ?? null,
-    source_setup_id: null,
-    source_plan_id: p?.plan?.id ?? null,
-    created_at: now,
-    updated_at: now,
-    ...opts,
-  });
-
-  // A frame that carried persisted annotations draws exactly those, whatever
-  // the command was — the reason and provenance come from the server with them.
-  const served = Array.isArray(c.payload.annotations) ? (c.payload.annotations as Record<string, unknown>[]) : null;
-  if (served?.length) {
-    const ups = served.map((a): Annotation | null => {
-      const price = num(a.price) ?? num(Array.isArray(a.range) ? (a.range as unknown[])[0] : null);
-      if (price == null) return null;
-      const kind = String(a.kind ?? a.semantic ?? 'note') as Annotation['kind'];
-      const status = String(a.status ?? 'valid');
-      return {
-        ...mk(kind, price),
-        id: String(a.id ?? `kai-${kind}-${price}`),
-        price2: num(a.price2),
-        ts_from: typeof a.ts_from === 'string' ? a.ts_from : null,
-        ts_to: typeof a.ts_to === 'string' ? a.ts_to : null,
-        text: typeof a.text === 'string' && a.text ? a.text : `${KIND_LABEL[kind]} ${price}`,
-        reason: typeof a.reason === 'string' ? a.reason : null,
-        provenance: (['kai', 'user', 'community', 'plan'].includes(String(a.provenance))
-          ? String(a.provenance)
-          : 'kai') as Annotation['provenance'],
-        status: (['valid', 'invalidated', 'hidden', 'deleted'].includes(status)
-          ? status
-          : 'valid') as Annotation['status'],
-      };
-    }).filter((a): a is Annotation => a != null);
-    if (ups.length) {
-      const tfRaw = String(c.payload.timeframe ?? c.payload.tf ?? '');
-      const tf = (['1m', '5m', '15m', '1h', '4h', 'D'] as string[]).includes(tfRaw) ? (tfRaw as PortalTimeframe) : null;
-      return {
-        ...empty,
-        upsert: ups,
-        timeframe: tf,
-        focusTs: typeof c.payload.ts === 'string' ? c.payload.ts : null,
-        narration: c.narration ?? `Marked ${ups.length} level${ups.length === 1 ? '' : 's'} on the chart.`,
-      };
-    }
-  }
-
-  switch (c.command) {
-    case 'set_timeframe': {
-      const tf = String(c.payload.timeframe ?? c.payload.tf ?? '');
-      const known = (['1m', '5m', '15m', '1h', '4h', 'D'] as string[]).includes(tf);
-      if (!known) return null;
-      return { ...empty, timeframe: tf as PortalTimeframe, narration: c.narration ?? `Switched to the ${tf === 'D' ? 'daily' : tf} chart.` };
-    }
-    case 'zoom_trigger': {
-      const ts = String(c.payload.ts ?? p?.chart.focus_ts ?? '');
-      if (!ts) return null;
-      return { ...empty, focusTs: ts, narration: c.narration ?? 'Focused on the candle that triggered the alert.' };
-    }
-    case 'compare_prior':
-      return { ...empty, compare: true, narration: c.narration ?? 'Drew the prior session behind today for comparison.' };
-
-    case 'show_invalidation': {
-      const price = num(c.payload.price) ?? p?.alert?.stop ?? p?.plan?.stop ?? null;
-      if (price == null) return null;
-      const from = num(c.payload.price) != null ? 'the alert' : p?.alert?.stop != null ? 'this alert' : 'your saved plan';
-      return {
-        ...empty,
-        upsert: [mk('invalidation', price, {
-          text: `Invalid ${price}`,
-          reason: `Below ${price} the reason for this trade is gone. Level taken from ${from}.`,
-        })],
-        narration: c.narration ?? `Marked the invalidation at ${price} — from ${from}.`,
-      };
-    }
-    case 'mark_plan': {
-      const entry = num(c.payload.entry) ?? p?.plan?.entry ?? p?.alert?.entry ?? null;
-      const stop = num(c.payload.stop) ?? p?.plan?.stop ?? p?.alert?.stop ?? null;
-      const target = num(c.payload.target) ?? p?.plan?.targets[0] ?? p?.alert?.target ?? null;
-      const ups: Annotation[] = [];
-      if (entry != null) ups.push(mk('entry', entry, { price2: p?.alert?.entry_high ?? null, reason: 'The entry area on your plan.' }));
-      if (stop != null) ups.push(mk('stop', stop, { reason: 'The stop on your plan. It attaches as a paper leg when the entry fills.' }));
-      if (target != null) ups.push(mk('target', target, { reason: 'The first target on your plan.' }));
-      if (!ups.length) return null;
-      return { ...empty, upsert: ups, narration: c.narration ?? 'Marked the entry, stop and first target from your plan.' };
-    }
-    case 'mark_level': {
-      const list = Array.isArray(c.payload.annotations) ? (c.payload.annotations as Record<string, unknown>[]) : null;
-      if (list?.length) {
-        const ups = list.map((a) => {
-          const price = num(a.price) ?? num(Array.isArray(a.range) ? (a.range as unknown[])[0] : null);
-          const kind = String(a.semantic ?? a.kind ?? 'note') as Annotation['kind'];
-          return price != null ? mk(kind, price, { reason: String(a.text ?? a.reason ?? '') || null }) : null;
-        }).filter((a): a is Annotation => a != null);
-        if (!ups.length) return null;
-        return { ...empty, upsert: ups, narration: c.narration ?? `Marked ${ups.length} level${ups.length === 1 ? '' : 's'} on the chart.` };
-      }
-      const kind = String(c.payload.kind ?? 'trigger') as Annotation['kind'];
-      const price = num(c.payload.price)
-        ?? (kind === 'trigger' ? existing.find((a) => a.kind === 'trigger')?.price ?? p?.alert?.entry ?? null : null);
-      if (price == null) return null;
-      return {
-        ...empty,
-        upsert: [mk(kind, price, { reason: c.narration ?? `The ${KIND_LABEL[kind].toLowerCase()} level on this alert.` })],
-        narration: c.narration ?? `Marked the ${KIND_LABEL[kind].toLowerCase()} at ${price}.`,
-      };
-    }
-    case 'highlight_community': {
-      const price = num(c.payload.price);
-      if (price == null) return null;
-      return {
-        ...empty,
-        upsert: [mk('support', price, {
-          id: `community-${price}`,
-          provenance: 'community',
-          text: `Members ${price}`,
-          reason: 'The level members mention most in the room. Community observation — it does not change the grade.',
-        })],
-        narration: c.narration ?? `Highlighted ${price}, the level members mention most.`,
-      };
-    }
-    case 'annotation_remove': {
-      const id = String(c.payload.id ?? c.payload.annotation_id ?? '');
-      if (!id) return null;
-      return { ...empty, remove: [id], narration: c.narration ?? 'Removed that annotation.' };
-    }
-    case 'annotation_explain': {
-      const id = String(c.payload.id ?? c.payload.annotation_id ?? '');
-      const a = existing.find((x) => x.id === id);
-      if (!a) return null;
-      return { ...empty, narration: c.narration ?? a.reason ?? `${KIND_LABEL[a.kind]} at ${a.price}.` };
-    }
-    case 'alert_from_level': {
-      const price = num(c.payload.price);
-      return {
-        ...empty,
-        route: `/alert/new?symbol=${encodeURIComponent(sym)}${price != null ? `&level=${price}` : ''}`,
-        narration: c.narration ?? 'Opened an alert draft from that level — nothing is armed until you confirm it.',
-      };
-    }
-    case 'prepare_trade': {
-      const route = p?.plan?.action?.route ?? (sym ? `/plan/new?symbol=${encodeURIComponent(sym)}` : null);
-      if (!route) return null;
-      return { ...empty, route, narration: c.narration ?? 'Opened the order for review. Nothing is sent until you confirm it.' };
-    }
-    default:
-      return null;
-  }
-}
+export { planCommand } from './plan-command';

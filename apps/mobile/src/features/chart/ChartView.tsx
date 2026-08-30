@@ -338,6 +338,8 @@ export const ChartView = forwardRef<ChartHandle, ChartViewProps>(function ChartV
     updateLast: (c) => send('updateLast', { candle: c }),
     setVolume: (on) => send('setVolume', { on }),
     setReducedMotion: (on) => send('setReducedMotion', { on }),
+    setGestures: (own) => send('setGestures', { own }),
+    setBroadcast: (on) => send('setBroadcast', { on }),
 
     scrollByBars: (bars, o) => sendAwait('camera.scrollByBars', { bars, ...o }),
     scrollToTime: (time, o) => sendAwait('camera.scrollToTime', { time, ...o }),

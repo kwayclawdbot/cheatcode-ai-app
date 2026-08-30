@@ -90,6 +90,11 @@ export async function loadChartContext(userId: string, stamp: ChartStamp | null 
   const communityLevel = roomId ? await mostMentionedLevel(roomId) : null;
 
   const lastDate = lastTradingDate();
+  // The window the stored bars cover. Shapes need a time as well as a price —
+  // a box has to span something and a ring has to sit on a bar — and these are
+  // the only timestamps in this function that came from real candles.
+  const firstBar = candles.candles[0] ?? null;
+  const lastBar = candles.candles.length ? candles.candles[candles.candles.length - 1] : null;
   return {
     userId,
     symbol,
@@ -103,6 +108,14 @@ export async function loadChartContext(userId: string, stamp: ChartStamp | null 
     supports: tech.support.map((s) => s.price),
     resistances: tech.resistance.map((r) => r.price),
     priorSession: { from: prevTradingDate(lastDate), to: prevTradingDate(lastDate) },
+    // Everything above was computed from the DAILY candles fetched here, so
+    // that is where the levels live regardless of what the chart is showing.
+    levelTimeframe: '1d',
+    bars: {
+      firstTs: firstBar?.ts ?? null,
+      lastTs: lastBar?.ts ?? null,
+      lastPrice: last,
+    },
   };
 }
 

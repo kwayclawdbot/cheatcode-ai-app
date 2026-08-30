@@ -336,7 +336,7 @@ export class Director {
      * contradicting itself after that is skipped, not shipped.
      */
     const spokenName = market.company.name ?? '';
-    const structural = contradictions(candidate, '', [spokenName]).filter(
+    const structural = contradictions(candidate, '', [spokenName], market).filter(
       (f) => !f.startsWith('narration says')
     );
     if (structural.length) {
@@ -353,7 +353,7 @@ export class Director {
     });
 
     const after = resolved.beats.map((b) => b.text).join(' ');
-    const stillWrong = contradictions(candidate, after, [spokenName]);
+    const stillWrong = contradictions(candidate, after, [spokenName], market);
     if (stillWrong.length) {
       log('warn', 'director.contradiction_after_rewrite', {
         symbol: candidate.symbol,
@@ -376,6 +376,8 @@ export class Director {
       source: candidate.source,
       beats: resolved.beats.length,
       annotations: resolved.annotationsCreated,
+      cues: resolved.cues,
+      cues_dropped: resolved.cuesDropped,
       dropped: resolved.dropped.length,
       ms: Date.now() - t0,
       usd: money(this.budget.forSegment(seq)),
@@ -599,6 +601,22 @@ export class Director {
           await sleep((at - spoken) / pace);
           spoken = at;
         }
+        // A panel and a chart move are the same beat of direction landing on the
+        // same word; only the frame they become differs.
+        if (a.overlay) {
+          await emit({
+            kind: 'overlay',
+            show_id: this.showId,
+            segment_id: segmentId,
+            seq: this.seq,
+            t_offset_ms: t + spoken,
+            overlay: a.overlay.name,
+            payload: a.overlay.payload,
+          });
+          say(`          ▤ ${a.overlay.name}`);
+          continue;
+        }
+        if (!a.command) continue;
         await emit({
           kind: 'chart',
           show_id: this.showId,

@@ -3,7 +3,7 @@
     "name": "Cheat Code AI",
     "slug": "cheatcode-ai",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "cheatcodeai",
     "userInterfaceStyle": "dark",
@@ -44,7 +44,8 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": false,

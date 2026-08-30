@@ -200,7 +200,24 @@ export type PresentFrame = z.infer<typeof PresentFrame>;
  * be guesswork. An unimplemented overlay is ignored by a player; a missing one
  * cannot be recovered.
  */
-export const LiveOverlayName = z.enum(['ticker_rail', 'levels', 'winners', 'cta', 'clear']);
+export const LiveOverlayName = z.enum([
+  'ticker_rail',
+  'levels',
+  'winners',
+  'cta',
+  'clear',
+  /**
+   * The panels. Each one carries the thing a CHART STRUCTURALLY CANNOT SAY —
+   * why the name is here, whether the business behind it is growing, what has
+   * been written about it lately, and which of the setup's conditions are
+   * actually met. Anything the chart can show belongs on the chart, drawn on
+   * the price it is about, not in a box beside it.
+   */
+  'fundamentals',
+  'news',
+  'evidence',
+  'scorecard',
+]);
 export type LiveOverlayName = z.infer<typeof LiveOverlayName>;
 
 export const OverlayFrame = z.object({
@@ -235,11 +252,69 @@ export type LiveFrame = z.infer<typeof LiveFrame>;
  * it has to survive being written by a language model, and anything the model
  * produces that is not one of these is simply not a marker.
  */
-export const LIVE_MARKER_NAMES = ['MARK', 'ZOOM', 'TF', 'COMPARE', 'NOTE'] as const;
+export const LIVE_MARKER_NAMES = [
+  'MARK',
+  'ZOOM',
+  'TF',
+  'COMPARE',
+  'NOTE',
+  /**
+   * The three below exist because a presenter who only ever DRAWS is not
+   * presenting. A person talking through a chart draws a level once and then
+   * spends the next minute gesturing at it — "back at that trigger", "look
+   * where this sits". Without a way to refer to a level already on screen, Kai
+   * says those words over a chart that does not move, and the eye has nothing
+   * to follow. POINT and FLASH are that gesture; CAM is stepping back from the
+   * whiteboard.
+   */
+  'POINT',
+  'FLASH',
+  'CAM',
+  /**
+   * Shapes rather than lines. A level is a price and draws as a rule across the
+   * chart; these three say something a rule cannot — the BAND between two
+   * levels, the CANDLE that matters, the DISTANCE still to travel.
+   */
+  'ZONE',
+  'CIRCLE',
+  'ARROW',
+  /** Brings a panel up beside the chart. `[SLIDE:clear]` takes it away again. */
+  'SLIDE',
+] as const;
 export type LiveMarkerName = (typeof LIVE_MARKER_NAMES)[number];
 
-/** `[MARK:trigger]` · `[TF:15m]` · `[NOTE:"volume dried up"]` */
-export const LIVE_MARKER_RE = /\[(MARK|ZOOM|TF|COMPARE|NOTE):\s*("?)([^\]"]{1,120})\2\s*\]/g;
+/** `[MARK:trigger]` · `[POINT:support]` · `[CAM:wide]` · `[NOTE:"volume dried up"]` */
+export const LIVE_MARKER_RE =
+  /\[(MARK|ZOOM|TF|COMPARE|NOTE|POINT|FLASH|CAM|ZONE|CIRCLE|ARROW|SLIDE):\s*("?)([^\]"]{1,120})\2\s*\]/g;
+
+/**
+ * What `[CAM:…]` may ask for. Each one resolves to a camera move over REAL
+ * stored timestamps — the timeframe's own first and last bar, or a bar count —
+ * never an invented window.
+ */
+export const LIVE_CAM_MOVES = ['wide', 'back', 'now'] as const;
+export type LiveCamMove = (typeof LIVE_CAM_MOVES)[number];
+
+/**
+ * What `[ZONE:…]` may shade, and the pair of levels each one is made of.
+ *
+ * A zone is never a region someone eyeballed. Each is the band between two
+ * levels that already exist on the setup, so the rectangle's top and bottom are
+ * both numbers the show could already have drawn as lines.
+ */
+export const LIVE_ZONE_TARGETS = {
+  /** Trigger down to stop: what the plan is actually risking. */
+  risk: ['trigger', 'stop'],
+  /** Trigger up to first target: what it is reaching for. */
+  reward: ['trigger', 'target'],
+  /** Support up to resistance: the box price has been stuck in. */
+  range: ['support', 'resistance'],
+} as const;
+export type LiveZoneTarget = keyof typeof LIVE_ZONE_TARGETS;
+
+/** What `[SLIDE:…]` may raise. `clear` puts the chart back on its own. */
+export const LIVE_SLIDE_NAMES = ['fundamentals', 'news', 'evidence', 'scorecard', 'clear'] as const;
+export type LiveSlideName = (typeof LIVE_SLIDE_NAMES)[number];
 
 /** The level names a `[MARK:…]` / `[ZOOM:…]` may refer to. Nothing else resolves. */
 export const LIVE_MARK_TARGETS = [

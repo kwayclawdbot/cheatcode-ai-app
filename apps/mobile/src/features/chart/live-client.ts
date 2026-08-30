@@ -239,7 +239,13 @@ export class LivePlayer {
     const pace = Math.max(0.1, this.opts.pace ?? 1);
     if (frame.segment_id !== this.segmentId) {
       this.segmentId = frame.segment_id;
-      this.segmentStartedAt = Date.now();
+      // Anchor the clock to where this frame sits INSIDE the segment, not to
+      // now. Joining a replay at seq 30 — a late join, or `since=` — used to
+      // start the clock at zero here, so the next frame, forty seconds further
+      // into the segment, waited forty seconds from the join instead of the two
+      // it was actually due in. A viewer who rejoined a show near its end sat
+      // in front of a chart that had stopped moving.
+      this.segmentStartedAt = Date.now() - frame.t_offset_ms / pace;
       return;
     }
     const due = this.segmentStartedAt + frame.t_offset_ms / pace;

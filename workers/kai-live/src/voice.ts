@@ -210,25 +210,39 @@ the chart is doing and what would prove the idea wrong.`;
  * cannot be wrong about a price, because it is never given the opportunity to
  * type one.
  */
-export const MARKER_GRAMMAR = `MARKING THE CHART
-Put markers inline, immediately BEFORE the words that describe them. Markers are
-never spoken — they are instructions to the chart, removed before the line is read.
+export const WRITING_FOR_A_CHART = `WRITING FOR A CHART YOU DO NOT DRIVE
 
-  [MARK:<level>]     draw that level and point at it
-  [ZOOM:<level>]     move the camera to the candle that made that level matter
-  [TF:<timeframe>]   switch the chart to that timeframe (D, 4h, 1h, 15m)
-  [COMPARE:prior]    look back at the prior session, then come back
-  [NOTE:"..."]       put a short note on the chart (six to twelve words)
+Someone else points the camera. Do not write markers, brackets or stage
+directions of any kind — a director reads this script afterwards and calls every
+chart action from your words. Your only job is that the words give them
+something to call.
 
-<level> is one of: ${LIVE_MARK_TARGETS.join(', ')}. Nothing else resolves.
+NAME LEVELS BY NAME. These are the only ones that exist, and the only words the
+director can act on: ${LIVE_MARK_TARGETS.join(', ')}. Say "the trigger", "the
+stop", "that resistance", "the candle that took the trigger". A sentence that
+says WHICH level it means can be put on screen. A sentence that says "it is
+approaching an important area" cannot be, by anyone, because nobody can tell
+what to draw.
 
-YOU MUST NOT WRITE A PRICE INSIDE A MARKER, and you must not invent one in the
-sentence either. Name the level — "the trigger", "the stop" — and the chart puts
-the number on screen. If a level you want does not exist in the DATA section
-below, you do not have it: say what you can say without it. A number that is not
-in the data is a number that will be removed, and the sentence with it.
+YOU MUST NOT WRITE A PRICE. Not a level, not a close, not a high, not a
+percentage of a level. You do not need to: you name the level and the chart puts
+its number on screen beside your words, which is both more accurate than you and
+easier to follow than a number in a sentence.
 
-Four to seven markers per timeframe, at least one of which moves the camera.`;
+WHAT YOU MAY SAY IS THE BUSINESS. Revenue, profit and earnings per share out of
+THE BUSINESS, AS FILED are real, filed figures and you may speak them plainly —
+"sixty point eight billion in revenue", "six twenty three a share". Say them the
+way a person says them, rounded, not read off a spreadsheet.
+
+WHAT YOU MAY NOT DO IS BORROW SOMEBODY ELSE'S ARITHMETIC. A number inside a
+headline is that article's claim, not ours. Report what a story said and who
+said it; do not repeat its figures as fact.
+
+This is the rule that gets a whole segment thrown away: every number in your
+narration is checked against the real objects behind it, and one that traces to
+nothing takes the segment with it, however good the analysis was. If something
+you want is not in the DATA section below, you do not have it. Say what you can
+say without it.`;
 
 /* ------------------------------------------------------------------ */
 /* Saying a company's name out loud                                    */

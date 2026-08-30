@@ -34,7 +34,7 @@ export const PORTAL_TIMEFRAMES: PortalTimeframe[] = ['1m', '5m', '15m', '1h', '4
 export type AnnotationKind =
   | 'trigger' | 'entry' | 'stop' | 'invalidation' | 'target'
   | 'support' | 'resistance' | 'note'
-  | 'trendline' | 'box' | 'vertical';
+  | 'trendline' | 'box' | 'vertical' | 'circle' | 'arrow';
 
 export type AnnotationProvenance = 'kai' | 'user' | 'community' | 'plan';
 export type AnnotationStatus = 'valid' | 'invalidated' | 'hidden' | 'deleted';
@@ -249,6 +249,8 @@ export const KIND_LABEL: Record<AnnotationKind, string> = {
   trendline: 'Trend',
   box: 'Zone',
   vertical: 'Mark',
+  circle: 'Here',
+  arrow: 'To go',
 };
 
 export const PROVENANCE_LABEL: Record<AnnotationProvenance, string> = {

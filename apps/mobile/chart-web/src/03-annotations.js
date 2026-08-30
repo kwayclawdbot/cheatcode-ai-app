@@ -16,6 +16,7 @@
  * nothing sends a shape name twice:
  *   kind 'trendline' → two anchors     kind 'box'      → time × price rectangle
  *   kind 'vertical'  → a time marker   kind 'note'     → anchored text
+ *   kind 'circle'    → a ring on one bar kind 'arrow'    → price → a level
  *   price + price2   → a zone          price only      → a level
  */
 
@@ -26,6 +27,8 @@ function shapeOf(a) {
   if (a.kind === 'trendline') return 'trendline';
   if (a.kind === 'box') return 'box';
   if (a.kind === 'vertical') return 'vertical';
+  if (a.kind === 'circle') return 'circle';
+  if (a.kind === 'arrow') return 'arrow';
   if (a.kind === 'note') return 'note';
   if (a.price != null && a.price2 != null) return 'zone';
   return 'level';
@@ -83,6 +86,51 @@ AnnotationLayer.prototype.detached = function () {
   this._chart = null; this._series = null; this._requestUpdate = null;
 };
 AnnotationLayer.prototype.updateAllViews = function () { /* geometry is read at draw time */ };
+
+/**
+ * THE PRICE SCALE HAS TO FIT WHAT KAI DREW, NOT JUST THE CANDLES.
+ *
+ * Without this the scale autoscales to the visible bars and nothing else, so an
+ * annotation outside that range is drawn — correctly, at the right price — off
+ * the top or bottom of the pane, where nobody will ever see it. It is not
+ * clipped, logged or reported. The line simply is not on the screen.
+ *
+ * It went unnoticed because the show runs on a daily chart, where a trigger a
+ * few percent away is comfortably inside the visible range. An ANSWER runs on
+ * whatever the user is looking at, and on a 5-minute chart the visible range is
+ * often under a percent — so every level Kai marked was off-screen and the only
+ * thing left was an arrow rising from the last price toward one of them. A
+ * vertical line labelled "To go", and nothing else. Which is exactly what it
+ * looked like.
+ *
+ * NO CLAMP ON HOW FAR THIS WILL STRETCH, deliberately. Capping the expansion
+ * would put back the silent failure it exists to remove: a level just past the
+ * cap would be invisible again with nothing to indicate it. A squashed chart is
+ * bad; a chart quietly missing the level being discussed is worse, because the
+ * user believes what they can see. If it stretches too far, the annotations
+ * toggle already turns them off.
+ */
+AnnotationLayer.prototype.autoscaleInfo = function () {
+  if (this._hidden) return null;
+  var lo = Infinity, hi = -Infinity, n = 0;
+  for (var i = 0; i < this._items.length; i++) {
+    var a = this._items[i];
+    if (!a || a.status === 'hidden' || a.status === 'deleted') continue;
+    var ps = [a.price, a.price2];
+    for (var k = 0; k < ps.length; k++) {
+      var v = ps[k];
+      if (typeof v !== 'number' || !isFinite(v)) continue;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+      n++;
+    }
+  }
+  if (!n || !isFinite(lo) || !isFinite(hi)) return null;
+  // A hair of headroom so a level never draws flush against the pane edge,
+  // where it reads as a border rather than a price.
+  var pad = Math.max((hi - lo) * 0.04, Math.abs(hi) * 0.001, 0.01);
+  return { priceRange: { minValue: lo - pad, maxValue: hi + pad } };
+};
 
 /** The library asks for views; we hand it one, in the normal layer. */
 AnnotationLayer.prototype.paneViews = function () {
@@ -346,6 +394,48 @@ AnnotationLayer.prototype._draw = function (target) {
         ctx.beginPath(); ctx.moveTo(vx, H * (1 - grown)); ctx.lineTo(vx, H); ctx.stroke();
         ctx.setLineDash([]);
         self._chipAt(ctx, a, col, vx + 5, claimY(12), chip, base, hit, dead, W);
+
+      } else if (shape === 'circle') {
+        // A ring around the bar being talked about. The RADIUS IS PRESENTATION,
+        // not data — it is a constant in pixels, so the circle cannot be read as
+        // a claim about how wide a zone is. Everything asserted (which bar,
+        // which price) is the centre.
+        var cx = toX(a.ts_from), cy = toY(a.price);
+        if (cx == null || cy == null) continue;
+        var rr0 = 26;
+        // Drawn as a slightly out-of-round ellipse and started from the top:
+        // a perfect circle appearing all at once reads as a UI element, and a
+        // hand-drawn ring reads as someone marking up a chart.
+        ctx.globalAlpha = base * 0.9;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rr0 * 1.15, rr0 * 0.8, -0.12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * grown);
+        ctx.stroke();
+        self._chipAt(ctx, a, col, cx + rr0 * 1.15 + 4, claimY(cy), chip, base, hit, dead, W);
+
+      } else if (shape === 'arrow') {
+        // From where price is to the level it has not reached. Both ends are
+        // real: the arrow says "this far to go" and cannot say it about a
+        // number nobody stored.
+        var ax = toX(a.ts_from), ax2 = toX(a.ts_to);
+        var ay = toY(a.price), ay2 = toY(a.price2);
+        if (ay == null || ay2 == null) continue;
+        if (ax == null) ax = W * 0.72;
+        if (ax2 == null) ax2 = ax;
+        var ex = ax + (ax2 - ax) * grown, ey = ay + (ay2 - ay) * grown;
+        ctx.globalAlpha = base;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ex, ey); ctx.stroke();
+        // Head, oriented along the shaft rather than assumed vertical.
+        var ang = Math.atan2(ey - ay, ex - ax);
+        var hd = 7;
+        ctx.beginPath();
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(ex - hd * Math.cos(ang - 0.42), ey - hd * Math.sin(ang - 0.42));
+        ctx.lineTo(ex - hd * Math.cos(ang + 0.42), ey - hd * Math.sin(ang + 0.42));
+        ctx.closePath();
+        ctx.fill();
+        self._chipAt(ctx, a, col, ex + 6, claimY((ay + ey) / 2), chip, base, hit, dead, W);
 
       } else if (shape === 'note') {
         var nx = toX(a.ts_from);

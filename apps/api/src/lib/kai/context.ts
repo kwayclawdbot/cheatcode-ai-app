@@ -147,8 +147,18 @@ export async function assembleContext(opts: {
   return { profile, risk, mode, setups, pinnedSetups, turns, marketBlock: marketBlock() };
 }
 
+/**
+ * What is on the chart the user is looking at, when there is one.
+ *
+ * Only the two facts the refusal rule below needs: the symbol, and the levels
+ * that ACTUALLY resolve against real rows for it. Deliberately not the whole
+ * `ChartContext` — this module renders a prompt and has no business importing
+ * the chart's loader.
+ */
+export type ChartOnScreen = { symbol: string; timeframe: string; levels: string[] };
+
 /** Compact, unambiguous rendering of the context for the model. */
-export function renderContext(ctx: KaiContext): string {
+export function renderContext(ctx: KaiContext, chart?: ChartOnScreen | null): string {
   const lines: string[] = [];
   lines.push(
     `MARKET: ${ctx.marketBlock.label_plain} (status=${ctx.marketBlock.status}) as of ${ctx.marketBlock.session_ts}. ` +
@@ -185,8 +195,64 @@ export function renderContext(ctx: KaiContext): string {
   }
   lines.push(`RANKED SETUPS FOR ${ctx.mode.toUpperCase()} (score desc — these are the ONLY setups you may cite):`);
   lines.push(ctx.setups.length ? ctx.setups.map((s) => render(s, '•')).join('\n') : '  (none right now)');
+  /**
+   * THE REFUSAL, AND WHY IT NEEDED SPLITTING IN TWO.
+   *
+   * The rule used to be one sentence: a symbol that is not in the ranked list
+   * gets "I have no graded setup on it right now". Correct as far as it goes,
+   * and it is the last thing in the prompt, so it is the instruction that wins.
+   *
+   * It was ALSO being applied to the chart the user was looking at. Open the
+   * Trade Portal on anything outside the top few ranked setups — which is most
+   * tickers, most of the time — and Kai answered "I have no graded setup on it"
+   * while a chart with real support and resistance sat directly above the reply.
+   * That is not caution, it is Kai refusing to discuss something the user can
+   * see, and it made the whole chart-answer feature look broken.
+   *
+   * NO GRADED SETUP IS NOT THE SAME AS NOTHING TO SAY. The levels below came
+   * out of the same resolver every chart command uses — swing highs and lows
+   * computed from stored bars, an entry from a saved plan. They are traceable,
+   * they are already drawn, and talking about them invents nothing. What Kai
+   * still may not do is imply a graded trade idea exists when it does not, so
+   * that half of the rule is kept and stated separately.
+   */
+  if (chart) {
+    lines.push(
+      `ON SCREEN: the user is looking at a ${chart.symbol} chart on the ${chart.timeframe} timeframe.` +
+        (chart.levels.length
+          ? ` These levels on it resolve against real rows and are yours to discuss and draw: ${chart.levels.join(', ')}.`
+          : ' No named level on it resolves against a real row yet.')
+    );
+    lines.push(
+      `Answer questions about the ${chart.symbol} chart in front of them directly, whether or not ${chart.symbol} is in ` +
+        'the ranked list above. Use the chart, the levels named above and what price has actually done.'
+    );
+    /**
+     * DO NOT OPEN WITH WHAT YOU DO NOT HAVE.
+     *
+     * The first version of this rule said "you have no graded setup — say that
+     * once, plainly, then answer". It did exactly that, on every single reply:
+     * every answer about every chart began "I don't have a graded setup on
+     * Apple right now, but...". Technically it was answering. It read as
+     * refusing, because the first thing the user hears is the thing Kai will
+     * not do, and nobody asked. A disclaimer volunteered on every turn is not
+     * caution — it is noise that buries the answer.
+     *
+     * The claim that actually needs governing is the opposite one: never imply a
+     * graded setup exists when it does not. Staying quiet about a grade nobody
+     * asked for does not imply one. So the mention is now DEMAND-DRIVEN — it
+     * belongs in an answer about the grade, and nowhere else.
+     */
+    lines.push(
+      'Do NOT open by saying what you lack. If there is no graded setup on this symbol, mention it ONLY when the ' +
+        'question is about a grade, a rating, or whether to take the trade — and then say it in one short clause, not ' +
+        'as a preamble. For every other question, just read the chart. Never imply a graded setup exists when it does ' +
+        'not, and never state a price that is not one of the levels above.'
+    );
+  }
   lines.push(
-    'If the user asks about a symbol that is not listed above, say plainly that you have no graded setup on it right now and do not invent prices for it.'
+    'If the user asks about a DIFFERENT symbol — one that is neither listed above nor on their screen — say plainly ' +
+      'that you have no graded setup on it right now and do not invent prices for it.'
   );
   return lines.join('\n');
 }

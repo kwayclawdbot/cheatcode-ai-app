@@ -11,6 +11,7 @@ import {
   PostMessageRequest,
   SETUP_CAPS,
   type AppMode,
+  type ChartAnswerFrame,
   type ChartCommandFrame,
   type KaiObjectEnvelope,
   type KaiSheetContext,
@@ -24,6 +25,7 @@ import { assembleContext, contextNumbers, renderContext } from '@/lib/kai/contex
 import { buildSystemPrompt } from '@/lib/kai/system-prompt';
 import { SHEET_ACTION_PROTOCOL, loadSheetContext } from '@/lib/kai/sheet-context';
 import {
+  CHART_ANSWER_FENCE,
   CHART_COMMAND_FENCE,
   FenceSplitter,
   SseWriter,
@@ -37,6 +39,7 @@ import {
 import {
   ChartCommandRequest,
   CHART_LEVEL_KEYS,
+  chartAnswerProtocol,
   chartCommandProtocol,
   executeChartCommand,
   type ChartContext,
@@ -44,6 +47,7 @@ import {
 import { containsGlossaryNote, experienceOf, termsUsed, voicePromptBlock } from '@/lib/kai/voice';
 import { autoTitle, touchConversation } from '@/lib/round4/conversations';
 import { loadChartContext } from '@/lib/round4/chart-context';
+import { answerOnChart, levelTableFor } from '@/lib/kai/chart-answer';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -125,7 +129,26 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
 
     // --- context assembly -------------------------------------------------
     const mode = (conv.mode ?? 'day_trade') as AppMode;
-    const pinnedSetupIds = conv.context?.pinned?.setup_ids ?? [];
+
+    /**
+     * THE CHART IS LOADED FIRST, because what is on it decides what goes into
+     * the context.
+     *
+     * `rankedSetups` gives Kai the top few setups in the current mode. The chart
+     * the user has open is not chosen that way — they navigated to it. So a
+     * setup that exists but ranks below the cap used to be absent from the
+     * prompt while its own chart was on screen, and Kai answered "I have no
+     * graded setup on it" about a setup he demonstrably had. Pinning it is the
+     * fix and is also what pinning MEANS: this is the one they are looking at,
+     * talk about it first.
+     */
+    const chartCtx = await loadChartContext(user.id, conv.context?.chart ?? null);
+
+    const pinnedSetupIds: string[] = [...(conv.context?.pinned?.setup_ids ?? [])];
+    if (chartCtx?.setup?.id && !pinnedSetupIds.includes(chartCtx.setup.id)) {
+      pinnedSetupIds.push(chartCtx.setup.id);
+    }
+
     const kctx = await assembleContext({
       userId: user.id,
       mode,
@@ -151,7 +174,22 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
       (kctx.profile.onboarding as Record<string, unknown>)?.experience ?? kctx.profile.experience
     );
     const alreadyExplained = Array.isArray(conv.context?.explained) ? (conv.context?.explained as string[]) : [];
-    const chartCtx = await loadChartContext(user.id, conv.context?.chart ?? null);
+
+    /**
+     * WHICH LEVELS THIS CHART ACTUALLY HAS.
+     *
+     * The protocol blocks used to advertise the whole vocabulary — all ten level
+     * names — on every chart, regardless of what resolved. On a ticker with no
+     * setup that is eight names Kai can say and nothing will be drawn for: the
+     * commands come back unresolved and dropped, so the chart sits still while
+     * he narrates marking things. Telling him what is really there costs one
+     * function call and is the difference between a silent failure and an honest
+     * answer about support and resistance.
+     */
+    const chartLevels = chartCtx ? [...levelTableFor(chartCtx).keys()] : [];
+    const chartOnScreen = chartCtx
+      ? { symbol: chartCtx.symbol, timeframe: chartCtx.timeframe, levels: chartLevels }
+      : null;
 
     const system = `${buildSystemPrompt({
       displayName: kctx.profile.display_name,
@@ -166,13 +204,17 @@ ${voicePromptBlock(experience, alreadyExplained)}${
         ? `\n\n${chartCommandProtocol({
             symbol: chartCtx.symbol,
             timeframe: chartCtx.timeframe,
-            available: [...CHART_LEVEL_KEYS],
+            available: chartLevels,
+          })}\n\n${chartAnswerProtocol({
+            symbol: chartCtx.symbol,
+            timeframe: chartCtx.timeframe,
+            available: chartLevels,
           })}`
         : ''
     }
 
 CONTEXT (facts you may use — nothing outside this is known to you)
-${renderContext(kctx)}${sheet.prompt_block ? `\n\n${sheet.prompt_block}` : ''}`;
+${renderContext(kctx, chartOnScreen)}${sheet.prompt_block ? `\n\n${sheet.prompt_block}` : ''}`;
 
     const history: KaiTurn[] = kctx.turns
       .filter((t) => t.seq !== userSeq)
@@ -190,9 +232,15 @@ ${renderContext(kctx)}${sheet.prompt_block ? `\n\n${sheet.prompt_block}` : ''}`;
         // splitter already cleared, so one reply can carry both and neither
         // marker is ever leaked to the user as visible text.
         const chartSplitter = new FenceSplitter(CHART_COMMAND_FENCE);
+        // A THIRD fence (LIVE-8), for a whole answer rather than one action. It
+        // runs on the text the other two have already cleared, so a reply can
+        // carry any of the three and no marker is ever leaked as visible text.
+        const answerSplitter = new FenceSplitter(CHART_ANSWER_FENCE);
         let narrative = '';
         const emitted: KaiObjectEnvelope[] = [];
         const chartFrames: ChartCommandFrame[] = [];
+        const chartAnswers: ChartAnswerFrame[] = [];
+        const answerBodies: string[] = [];
         const failedBodies: string[] = [];
         let degraded = false;
 
@@ -228,6 +276,56 @@ ${renderContext(kctx)}${sheet.prompt_block ? `\n\n${sheet.prompt_block}` : ''}`;
           }
         };
 
+        /**
+         * A whole answer, directed (LIVE-8).
+         *
+         * The model wrote prose and nothing else; everything visual about the
+         * reply is decided here — which levels get drawn, where the camera goes,
+         * and when each gesture fires relative to the words. `answerOnChart`
+         * never throws and an answer that resolves to nothing still produces its
+         * prose, so the worst case is a reply the chart did not illustrate.
+         *
+         * THE PROSE IS THE REPLY. It is pushed into `narrative` and streamed as
+         * text, so the user reads the same words the chart is performing and the
+         * persisted turn is the answer they actually got.
+         */
+        const handleChartAnswer = async (bodies: string[]) => {
+          if (!chartCtx) return;
+          for (const body of bodies) {
+            let answer = '';
+            try {
+              const v = JSON.parse(body.trim()) as { answer?: unknown };
+              answer = typeof v.answer === 'string' ? v.answer : '';
+            } catch {
+              log('warn', requestId, 'chart_answer.bad_json', {});
+              continue;
+            }
+            if (!answer.trim()) continue;
+
+            const directed = await answerOnChart(chartCtx, { answer, requestId });
+            if (!directed.spoken) continue;
+
+            const frame: ChartAnswerFrame = {
+              type: 'chart_answer',
+              symbol: chartCtx.symbol,
+              timeframe: chartCtx.timeframe,
+              spoken: directed.spoken,
+              duration_ms: directed.duration_ms,
+              audio_url: directed.audio_url,
+              audio_state: directed.audio_state,
+              actions: directed.actions,
+            };
+            chartAnswers.push(frame);
+            sse.chartAnswer(frame);
+            // The prose is NOT also sent as `text_delta`. The frame carries it,
+            // and the client renders it there — streaming it twice would print
+            // the answer twice under a chart that only performed it once. It is
+            // still appended to `narrative`, which is what gets persisted, so
+            // the turn the user comes back to is the answer they were given.
+            narrative += `${narrative.trim() ? '\n\n' : ''}${directed.spoken}`;
+          }
+        };
+
         const handleObjects = async (bodies: string[]) => {
           for (const body of bodies) {
             const { envelope, failures } = await gateAndPersist({
@@ -254,18 +352,24 @@ ${renderContext(kctx)}${sheet.prompt_block ? `\n\n${sheet.prompt_block}` : ''}`;
             if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
               const { text, objects } = splitter.push(event.delta.text);
               const chart = chartSplitter.push(text);
-              if (chart.text) {
-                narrative += chart.text;
-                sse.textDelta(chart.text);
+              const ans = answerSplitter.push(chart.text);
+              if (ans.text) {
+                narrative += ans.text;
+                sse.textDelta(ans.text);
               }
               if (objects.length) await handleObjects(objects);
               if (chart.objects.length) await handleChartCommands(chart.objects);
+              // Directed at the flush, not here: an answer is one performance
+              // and the whole body has to be in hand before it can be timed.
+              if (ans.objects.length) answerBodies.push(...ans.objects);
             }
           }
           const tail = splitter.flush();
           const chartTail = chartSplitter.push(tail.text);
           const chartFlush = chartSplitter.flush();
-          const trailing = chartTail.text + chartFlush.text;
+          const answerTail = answerSplitter.push(chartTail.text + chartFlush.text);
+          const answerFlush = answerSplitter.flush();
+          const trailing = answerTail.text + answerFlush.text;
           if (trailing) {
             narrative += trailing;
             sse.textDelta(trailing);
@@ -273,6 +377,8 @@ ${renderContext(kctx)}${sheet.prompt_block ? `\n\n${sheet.prompt_block}` : ''}`;
           if (tail.objects.length) await handleObjects(tail.objects);
           const trailingCommands = [...chartTail.objects, ...chartFlush.objects];
           if (trailingCommands.length) await handleChartCommands(trailingCommands);
+          answerBodies.push(...answerTail.objects, ...answerFlush.objects);
+          if (answerBodies.length) await handleChartAnswer(answerBodies);
 
           // One regeneration attempt for a dropped object, then give up (03 Unit 3).
           if (failedBodies.length && emitted.length === 0) {
@@ -334,7 +440,11 @@ ${renderContext(kctx)}${sheet.prompt_block ? `\n\n${sheet.prompt_block}` : ''}`;
         // command it was. It still cannot produce a price — the payload is
         // resolved from the same real objects — so the worst case is that
         // nothing is drawn.
-        if (chartCtx && chartFrames.length === 0 && !degraded) {
+        // An answer that produced no action is not a missed chart request — the
+        // director already read that turn and decided the chart had nothing to
+        // show. Running the recovery classifier behind it would draw a level
+        // nobody asked about, on top of the answer.
+        if (chartCtx && chartFrames.length === 0 && chartAnswers.length === 0 && !degraded) {
           try {
             const out = await completeOnce({
               system: `You classify one turn of a conversation that is happening under a live ${chartCtx.symbol} chart.

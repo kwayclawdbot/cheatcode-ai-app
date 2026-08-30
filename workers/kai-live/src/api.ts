@@ -77,8 +77,36 @@ export type MarketBundle = {
   quote: { price: number | null; change_pct: number | null; freshness: string };
   timeframes: MarketTf[];
   prior_session: { from: string; to: string } | null;
+  /** Reported quarters, newest first. Empty when the plan or calendar says nothing. */
+  fundamentals: FinancialQuarter[];
+  /** Recent headlines, newest first, each with Polygon's own read on it. */
+  news: NewsHeadline[];
   degraded: boolean;
   degraded_reason: string | null;
+};
+
+export type FinancialQuarter = {
+  fiscal_period: string;
+  fiscal_year: string;
+  end_date: string;
+  filing_date: string | null;
+  revenue: number | null;
+  gross_profit: number | null;
+  operating_income: number | null;
+  net_income: number | null;
+  eps_basic: number | null;
+  eps_diluted: number | null;
+};
+
+export type NewsHeadline = {
+  id: string;
+  title: string;
+  publisher: string | null;
+  url: string | null;
+  published_utc: string;
+  description: string | null;
+  sentiment: 'positive' | 'neutral' | 'negative' | null;
+  sentiment_reasoning: string | null;
 };
 
 export type NewAnnotation = {

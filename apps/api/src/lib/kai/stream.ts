@@ -10,6 +10,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import {
   KaiEmittedObject,
+  type ChartAnswerFrame,
   type ChartCommandFrame,
   type KaiObjectEnvelope,
   type GradedSetupPayload,
@@ -30,6 +31,13 @@ export function anthropicConfigured(): boolean {
 }
 
 export const CHART_COMMAND_FENCE = 'chart_command';
+/**
+ * LIVE-8. A third fence, for the whole answer rather than one action. Its body
+ * is `{ "answer": "<prose>" }` and the server directs it — see
+ * `chartAnswerProtocol` in `./chart-commands.ts` for why the model writes only
+ * the words.
+ */
+export const CHART_ANSWER_FENCE = 'answer_on_chart';
 const CLOSE = '```';
 
 /**
@@ -135,6 +143,14 @@ export class SseWriter {
    */
   chartCommand(frame: ChartCommandFrame) {
     this.frame('chart_command', frame);
+  }
+  /**
+   * LIVE-8: a whole answer, directed. One frame rather than a run of loose
+   * `chart_command`s, because the actions carry offsets and only arrive as a
+   * performance if the client gets them together.
+   */
+  chartAnswer(frame: ChartAnswerFrame) {
+    this.frame('chart_answer', frame);
   }
   done(d: { conversation_id: string; message_id: string; seq: number; degraded: boolean }) {
     this.frame('done', { type: 'done', ...d });

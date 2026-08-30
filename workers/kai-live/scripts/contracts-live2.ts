@@ -39,6 +39,9 @@ import {
   SayFrame,
   liveChannel,
   mergeFrames,
+  LIVE_CAM_MOVES,
+  LIVE_MARKER_NAMES,
+  LIVE_ZONE_TARGETS,
   parseMarkers,
   stripMarkers,
   LIVE_MARK_TARGETS,
@@ -284,6 +287,39 @@ section('3. the marker grammar');
   ok('and stripping repairs the spacing', stripMarkers(line) === 'Watch the trigger, and drop to the fifteen. Quiet here.');
   ok('offsets point into the original text', line.slice(markers[0].start, markers[0].end) === '[MARK:trigger]');
   ok('the level vocabulary is closed', LIVE_MARK_TARGETS.includes('trigger') && !(LIVE_MARK_TARGETS as readonly string[]).includes('vibes'));
+}
+
+{
+  // The gesture vocabulary: what a presenter does with a level ALREADY on the
+  // chart. Parsing is the cheap half; the expensive half — refusing to point at
+  // something undrawn — is asserted against the resolver in section 4.
+  const line =
+    'Back at the [POINT:trigger] trigger, and [FLASH:invalidation] below the invalidation it is dead. [CAM:wide] Step back.';
+  const markers = parseMarkers(line);
+  ok('the gesture markers parse', markers.map((m) => m.name).join(',') === 'POINT,FLASH,CAM');
+  ok('a gesture is never spoken', stripMarkers(line) === 'Back at the trigger, and below the invalidation it is dead. Step back.');
+  ok('the camera vocabulary is closed', LIVE_CAM_MOVES.join(',') === 'wide,back,now');
+  ok(
+    'every marker name has a regex branch',
+    LIVE_MARKER_NAMES.every((n) => parseMarkers(`[${n}:x]`).length === 1),
+  );
+}
+
+{
+  // Shapes. The vocabulary is closed the same way the level vocabulary is, and
+  // for the same reason: a zone nobody can build from two stored levels is a
+  // rectangle somebody eyeballed.
+  const line = 'Here is [ZONE:risk] what you are putting up, and [CIRCLE:trigger] this candle. [ARROW:target] It has a way to go.';
+  const markers = parseMarkers(line);
+  ok('the shape markers parse', markers.map((m) => m.name).join(',') === 'ZONE,CIRCLE,ARROW');
+  ok('a shape is never spoken', stripMarkers(line) === 'Here is what you are putting up, and this candle. It has a way to go.');
+  ok(
+    'every zone is a pair of levels that could each be drawn alone',
+    Object.values(LIVE_ZONE_TARGETS).every(
+      (pair) => pair.length === 2 && pair.every((n) => (LIVE_MARK_TARGETS as readonly string[]).includes(n)),
+    ),
+  );
+  ok('risk is the band between the trigger and the stop', LIVE_ZONE_TARGETS.risk.join('-') === 'trigger-stop');
 }
 
 /* ------------------------------------------------------------------ */

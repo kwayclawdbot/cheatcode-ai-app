@@ -25,13 +25,17 @@ export const kindColor = (k: AnnotationKind): string => {
     case 'entry':
     case 'support':
     case 'resistance':
-    // The three shape kinds (LIVE-1) carry no financial meaning of their own —
+    // The shape kinds carry no financial meaning of their own —
     // a trendline is a trendline whether it runs under support or over
-    // resistance — so they read as market information, never as risk and never
-    // as a target.
+    // resistance, and a circle is a circle wherever it lands — so they read as
+    // market information, never as risk and never as a target. A zone that IS
+    // about risk gets its meaning from the level kind it was built from, not
+    // from being a rectangle.
     case 'trendline':
     case 'box':
     case 'vertical':
+    case 'circle':
+    case 'arrow':
     default:
       return color.cyan;
   }

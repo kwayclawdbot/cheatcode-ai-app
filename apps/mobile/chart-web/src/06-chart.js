@@ -71,9 +71,16 @@ function Chart(root) {
       secondsVisible: false,
       lockVisibleTimeRangeOnResize: true,
     },
-    // The brokerage gesture set. Vertical touch-drag is OFF so a finger moving
-    // down the glass never fights the price scale mid-swipe; pinch stays on and
-    // anchors on the pinch centre, which is the library's own behaviour.
+    // The brokerage gesture set, EMBEDDED. Vertical touch-drag is off because
+    // the chart sits inside a scrolling page here: a finger moving down the
+    // glass belongs to the page, and a chart that grabbed it would make the
+    // screen impossible to scroll past.
+    //
+    // That is a property of being embedded, not of the chart, so the stage
+    // turns it back on the moment the chart owns the whole screen — see
+    // `setGestures`. It is the whole reason "I can't scroll vertically" was
+    // true: nothing was broken, the chart was being a good citizen in a page
+    // that no longer exists once you expand it.
     handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
     handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true, axisDoubleClickReset: true },
     kineticScroll: { touch: true, mouse: false },
@@ -111,6 +118,9 @@ function Chart(root) {
     visible: false,
   });
   this.chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.86, bottom: 0 } });
+
+  this.owns = false;
+  this.autoScaleOn = true;
 
   this.session = new SessionShading();
   this.series.attachPrimitive(this.session);
@@ -160,6 +170,35 @@ Chart.prototype._bindInterrupt = function () {
     }
   };
   var release = function () { self._userTouching = false; };
+
+  /**
+   * A vertical drag on the stage is the user claiming the price axis.
+   *
+   * Only when the chart OWNS the screen — embedded, a vertical finger belongs
+   * to the page — and only when the movement is actually vertical, so a
+   * slightly wonky horizontal scroll does not silently switch the scale to
+   * manual and leave the next level Kai draws off the pane.
+   */
+  var startY = null;
+  var startX = null;
+  var onStart = function (e) {
+    var t = e.touches && e.touches[0];
+    startY = t ? t.clientY : e.clientY;
+    startX = t ? t.clientX : e.clientX;
+  };
+  var onMove = function (e) {
+    if (!self.owns || startY == null || !self.autoScaleOn) return;
+    var t = e.touches && e.touches[0];
+    var y = t ? t.clientY : e.clientY;
+    var x = t ? t.clientX : e.clientX;
+    if (Math.abs(y - startY) > 12 && Math.abs(y - startY) > Math.abs(x - startX)) {
+      self.setAutoScale(false);
+    }
+  };
+  this.host.addEventListener('touchstart', onStart, { passive: true });
+  this.host.addEventListener('pointerdown', onStart, { passive: true });
+  this.host.addEventListener('touchmove', onMove, { passive: true });
+  this.host.addEventListener('pointermove', onMove, { passive: true });
   this.host.addEventListener('pointerdown', grab, { passive: true });
   this.host.addEventListener('touchstart', grab, { passive: true });
   this.host.addEventListener('wheel', grab, { passive: true });
@@ -279,6 +318,86 @@ Chart.prototype.setData = function (p) {
       payload: { ms: Math.round(((window.performance || Date).now()) - t0), bars: bars.length },
     });
   });
+};
+
+/**
+ * Hand the chart its full gesture set, or take it back.
+ *
+ * `own: true` is the chart on its own screen: vertical drag pans the price
+ * axis, and a pinch scales both axes from the pinch centre. `own: false` is the
+ * embedded chart inside a scrolling page, where the vertical axis belongs to
+ * the page.
+ *
+ * The price scale's own autoscale is switched off while the user is panning it
+ * by hand, because an autoscale that keeps re-fitting under a finger is a chart
+ * fighting the person holding it. It comes back on `own: false`, and the double
+ * tap on the axis restores it at any time.
+ */
+Chart.prototype.setGestures = function (own) {
+  this.owns = !!own;
+  this.chart.applyOptions({
+    handleScroll: {
+      mouseWheel: true,
+      pressedMouseMove: true,
+      horzTouchDrag: true,
+      vertTouchDrag: !!own,
+    },
+    handleScale: {
+      axisPressedMouseMove: own ? { time: true, price: true } : true,
+      mouseWheel: true,
+      pinch: true,
+      axisDoubleClickReset: true,
+    },
+  });
+  // Leaving the stage hands the vertical axis back to autoscale, so the
+  // embedded chart is never left holding a range the user panned to on a
+  // screen they have since closed.
+  if (!own) this.setAutoScale(true);
+};
+
+/**
+ * AUTOSCALE AND MANUAL PANNING ARE THE SAME CONTROL, AND ONLY ONE CAN WIN.
+ *
+ * `vertTouchDrag` alone does nothing while the price scale is auto-fitting:
+ * the scale re-derives its range from the visible bars every frame, so a
+ * finger drags the chart and the next frame puts it straight back. Measured —
+ * the axis did not move by a pixel. Whoever set `vertTouchDrag` first was not
+ * wrong, just incomplete, which is why "I can't scroll vertically" survived a
+ * flag that looks like it fixes it.
+ *
+ * SO THE RULE IS WHOSE RANGE IT IS. Autoscale on means the CHART decides, and
+ * that is what has to be true when Kai draws — it is the only reason a level
+ * he marks is guaranteed to be on screen (see `autoscaleInfo`). The moment the
+ * user drags the axis, it becomes THEIRS: autoscale off, their range stands,
+ * and it keeps standing until they double-tap the axis or Kai starts talking
+ * again. A chart that silently re-fits under someone's finger is a chart
+ * arguing with them.
+ */
+Chart.prototype.setAutoScale = function (on) {
+  this.autoScaleOn = !!on;
+  this.chart.priceScale('right').applyOptions({ autoScale: !!on });
+};
+
+/**
+ * Broadcast mode: the chart's own furniture gets out of the way.
+ *
+ * Only the timeframe rail lives inside this page, so only it is hidden here.
+ * The rail is a CONTROL, and a control sitting on screen while Kai is talking
+ * invites a tap that would interrupt him — the point of the mode is that there
+ * is nothing to do but watch. Everything else about the chart is unchanged: the
+ * candles, the levels and the pointer are the show, not chrome.
+ */
+Chart.prototype.setBroadcast = function (on) {
+  this.broadcast = !!on;
+  // Kai is about to draw. Give the scale back to the chart so everything he
+  // marks is inside the pane, even if the user had panned away from it.
+  if (on) this.setAutoScale(true);
+  if (this.rail && this.rail.el) {
+    this.rail.el.style.transition = 'opacity 260ms ease, transform 260ms ease';
+    this.rail.el.style.opacity = on ? '0' : '1';
+    this.rail.el.style.transform = on ? 'translateY(6px)' : 'translateY(0)';
+    this.rail.el.style.pointerEvents = on ? 'none' : 'auto';
+  }
 };
 
 /** Replace or append the newest bar without touching the camera. */

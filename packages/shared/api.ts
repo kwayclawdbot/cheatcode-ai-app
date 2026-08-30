@@ -1185,8 +1185,39 @@ export const NewsItem = z.object({
   published_utc: z.string(),
   tickers: z.array(z.string()),
   description: z.string().nullable(),
+  /**
+   * Polygon's own read on the article, per ticker.
+   *
+   * Carried through rather than computed here, and that is the point: a
+   * sentiment with a named article, a publisher and a stated reason behind it
+   * is a sourced claim. One this app worked out for itself would be a number
+   * nobody can account for — the thing the whole show is built to avoid.
+   */
+  sentiment: z.enum(['positive', 'neutral', 'negative']).nullable().default(null),
+  sentiment_reasoning: z.string().nullable().default(null),
 });
 export type NewsItem = z.infer<typeof NewsItem>;
+
+/**
+ * One reported quarter, as filed.
+ *
+ * Only the figures a person actually talks about on a show. The full statement
+ * is enormous, most of it never reaches a viewer, and a bundle that carries it
+ * all costs tokens on every segment to say nothing.
+ */
+export const FinancialQuarter = z.object({
+  fiscal_period: z.string(),
+  fiscal_year: z.string(),
+  end_date: z.string(),
+  filing_date: z.string().nullable(),
+  revenue: z.number().nullable(),
+  gross_profit: z.number().nullable(),
+  operating_income: z.number().nullable(),
+  net_income: z.number().nullable(),
+  eps_basic: z.number().nullable(),
+  eps_diluted: z.number().nullable(),
+});
+export type FinancialQuarter = z.infer<typeof FinancialQuarter>;
 
 export const SymbolDetailQuery = z.object({ mode: AppMode.optional() });
 
@@ -3220,6 +3251,14 @@ export const AnnotationKind = z.enum([
   'trendline',
   'box',
   'vertical',
+  /**
+   * Two shapes with no financial meaning of their own, added so Kai can do what
+   * a person at a whiteboard does: ring the candle he is talking about, and
+   * show the distance price still has to travel. Both are anchored to stored
+   * bars and stored levels — a circle has a centre, never a freehand loop.
+   */
+  'circle',
+  'arrow',
 ]);
 export type AnnotationKind = z.infer<typeof AnnotationKind>;
 
@@ -3421,6 +3460,64 @@ export const ChartCommandFrame = z.object({
   provenance: z.string(),
 });
 export type ChartCommandFrame = z.infer<typeof ChartCommandFrame>;
+
+/* ---- LIVE-8: Kai answering a question ON the chart ---- */
+
+/**
+ * One chart action, and when in the answer it fires.
+ *
+ * `t_offset_ms` is measured from the first word of `spoken`, so an action and
+ * the words it belongs to are described in one coordinate system — the client
+ * does not have to guess which sentence a gesture was for, and the acceptance
+ * checker can invert the mapping to prove it landed on the right one.
+ */
+export const ChartAnswerAction = z.object({
+  t_offset_ms: z.number().int().min(0),
+  frame: ChartCommandFrame,
+});
+export type ChartAnswerAction = z.infer<typeof ChartAnswerAction>;
+
+/**
+ * Kai's answer to a question about the chart the user is looking at.
+ *
+ * NOT A MESSAGE WITH SOME COMMANDS ATTACHED. The prose and the actions are one
+ * performance: he moves the camera, marks the level he is naming and rings the
+ * candle he is pointing at, in time with the words. Sending them as one frame is
+ * what lets the client run them as one — a stream of loose `chart_command`
+ * frames would arrive in order and play with no timing at all.
+ *
+ * `spoken` carries no markers and no invented numbers: every price in it came
+ * out of the same resolver every other chart command goes through, and an action
+ * that could not be resolved is absent rather than approximated.
+ */
+export const ChartAnswerFrame = z.object({
+  type: z.literal('chart_answer'),
+  symbol: z.string(),
+  timeframe: z.string(),
+  /** What Kai says. Markers removed; this is the text the chat renders. */
+  spoken: z.string(),
+  /**
+   * How long the whole answer takes, so a client can pace a late join.
+   *
+   * MEASURED off the audio when there is audio, estimated from the words when
+   * there is not — and `audio_state` says which, because every action's offset
+   * is a fraction of this and the difference between measured and estimated is
+   * the difference between a gesture landing ON its word and near it.
+   */
+  duration_ms: z.number().int().min(0),
+  /**
+   * Kai speaking the answer, as a WAV the client plays alongside the actions.
+   *
+   * NULLABLE, AND THAT IS THE DEGRADE, NOT AN ERROR. Voice is a switch over the
+   * top of a feature that has always worked silently: with no key, no credits or
+   * the provider down, the chart still performs and the words are still on
+   * screen. A credit outage costs the audio, not the answer.
+   */
+  audio_url: z.string().nullable().default(null),
+  audio_state: z.enum(['ready', 'estimated', 'failed']).default('estimated'),
+  actions: z.array(ChartAnswerAction),
+});
+export type ChartAnswerFrame = z.infer<typeof ChartAnswerFrame>;
 
 /* ------------------------------------------------------------------ */
 /* GET /symbols/:symbol — the ticker research page (brief item 4)       */

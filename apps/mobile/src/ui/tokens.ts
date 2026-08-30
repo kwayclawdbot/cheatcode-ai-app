@@ -142,6 +142,12 @@ export const alpha = {
   green50: 'rgba(53,208,127,0.50)',
   violetLight50: 'rgba(203,178,255,0.50)',
 
+  /**
+   * The lower-third scrim (LIVE-8). The page ground at 82%: heavy enough that
+   * a caption stays legible over candles and wicks, light enough that the chart
+   * is still visibly running underneath it rather than behind a panel.
+   */
+  bg82: 'rgba(11,11,14,0.82)',
   black22: 'rgba(0,0,0,0.22)',
   black40: 'rgba(0,0,0,0.40)',
   black50: 'rgba(0,0,0,0.50)',
