@@ -223,6 +223,39 @@ def _money(r: float) -> str:
     return f"{r * RISK_DOLLARS:+,.0f} dollars"
 
 
+def _split_exposure() -> str:
+    """How much of the score would have been wrong without the adjustment.
+
+    On an unadjusted series a 2-for-1 split is a 50% one-day collapse that drives
+    the trend clouds, the squeeze and the swing oscillator for the next six
+    months. This counts the ticker-days where that would have happened."""
+    import datetime
+
+    from engine.kai_score import splits as ksplits
+    events = ksplits.load()
+    if not events or not POOL_BY_DAY.exists():
+        return ""
+    pool = {int(k): v for k, v in json.loads(POOL_BY_DAY.read_text()).items()}
+    total = hit = 0
+    names: set[str] = set()
+    for d in sorted(pool):
+        dd = datetime.date(d // 10000, (d // 100) % 100, d % 100)
+        start = int((dd - datetime.timedelta(
+            days=kcfg.SCORE_LOOKBACK_CALENDAR_DAYS)).strftime("%Y%m%d"))
+        for s in pool[d]:
+            total += 1
+            if any(start <= ex <= d for ex, _ in events.get(s, ())):
+                hit += 1
+                names.add(s)
+    if not total:
+        return ""
+    return (f"It matters for **{hit:,} of {total:,} pool ticker-days "
+            f"({100.0*hit/total:.2f}%) across {len(names)} distinct names** — "
+            "the ones whose scoring window contained a split. Without the "
+            "adjustment each of those would have been scored on a chart with a "
+            "one-day collapse or spike in it that never happened.")
+
+
 def _matches_engine6(sel) -> tuple[int, int]:
     """How often the `relvol` arm picks exactly the names ENGINE-6 picked.
 
@@ -673,7 +706,8 @@ def write_report(sel, trades, census, missing, extra, atr) -> None:
       "back-adjust the price and volume series to the state a scan on that date "
       "would have seen — splits strictly at or before the as-of date, never "
       "after. Every component of the score is scale-invariant, so this is exact "
-      "up to the two absolute floors, which are applied in as-of-date money.")
+      "up to the two absolute floors, which are applied in as-of-date money. "
+      + _split_exposure())
     A("- **The funnel caps.** The live scanner truncates to the 25 highest "
       "volume ratios before scoring — an API budget — and drops anything under a "
       "score of 55. Neither is applied. Applying the first would smuggle "
