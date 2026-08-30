@@ -113,6 +113,19 @@ The two keys are measuring different things, and this is the table that says so:
 
 **The incumbent arm is not a re-implementation of ENGINE-6's selector; it is the same one.** On the 1,255 sessions the two lanes share, the `relvol` picks here are identical to the names ENGINE-6 wrote to `selection.json.gz` on **1,255** of them (100.00%). Anything the challengers gain or lose is measured against the thing ENGINE-7 actually reported.
 
+## Why the losing arms lose: the stop is the opening range, and a quiet name has a narrow one
+
+The stop in `orb_sip.v2` is the far end of the 09:30-09:35 candle, so the risk on a trade IS the width of that candle. Relative volume selects names whose first five minutes were abnormally busy, and a busy five minutes is a WIDE five minutes. Kai's score selects names that are coiled on the daily chart, and most of them open quietly. Same rule, different geometry — and cost as a fraction of risk is `cost per share / stop distance`, which is the law ENGINE-4 and ENGINE-5 measured twice.
+
+| arm | median stop distance | as % of price | in 14-day ATRs | commission as a share of risk | stopped out |
+|---|---|---|---|---|---|
+| relvol | 164.2 cents | 2.931% | 0.719 | 0.0061R | 31.3% |
+| kai | 84.4 cents | 1.257% | 0.355 | 0.0118R | 46.8% |
+| both | 113.6 cents | 1.809% | 0.464 | 0.0088R | 38.6% |
+| **random 20** | 76.8 cents | 1.192% | 0.476 | 0.0130R | 46.8% |
+
+This is a mechanism, not an excuse. A selector has to be judged on the trade it produces under the rules that are actually being traded, and these are the rules ENGINE-7 measured. But it does say where a fix would have to start if anyone wanted the score to work: not by re-weighting the components, but by pairing it with an entry whose risk is not the width of a candle the score never looked at.
+
 ## The portfolio
 
 1% of equity risked a position, gross exposure capped at 4x, a day's positions scaled down together when the cap binds, compounded daily from $100,000. **The held-back column is the one that counts.**

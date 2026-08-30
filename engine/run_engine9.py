@@ -256,6 +256,25 @@ def _split_exposure() -> str:
             "one-day collapse or spike in it that never happened.")
 
 
+def _stop_geometry(trades, atr) -> dict:
+    """How wide the stop actually was, in the three units a reader may want.
+
+    Same arithmetic as ENGINE-7's, so the rows are comparable with that report."""
+    if not trades:
+        return {}
+    risk = np.array([t.risk_per_share for t in trades], dtype="float64")
+    px = np.array([t.fill_price for t in trades], dtype="float64")
+    a = np.array([atr.get((t.symbol, t.day), np.nan) for t in trades], dtype="float64")
+    ok = np.isfinite(a) & (a > 0)
+    return {
+        "cents": float(np.median(risk) * 100.0),
+        "pct": float(np.median(risk / np.maximum(px, 1e-9)) * 100.0),
+        "atr": float(np.median(risk[ok] / a[ok])) if ok.any() else float("nan"),
+        "commission_r": float(np.median(2.0 * COSTS.commission_per_share
+                                        / np.maximum(risk, 1e-9))),
+    }
+
+
 def _matches_engine6(sel) -> tuple[int, int]:
     """How often the `relvol` arm picks exactly the names ENGINE-6 picked.
 
@@ -657,6 +676,44 @@ def write_report(sel, trades, census, missing, extra, atr, ctrl=None) -> None:
           f"({100.0*ident/total:.2f}%). Anything the challengers gain or lose is "
           "measured against the thing ENGINE-7 actually reported.")
         A("")
+
+    # --- stop geometry ------------------------------------------------------
+    A("## Why the losing arms lose: the stop is the opening range, and a quiet "
+      "name has a narrow one")
+    A("")
+    A("The stop in `orb_sip.v2` is the far end of the 09:30-09:35 candle, so the "
+      "risk on a trade IS the width of that candle. Relative volume selects "
+      "names whose first five minutes were abnormally busy, and a busy five "
+      "minutes is a WIDE five minutes. Kai's score selects names that are coiled "
+      "on the daily chart, and most of them open quietly. Same rule, different "
+      "geometry — and cost as a fraction of risk is `cost per share / stop "
+      "distance`, which is the law ENGINE-4 and ENGINE-5 measured twice.")
+    A("")
+    A("| arm | median stop distance | as % of price | in 14-day ATRs | "
+      "commission as a share of risk | stopped out |")
+    A("|---|---|---|---|---|---|")
+    for a in ARM_ORDER:
+        geo = _stop_geometry(hb[a], atr)
+        A(f"| {a} | {fmt(geo.get('cents',float('nan')),1)} cents | "
+          f"{fmt(geo.get('pct',float('nan')),3)}% | "
+          f"{fmt(geo.get('atr',float('nan')),3)} | "
+          f"{fmt(geo.get('commission_r',float('nan')),4)}R | "
+          f"{fmt(_stopped(hb[a])*100,1)}% |")
+    if hb_ctrl:
+        geo = _stop_geometry(hb_ctrl, atr)
+        A(f"| **random 20** | {fmt(geo.get('cents',float('nan')),1)} cents | "
+          f"{fmt(geo.get('pct',float('nan')),3)}% | "
+          f"{fmt(geo.get('atr',float('nan')),3)} | "
+          f"{fmt(geo.get('commission_r',float('nan')),4)}R | "
+          f"{fmt(_stopped(hb_ctrl)*100,1)}% |")
+    A("")
+    A("This is a mechanism, not an excuse. A selector has to be judged on the "
+      "trade it produces under the rules that are actually being traded, and "
+      "these are the rules ENGINE-7 measured. But it does say where a fix would "
+      "have to start if anyone wanted the score to work: not by re-weighting the "
+      "components, but by pairing it with an entry whose risk is not the width "
+      "of a candle the score never looked at.")
+    A("")
 
     # --- portfolio ---------------------------------------------------------
     A("## The portfolio")
