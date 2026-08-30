@@ -31,7 +31,7 @@ from engine import calendar_us, config as ecfg  # noqa: E402
 from engine.sip import config as scfg  # noqa: E402
 from engine.sip.poly import BASE, paginate  # noqa: E402
 
-CONCURRENCY = 16
+CONCURRENCY = 48
 ET = "America/New_York"
 RTH_OPEN = 9 * 60 + 30
 
