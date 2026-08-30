@@ -616,3 +616,128 @@ def verdict_sip_v3(gates: list[GateResult]) -> str:
     if all(x.passed for x in gates):
         return CONFIRMED_OOS
     return PARTIAL_OOS
+
+
+# ---------------------------------------------------------------------------
+# ENGINE-12 addendum. Written before `orb_spy.v1` produced a number; see
+# engine/models/orb_spy.v1/GATE.md for the reasoning and the git log for the
+# ordering.
+#
+# `orb_spy.v1` is `orb_sip.v2` with the selection step deleted: one instrument,
+# every session, no ranking, no pool. The stocks-in-play strategy has never once
+# selected SPY — 0 trades out of 42,937 — so nothing measured in ENGINE-6..11
+# says anything about it, and the owner's question is genuinely open.
+#
+# NOTHING in this block relaxes any earlier gate. They are not referenced by it
+# and are not reachable from it.
+
+# TWO windows are read, and they are read separately, with the same gates in the
+# same order and thresholds of the same kind. Neither can overwrite the other.
+#
+#   the owner's year   the window every recent lane has used. It is ~251
+#                      sessions of ONE instrument, so ~230 trades — thin by
+#                      construction, and it has now been looked at repeatedly by
+#                      earlier lanes on other models.
+#   the untouched span everything before the owner's build window. No lane has
+#                      ever put this spec on it, and it is nine and a half years
+#                      deep. It is the stronger evidence and it is labelled as
+#                      such in advance, so that a reader cannot be told after
+#                      the fact which window "really" counted.
+SPYV1_BUILD = ("2021-08-29", "2025-08-28")        # the owner's build years
+SPYV1_HELD_BACK = ("2025-08-29", "2026-08-28")    # the owner's verdict year
+SPYV1_UNTOUCHED = ("2012-01-01", "2021-08-28")    # never read for this spec
+SPYV1_FULL = ("2012-01-01", "2026-08-28")         # the whole deep cache
+
+# One trade a session on one instrument. ~251 sessions in the owner's year and
+# ~2,400 in the untouched span, before doji opening candles and unfilled
+# breakouts are subtracted. The floors are set from what the tape can physically
+# supply, not from what would be convenient.
+SPYV1_MIN_TRADES_HELD_BACK = 200
+SPYV1_MIN_TRADES_UNTOUCHED = 1_500
+SPYV1_MIN_SHARPE = SIP_MIN_SHARPE     # 1.0, carried over unchanged
+
+# Two windows, each with its own 95% interval, so the chance that at least one
+# clears zero by luck is about 10% rather than 5%. No correction is applied;
+# instead the report must state this, must print both outcomes whatever they
+# are, and must not lead with whichever did better.
+SPYV1_WINDOWS = 2
+
+# Disclosure triggers, in the ENGINE-7 sense: if the condition holds, the report
+# must say so in those words, whatever the verdict says.
+#
+# 1. Stop width is the only parameter this programme has ever found that decides
+#    the sign of this family. ENGINE-6's sweep put the flip between 0.25x and
+#    0.50x of the 14-day ATR; `orb_sip.v2` on stocks realised 0.72x, and
+#    ENGINE-4's SPY trigger-candle stop realised far less. If SPY's opening
+#    candle does not deliver a stop at or above 0.50 ATR, then this lane has NOT
+#    put the wide stop on SPY at all — it has put a narrower one — and that is
+#    likely the whole answer. It must be said plainly and early.
+# 2. An interval that contains zero settles nothing about the SIZE of the edge,
+#    whatever the sign of the middle number. A passed sign gate is not evidence
+#    that the per-trade edge is real.
+# 3. If the two windows disagree in sign, the disagreement is the finding and
+#    the report may not resolve it by preferring one.
+SPYV1_WIDE_STOP_FLOOR_ATR = 0.50
+SPYV1_SIGN_DISAGREEMENT_IS_THE_FINDING = True
+
+
+def evaluate_spy_v1(summary, gross_mean_r, control_paired_diff, net_r_values,
+                    portfolio, prefix: str, window: tuple[str, str],
+                    min_trades: int) -> list[GateResult]:
+    """Five gates on one window, in ENGINE-7's order and of ENGINE-7's kinds.
+
+    The fourth differs from H4 and it has to: H4 asked whether the SELECTION was
+    the source of the return, and this model has no selection to ask about. In
+    its place stands the question the owner actually needs answered — whether
+    the per-trade edge is distinguishable from zero at all — which ENGINE-7's
+    own report flagged as the thing a passed H2 does NOT establish.
+    """
+    g = []
+    g.append(GateResult(
+        f"{prefix}1", f"sample ({window[0]}..{window[1]})",
+        f">={min_trades} trades", f"n={summary.n}", summary.n >= min_trades))
+    g.append(GateResult(
+        f"{prefix}2", "sign", "mean gross R > 0 AND mean net R > 0",
+        f"gross={gross_mean_r:+.4f}, net={summary.mean_r:+.4f}",
+        gross_mean_r > 0 and summary.mean_r > 0))
+
+    lo, hi = mean_ci95(control_paired_diff)
+    m = (sum(control_paired_diff) / len(control_paired_diff)) if control_paired_diff else float("nan")
+    g.append(GateResult(
+        f"{prefix}3", "direction beats a coin flip (paired, gross)",
+        "95% interval excludes zero, in the model's favour",
+        f"{m:+.4f} (95%: {lo:+.4f} to {hi:+.4f}, n={len(control_paired_diff)})",
+        len(control_paired_diff) > 1 and lo > 0))
+
+    lo2, hi2 = mean_ci95(list(net_r_values))
+    m2 = (sum(net_r_values) / len(net_r_values)) if len(net_r_values) else float("nan")
+    g.append(GateResult(
+        f"{prefix}4", "the edge is distinguishable from zero (net R)",
+        "95% interval on the mean net R excludes zero, in the model's favour",
+        f"{m2:+.4f} (95%: {lo2:+.4f} to {hi2:+.4f}, n={len(net_r_values)})",
+        len(net_r_values) > 1 and lo2 > 0))
+
+    g.append(GateResult(
+        f"{prefix}5", "portfolio",
+        f"total return > 0 AND Sharpe >= {SPYV1_MIN_SHARPE:.1f}",
+        f"total={portfolio.total_return:+.1%}, Sharpe={portfolio.sharpe:.2f}, "
+        f"maxDD={portfolio.max_drawdown:.1%}",
+        portfolio.total_return > 0 and portfolio.sharpe >= SPYV1_MIN_SHARPE))
+    return g
+
+
+def verdict_spy_v1(gates: list[GateResult]) -> str:
+    """The same four-way verdict ENGINE-7 and ENGINE-8 used, one per window.
+
+    A thin sample is INCONCLUSIVE and nothing else in that window is read. The
+    window is never widened to manufacture a verdict; the second window is a
+    SEPARATE pre-registered reading, not a rescue.
+    """
+    by_id = {g.id[len(g.id) - 1:]: g for g in gates}
+    if not by_id["1"].passed:
+        return INCONCLUSIVE_SAMPLE
+    if not by_id["2"].passed:
+        return FAILED_OOS
+    if all(x.passed for x in gates):
+        return CONFIRMED_OOS
+    return PARTIAL_OOS
