@@ -1,21 +1,25 @@
 # engine/ — what was measured, and what happened
 
-**Eleven models have now been measured against bars written down before each
-test was run. Nine failed, one came back inconclusive on both of its exits, and
-the eleventh — a replication of a published, peer-reviewed result — came back
-NOT REPRODUCED.**
+**Twelve models have now been measured against bars written down before each
+test was run. Nine failed, one came back inconclusive on both of its exits, the
+eleventh — a replication of a published, peer-reviewed result — came back NOT
+REPRODUCED, and the twelfth, the same published model read the other way, came
+back PARTIAL on a window held back for it.**
 None ships. Nothing here touches the app, and no alert has been produced.
 
-**Read [ENGINE-6](orb_sip.v1.polygon-sip-v1.md) first if you read only one.** It
-is the only entry in this table that was not our idea: it is Zarattini, Barbon &
-Aziz's stocks-in-play ORB, built to their spec as the brief states it, on a
-survivorship-free universe of every US stock that traded between 2016 and 2026.
-It returned −0.72R a trade and lost more the higher the opening relative volume,
-which is the opposite sign to the published claim. The
-[post-mortem](orb_sip.v1.polygon-sip-v1.diagnostics.md) shows the harness is not
-the reason — remove the stop and the whole thing returns within 0.02 ATR of zero,
-exactly as a straight replay must — and isolates the one parameter that decides
-the sign.
+**Read [ENGINE-6](orb_sip.v1.polygon-sip-v1.md) and
+[ENGINE-7](orb_sip.v2.polygon-sip-v1.md) together if you read only one thing.**
+They are the only entries in this table that were not our idea: Zarattini, Barbon
+& Aziz's stocks-in-play ORB, built to their spec on a survivorship-free universe
+of every US stock that traded between 2016 and 2026. ENGINE-6 used the stocks
+paper's stop — 10% of the 14-day ATR — and returned −0.72R a trade, losing more
+the higher the opening relative volume, which is the opposite sign to the
+published claim. Its [post-mortem](orb_sip.v1.polygon-sip-v1.diagnostics.md)
+shows the harness is not the reason — remove the stop and the whole thing returns
+within 0.02 ATR of zero, exactly as a straight replay must — and isolates the one
+parameter that decides the sign. ENGINE-7 changed that one parameter to the
+companion ETF paper's reading, the opposite extreme of the opening candle, and
+judged it on the years the sweep never touched.
 
 That is the intended kind of outcome. It cost a week; the alternative — the one
 the existing SMS engine took — costs a paying customer.
@@ -34,6 +38,7 @@ the existing SMS engine took — costs a paying customer.
 | ENGINE-5 | [`orb_1h_trigcandle.v1`](orb_1h_trigcandle.v1.polygon-deep-v1.md) — ENGINE-4's stop reading | FAIL |
 | ENGINE-5 | [`orb_1h_unmanaged.v1`](orb_1h_unmanaged.v1.polygon-deep-v1.md) — no 1R partial | FAIL |
 | ENGINE-6 | [`orb_sip.v1`](orb_sip.v1.polygon-sip-v1.md) — the published stocks-in-play ORB, 32,434 trades | **NOT REPRODUCED** |
+| ENGINE-7 | [`orb_sip.v2`](orb_sip.v2.polygon-sip-v1.md) — the same model, stopped at the opposite extreme of the opening candle, 10,545 held-back trades | **PARTIAL** — money and the filter, but the direction call lost to a coin flip |
 
 Read [ENGINE-2's report](orb_htf_structural.v1.polygon-v1.md) for the finding the
 whole family turns on: the setup earns about 4.6 cents a share before costs and
@@ -575,3 +580,119 @@ against the one-minute cache bar by bar and failed on AAPL 2016-04-27 at exactly
 The corrected data moved 774 of 105,899 selected symbol-days and changed no
 conclusion — but nobody knew that until it was refetched, and the largest
 relative volume in the selection fell from 50,594× to 1,528×.
+
+---
+
+# ENGINE-7 — the same published model, the other published stop, judged out of sample
+
+Brief: this lane exists because of [ENGINE-6's post-mortem](orb_sip.v1.polygon-sip-v1.diagnostics.md).
+Gate: [`../models/orb_sip.v2/GATE.md`](../models/orb_sip.v2/GATE.md), committed
+at `6598f47`, before any number existed.
+
+`orb_sip.v2` is `orb_sip.v1` with **one rule changed**. The stop moves from 10%
+of the 14-day ATR — a median 12.4¢ over 2016–2023, hit on 90.1% of trades, about
+a sixth of the width of the very candle the trade is defined by — to **the
+opposite extreme of that candle**, which is what the build brief's own table records the companion
+ETF paper doing. Range, universe, selection, direction, entry, end-of-day exit,
+sizing, costs and snapshot are untouched, and ENGINE-6's `selection.json.gz` is
+reused byte for byte, so the two models trade the same 42,937 entries and differ
+only in where the stop sits. Both were replayed in the same pass over the same
+bars; v1's numbers came back identical to its own report, which is the check that
+the two are comparable at all.
+
+## The thing to read before the result
+
+**The stop width was chosen after looking at the answer on 2016–2023.** Two
+things pointed at it: the companion paper's wording, which is clean, and a
+stop-width sweep the ENGINE-6 post-mortem ran on the replication window and read,
+which is not. Those cannot be separated after the fact. So the windows swapped
+roles before the run: **2016–2023 is CONTAMINATED and is a disclosure**, and the
+verdict is the **held-back 2024-01-01 → 2026-08-28**, which no sweep touched.
+H1–H5 are ENGINE-6's R1–R5, unchanged in kind and in number, moved to the harder
+window. This is the held-back window's **second** use, and no correction is
+applied for that. There is no third: the gate ruled out a third stop width before
+the run started.
+
+## The answer, in one line
+
+**10,545 held-back trades. It made money and the filter beat a random selection —
+but the average trade is not distinguishable from zero, and the direction call
+lost to a coin flip. Verdict: PARTIAL, which the gate defined in advance as not a
+pass.**
+
+| id | gate | observed | |
+|---|---|---|---|
+| **H1** | ≥5,000 held-back trades | n=10,545 | PASS |
+| **H2** | mean gross R > 0 and mean net R > 0 | gross **+0.0324**, net **+0.0199** | PASS |
+| **H3** | direction beats a coin flip, paired, gross | **−0.1317** (95%: −0.1493 to −0.1141), n=7,322 | **FAIL** |
+| **H4** | in play minus a random 20, paired by day, net | **+0.0773** (95%: +0.0410 to +0.1136), n=667 | PASS |
+| **H5** | portfolio: return > 0 and Sharpe ≥ 1.0 | **+223.9%**, Sharpe **1.27**, maxDD 31.0% | PASS |
+
+| arm, held back | n | mean gross R | median gross R | mean net R | hit | PF | stopped |
+|---|---|---|---|---|---|---|---|
+| stocks in play | 10,545 | +0.032 | −0.108 | **+0.020** | 45.0% | 1.05 | **31.6%** |
+| random 20, same rules | 11,118 | −0.030 | −0.696 | −0.055 | 38.2% | 0.90 | 48.5% |
+| matched coin flip | 8,471 | +0.024 | −0.104 | +0.011 | 44.8% | 1.03 | 31.6% |
+
+## Five findings
+
+**1. The ENGINE-6 diagnosis was right about the mechanism.** The knock-out rate
+falls from **90.1% to 31.6%**, the median stop on the held-back window goes from
+17¢ to **134¢** (0.10 → 0.75 ATR), and commission as a share of risk falls from
+0.059R to 0.0075R. The same entries that returned −0.83R at the tight stop return
++0.02R at this one. **One number was the whole result**, exactly as the
+post-mortem said.
+
+**2. The per-trade edge is real-signed and statistically indistinguishable from
+zero.** +0.0199R net is **+$20 on $1,000 of risk**, and its 95% interval is
+**−0.0025 to +0.0422** — it spans zero. H2 asked for a positive mean and got one;
+it did not ask for, and did not get, a mean that clears its own error bar. That
+distinction is the single most important line in the report and it is stated
+there, not buried.
+
+**3. The filter is the one claim that did clear its interval.** The day's twenty
+stocks in play returned **+0.077R a day more** than twenty random eligible names
+traded identically (95%: +0.041 to +0.114, 667 days). That is the paper's central
+claim, measured on data chosen before the model was, and it held. ENGINE-6 found
+the same comparison **0.46R the wrong way** at the tight stop.
+
+**4. But ranking WITHIN the twenty buys nothing.** Split the held-back trades at
+the median relative volume and the more-abnormal half returns +0.0230R against
++0.0167R — a difference of +0.006R, 95% −0.038 to +0.051. ENGINE-6's monotone
+inversion (−0.27R in the lowest decile to −1.25R in the highest) has not been
+replaced by the paper's gradient; it has been replaced by **noise**. What pays is
+being in the top twenty at all, not where in it — which is a materially weaker
+claim than the published one.
+
+**5. The direction call lost to a coin flip, and the decomposition says something
+specific.** Of the 7,322 pairs, 5,241 agree and contribute exactly zero; the
+whole of H3 comes from the **2,081 mornings where BOTH ends of the opening range
+broke**. On those, the model's side returned −0.735R and the opposite side
+−0.271R. Read plainly: **on a day that whipsaws through both ends of its opening
+range, the end the first candle pointed at is the losing end.** That is narrower
+than "the direction call is worthless" — on days only one side broke, the control
+did not trade and contributes nothing — but the gate was the paired number, and
+the paired number failed. Nine models in, "which way to point" has still never
+been worth a measurable amount.
+
+## Read the leverage before the return
+
+The +223.9% is a **four-times-levered** number: the 4× gross cap binds on 618 of
+667 held-back sessions, so the strategy wants more exposure than it is allowed on
+93% of days. A per-trade edge near zero, levered four times across twenty
+concurrent positions and compounded over 667 sessions, is what produces a figure
+in the hundreds of percent — and the same arithmetic runs in reverse if the sign
+is wrong. The contaminated window's portfolio (+1,173%, Sharpe 0.97) and the
+whole tape's (+4,025%, Sharpe 1.04) are printed for the same reason and carry the
+same warning.
+
+## What this does not establish
+
+That the model is worth trading. Nothing here has been run forward in real time;
+short borrow is not modelled and is not free on a stock that just gapped on news;
+fills are a resting stop order taken at the worse of the level and the bar's
+open, which is optimistic for twenty simultaneous orders at 09:35 on the most
+volatile names of the morning; and costs already eat more than half the gross
+edge (+0.0437R at zero cost against +0.0199R at the pre-registered model). The
+honest summary is that **one published claim survived a held-back test at about a
+fiftieth of an R a trade, and two others did not.**

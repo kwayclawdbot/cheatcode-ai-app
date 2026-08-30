@@ -218,6 +218,15 @@ def write_report(sel, a, b, sip_census, unf_census, sip_missing,
       f"{len(h_sip):,} trades. The middle trade returned "
       f"{hs.median_r:+.4f} ({hs.median_r * RISK_DOLLARS:+,.0f} dollars), and "
       f"{hs.hit_rate:.1%} of trades finished green.")
+    A(f"- **Most trades lose.** {1-hs.hit_rate:.0%} of them finish red and the "
+      f"middle trade loses {abs(hs.median_r)*RISK_DOLLARS:,.0f} dollars. The "
+      f"average winner is {hs.payoff:.2f} times the average loser, so whatever "
+      f"the average trade earns it earns from the tail and not from being "
+      f"right often. That is a shape which "
+      + ("pays out slowly and feels bad continuously"
+         if hs.mean_r > 0 else "loses slowly and feels bad continuously")
+      + ". It is also the shape the published paper describes; its own headline "
+      "variant wins 24% of its trades.")
     straddles = lo_hb <= 0.0 <= hi_hb
     A(f"- **How much of that is luck**: the 95% range around the average is "
       f"{lo_hb:+.4f} to {hi_hb:+.4f} times risk, i.e. "
@@ -293,6 +302,16 @@ def write_report(sel, a, b, sip_census, unf_census, sip_missing,
         A(f"| **{g.id}** | {g.name} | {g.threshold} | {g.observed} | "
           f"{'PASS' if g.passed else 'FAIL'} |")
     A("")
+    if lo_hb <= 0.0 <= hi_hb:
+        A("**H2 asks for a positive mean, not for a mean distinguishable from "
+          f"zero — and the distinction bites here.** The 95% interval on the "
+          f"held-back mean net R is {lo_hb:+.4f} to {hi_hb:+.4f} and it spans "
+          "zero. H2 is passed as it was written, and it was written before the "
+          "number existed so it is not being reinterpreted now; but a reader "
+          "should not take a passed H2 as evidence that the per-trade edge is "
+          "real. What clears its own interval here is H4 — the filter — and "
+          "H5.")
+        A("")
 
     # --- held back, in full ------------------------------------------------
     A(f"## The held-back window, {gates.SIPV2_HELD_BACK[0]} → "
@@ -316,6 +335,41 @@ def write_report(sel, a, b, sip_census, unf_census, sip_missing,
     A("")
     pu = float(np.mean(h_paired_unf)) if h_paired_unf else float("nan")
     lo_u, hi_u = gates.mean_ci95(h_paired_unf)
+    A("*Diagnostic, and it changes nothing.* The coin flip only trades when the "
+      "side it drew actually broke, so the paired set splits in two. Where the "
+      "flip drew the SAME side the two arms are literally the same trade and "
+      "contribute exactly zero to the difference. **The whole of the H3 number "
+      "therefore comes from the pairs where the flip drew the other side — "
+      "which are, by construction, days on which BOTH extremes of the opening "
+      "range broke.**")
+    fs = {(c.symbol, c.day): c for c in h_flip}
+    agree = [t for t in h_sip if (t.symbol, t.day) in fs and fs[(t.symbol, t.day)].side == t.side]
+    disagree = [t for t in h_sip if (t.symbol, t.day) in fs and fs[(t.symbol, t.day)].side != t.side]
+    if disagree:
+        dm = float(np.mean([t.gross_r for t in disagree]))
+        om = float(np.mean([fs[(t.symbol, t.day)].gross_r for t in disagree]))
+        A("")
+        A(f"Of the {len(h_paired_flip):,} pairs, **{len(agree):,} agree** "
+          f"(identical trades, zero difference) and **{len(disagree):,} "
+          f"disagree** — both ends of the range broke that morning. On those "
+          f"{len(disagree):,} days the model's side returned {dm:+.4f}R gross "
+          f"and the opposite side returned {om:+.4f}R. Read plainly: **on a day "
+          "that whipsaws through both ends of its opening range, the end the "
+          "first candle pointed at is the losing end.** That is a real "
+          "statement about the tape and not an artefact of the control.")
+        A("")
+        A("It is also a NARROWER statement than \"the direction call is "
+          "worthless\", because on the days only one side broke, the control "
+          "did not trade at all and contributes nothing to the pairing. "
+          "Unpaired across the whole held-back window the model returns "
+          f"{_gross(h_sip)[0]:+.4f}R gross against the control's "
+          f"{_gross(h_flip)[0]:+.4f}R on a different and unmatched set of "
+          "trades. **The gate is the paired number, because that is what was "
+          "written down, and the paired number failed.** Fixing the control so "
+          "that it draws a side without conditioning on that side having broken "
+          "is a NEW control and belongs to a NEW pre-registered run, not to "
+          "this one.")
+    A("")
     A(f"**Against the random-20 control, paired by day, net:** {pu:+.4f}R "
       f"(95%: {lo_u:+.4f} to {hi_u:+.4f}) over {len(h_paired_unf):,} days both "
       "arms traded. This is H4 — the paper's claim that abnormal opening volume "
@@ -374,6 +428,19 @@ def write_report(sel, a, b, sip_census, unf_census, sip_missing,
     A("ENGINE-6's stop was so tight that the 4x cap bound on every single day; "
       "a six-times-wider stop buys six times fewer shares for the same 1% risk, "
       "so the row above is a different portfolio, not a rescaled one.")
+    A("")
+    A(f"**Read the leverage before the return.** The 4x gross cap still binds on "
+      f"{pf_hb.capped_days} of {pf_hb.n_days} held-back sessions "
+      f"({100.0*pf_hb.capped_days/max(pf_hb.n_days,1):.0f}%), which means the "
+      "strategy wants more exposure than it is allowed on almost every day and "
+      "the headline return is a statement about four-times-levered intraday "
+      "exposure across twenty concurrent positions, not about the per-trade "
+      f"edge. The per-trade edge is {hs.mean_r:+.4f}R "
+      f"({hs.mean_r*RISK_DOLLARS:+,.0f} dollars on $1,000 of risk) and its 95% "
+      f"interval is {lo_hb:+.4f} to {hi_hb:+.4f}. A number near zero, levered "
+      "four times and compounded over 667 sessions, is what produces a figure "
+      "in the hundreds of percent — and the same arithmetic works in reverse if "
+      "the sign is wrong.")
     A("")
 
     # --- the contaminated window -------------------------------------------
@@ -469,12 +536,37 @@ def write_report(sel, a, b, sip_census, unf_census, sip_missing,
                    if np.isfinite(v) and lo_q <= v < (hi_q if i < 9 else np.inf)]
             if grp:
                 A(summary_row(summarise(grp, f"rvol {lo_q:.1f}-{hi_q:.1f}")))
+        med = float(np.median(vals[ok]))
+        lowr = [t.net_r for t, v in zip(h_sip, vals) if np.isfinite(v) and v < med]
+        highr = [t.net_r for t, v in zip(h_sip, vals) if np.isfinite(v) and v >= med]
         A("")
         A("ENGINE-6 found this gradient monotone and pointing the WRONG way — "
-          "the more abnormal the opening volume, the worse the trade. Whether "
-          "it still points that way at this stop is the most informative single "
-          "table in this report, because the paper's whole claim is that the "
-          "gradient should point the other way.")
+          "the more abnormal the opening volume, the worse the trade, from "
+          "-0.27R in the lowest decile to -1.25R in the highest. The paper's "
+          "claim is that it should point the other way. Here is what it does "
+          "now.")
+        if len(lowr) > 1 and len(highr) > 1:
+            xl, xh = np.array(lowr), np.array(highr)
+            d = float(xh.mean() - xl.mean())
+            se = float(np.sqrt(xh.var(ddof=1) / len(xh) + xl.var(ddof=1) / len(xl)))
+            lo_g, hi_g = d - 1.96 * se, d + 1.96 * se
+            A("")
+            A(f"Splitting the held-back trades at the median relative volume "
+              f"({med:.1f}x): the more-abnormal half returned "
+              f"{float(xh.mean()):+.4f}R net (n={len(xh):,}) and the "
+              f"less-abnormal half {float(xl.mean()):+.4f}R (n={len(xl):,}), a "
+              f"difference of {d:+.4f}R (95%: {lo_g:+.4f} to {hi_g:+.4f}). "
+              + ("**The interval spans zero: within the twenty names already "
+                 "selected, ranking them more finely by relative volume buys "
+                 "nothing.** The inversion ENGINE-6 measured is gone, but it "
+                 "has not been replaced by the paper's gradient — it has been "
+                 "replaced by noise. What pays is being in the top twenty at "
+                 "all (H4), not where in the top twenty."
+                 if lo_g <= 0.0 <= hi_g else
+                 "The interval excludes zero, so the gradient is real at this "
+                 "stop and points "
+                 + ("in the paper's direction." if d > 0 else
+                    "AGAINST the paper, exactly as ENGINE-6 found.")))
         A("")
 
     # --- cost sensitivity --------------------------------------------------
