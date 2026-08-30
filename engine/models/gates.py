@@ -495,3 +495,124 @@ def verdict_sip_v2(gates: list[GateResult]) -> str:
     if all(x.passed for x in gates):
         return CONFIRMED_OOS
     return PARTIAL_OOS
+
+
+# ---------------------------------------------------------------------------
+# ENGINE-8 addendum. Written before `orb_sip.v3` or `orb_sip.v3_15m` produced a
+# number; see engine/models/orb_sip.v3/GATE.md and
+# engine/models/orb_sip.v3_15m/GATE.md for the reasoning, and the git log for
+# the ordering.
+#
+# `orb_sip.v3` is `orb_sip.v2` plus one gate: the daily trend, read on the last
+# fully closed daily bar, must agree with the breakout side. `orb_sip.v3_15m`
+# is the same model on a 15-minute opening range. Two models, one held-back
+# year, and that multiplicity is disclosed rather than corrected for — see
+# SIPV3_MODELS below.
+#
+# NOTHING in this block relaxes G1-G5, R1-R5 or H1-H5 for any other model. They
+# are not referenced by it and are not reachable from it.
+
+# The owner's window, chosen as a trading judgement rather than a statistical
+# one: a model that has to work in today's market is judged on today's market.
+SIPV3_BUILD = ("2021-08-29", "2025-08-28")        # four years; nothing is tuned on it
+SIPV3_HELD_BACK = ("2025-08-29", "2026-08-28")    # twelve months; the verdict
+
+# ENGINE-7's floor was 5,000 trades. It CANNOT be carried over here and the
+# reason is arithmetic, not preference: twenty picks a session over ~251
+# sessions is a ceiling of ~5,000 trades before a single filter is applied, so
+# 5,000 would make the verdict INCONCLUSIVE by construction rather than by
+# evidence. The floor below is set from power instead. Per-trade net R on this
+# family has a standard deviation near 1.2R (ENGINE-7: a +/-0.0224 half-width
+# on n=10,545). At n=750 the 95% half-width is about +/-0.086R — enough to
+# separate a per-trade edge worth trading (>= 0.10R, i.e. >= $100 per $1,000
+# risked) from zero, and deliberately NOT enough to resolve v2's +0.02R. A
+# passed T2 whose interval spans zero therefore settles nothing, and the report
+# is required to say so.
+SIPV3_MIN_TRADES = 750
+SIPV3_MIN_SHARPE = SIP_MIN_SHARPE     # 1.0, carried over unchanged
+
+# Two models are evaluated on one held-back year. With two independent 95%
+# intervals the chance that at least one clears zero by luck is about 10%, not
+# 5%. No correction is applied to the intervals — instead the report must state
+# this, must report BOTH outcomes whatever they are, and must not lead with
+# whichever did better.
+SIPV3_MODELS = 2
+
+# Not gates. Disclosure triggers, in the ENGINE-7 sense: if the condition
+# holds, the report must say so in those words whatever the verdict says.
+#
+# 1. A filter that removes trades which would have WON is not helping, however
+#    much the average of what is left improves.
+# 2. The filter was proposed to fix one diagnosed failure — the mornings on
+#    which both ends of the opening range broke. If the model still loses on
+#    that subset, the filter did not do the job it was brought in for, and that
+#    sentence belongs in the summary even if every gate passes.
+SIPV3_FILTER_DISCARDS_WINNERS_IF_REMOVED_MEAN_ABOVE_KEPT = True
+SIPV3_TWO_WAY_BREAK_STILL_LOSES_IF_MEAN_BELOW = 0.0
+
+
+def evaluate_sip_v3(summary, gross_mean_r, control_paired_diff,
+                    unfiltered_diff, portfolio, prefix: str = "T") -> list[GateResult]:
+    """T1-T5 (or U1-U5 for the 15-minute variant), read on the HELD-BACK window
+    and nowhere else.
+
+    Same five questions as ENGINE-7's H1-H5, in the same order, with the same
+    kinds of threshold. Only the sample floor moves, for the arithmetic reason
+    recorded above, and it moves before any count is known.
+
+    `control_paired_diff` is the per-pair gross R difference against the matched
+    coin flip on the mornings the model traded. `unfiltered_diff` is the per-day
+    net R difference between the stocks-in-play arm and the same rules — trend
+    gate included — on twenty random eligible names.
+    """
+    g = []
+    g.append(GateResult(
+        f"{prefix}1", "sample (held back)",
+        f">={SIPV3_MIN_TRADES} trades in {SIPV3_HELD_BACK[0]}..{SIPV3_HELD_BACK[1]}",
+        f"n={summary.n}", summary.n >= SIPV3_MIN_TRADES))
+    g.append(GateResult(
+        f"{prefix}2", "sign (held back)", "mean gross R > 0 AND mean net R > 0",
+        f"gross={gross_mean_r:+.4f}, net={summary.mean_r:+.4f}",
+        gross_mean_r > 0 and summary.mean_r > 0))
+
+    lo, hi = mean_ci95(control_paired_diff)
+    m = (sum(control_paired_diff) / len(control_paired_diff)) if control_paired_diff else float("nan")
+    g.append(GateResult(
+        f"{prefix}3", "direction beats a coin flip (held back, paired, gross)",
+        "95% interval excludes zero, in the model's favour",
+        f"{m:+.4f} (95%: {lo:+.4f} to {hi:+.4f}, n={len(control_paired_diff)})",
+        len(control_paired_diff) > 1 and lo > 0))
+
+    lo2, hi2 = mean_ci95(unfiltered_diff)
+    m2 = (sum(unfiltered_diff) / len(unfiltered_diff)) if unfiltered_diff else float("nan")
+    g.append(GateResult(
+        f"{prefix}4", "the filter is the thing (held back, net R, in play minus random 20)",
+        "95% interval excludes zero, in the model's favour",
+        f"{m2:+.4f} (95%: {lo2:+.4f} to {hi2:+.4f}, n={len(unfiltered_diff)})",
+        len(unfiltered_diff) > 1 and lo2 > 0))
+
+    g.append(GateResult(
+        f"{prefix}5", "portfolio (held back)",
+        f"total return > 0 AND Sharpe >= {SIPV3_MIN_SHARPE:.1f}",
+        f"total={portfolio.total_return:+.1%}, Sharpe={portfolio.sharpe:.2f}, "
+        f"maxDD={portfolio.max_drawdown:.1%}",
+        portfolio.total_return > 0 and portfolio.sharpe >= SIPV3_MIN_SHARPE))
+    return g
+
+
+def verdict_sip_v3(gates: list[GateResult]) -> str:
+    """The four-way verdict, fixed before any count was known, and the same
+    four ENGINE-7 used.
+
+    A thin sample is INCONCLUSIVE and nothing else is read — the brief is
+    explicit that a small number must not be read as a verdict, and that the
+    window must not be widened to manufacture one.
+    """
+    by_id = {g.id[1:]: g for g in gates}
+    if not by_id["1"].passed:
+        return INCONCLUSIVE_SAMPLE
+    if not by_id["2"].passed:
+        return FAILED_OOS
+    if all(x.passed for x in gates):
+        return CONFIRMED_OOS
+    return PARTIAL_OOS
