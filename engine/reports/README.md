@@ -1,8 +1,21 @@
 # engine/ — what was measured, and what happened
 
-**Ten models have now been measured against bars written down before each test
-was run. Nine failed and one came back inconclusive.** None ships. Nothing here
-touches the app, and no alert has been produced.
+**Eleven models have now been measured against bars written down before each
+test was run. Nine failed, one came back inconclusive on both of its exits, and
+the eleventh — a replication of a published, peer-reviewed result — came back
+NOT REPRODUCED.**
+None ships. Nothing here touches the app, and no alert has been produced.
+
+**Read [ENGINE-6](orb_sip.v1.polygon-sip-v1.md) first if you read only one.** It
+is the only entry in this table that was not our idea: it is Zarattini, Barbon &
+Aziz's stocks-in-play ORB, built to their spec as the brief states it, on a
+survivorship-free universe of every US stock that traded between 2016 and 2026.
+It returned −0.72R a trade and lost more the higher the opening relative volume,
+which is the opposite sign to the published claim. The
+[post-mortem](orb_sip.v1.polygon-sip-v1.diagnostics.md) shows the harness is not
+the reason — remove the stop and the whole thing returns within 0.02 ATR of zero,
+exactly as a straight replay must — and isolates the one parameter that decides
+the sign.
 
 That is the intended kind of outcome. It cost a week; the alternative — the one
 the existing SMS engine took — costs a paying customer.
@@ -20,6 +33,7 @@ the existing SMS engine took — costs a paying customer.
 | ENGINE-5 | [`orb_1h_managed_2r.v1`](orb_1h_managed_2r.v1.polygon-deep-v1.md) — fixed 2R target | FAIL |
 | ENGINE-5 | [`orb_1h_trigcandle.v1`](orb_1h_trigcandle.v1.polygon-deep-v1.md) — ENGINE-4's stop reading | FAIL |
 | ENGINE-5 | [`orb_1h_unmanaged.v1`](orb_1h_unmanaged.v1.polygon-deep-v1.md) — no 1R partial | FAIL |
+| ENGINE-6 | [`orb_sip.v1`](orb_sip.v1.polygon-sip-v1.md) — the published stocks-in-play ORB, 32,434 trades | **NOT REPRODUCED** |
 
 Read [ENGINE-2's report](orb_htf_structural.v1.polygon-v1.md) for the finding the
 whole family turns on: the setup earns about 4.6 cents a share before costs and
@@ -417,3 +431,147 @@ The gate pre-authorised this lane to stop as soon as gross-versus-control came
 back null. It did come back null. The set was completed anyway because a variant
 costs about ten seconds on this cache — no variant was added, no threshold moved
 and no parameter changed after a number was seen.
+
+
+---
+
+# ENGINE-6 — the published result, replicated faithfully, and it did not come back
+
+Brief: [`docs/BUILD-BRIEF-engine-6-orb-stocks-in-play.md`](../../docs/BUILD-BRIEF-engine-6-orb-stocks-in-play.md).
+Gate: [`../models/orb_sip.v1/GATE.md`](../models/orb_sip.v1/GATE.md), committed
+at `2eed597` and `3db0a28`, before any number existed.
+
+ENGINE-1 through ENGINE-5 tested seven ORB variants and all seven failed. The
+literature then gave the failure a name: Zarattini, Barbon & Aziz measured ORB
+across 7,000+ US stocks over 2016–2023 and reported **29% at a 0.48 Sharpe
+unfiltered** against **1,637% at a 2.81 Sharpe** restricted to the day's *stocks
+in play*, with abnormal opening volume doing almost all the work. We had built
+the unfiltered version seven times. **Our nulls replicated their null.**
+
+So ENGINE-6 is not a model of ours. It is their spec, as the brief states it:
+5-minute opening range, universe of price >$5 / 20-day volume >1M / ATR >$0.50,
+the day's top 20 by opening relative volume measured at 09:35, entry on the
+breakout in the direction of the first candle, **stop at 10% of the 14-day ATR**,
+**no target — exit at the close**, 1% risk with a 4× leverage cap.
+
+## The answer, in one line
+
+**32,392 trades in the paper's own window, and it lost 0.72R a trade — and it
+lost MORE the higher the relative volume, monotonely across ten deciles, which is
+the opposite sign to the published claim.**
+
+| | |
+|---|---|
+| snapshot | `polygon-sip-v1` — a third snapshot; no report mixes it with the other two |
+| universe | every US ticker that traded, 2,743 grouped-daily sessions, 26.5M ticker-days, survivorship-free; 892 names a day pass the filter, 6,589 distinct over the window against the paper's 7,000+ |
+| pool | top 1,000 by prior-close dollar volume — **which turned out not to bind**: 100% of the eligible universe was scored and rankable at 09:35 on the median day, 95% at the 10th percentile |
+| replication window | 2016-01-01 → 2023-12-31, the paper's own |
+| held back | 2024-01-01 → 2026-08-28, evaluated once |
+| trades | 32,392 / 10,545 |
+| verdict | **NOT REPRODUCED** (R2, R3, R4, R5) |
+
+| arm | n | mean gross R | median gross R | mean net R | hit | PF |
+|---|---|---|---|---|---|---|
+| stocks in play | 32,392 | **−0.635** | −1.040 | **−0.723** | 9.2% | 0.46 |
+| unfiltered control, same rules | 33,893 | −0.180 | −1.033 | −0.264 | 15.2% | 0.74 |
+| matched coin flip | 26,959 | −0.694 | −1.040 | −0.782 | 9.8% | 0.43 |
+
+## Four findings, and the third is the one to keep
+
+**1. The harness is not the reason, and this is the first thing the brief asked
+for.** Run the identical entries with the stop removed — 100× ATR, which can
+essentially never be hit, so every trade runs to the close — and the model
+returns **+0.017 ATR** of signed move and its coin flip **+0.011 ATR**, over
+32,392 and 26,959 trades. A replay with a directional bias, a lookahead leak or a
+fill model that quietly paid or charged the trader does not land within two
+hundredths of an ATR of zero. It is the same certification ENGINE-1 ran, and it
+gives the same answer on this snapshot.
+
+**2. One parameter decides the sign, and it is the stop.** 10% of the 14-day ATR
+is a median **12.4 cents**, 0.35% of price, and it is hit on **90.1%** of trades.
+The 09:30–09:35 candle of a stock in play is a median **0.63 ATR** wide — so the
+specified stop is about **16%** of the range of the very bar the trade is defined
+by. It is inside the noise of its own setup. Sweeping only that number: −0.635R
+at 0.10×, −0.073R at 0.25×, **+0.005R at 0.50×**, +0.012R at 1×.
+
+**3. Abnormal opening volume carries something real, and the specified stop turns
+it upside down.** At the specified stop, stocks in play are **0.456R WORSE** than
+the unfiltered control. At a 0.5× stop the same comparison is **+0.018R**
+(95%: +0.000 to +0.037) and at 1× **+0.017R** (95%: +0.007 to +0.028) — in the
+paper's direction, with intervals that exclude zero, and about **a hundredth of
+an R**. The mechanism is not subtle: the filter selects days whose true range
+dwarfs the trailing ATR the stop is scaled by, so the more abnormal the day, the
+more certainly the stop is noise. That is why the relative-volume deciles run
+monotonely from −0.27R in the lowest to −1.25R in the highest.
+
+**4. The direction call is worth nothing.** Paired against a coin flip on the
+same symbols, days and stop distances, the model is negative at every stop width
+tested, including the widest. Eight models into this programme, "which way to
+point" has never once been worth a measurable amount.
+
+## What was ruled out, and what was not
+
+| candidate | measured | verdict |
+|---|---|---|
+| pool too small | 891 of a median 892 eligible names scored; picks sit at median liquidity rank 521 of 892, only 14% in the bottom fifth | **not it** |
+| cost model | zero cost gives −0.553R against −0.723R net | **not it** |
+| fill model | unstopped hold-to-close returns within 0.02 ATR of zero | **not it** |
+| window | all eleven calendar years negative, both sides, held-back window too | **not it** |
+| selection definition | the relative-volume gradient is steep and monotone — the ranking separates days powerfully, in the wrong direction at this stop | **the mechanism, not the fault** |
+| **the stop reading** | the brief's own table records the companion ETF paper stopping at the **opposite extreme of the first candle** — a median 0.63 ATR here, about **6×** the 10%-of-ATR reading, and squarely where this shape stops losing | **the live candidate** |
+| entry timing | the published rule may enter at the 09:35 open rather than on a breakout beyond the range | **untested — the second candidate** |
+
+**Phase 2 did not run.** The gate pre-authorised that: the owner's variations —
+15-minute range, 1-hour trend, the prior-5m stop, a 2R target, half off at 1R —
+are not tested against a baseline that is not a baseline, and no parameter was
+tuned to rescue the miss. The stop sweep is a diagnostic, is fenced as one in
+[its own file](orb_sip.v1.polygon-sip-v1.diagnostics.md), and no verdict was
+reached by way of it. A re-run at a different stop is a NEW model with a NEW
+pre-registered gate, reported beside this one rather than in place of it.
+
+## The data work, because it was most of the job
+
+Selecting stocks in play needs broad-market opening volume, and the obvious way
+to get it is also the way to manufacture a spectacular fake result: pre-filter
+which symbols to download using a full day's volume and you have selected stocks
+*because* they turned out busy. So:
+
+1. **Grouped daily bars for every ticker that traded**, 2015-10 → 2026-08, one
+   call a session, 2,743 files, 26.5M ticker-days, unadjusted. Unadjusted because
+   on split-adjusted prices a stock that later reverse-split 1-for-10 would be
+   back-promoted into a "price > $5" universe at a price it never traded at.
+2. **The paper's filter as of the prior close** — SQL windows that cannot include
+   the current row — plus a security-type resolution so the universe is stocks
+   rather than ETFs, funds and exchange test symbols. Unknown types are KEPT, so
+   the type lookup cannot reintroduce survivorship.
+3. **Opening 5-minute bars for the pool**, keeping only 09:30–10:30 of each
+   session. The afternoon of the day being selected for was never written to
+   disk.
+4. **One-minute bars only for the 105,899 symbol-days the selector picked**, after
+   the selection was written to a file. The download is a consequence of the
+   selection and cannot feed back into it.
+
+The selection got the full treatment: poisoned-future and amputated-future
+attacks, an explicit test that the selection is identical when the rest of the
+session is deleted from disk, and a deliberately cheating selector that every
+attack must catch. Two data contracts are asserted against the real cache — that
+the 09:30 five-minute bar is exactly the first five one-minute bars (the entire
+selection stage costs one request per symbol per half-year only because that
+alignment holds), and that the eligible universe never contains the day it is
+selecting for inside its own 20-day average.
+
+Audit: 2,743 of 2,743 grouped sessions with none missing and none on a day the
+market was shut; 2,679 of 2,679 sessions with opening bars; 108,078 one-minute
+symbol-days, 40.8M bars, median 388 a session, none on a closed day.
+
+**One bug was found this way, and it was live in a finished snapshot.** Polygon's
+`next_url` carries the cursor and not the caller's parameters, and `adjusted`
+defaults to TRUE — so every opening-bar request longer than one page came back
+unadjusted for its head and split-adjusted for its tail, at the split ratio, in
+a *volume* series. `tests/test_sip_data.py` compares the 09:30 five-minute bar
+against the one-minute cache bar by bar and failed on AAPL 2016-04-27 at exactly
+4.000×. The whole opening-bar tree was refetched and
+`tests/test_sip_paginate.py` now pins the mechanism against a mock transport.
+The corrected data moved 774 of 105,899 selected symbol-days and changed no
+conclusion — but nobody knew that until it was refetched, and the largest
+relative volume in the selection fell from 50,594× to 1,528×.

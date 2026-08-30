@@ -45,6 +45,10 @@ from engine.run_engine6 import (ARM_SIP, ARM_UNFILTERED, COSTS,  # noqa: E402
                                 _window)
 
 OUT = Path(__file__).resolve().parent / "reports" / "orb_sip.v1.polygon-sip-v1.diagnostics.md"
+# The main report quotes this sweep. It reads the numbers from here rather
+# than carrying transcribed copies of them, so a re-run cannot leave a stale
+# figure standing in prose.
+OUT_JSON = Path(__file__).resolve().parent.parent / "engine" / "data" / "polygon-sip-v1" / "diagnostics.json"
 FRACTIONS = [0.10, 0.25, 0.50, 1.00, 2.00, 100.0]
 
 
@@ -257,6 +261,28 @@ def main() -> int:
         A(f"| {f_:g}x ATR | {fmt(a['net_mean'],4)} | {fmt(b['net_mean'],4)} | "
           f"{fmt(b['net_mean']-a['net_mean'],4)} |")
     A("")
+    payload = {"or_atr_median": float(np.median(ratios)) if len(ratios) else None,
+               "sweep": {}}
+    for f_ in FRACTIONS:
+        sp = _stats(_window(got[f"sip@{f_}"], lo, hi))
+        fl = _stats(_window(got[f"flip@{f_}"], lo, hi))
+        un = _stats(_window(ugot[f"unf@{f_}"], lo, hi))
+        fr = _stats(_window(got[f"sipfree@{f_}"], lo, hi))
+        a = np.array([t.gross_r for t in _window(got[f"sip@{f_}"], lo, hi)])
+        b = np.array([t.gross_r for t in _window(ugot[f"unf@{f_}"], lo, hi)])
+        d = float(a.mean() - b.mean()) if len(a) and len(b) else float("nan")
+        se = (float(np.sqrt(a.var(ddof=1) / len(a) + b.var(ddof=1) / len(b)))
+              if len(a) > 1 and len(b) > 1 else float("nan"))
+        m, l_, h_, n_ = _paired(_window(got[f"sip@{f_}"], lo, hi),
+                                _window(got[f"flip@{f_}"], lo, hi))
+        payload["sweep"][str(f_)] = {
+            "sip": sp, "flip": fl, "unfiltered": un, "sip_zero_cost": fr,
+            "vs_unfiltered": d, "vs_unfiltered_lo": d - 1.96 * se,
+            "vs_unfiltered_hi": d + 1.96 * se,
+            "paired_vs_flip": m, "paired_lo": l_, "paired_hi": h_, "pairs": n_,
+        }
+    OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
+    OUT_JSON.write_text(json.dumps(payload, indent=1))
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text("\n".join(L) + "\n")
     print("\n".join(L))

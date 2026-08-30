@@ -24,7 +24,9 @@ primitives/      structure, liquidity, imbalance, session, trend, timeframe,
 backtest/        types, fills, engine (event replay), stats, regime, htf
 models/          model specs + GATES.md and per-model GATE.md, the bars
 reports/         measured results, per-trade dumps, equity curves
-tests/           364 tests
+sip/             ENGINE-6 only: the market-wide universe, the stocks-in-play
+                 selection, and the three fetch stages behind them
+tests/           409 tests
 ```
 
 ## The as-of contract
@@ -56,14 +58,30 @@ python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt
     --symbols SPY,QQQ,IWM --start 2012-01-01 --end 2026-08-28
 .venv/bin/python run_engine4.py                          # ENGINE-4: both
                                                          # orb_simple variants
+.venv/bin/python run_engine5.py                          # ENGINE-5: four
+                                                         # managed variants
+
+# ENGINE-6 replicates a published result and needs its own market-wide
+# snapshot. Every stage is resumable and skips what is already on disk.
+.venv/bin/python sip/fetch_grouped.py    # every ticker that traded, daily
+.venv/bin/python sip/fetch_types.py      # security type, so it is stocks
+.venv/bin/python sip/fetch_open5.py      # 09:30-10:30 for the pool
+.venv/bin/python run_engine6.py --stage plan             # the selection
+.venv/bin/python sip/fetch_days.py --pairs data/polygon-sip-v1/pairs.json
+.venv/bin/python sip/manifest.py         # audit before believing anything
+.venv/bin/python run_engine6.py --stage run              # ENGINE-6
+.venv/bin/python run_engine6_diag.py                     # its post-mortem
 ```
 
 The Polygon key is read from `apps/api/.env.local` and never written anywhere.
 It is **shared with `~/breakout-alert-system`'s Railway crons**: the fetcher runs
-four concurrent requests and backs off hard on 429. The cache (`engine/data/`, ~580 MB across two snapshots) is not committed — it is
-reproducible from the manifests. There are two snapshots and **no report may mix
+four concurrent requests and backs off hard on 429. The cache (`engine/data/`, ~4.2 GB across three snapshots) is not committed — it is
+reproducible from the manifests. There are three snapshots and **no report may mix
 them**: `polygon-v1` (32 symbols, 2023-09 → 2026-08) is ENGINE-1 through
-ENGINE-3, and `polygon-deep-v1` (SPY/QQQ/IWM, 2012-01 → 2026-08) is ENGINE-4.
+ENGINE-3, `polygon-deep-v1` (SPY/QQQ/IWM, 2012-01 → 2026-08) is ENGINE-4 and
+ENGINE-5, and `polygon-sip-v1` (every US ticker's daily bars 2015-10 → 2026-08,
+opening 5-minute bars for a 1,000-name rolling pool, and one-minute bars for the
+105,690 symbol-days the selector chose) is ENGINE-6.
 
 ## Rules of this directory
 
