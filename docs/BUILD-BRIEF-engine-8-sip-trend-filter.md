@@ -46,21 +46,31 @@ high AND higher low, last swing low unbroken; mirror for down), evaluated on the
 3. Whether the filter's benefit (if any) survives when the both-sides-broke
    mornings are excluded — i.e. is it a genuine directional edge or just a tie-break?
 
-## The data honesty problem — state it in the plain-English summary
+## The evaluation window — owner's call, 2026-08-29
 
-**The held-back window (2024-01 → 2026-08) has already been used twice.** This
-would be a third look, and a third look is weak evidence no matter how the number
-comes out.
+*"only use data from past 5 years. we should keep the current strat + the trend
+confluence + top 20 etc"*
 
-So: **evaluate primarily on 2016–2023.** This filter is a NEW idea and was not
-chosen by looking at that window, so it is a fair test there — unlike the stop
-width, which was. Report 2024–2026 as a clearly-labelled **third use, weakened
-evidence**, not as the verdict.
+**Window: 2021-08-29 → 2026-08-28.** Everything before that is out. The rationale
+is a trading judgement rather than a statistical one — market character (spreads,
+participation, the retail/0DTE regime) is not the same as 2016's, and a model that
+has to work in today's market should be judged on today's market. Earlier years
+stay in the cache; they are simply not the subject.
 
-Pre-register `engine/models/orb_sip.v3/GATE.md` in the same commit as the spec,
-before any evaluation. Run the matched control and the random-20 comparison.
-Report gross before net, median beside mean, stop-out share, and the money figure
-per $1,000 risked so the owner can read it without R-multiples.
+**Split, to keep this a test rather than a fit:**
+- **Build window: 2021-08-29 → 2025-08-28** (four years). Everything is decided here.
+- **Verdict window: 2025-08-29 → 2026-08-28** (twelve months, held back). Nothing
+  looks at it until the spec and gate are frozen.
+
+Say plainly in the report that the 2024–2026 span has been touched by earlier
+lanes, so the final year is not virgin data in the strictest sense — it is the
+cleanest available under the owner's constraint, and the honest framing is
+"suggestive, not conclusive". Do not overstate it either way.
+
+A consequence to state, not to work around: five years and a trend filter that
+sits out sideways markets will cut the sample hard. **If the held-back year has
+too few trades to conclude, say INCONCLUSIVE.** Do not widen the window to
+manufacture significance — the owner chose the window deliberately.
 
 ## Out of scope
 
