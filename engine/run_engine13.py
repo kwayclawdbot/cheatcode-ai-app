@@ -44,7 +44,8 @@ from engine.models.orb_sip_15c import OrbSip15Close, OrbSip15CloseSpy  # noqa: E
 from engine.models.orb_sip_v2 import OrbStocksInPlayV2  # noqa: E402
 from engine.models.spy_ref import SpyPanel  # noqa: E402
 from engine.run_backtest import git_rev  # noqa: E402
-from engine.run_engine6 import COSTS, FREE, _atr_map, _window  # noqa: E402
+from engine.run_engine6 import (ARM_SIP, ARM_UNFILTERED, COSTS,  # noqa: E402
+                                FREE, _atr_map, _window)
 from engine.sip import config as scfg  # noqa: E402
 
 REPORT = (Path(__file__).resolve().parent / "reports"
@@ -147,6 +148,27 @@ def _replay(days_by_symbol: dict[str, set[int]], atr: dict,
                   f"{len(trades[(G.ORB15C, 'net')]):,} orb15c trades, "
                   f"{el/60:.1f} min", flush=True)
     return trades, census, missing
+
+
+def _replay_reference(days_by_symbol: dict[str, set[int]], atr: dict) -> list:
+    """The incumbent's rules on ENGINE-6's random-20 selection.
+
+    A reference point, not an arm: it makes a losing number readable and no
+    gate in `gates13.py` reads it.
+    """
+    out: list = []
+    for sym, days in sorted(days_by_symbol.items()):
+        try:
+            series = cache_load.load(sym, "1m", scfg.SNAPSHOT)
+        except FileNotFoundError:
+            continue
+        model = OrbStocksInPlayV2(atr)
+        t, _ = run_symbol(series, model, COSTS, warmup_days=0,
+                          day_filter=lambda d, days=days: int(d) in days)
+        model.finish()
+        out.extend(t)
+        cache_load.load.cache_clear()
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -252,16 +274,27 @@ def main() -> int:
     print(f"  snapshot (SPY reference): {SPY_SNAPSHOT}", flush=True)
 
     sel = _load_selection()
-    rows = sel["rows"]
+    # ENGINE-6 wrote TWO arms into this file: `sip`, the day's twenty stocks in
+    # play, and `unfiltered`, its random-20 matched control. Only the first is
+    # the incumbent's selection. Replaying both together silently blends the
+    # strategy with its own coin toss, which is what the first run of this file
+    # did — caught by the pre-registered requirement that the baseline arm
+    # reproduce ENGINE-7's held-back figures, which it did not.
+    rows = [r for r in sel["rows"] if r["arm"] == ARM_SIP]
+    ctl_rows = [r for r in sel["rows"] if r["arm"] == ARM_UNFILTERED]
     pairs = {(r["symbol"], int(r["day"])) for r in rows}
     days_by_symbol: dict[str, set[int]] = {}
     for s, d in pairs:
         days_by_symbol.setdefault(s, set()).add(d)
-    print(f"  selection: {len(pairs):,} symbol-days, "
-          f"{len(days_by_symbol):,} symbols (ENGINE-6's file, unchanged)",
-          flush=True)
+    ctl_by_symbol: dict[str, set[int]] = {}
+    for r in ctl_rows:
+        ctl_by_symbol.setdefault(r["symbol"], set()).add(int(r["day"]))
+    print(f"  selection: {len(pairs):,} stocks-in-play symbol-days, "
+          f"{len(days_by_symbol):,} symbols (ENGINE-6's file, unchanged); "
+          f"{len(ctl_rows):,} random-20 control rows held aside as the "
+          f"reference", flush=True)
 
-    atr = _atr_map(pairs)
+    atr = _atr_map(pairs | {(r["symbol"], int(r["day"])) for r in ctl_rows})
     print(f"  ATR (reporting only) for {len(atr):,} symbol-days", flush=True)
 
     spy_series = cache_load.load("SPY", "1m", SPY_SNAPSHOT)
@@ -276,6 +309,13 @@ def main() -> int:
     net = {a: trades[(a, "net")] for a in G.ARMS}
     gross = {a: trades[(a, "gross")] for a in G.ARMS}
 
+    # The random-20 reference, required by the GATE's report list. It is the
+    # incumbent's rules on ENGINE-6's coin-toss selection, so a losing arm can
+    # be read against something. It is NOT an arm and no gate reads it.
+    print("  replaying the random-20 reference...", flush=True)
+    ctl = _replay_reference(ctl_by_symbol, atr)
+    print(f"  random-20 reference: {len(ctl):,} trades", flush=True)
+
     v_lo, v_hi = _d(G.VERDICT[0]), _d(G.VERDICT[1])
     d_lo, d_hi = _d(G.DISCLOSURE[0]), _d(G.DISCLOSURE[1])
     v_net = {a: _window(net[a], v_lo, v_hi) for a in G.ARMS}
@@ -283,7 +323,13 @@ def main() -> int:
     d_net = {a: _window(net[a], d_lo, d_hi) for a in G.ARMS}
 
     summaries = {a: summarise(v_net[a], a) for a in G.ARMS}
-    gross_means = {a: _gross_mean(v_gross[a]) for a in G.ARMS}
+    # "Gross" means what it has meant since ENGINE-6: `gross_r` off the
+    # cost-laden replay — commission excluded, slippage still inside the fills.
+    # Keeping the definition identical is the only reason the number is
+    # comparable with ENGINE-6 through -12. The separate zero-cost replay is
+    # reported beside it as `true zero cost`, and is not what any gate reads.
+    gross_means = {a: _gross_mean(v_net[a]) for a in G.ARMS}
+    zero_cost = {a: _gross_mean(v_gross[a]) for a in G.ARMS}
     paired = {
         G.ORB15C: _paired_by_day(v_net[G.ORB15C], v_net[G.BASELINE]),
         G.ORB15C_SPY: _paired_by_day(v_net[G.ORB15C_SPY], v_net[G.BASELINE]),
@@ -301,7 +347,7 @@ def main() -> int:
     _write_trades(v_net)
     _write_report(sel, verdict, rows_g, summaries, gross_means, paired, eras,
                   v_net, v_gross, d_net, net, census, missing, spy,
-                  time.time() - t_start)
+                  _window(ctl, v_lo, v_hi), zero_cost, time.time() - t_start)
     print(f"\n  wrote {REPORT}", flush=True)
     print(f"  wrote {TRADES_OUT}", flush=True)
     return 0
@@ -309,7 +355,7 @@ def main() -> int:
 
 def _write_report(sel, verdict, rows_g, summaries, gross_means, paired, eras,
                   v_net, v_gross, d_net, all_net, census, missing, spy,
-                  elapsed) -> None:
+                  v_ctl, zero_cost, elapsed) -> None:
     L = []
     w = L.append
 
@@ -412,20 +458,54 @@ def _write_report(sel, verdict, rows_g, summaries, gross_means, paired, eras,
       "trade count, because trades on the same morning are not independent of "
       "each other and the day count is the honest sample size.")
     w("")
-    w("| arm | trades | days | mean gross R | mean net R | median net R | "
-      "money per $1,000 | 95% range | hit | stopped out |")
-    w("|---|---|---|---|---|---|---|---|---|---|")
+    w("| arm | trades | days | mean gross R | true zero cost | mean net R | "
+      "median net R | money per $1,000 | 95% range | hit | stopped out |")
+    w("|---|---|---|---|---|---|---|---|---|---|---|")
     for a in G.ARMS:
         s = summaries[a]
         lo, hi = G.mean_ci95([t.net_r for t in v_net[a]])
         w(f"| `{a}` | {s.n:,} | {_days(v_net[a]):,} | "
-          f"{gross_means[a]:+.4f} | {s.mean_r:+.4f} | {s.median_r:+.4f} | "
+          f"{gross_means[a]:+.4f} | {zero_cost[a]:+.4f} | {s.mean_r:+.4f} | "
+          f"{s.median_r:+.4f} | "
           f"{_money(s.mean_r)} | {_money(lo)} to {_money(hi)} | "
           f"{s.hit_rate*100:.1f}% | {_stop_out_share(v_net[a])*100:.1f}% |")
+    w("")
+    ctl_s = summarise(v_ctl, "random 20")
+    ctl_lo, ctl_hi = G.mean_ci95([t.net_r for t in v_ctl]) if v_ctl else (float("nan"),) * 2
+    w(f"| *random 20 (reference, not an arm)* | {ctl_s.n:,} | {_days(v_ctl):,} | "
+      f"— | — | {ctl_s.mean_r:+.4f} | {ctl_s.median_r:+.4f} | {_money(ctl_s.mean_r)} | "
+      f"{_money(ctl_lo)} to {_money(ctl_hi)} | {ctl_s.hit_rate*100:.1f}% | "
+      f"{_stop_out_share(v_ctl)*100:.1f}% |")
     w("")
     w(SUMMARY_HEADER)
     for a in G.ARMS:
         w(summary_row(summarise(v_net[a], a)))
+    w(summary_row(ctl_s))
+    w("")
+
+    # -- the reproduction check --------------------------------------------
+    bs = summaries[G.BASELINE]
+    w("### Proof that the baseline arm IS the incumbent")
+    w("")
+    w("ENGINE-7 decided its PARTIAL on this exact window. If the `baseline` arm "
+      "here does not reproduce those figures, this lane's comparison is against "
+      "something that is not the incumbent and no number below means anything. "
+      "**The first run of this lane failed this check** — it replayed both arms "
+      "of ENGINE-6's selection file, blending the stocks-in-play picks with the "
+      "random-20 control, and returned a baseline of −0.0192R. That run was "
+      "discarded, the selection filter was fixed, and this is the re-run.")
+    w("")
+    w("| | ENGINE-7 reported | this run | |")
+    w("|---|---|---|---|")
+    for name, want, got in (
+            ("trades", "10,545", f"{bs.n:,}"),
+            ("mean gross R", "+0.0324", f"{gross_means[G.BASELINE]:+.4f}"),
+            ("mean net R", "+0.0199", f"{bs.mean_r:+.4f}"),
+            ("median net R", "-0.1180", f"{bs.median_r:+.4f}"),
+            ("hit rate", "45.0%", f"{bs.hit_rate*100:.1f}%"),
+            ("stopped out", "31.6%", f"{_stop_out_share(v_net[G.BASELINE])*100:.1f}%")):
+        ok = want.replace(",", "").lstrip("+") == got.replace(",", "").lstrip("+")
+        w(f"| {name} | {want} | {got} | {'match' if ok else '**differs**'} |")
     w("")
 
     # -- stop geometry ------------------------------------------------------
@@ -455,7 +535,7 @@ def _write_report(sel, verdict, rows_g, summaries, gross_means, paired, eras,
     w("")
     w(f"orb15c and the incumbent both traded **{shared:,}** of the same "
       f"symbol-days in the verdict window. They took **opposite sides** on "
-      f"**{opp:,}** of them ({opp/shared*100:.1f}% if shared else 0). On those "
+      f"**{opp:,}** of them ({opp / shared * 100 if shared else 0:.1f}%). On those "
       f"symbol-days orb15c returned {_money(a_opp)} a trade and the incumbent "
       f"{_money(b_opp)}.")
     w("")
