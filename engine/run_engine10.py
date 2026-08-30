@@ -410,15 +410,27 @@ def write_report(sel, arms: list[Arm], v2, v2_flip, rnd_v2, atr,
           "failure.")
         A("")
 
+    v2_years = sorted(split_by(v2, lambda t: str(t.day)[:4]))
+    v2_pos = [k for k, ts in sorted(split_by(v2, lambda t: str(t.day)[:4]).items())
+              if summarise(ts, "").mean_r > 0]
     A("**And the sentence that has to sit beside every held-back number in "
-      "this family.** Across the full five years `orb_sip.v2` returns "
-      f"{_usd(summarise(v2_all,'').mean_r)} per $1,000 risked and "
-      "`orb_sip.v3` about −$7, and both are positive in only 2 of the 6 "
-      "calendar years they touch. **The held-back year is the good year.** "
-      "The window was fixed in advance by the owner and by the calendar rather "
-      "than chosen, so this is not cherry-picking — but a reader who sees only "
-      "the verdict column is seeing one year in five, and the other four are "
-      "printed above and below it for exactly that reason.")
+      "this family \u2014 with one correction this lane owes the brief that "
+      "commissioned it.** ENGINE-8 reported that across the full five years "
+      "its model returns about \u2212$7 per $1,000 risked, is positive in only "
+      "2 of the 6 calendar years it touches, and that the held-back year is "
+      "the good year. **That is true of `orb_sip.v3`, the TREND-FILTERED "
+      "model, and it is not true of `orb_sip.v2`.** Measured here over the "
+      f"same five years, `orb_sip.v2` returns "
+      f"{_usd(summarise(v2_all,'').mean_r)} per $1,000 risked, is positive in "
+      f"{len(v2_pos)} of the {len(v2_years)} calendar years it touches, and "
+      f"its held-back year ({_usd(summarise(v2_hb,'').mean_r)} a trade) is "
+      "ordinary rather than exceptional. So for the reading that survives "
+      "below, the \"one good year\" warning is weaker than the brief assumed, "
+      "and the five-year column is printed beside the held-back one anyway. "
+      "**What has not changed is the SIZE.** An average trade worth a few "
+      "tens of dollars per $1,000 risked, with an error bar that spans zero, "
+      "is not an edge anybody can stand behind \u2014 and it is the same few "
+      "tens of dollars whether you read one year or five.")
     A("")
 
     # --- per-arm detail ----------------------------------------------------
@@ -551,6 +563,27 @@ def write_report(sel, arms: list[Arm], v2, v2_flip, rnd_v2, atr,
     A(f"| `{arms[0].model_id}` minus `{arms[1].model_id}` | {len(diff):,} | "
       f"**{dm:+.4f}R** | {dlo:+.4f} to {dhi:+.4f} | {_money(dm)} |")
     A("")
+    def _sub(ts):
+        return [t for t in ts if (t.symbol, t.day) in common_hb]
+    ga, gb = _stop_geometry(_sub(arms[0].model), atr), _stop_geometry(_sub(arms[1].model), atr)
+    gv = _stop_geometry(_sub(v2), atr)
+    A("**Both readings land where the ENGINE-6 stop sweep said they would, and "
+      "that is the one genuinely new piece of evidence in this lane.** That "
+      "sweep was computed on 2016-2023 and predicted the sign of this whole "
+      "family from stop width alone: \u22120.635R at 0.10\u00d7 the 14-day "
+      "average range, \u22120.073R at 0.25\u00d7, +0.005R at 0.50\u00d7, "
+      "+0.012R at 1\u00d7. Neither of the owner's readings was taken from that "
+      "sweep \u2014 both come from his own words \u2014 so where they land on "
+      f"it is an out-of-sample test of the sweep as much as of them. "
+      f"`{arms[0].model_id}` places a {ga['atr']:.2f}\u00d7 stop and returns "
+      f"{_usd(_mean_net(_sub(arms[0].model)))} per $1,000 risked; "
+      f"`{arms[1].model_id}` places a {gb['atr']:.2f}\u00d7 stop and returns "
+      f"{_usd(_mean_net(_sub(arms[1].model)))}; `orb_sip.v2` places a "
+      f"{gv['atr']:.2f}\u00d7 stop and returns {_usd(_mean_net(_sub(v2)))}. "
+      "**Stop width, and not the direction call, is still the parameter that "
+      "decides what this family earns** \u2014 now confirmed on a later "
+      "window, by a rule nobody derived from the sweep.")
+    A("")
     A("**The ambiguity, closed.** The literal reading of *\"the 5min candle "
       "before the entry candle\"*, taken as the candle that broke out with the "
       "entry at the open of the next one, is "
@@ -651,6 +684,17 @@ def write_report(sel, arms: list[Arm], v2, v2_flip, rnd_v2, atr,
         A(f"| `{arm.model_id}` | {f_:+.4f}R ({_money(f_)}) | {c_:+.4f}R "
           f"({_money(c_)}) | {m_:+.4f}R ({_money(m_)}) | {f_-m_:.4f}R "
           f"({_money(-(f_-m_))}) |")
+    A("")
+    A("**Read the middle column carefully, because it goes the wrong way and "
+      "that is not a bug.** Quarter-bp slippage is CHEAPER than the "
+      "pre-registered model, and the trigger arm still looks worse under it. "
+      "Slippage moves the fill, and the fill is one end of the stop distance: "
+      "a fill closer to the breakout level means a narrower stop, which means "
+      "every dollar won or lost is divided by a smaller number. At a stop this "
+      "tight the denominator moves more than the numerator does. It is the "
+      "same arithmetic ENGINE-4 found on SPY running in the other direction, "
+      "and it is one more way of saying that a stop of a few cents is not a "
+      "stop, it is a rounding error with a name.")
     A("")
 
     # --- confidence and limits ---------------------------------------------

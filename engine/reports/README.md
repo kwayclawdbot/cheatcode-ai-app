@@ -1,10 +1,9 @@
 # engine/ — what was measured, and what happened
 
-**Fourteen models have now been measured against bars written down before each
-test was run. Nine failed, one came back inconclusive on both of its exits, the
-eleventh — a replication of a published, peer-reviewed result — came back NOT
-REPRODUCED, and the last three came back PARTIAL, which the gates defined in
-advance as not a pass.**
+**Sixteen models have now been measured against bars written down before each
+test was run. Ten failed, one came back inconclusive on both of its exits, one —
+a replication of a published, peer-reviewed result — came back NOT REPRODUCED,
+and four came back PARTIAL, which the gates defined in advance as not a pass.**
 None ships. Nothing here touches the app, and no alert has been produced.
 
 **Ten models in, the same sentence keeps coming back: this programme has never
@@ -26,7 +25,11 @@ shows the harness is not the reason — remove the stop and the whole thing retu
 within 0.02 ATR of zero, exactly as a straight replay must — and isolates the one
 parameter that decides the sign. ENGINE-7 changed that one parameter to the
 companion ETF paper's reading, the opposite extreme of the opening candle, and
-judged it on the years the sweep never touched.
+judged it on the years the sweep never touched. [ENGINE-10](orb_sip.v4.polygon-sip-v1.md)
+then measured that same parameter a third and fourth time, from a rule the owner
+supplied rather than from the sweep, and both readings landed exactly where the
+sweep said they would — which makes stop width the only parameter this programme
+has ever found that decides what a model earns, and it does so out of sample.
 
 That is the intended kind of outcome. It cost a week; the alternative — the one
 the existing SMS engine took — costs a paying customer.
@@ -48,6 +51,8 @@ the existing SMS engine took — costs a paying customer.
 | ENGINE-7 | [`orb_sip.v2`](orb_sip.v2.polygon-sip-v1.md) — the same model, stopped at the opposite extreme of the opening candle, 10,545 held-back trades | **PARTIAL** — money and the filter, but the direction call lost to a coin flip |
 | ENGINE-8 | [`orb_sip.v3`](orb_sip.v3.polygon-sip-v1.md) — the same model again, with a daily-trend-agreement gate, 996 held-back trades | **PARTIAL** — and the filter did not fix the failure it was aimed at |
 | ENGINE-8 | [`orb_sip.v3_15m`](orb_sip.v3.polygon-sip-v1.md) — the same gate on a 15-minute opening range, 892 held-back trades | **PARTIAL** — same three gates failed |
+| ENGINE-10 | [`orb_sip.v4_trigger`](orb_sip.v4.polygon-sip-v1.md) — the owner's candle stop, literal reading, 3,969 held-back trades | **FAILED** — stopped out on 85.8% of trades, −$605 per $1,000 risked |
+| ENGINE-10 | [`orb_sip.v4_prior`](orb_sip.v4.polygon-sip-v1.md) — the owner's candle stop, the other reading, 3,967 held-back trades | **PARTIAL** — +$15 per $1,000, indistinguishable from v2 and from zero |
 
 Read [ENGINE-2's report](orb_htf_structural.v1.polygon-v1.md) for the finding the
 whole family turns on: the setup earns about 4.6 cents a share before costs and
@@ -833,3 +838,83 @@ stop ENGINE-6 later showed was wrong — a filter on a broken base measures the
 base, so they did not settle this. ENGINE-8 ran the same idea on the base that
 does clear zero, with a survivorship-free universe and the stocks-in-play
 selection, and got the same answer. **The prior was a null and it did not move.**
+
+---
+
+# ENGINE-10 — the owner's own stop, both readings of it, and one of them is the ENGINE-6 failure again
+
+Brief: the owner's spec of 2026-08-29, verbatim — *"we should only take an entry
+on the breakout of orb, stop at the low of 5min candle before the entry candle
+(if bullish) and top if bearish. if stopped out we take the loss"*.
+Gate: [`../models/orb_sip.v4_trigger/GATE.md`](../models/orb_sip.v4_trigger/GATE.md),
+which governs both arms and was committed at `5e30155`, before any number
+existed.
+
+`orb_sip.v4` is `orb_sip.v2` with **one rule changed** — the stop moves from the
+opposite extreme of the opening range to a five-minute candle at the breakout.
+No trend filter, no re-entry, no breakeven move, no partial; *"if stopped out we
+take the loss"* was already how the model behaved and was confirmed rather than
+built. The sentence is ambiguous for the third time in this programme, so **both
+readings were pre-registered as arms and both were run**: `v4_trigger` stops at
+the extreme of the candle the fill happened in, `v4_prior` at the one before it.
+
+## The answer, in one line
+
+**One reading is the ENGINE-6 catastrophe rebuilt from the owner's own words —
+85.8% stopped out, −$605 per $1,000 risked, negative in all six calendar years.
+The other is `orb_sip.v2` with a slightly tighter stop and no measurable
+difference from it.**
+
+| | held back | all five years | stopped | median stop | verdict |
+|---|---|---|---|---|---|
+| `orb_sip.v4_trigger` | **−$605** per $1,000, n=3,969 | −$658, n=20,141 | **85.8%** | 37¢ (0.17× ATR) | **FAILED** |
+| `orb_sip.v4_prior` | **+$15** per $1,000, n=3,967 | +$17, n=20,126 | 44.3% | 118¢ (0.51× ATR) | **PARTIAL** |
+| `orb_sip.v2`, same trades | +$17 per $1,000 | +$18 | 31.3% | 164¢ (0.72× ATR) | ENGINE-7's PARTIAL |
+| ENGINE-6's published stop | — | −$635 | 90.1% | 12¢ (0.10× ATR) | NOT REPRODUCED |
+
+## Four findings
+
+**1. The ENGINE-6 diagnosis reproduced itself out of sample, from a rule nobody
+derived from it.** The ENGINE-6 stop sweep was computed on 2016–2023 and
+predicted the sign of this whole family from stop width alone: −0.635R at 0.10×
+the 14-day range, −0.073R at 0.25×, +0.005R at 0.50×, +0.012R at 1×. The
+trigger arm's realised stop is **0.17×** and it returns **−0.605R**; the prior
+arm's is 0.51× and it returns +0.015R; v2's is 0.72× and it returns +0.017R.
+Three points on a 2021–2026 tape, landing exactly on a curve fitted to nothing,
+from a rule that came out of the owner's mouth rather than out of the sweep.
+**Stop width, not the direction call, is still the only parameter this
+programme has found that decides what this family earns.**
+
+**2. The literal reading is the one that fails, and it fails the way the
+published version failed.** A stop at the extreme of the candle you broke out in
+is a median 37¢ — a tenth of the width of v2's — and it is hit on 85.8% of
+trades against v2's 31.3% on the *same entries*. Paired trade for trade it is
+**−0.622R** worse than v2 (95%: −0.675 to −0.568). It is not that the idea is
+wrong; it is that the trade is knocked out before the idea has a chance to be
+right or wrong.
+
+**3. The other reading is v2 wearing a different hat.** On **62.5%** of its
+trades the "candle before" IS the 09:30–09:35 opening range, because 62% of
+breakouts happen in the first five minutes after the range closes — so on those
+trades `v4_prior` and `orb_sip.v2` are the same model. Paired on the rest, the
+difference is **−0.0016R** (95%: −0.026 to +0.023). It is a null, and it is the
+tightest null in this lane.
+
+**4. Nothing here changes the size of the thing.** `v4_prior` clears its sign
+gate and fails the other three: its direction call loses to a coin flip
+(−0.152R paired, interval excluding zero), the stocks-in-play filter is no
+longer distinguishable from twenty random names on a single year's 251 days
+(+0.055R, 95%: −0.015 to +0.125), and the portfolio makes +30.0% at a Sharpe of
+0.93 against a bar of 1.0. **PARTIAL is not a pass and the gate said so before
+the run.**
+
+## One correction this lane owes its own brief
+
+The brief said `orb_sip.v2` returns about −$7 per $1,000 over the full five
+years and is positive in only 2 of 6 calendar years. **That is `orb_sip.v3` —
+the trend-filtered model — not `orb_sip.v2`.** Measured here, v2 returns +$18
+per $1,000 over 20,141 trades and is positive in 6 of 6, and its held-back year
+(+$17) is ordinary rather than exceptional. The "one good year" warning is real
+for ENGINE-8's model and weaker for ENGINE-7's. What has not changed is the
+size: a few tens of dollars per $1,000 risked with an error bar that spans zero
+is not an edge anybody can stand behind, whether you read one year or five.
