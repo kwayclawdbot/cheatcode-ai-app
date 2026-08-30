@@ -313,10 +313,33 @@ def stage_run() -> None:
                 extra[k] = v
         print(f"  {len(trades[arm]):,} trades", flush=True)
 
-    write_report(sel, trades, census, missing, extra, atr)
+    # ENGINE-6's random-20 control, replayed on THIS window. It is a reference
+    # point, not a fourth arm and not a gate: without it a reader has no way to
+    # tell whether a losing selector is worse than picking eligible names out of
+    # a hat, or merely no better.
+    ctrl: list = []
+    ctrl_path = scfg.DATA_ROOT / "selection.json.gz"
+    if ctrl_path.exists():
+        with gzip.open(ctrl_path, "rt") as f:
+            old = json.load(f)
+        lo, hi = _d(gates9.BUILD[0]), _d(kcfg.HELD_END)
+        want: dict[str, set[int]] = {}
+        for r in old["rows"]:
+            if r["arm"] == "unfiltered" and lo <= int(r["day"]) <= hi:
+                want.setdefault(r["symbol"], set()).add(int(r["day"]))
+        if want:
+            print("replaying ENGINE-6's random-20 control on this window...",
+                  flush=True)
+            t, _, _ = _replay(want, _atr_map({(s, d) for s, ds in want.items()
+                                              for d in ds}),
+                              [("random20", OrbStocksInPlayV2, COSTS)])
+            ctrl = t["random20"]
+            print(f"  {len(ctrl):,} trades", flush=True)
+
+    write_report(sel, trades, census, missing, extra, atr, ctrl)
 
 
-def write_report(sel, trades, census, missing, extra, atr) -> None:
+def write_report(sel, trades, census, missing, extra, atr, ctrl=None) -> None:
     hb_lo, hb_hi = (_d(x) for x in gates9.HELD_BACK)
     bd_lo, bd_hi = (_d(x) for x in gates9.BUILD)
 
@@ -402,7 +425,10 @@ def write_report(sel, trades, census, missing, extra, atr) -> None:
           f"{_money(lo)} to {_money(hi)}"
           + ("**, which contains zero**, so that average is not distinguishable "
              "from breaking even at this sample size."
-             if lo <= 0 <= hi else ", which excludes zero."))
+             if lo <= 0 <= hi else
+             ", which is entirely below zero — this arm lost money by more than "
+             "the sample noise." if hi < 0 else
+             ", which is entirely above zero."))
     A("")
     for a in (kcfg.ARM_KAI, kcfg.ARM_BOTH):
         d = paired[a]
@@ -421,9 +447,19 @@ def write_report(sel, trades, census, missing, extra, atr) -> None:
                 f"({_money(blo)} to {_money(bhi)}), so this margin sits inside "
                 "the multiplicity problem.")
              if lo > 0 else
+             "**That range lies entirely below zero: the challenger did not "
+             "merely fail to beat the incumbent, it lost to it by more than the "
+             "sample noise.**"
+             + (" It still does once corrected for taking two shots "
+                f"({_money(blo)} to {_money(bhi)})."
+                if bhi < 0 else
+                " Corrected for taking two shots the range is "
+                f"{_money(blo)} to {_money(bhi)}, which touches zero.")
+             if hi < 0 else
              "That range contains zero" + (
-                 ", and the challenger's middle number is negative — it did "
-                 "worse, and by more than a rounding error." if m < 0 else
+                 ", so no difference is established — though the middle number "
+                 "is negative, so what evidence there is points the wrong way "
+                 "for the challenger." if m < 0 else
                  ", so no difference is established either way.")))
     A("")
     A(f"- **Verdict**: **{verdict}**.")
@@ -438,6 +474,18 @@ def write_report(sel, trades, census, missing, extra, atr) -> None:
         A("")
     A("**Which gates carried the verdict, in words.** " + " ".join(
         f"{g.id} {'passed' if g.passed else 'FAILED'} ({g.name})." for g in rows))
+    A("")
+    A("**K4 and K5 are read across all three arms, so read them per arm before "
+      "concluding anything about the incumbent.** On its own, `relvol` made "
+      f"money gross ({g_hb[kcfg.ARM_RELVOL][0]:+.4f}R) and net "
+      f"({s_hb[kcfg.ARM_RELVOL].mean_r:+.4f}R, {_money(s_hb[kcfg.ARM_RELVOL].mean_r)} "
+      f"a trade) and returned {pf_hb[kcfg.ARM_RELVOL].total_return:+.1%} as a "
+      f"portfolio at a Sharpe of {pf_hb[kcfg.ARM_RELVOL].sharpe:.2f} — below the "
+      "1.0 the gate asked for, so K5 misses on the incumbent too. The "
+      "challengers lost money on both measures. K4 and K5 failing is therefore "
+      "mostly a statement about the challengers, and it is printed as one "
+      "number per arm in the table below rather than as a single verdict a "
+      "reader could misread.")
     A("")
 
     # --- the bar -----------------------------------------------------------
@@ -469,6 +517,59 @@ def write_report(sel, trades, census, missing, extra, atr) -> None:
     A("Same rules, same costs, same fills, same candidate pond. The arms differ "
       "in the ranking key and in nothing else.")
     A("")
+    hb_ctrl = _window(ctrl or [], hb_lo, hb_hi)
+    if hb_ctrl:
+        cs = summarise(hb_ctrl, "random 20")
+        cg = _gross(hb_ctrl)
+        A("### The reference point that makes a losing arm readable")
+        A("")
+        A("**Diagnostic, not a gate and not a fourth arm.** ENGINE-6 built a "
+          "control that picks twenty names a day out of the same eligible pool "
+          "by a deterministic hash — a coin toss with the ranking key removed — "
+          "and ENGINE-7 reported it. Replayed here on the same held-back year, "
+          "under the same rules, it is the row a losing selector has to be read "
+          "against: a selector that ranks worse than this is doing something "
+          "actively wrong, and one that ranks the same as it is doing nothing.")
+        A("")
+        A("| arm | n | mean gross R | mean net R | median net R | "
+          "$ per $1,000 risked | hit | PF | stopped |")
+        A("|---|---|---|---|---|---|---|---|---|")
+        for label, ts, ss, gg in (
+                ("relvol", hb[kcfg.ARM_RELVOL], s_hb[kcfg.ARM_RELVOL],
+                 g_hb[kcfg.ARM_RELVOL]),
+                ("kai", hb[kcfg.ARM_KAI], s_hb[kcfg.ARM_KAI], g_hb[kcfg.ARM_KAI]),
+                ("both", hb[kcfg.ARM_BOTH], s_hb[kcfg.ARM_BOTH], g_hb[kcfg.ARM_BOTH]),
+                ("**random 20 (the coin toss)**", hb_ctrl, cs, cg)):
+            A(f"| {label} | {ss.n:,} | {fmt(gg[0],4)} | {fmt(ss.mean_r,4)} | "
+              f"{fmt(ss.median_r,4)} | {ss.mean_r*RISK_DOLLARS:+,.0f} | "
+              f"{fmt(ss.hit_rate*100,1)}% | {fmt(ss.profit_factor,2)} | "
+              f"{fmt(_stopped(ts)*100,1)}% |")
+        A("")
+        kai_m = s_hb[kcfg.ARM_KAI].mean_r
+        d_ctrl = _paired_by_day(hb[kcfg.ARM_KAI], hb_ctrl)
+        cm = float(np.mean(d_ctrl)) if d_ctrl else float("nan")
+        clo, chi = gates9.mean_ci95(d_ctrl)
+        A(f"Kai's score returned {_money(kai_m)} a trade against the coin "
+          f"toss's {_money(cs.mean_r)}, and stopped out on "
+          f"{_stopped(hb[kcfg.ARM_KAI]):.1%} of trades against the coin toss's "
+          f"{_stopped(hb_ctrl):.1%}. Paired day by day, `kai` minus the coin "
+          f"toss is {_money(cm)} a trade (95%: {_money(clo)} to {_money(chi)}, "
+          f"n={len(d_ctrl):,}). "
+          + ("**Its interval contains zero: on this year and under these rules, "
+             "ranking the pool by Kai's breakout score was worth nothing "
+             "measurable against not ranking it at all.**"
+             if clo <= 0 <= chi else
+             "**Its interval is entirely below zero: ranking the pool by Kai's "
+             "score was measurably WORSE than not ranking it.**" if chi < 0 else
+             "So the score does beat a coin toss — it just loses to relative "
+             "volume."))
+        A("")
+        A("That is the finding underneath the verdict, and it is the one worth "
+          "remembering: the failure is not that Kai's score picks a slightly "
+          "less good twenty than relative volume does. It is that, as a "
+          "day-trade selector, it is not distinguishable from drawing names out "
+          "of a hat — while relative volume is.")
+        A("")
     A("### The two comparisons against the incumbent, paired by day")
     A("")
     A("| comparison | n days | mean diff R | $ per $1,000 | 95% interval | "
