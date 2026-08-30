@@ -362,6 +362,20 @@ def _gradient_by_day(trades, smap) -> list[float]:
     return out
 
 
+def _clip_census() -> tuple[int, int] | None:
+    """How often the ±3 ATR clip binds — a disclosure the gate asked for, not a
+    parameter. It exists so one gapping name cannot swamp the average."""
+    if not tcfg.STRENGTH_PATH.exists():
+        return None
+    import duckdb
+    con = duckdb.connect()
+    row = con.execute(
+        f"SELECT sum(CASE WHEN clipped THEN 1 ELSE 0 END), count(*) "
+        f"FROM read_parquet('{tcfg.STRENGTH_PATH}')").fetchone()
+    con.close()
+    return (int(row[0] or 0), int(row[1] or 0))
+
+
 def _load_selection() -> dict:
     with gzip.open(tcfg.SELECTION_PATH, "rt") as f:
         return json.load(f)
@@ -1192,6 +1206,12 @@ def write_report(sel, trades, census, missing, extra, atr, smap, side_seen,
       "usable ATR")
     A(f"- and **{np.median(cov[:,4]):.0f}** had a break direction at all; the "
       "rest opened on a doji five-minute candle, which the model skips anyway")
+    clip = _clip_census()
+    if clip:
+        A(f"- the ±3 ATR clip inside the measure bound on **{clip[0]:,} of "
+          f"{clip[1]:,} pool ticker-days ({100.0*clip[0]/max(clip[1],1):.1f}%)** "
+          "— it exists to stop one gapping name swamping the average, and this "
+          "is how often it had to")
     A("")
     disagree = sum(1 for t in trades[tcfg.ARM_BASELINE]
                    if side_seen.get((t.symbol, int(t.day)), t.side) != t.side)

@@ -275,6 +275,7 @@ Nothing here can raise or lower the verdict. It is printed so a reader can see w
 - candidates a day: median **985** of a 987-name pool
 - of those, **983** on the median day had a measurable trend strength (100%) — the rest had fewer than 30 closed daily bars in the adjusted book, or no usable ATR
 - and **971** had a break direction at all; the rest opened on a doji five-minute candle, which the model skips anyway
+- the ±3 ATR clip inside the measure bound on **77,763 of 1,181,973 pool ticker-days (6.6%)** — it exists to stop one gapping name swamping the average, and this is how often it had to
 
 **Direction, five-minute aggregate against one-minute reconstruction.** The selector reads the break direction off Polygon's 09:30 five-minute bar; the model rebuilds the same candle from one-minute prints when it trades. They disagree on **0 of 20,141** baseline trades (0.00%). The selector is not allowed the one-minute tape for names it has not picked yet, so this residual is a property of the design and is printed rather than assumed away.
 
