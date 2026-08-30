@@ -133,9 +133,14 @@ def _amputation(ts):
     mfe = np.array([t.mfe_r for t in ts])
     reach = {lv: float(np.mean(mfe >= lv)) for lv in MFE_LEVELS}
     net = np.array([t.net_r for t in ts])
-    total = float(net.sum())
-    beyond = float(np.clip(net - 1.0, 0, None).sum())
-    return reach, (beyond / total if total != 0 else float("nan"))
+    n = len(net)
+    # Split each trade's result at the +1R line: what a 1R cap would have KEPT
+    # (everything up to +1R) and what it would have GIVEN AWAY (the part above).
+    # Reported per trade, not as a ratio - the ratio explodes when the total is
+    # near zero and is meaningless when it is negative.
+    beyond = float(np.clip(net - 1.0, 0, None).sum()) / n
+    kept = float(net.sum()) / n - beyond
+    return reach, (kept, beyond)
 
 
 def main() -> int:
@@ -277,20 +282,28 @@ def _report(verdict, best, rows_g, summaries, gross, zero, paired, eras, v, dw,
       "table is computed on the UNCAPPED arms, so it says what was there to "
       "lose before anything was cut.")
     w("")
-    w("| uncapped arm | reached +0.5R | +1R | +2R | +3R | +5R | **share of all "
-      "profit earned ABOVE +1R** |")
-    w("|---|---|---|---|---|---|---|")
-    beyond = {}
+    w("| uncapped arm | reached +0.5R | +1R | +2R | +3R | +5R | a cap KEEPS "
+      "(up to +1R) | a cap GIVES AWAY (above +1R) | net |")
+    w("|---|---|---|---|---|---|---|---|---|")
+    split, reach_v2 = {}, 0.0
     for a in (G.V2, G.C15):
-        reach, frac = _amputation(v[a])
-        beyond[a] = frac
+        reach, (kept, beyond) = _amputation(v[a])
+        split[a] = (kept, beyond)
+        if a == G.V2:
+            reach_v2 = reach[1.0] * 100
         w(f"| `{a}` | " + " | ".join(f"{reach[lv]*100:.1f}%" for lv in MFE_LEVELS)
-          + f" | **{frac*100:.0f}%** |")
+          + f" | {_money(kept)} | **{_money(beyond)}** | "
+            f"{_money(kept + beyond)} |")
     w("")
-    w(f"**{beyond[G.V2]*100:.0f}% of everything the incumbent earned came from "
-      f"the part of its winners above +1R.** A 1R cap gives that away by "
-      f"construction and buys a higher win rate with it. Whether that trade is "
-      f"worth making is X2, above.")
+    kept, beyond = split[G.V2]
+    w(f"**Read the incumbent's row across.** Everything up to the +1R mark is a "
+      f"net LOSS of {_money(kept)} a trade. The part of its winners ABOVE +1R "
+      f"earns {_money(beyond)} a trade. Those two sum to the "
+      f"{_money(kept + beyond)} the strategy actually makes. **The entire result "
+      f"lives above the +1R line, which is precisely what a 1R cap deletes** — "
+      f"only {reach_v2:.1f}% of trades ever get there, and they carry all of it. "
+      f"That is the mechanism, stated before the run in the GATE, and X2 is "
+      f"whether the higher win rate pays for it.")
     w("")
 
     # -- the gate table ----------------------------------------------------
