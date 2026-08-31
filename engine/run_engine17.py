@@ -254,16 +254,26 @@ def _write(verdict, rows_g, v, dw, vg, vs_v2, vs_range, census, halves, elapsed)
           f"*{r*RISK:+,.0f} dollars* |")
     w("")
     pa = _geom(v[G.C15_PRIOR])[2]
-    if pa < 0.30 or _stopout(v[G.C15_PRIOR]) > 0.60:
-        w("**THE ENGINE-6 DIAGNOSIS IS REPEATING.** The stop sits inside the "
-          "noise of the very setup the trade is defined by, so the trade is "
-          "knocked out before the idea has had a chance to be right or wrong. "
-          "This paragraph was required by the gate whatever the verdict says.")
+    ko = _stopout(v[G.C15_PRIOR])
+    if pa < 0.30 or ko > 0.60:
+        w(f"**THE ENGINE-6 DIAGNOSIS IS REPEATING.** At {pa:.2f} ATR and a "
+          f"{ko*100:.1f}% knock-out rate the stop sits inside the noise of the "
+          f"very setup the trade is defined by, so the trade is knocked out "
+          f"before the idea has had a chance to be right or wrong. This "
+          f"paragraph was required by the gate whatever the verdict says.")
+    elif pa < 0.40:
+        w(f"**The stop came in TIGHTER than the gate predicted.** It landed at "
+          f"**{pa:.2f} ATR**, below the 0.40–0.70 band written down before the "
+          f"run, with a **{ko*100:.1f}%** knock-out rate — under the 60% guard, "
+          f"but only just. This is the ENGINE-6 failure mode approached rather "
+          f"than reached: between `v4_prior`'s 0.51 ATR at 44.3% stopped and "
+          f"`v4_trigger`'s 0.17 ATR at 85.8%, this sits closer to the arm that "
+          f"failed than to the one that did not. **The prior was wrong about "
+          f"the magnitude and right about the direction.**")
     else:
-        w(f"The stop landed at **{pa:.2f} ATR** with a "
-          f"**{_stopout(v[G.C15_PRIOR])*100:.1f}%** knock-out rate, inside the "
-          f"0.4–0.7 ATR band the gate predicted and clear of the 60% guard. It "
-          f"is not repeating ENGINE-6's failure.")
+        w(f"The stop landed at **{pa:.2f} ATR** with a **{ko*100:.1f}%** "
+          f"knock-out rate, inside the 0.40–0.70 band the gate predicted and "
+          f"clear of the 60% guard.")
     w("")
     w("## The ENGINE-13 repair, quantified")
     w("")
