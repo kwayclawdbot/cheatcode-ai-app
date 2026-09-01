@@ -1038,8 +1038,8 @@ export function adaptActionPreview(env: KaiObjectEnvelope | null): KaiActionPrev
 /* partially-deployed API still renders.                                 */
 /* ==================================================================== */
 import type {
-  AlertCard, AlertCardState, AlertScoreComponent, AlertsRound4, ConversationRow,
-  ConversationsPayload, Experience, FocusKey, KaiProfile, RuleAdherence,
+  AlertCard, AlertCardState, AlertFamilyPerformance, AlertScoreComponent, AlertsRound4,
+  ConversationRow, ConversationsPayload, Experience, FocusKey, KaiProfile, RuleAdherence,
   TickerMeter, TickerPage,
 } from './types';
 
@@ -1136,6 +1136,26 @@ function adaptScoreComponent(raw: unknown, i: number): AlertScoreComponent {
 }
 
 /** `AlertCard` (packages/shared) → the card the screen draws. */
+/**
+ * SWING-1 §4. The line is only shown when there is a real n behind it — a
+ * sample of zero says nothing, so it comes back null and the card stays quiet
+ * rather than printing a 0%.
+ */
+export function adaptFamilyPerformance(raw: unknown): AlertFamilyPerformance | null {
+  const o = r4obj(raw);
+  const n = r4num(o.n);
+  const wins = r4num(o.wins);
+  const pct = r4num(o.win_pct);
+  if (n == null || n <= 0 || wins == null || pct == null) return null;
+  return {
+    family: r4str(o.family, 'This family'),
+    n, wins, win_pct: pct,
+    horizon: r4str(o.horizon, ''),
+    as_of: r4nul(o.as_of),
+    plain: r4nul(o.plain),
+  };
+}
+
 export function adaptAlertCard(raw: unknown, i = 0): AlertCard {
   const o = r4obj(raw);
   const identity = r4obj(o.identity);
@@ -1188,6 +1208,7 @@ export function adaptAlertCard(raw: unknown, i = 0): AlertCard {
       ].filter(Boolean).join(' ') || null,
     },
     score_components: r4arr(o.score_components).map(adaptScoreComponent),
+    family_performance: adaptFamilyPerformance(o.family_performance),
     kai_interpretation: r4nul(o.kai_interpretation ?? o.interpretation),
     fit: Object.keys(fit).length
       ? {
@@ -1213,7 +1234,14 @@ export function adaptAlertCard(raw: unknown, i = 0): AlertCard {
     freshness_line: r4nul(quote.label_plain ?? o.freshness_line),
     outcome: (() => {
       const out = r4obj(o.outcome);
-      return out.label ? { label: r4str(out.label, 'Outcome'), value: r4nul(out.value), tone: (r4str(out.tone, 'neutral') as 'good' | 'bad' | 'neutral') } : null;
+      return out.label
+        ? {
+            label: r4str(out.label, 'Outcome'),
+            value: r4nul(out.value),
+            tone: (r4str(out.tone, 'neutral') as 'good' | 'bad' | 'neutral'),
+            plain: r4nul(out.plain),
+          }
+        : null;
     })(),
     resolved_label: r4nul(o.resolved_label ?? o.resolved_at_label),
   };

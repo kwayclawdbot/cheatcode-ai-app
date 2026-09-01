@@ -152,6 +152,32 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
             />
           ) : null}
 
+          {/*
+            SWING-1 §4 — the family's real record, deliberately BELOW the
+            scorecard and outside the medallion's colour. The grade is a
+            setup-quality mark; this is history, and it always carries its n.
+          */}
+          {alert.family_performance ? (
+            <View
+              testID={`family-performance-${alert.symbol}`}
+              style={{ gap: 4, paddingTop: 10, borderTopWidth: 0.5, borderTopColor: alpha.ivory08 }}
+            >
+              <T size={9.5} weight="bold" c={color.muted} style={{ letterSpacing: 0.7 }}>
+                {alert.family_performance.family.toUpperCase()} — WHAT ACTUALLY HAPPENED
+              </T>
+              <T size={11.5} c={color.muted} lh={17}>
+                <Num size={11.5} c={color.text}>{alert.family_performance.wins}</Num>
+                {' of '}
+                <Num size={11.5} c={color.text}>{alert.family_performance.n}</Num>
+                {` picks were higher after ${alert.family_performance.horizon} — `}
+                <Num size={11.5} c={color.text}>{`${alert.family_performance.win_pct}%`}</Num>
+                {'. Measured close to close, holding the whole way: no stop was published and no target, '
+                  + 'so this is not the result of a trade anyone managed. What has happened, not what will — '
+                  + 'and the grade above says nothing about it.'}
+              </T>
+            </View>
+          ) : null}
+
           {alert.kai_interpretation ? (
             <LinearGradient
               colors={[alpha.violet18, alpha.violet05]}
@@ -262,10 +288,19 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
           {alert.resolved_label ? <T size={10} c={color.muted} style={{ marginLeft: 'auto' }}>{alert.resolved_label}</T> : null}
         </View>
         <T size={12.5} c={color.muted} lh={17.5}>{alert.what_changed || alert.headline}</T>
+        {/*
+          The result, where there IS one. An alert that never resolved shows no
+          row at all rather than a dash pretending to be a measurement.
+        */}
         {alert.outcome ? (
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <T size={11.5} c={color.muted}>{alert.outcome.label}</T>
-            <Num size={11.5} weight="semibold" c={alert.outcome.tone === 'bad' ? color.red : color.green}>{alert.outcome.value ?? '—'}</Num>
+          <View style={{ gap: 3 }} testID={`outcome-${alert.symbol}`}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <T size={11.5} c={color.muted}>{alert.outcome.label}</T>
+              <Num size={11.5} weight="semibold" c={alert.outcome.tone === 'bad' ? color.red : color.green}>{alert.outcome.value ?? '—'}</Num>
+            </View>
+            {alert.outcome.plain ? (
+              <T size={10} c={color.dim} lh={14.5}>{alert.outcome.plain}</T>
+            ) : null}
           </View>
         ) : null}
         <T size={11} weight="semibold" c={color.violetLight}>{alert.primary_action.label}</T>

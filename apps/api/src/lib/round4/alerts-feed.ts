@@ -12,9 +12,11 @@
  *   Watching   distance to the condition, then grade, then expiry.
  *   History    most recently resolved first.
  *
- * A card is built for a setup with no alert only when the user is FOLLOWING it
- * (watchlist or an existing plan/position). Alerts is the user's own list, not
- * a scanner dump — a graded setup nobody asked about belongs on Home.
+ * A card is built for a setup with no alert when the user is FOLLOWING it, and
+ * — SWING-1, owner decision — for the alerts the product itself SENT: the live
+ * ones on Active, the resolved back catalogue with its result on History. That
+ * is still not a scanner dump: an engine candidate nobody was told about
+ * belongs on Home, but an alert that went out is by definition the user's.
  */
 import {
   type AlertCard,
@@ -58,6 +60,14 @@ function symbolOf(row: Record<string, unknown>): string | null {
 
 const SETUP_COLUMNS =
   'id,symbol,mode,intent,state,score,grade_band,grade_display,score_components,thesis_plain,thesis_technical,entry_condition,invalidation,stop,targets,catalyst,quote_snapshot,valid_until,scanner_run_id,discussion_room_id';
+
+/**
+ * How many of the sent alerts each tab carries. Active is the live window (a
+ * swing pick expires at +5 sessions, so this is naturally small); History is
+ * the recent back catalogue, not the whole archive.
+ */
+const MORNING_ACTIVE_LIMIT = 12;
+const MORNING_HISTORY_LIMIT = 25;
 
 export type FeedResult = {
   cards: AlertCard[];
@@ -119,6 +129,39 @@ export async function loadAlertCards(opts: { userId: string; requestId?: string 
   const setupById = new Map<string, SetupRow>();
   for (const s of ((setupsRes.data ?? []) as unknown as SetupRow[])) setupById.set(s.id, s);
 
+  /*
+   * THE MORNING ALERTS — the one exception to "Alerts is the user's own list".
+   *
+   * Owner decision, SWING-1: the app must POPULATE with what Kai actually
+   * called. These are not a scanner dump of everything the engine can see; they
+   * are the alerts the product SENT, and the two tabs answer two different
+   * questions about them:
+   *
+   *   Active   what Kai is calling right now, as a full card that stands on its
+   *            own — grade, levels, thesis, catalyst, scorecard.
+   *   History  the back catalogue with its result attached. This is where the
+   *            measured record becomes visible instead of being a claim.
+   *
+   * Bounded on purpose. A tab is a decision surface, not an archive: the live
+   * ones, and the last few weeks of resolved ones, newest first.
+   */
+  const [liveMorning, resolvedMorning] = await Promise.all([
+    db.from('setups').select(SETUP_COLUMNS)
+      .eq('mode', 'swing')
+      .eq('quote_snapshot->>origin', 'kai_sms_scanner')
+      .in('state', ['discovered', 'watching', 'forming', 'ready'])
+      .order('valid_until', { ascending: false })
+      .limit(MORNING_ACTIVE_LIMIT),
+    db.from('setups').select(SETUP_COLUMNS)
+      .eq('mode', 'swing')
+      .eq('quote_snapshot->>origin', 'kai_sms_scanner')
+      .in('state', ['expired', 'invalidated'])
+      .order('valid_until', { ascending: false })
+      .limit(MORNING_HISTORY_LIMIT),
+  ]);
+  const morningLive = (liveMorning.data ?? []) as unknown as SetupRow[];
+  const morningResolved = (resolvedMorning.data ?? []) as unknown as SetupRow[];
+
   // Symbols we need quotes and profiles for.
   const symbols = new Set<string>();
   for (const a of alertRows) {
@@ -127,6 +170,11 @@ export async function loadAlertCards(opts: { userId: string; requestId?: string 
   }
   for (const s of setupById.values()) symbols.add(s.symbol);
   for (const p of positions.rows) symbols.add(p.symbol);
+  // A live morning card shows the current price against the published trigger,
+  // so it needs a quote. A resolved one does not — its story is already told,
+  // and asking for 25 more quotes to render a date and a percentage would be
+  // spending market data on nothing.
+  for (const s of morningLive) symbols.add(s.symbol);
 
   // A watch typed in plain language names no setup, but the app already has a
   // graded view of that symbol — the same one the ticker page and Home show.
@@ -156,9 +204,10 @@ export async function loadAlertCards(opts: { userId: string; requestId?: string 
   }
 
   const symbolList = [...symbols];
+  const profileList = [...new Set([...symbolList, ...morningResolved.map((s) => s.symbol)])];
   const [snap, profiles] = await Promise.all([
     symbolList.length ? resolveQuotes(symbolList, { preferIntraday: true }) : Promise.resolve({ quotes: [], degraded: false, degraded_reason: null }),
-    getCompanyProfiles(symbolList),
+    getCompanyProfiles(profileList),
   ]);
   const quoteBy = new Map<string, MarketQuote>();
   for (const q of snap.quotes) quoteBy.set(q.symbol, q);
@@ -285,6 +334,88 @@ export async function loadAlertCards(opts: { userId: string; requestId?: string 
     seenSymbols.add(symbol);
   }
 
+  /* ---- the morning alerts Kai is calling now --------------------------- */
+  for (const setup of morningLive) {
+    if (seenSymbols.has(setup.symbol)) continue;
+    const quote = quoteBy.get(setup.symbol) ?? fallbackQuote(setup.symbol);
+    const position = positionBy.get(setup.symbol) ?? null;
+    const planId = planBySymbol.get(setup.symbol) ?? null;
+    const orderId = orderBySymbol.get(setup.symbol) ?? null;
+    cards.push(
+      await assemble({
+        id: `setup:${setup.id}`,
+        kind: 'setup',
+        alertId: null,
+        setup,
+        symbol: setup.symbol,
+        mode: setup.mode,
+        userMode: mode,
+        quote,
+        state: deriveState({
+          setup,
+          alertStatus: null,
+          triggered: false,
+          hasPlan: Boolean(planId),
+          hasWorkingOrder: Boolean(orderId),
+          position,
+          closed: false,
+          entryReached: entryReached(setup, quote.price),
+        }),
+        risk,
+        equity,
+        planId,
+        orderId,
+        position,
+        naturalLanguage: null,
+        triggeredAt: null,
+        createdAt: setupSentAt(setup),
+        expiresAt: setup.valid_until,
+        row: null,
+        userId,
+        requestId: opts.requestId,
+        profiles,
+        openPositions: positions.rows.length,
+      })
+    );
+    seenSymbols.add(setup.symbol);
+  }
+
+  /* ---- the back catalogue, with what each one did ---------------------- */
+  for (const setup of morningResolved) {
+    // A resolved pick is a record, not a claim on a symbol: two calls on the
+    // same ticker weeks apart are two different things that happened, so these
+    // are keyed by setup and NOT collapsed by symbol the way live cards are.
+    const quote = fallbackQuote(setup.symbol);
+    cards.push(
+      await assemble({
+        id: `setup:${setup.id}`,
+        kind: 'setup',
+        alertId: null,
+        setup,
+        symbol: setup.symbol,
+        mode: setup.mode,
+        userMode: mode,
+        quote,
+        state: setup.state === 'invalidated' ? 'invalidated' : 'closed',
+        risk,
+        equity,
+        planId: null,
+        orderId: null,
+        position: null,
+        naturalLanguage: null,
+        triggeredAt: setupSentAt(setup),
+        createdAt: setupSentAt(setup),
+        resolvedAt: setup.valid_until,
+        expiresAt: setup.valid_until,
+        row: null,
+        userId,
+        requestId: opts.requestId,
+        profiles,
+        openPositions: positions.rows.length,
+      })
+    );
+  }
+
   /* ---- position events as Active cards (spec §1) ---------------------- */
   for (const p of positions.rows) {
     if (seenSymbols.has(p.symbol)) continue;
@@ -351,6 +482,13 @@ function fallbackQuote(symbol: string): MarketQuote {
   };
 }
 
+/** When the alert actually went out, off the snapshot the ingest stamped. */
+function setupSentAt(setup: SetupRow): string {
+  const snap = (setup.quote_snapshot ?? {}) as Record<string, unknown>;
+  const ts = snap.source_ts;
+  return typeof ts === 'string' && ts ? ts : new Date().toISOString();
+}
+
 /** Verified against a real quote, never assumed from the setup's own state. */
 function entryReached(setup: SetupRow | null, price: number | null): boolean {
   if (!setup || price === null) return false;
@@ -379,6 +517,7 @@ type AssembleArgs = {
   naturalLanguage: string | null;
   triggeredAt: string | null;
   createdAt: string;
+  resolvedAt?: string | null;
   expiresAt: string | null;
   row: Record<string, unknown> | null;
   userId: string;
@@ -419,6 +558,7 @@ async function assemble(a: AssembleArgs): Promise<AlertCard> {
     naturalLanguage: a.naturalLanguage,
     triggeredAt: a.triggeredAt,
     createdAt: a.createdAt,
+    resolvedAt: a.resolvedAt ?? null,
     expiresAt: a.expiresAt,
     community,
     version: 1,

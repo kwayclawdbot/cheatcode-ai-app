@@ -3129,6 +3129,48 @@ export const AlertEvent = z.object({
 export type AlertEvent = z.infer<typeof AlertEvent>;
 
 /**
+ * How the family this setup came from has ACTUALLY resolved — SWING-1 §4.
+ *
+ * It is a RECORD, never a forecast, and it is kept structurally apart from the
+ * medallion for the reason the medallion exists: the grade is a setup-quality
+ * mark and says nothing about whether a trade made money. This number never
+ * enters the score, the band or the colour. It always carries its n.
+ */
+export const FamilyPerformance = z.object({
+  /** e.g. "Swing · long · Kai scanner". */
+  family: z.string(),
+  /** Picks graded. The sample size travels with the number, always. */
+  n: z.number(),
+  wins: z.number(),
+  win_pct: z.number(),
+  /** e.g. "5 sessions". */
+  horizon: z.string(),
+  /** The last pick that has actually resolved, not the wall clock. */
+  as_of: z.string().nullable(),
+  plain: z.string(),
+});
+export type FamilyPerformance = z.infer<typeof FamilyPerformance>;
+
+/**
+ * What one alert actually did, on a History row.
+ *
+ * ONLY WHERE IT EXISTS. An alert still inside its window has no outcome and the
+ * field is null — the row then says nothing rather than showing a zero, which is
+ * the same rule `grade.ts` applies to a component the scanner never measured.
+ *
+ * `plain` carries the disclosure the number needs. For the Kai scanner family
+ * that is: close to close from the published trigger, held the whole way, with
+ * no stop and no target — not the result of a trade anyone managed.
+ */
+export const AlertCardOutcome = z.object({
+  label: z.string(),
+  value: z.string().nullable(),
+  tone: z.enum(['good', 'bad', 'neutral']),
+  plain: z.string(),
+});
+export type AlertCardOutcome = z.infer<typeof AlertCardOutcome>;
+
+/**
  * THE standard alert card (spec §2). One component across Active, Watching and
  * History; sections may collapse but the semantics never change.
  */
@@ -3155,6 +3197,12 @@ export const AlertCard = z.object({
   grade: GradeMedallion,
   /** Qualitative only. Assert on this in tests: no "/20" may ever appear. */
   score_components: z.array(ScoreComponent),
+  /**
+   * SWING-1 §4. Present only where the engine that produced the setup has a
+   * graded live record; null everywhere else. Additive — a payload written
+   * before SWING-1 still parses.
+   */
+  family_performance: FamilyPerformance.nullable().default(null),
 
   state: AlertCardState,
   state_label: z.string(),
@@ -3179,6 +3227,11 @@ export const AlertCard = z.object({
 
   fit: AlertFit,
   community: AlertCommunity,
+
+  /** History only. Null while the alert is still live, and null when unmeasured. */
+  outcome: AlertCardOutcome.nullable().default(null),
+  /** History only — "Yesterday", "12 Aug". Null on a live card. */
+  resolved_label: z.string().nullable().default(null),
 
   primary_action: PlainAction,
   secondary_actions: z.array(PlainAction),

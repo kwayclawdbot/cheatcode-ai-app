@@ -42,12 +42,14 @@ import {
   NOT_A_GUARANTEE_PLAIN,
   type AlertCard,
   type AlertCardState,
+  type AlertCardOutcome,
   type AlertCommunity,
   type AlertEvent,
   type AlertFit,
   type AlertTradePlan,
   type AppMode,
   type CompanyProfile,
+  type FamilyPerformance,
   type GradeMedallion,
   type MarketQuote,
   type OpenPositionRow,
@@ -388,6 +390,8 @@ export type BuildCardInput = {
   naturalLanguage: string | null;
   triggeredAt: string | null;
   createdAt: string;
+  /** When it finished, for a History row. Falls back to the trigger, then creation. */
+  resolvedAt?: string | null;
   expiresAt: string | null;
   community: AlertCommunity;
   version: number;
@@ -408,6 +412,15 @@ function whenPlain(at: string | null): string {
     hour: 'numeric',
     minute: '2-digit',
   })} ET`;
+}
+
+/** The ET date the alert actually went out, off the snapshot the engine stamped. */
+function sentOn(setup: SetupRow): string | null {
+  const snap = (setup.quote_snapshot ?? {}) as Record<string, unknown>;
+  const iso = typeof snap.et_date === 'string' ? snap.et_date : null;
+  if (!iso) return null;
+  const d = new Date(`${iso}T12:00:00Z`);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function headlineFor(input: BuildCardInput): { headline: string; what_changed: string } {
@@ -460,11 +473,20 @@ function headlineFor(input: BuildCardInput): { headline: string; what_changed: s
             ? `The level the whole idea leaned on, $${lv.stop}, gave way. I have dropped it.`
             : 'The level the idea depended on gave way.',
       };
-    case 'closed':
+    case 'closed': {
+      // A History row exists to say WHAT WAS CALLED and what it did. Where the
+      // setup still carries the call — the published trigger and the reason —
+      // say that, because "this is here for the record" is not a record.
+      const called = lv.entry !== null ? `Called at $${lv.entry}` : 'Called';
+      const when = setup ? sentOn(setup) : null;
+      const why = setup?.thesis_technical ?? setup?.thesis_plain ?? null;
       return {
         headline: `${s} — finished`,
-        what_changed: 'This is here for the record, with the original alert and what happened to it.',
+        what_changed: setup
+          ? `${called}${when ? ` on ${when}` : ''}${why ? `. ${why}` : '.'}`
+          : 'This is here for the record, with the original alert and what happened to it.',
       };
+    }
     default:
       return {
         headline: input.naturalLanguage ? `${s} — ${input.naturalLanguage}` : `${s} — I am watching this`,
@@ -637,6 +659,68 @@ function primaryActionFor(input: BuildCardInput): { primary: PlainAction; second
   return { primary, secondary };
 }
 
+/**
+ * The family's real record, stamped onto the setup by whatever produced it
+ * (SWING-1's ingest writes it into `score_components.family_performance`, the
+ * same jsonb `seed` and `source` already live in).
+ *
+ * It is read, never computed here: this is a card builder, and a win rate the
+ * card invented at render time would be a different number every request. An
+ * engine with no graded record yet returns null and the card shows no line —
+ * absence is the honest answer, a zero would not be.
+ */
+export function familyPerformanceOf(setup: { score_components?: unknown } | null): FamilyPerformance | null {
+  const raw = (setup?.score_components as Record<string, unknown> | null | undefined)?.family_performance;
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const n = Number(o.n);
+  const wins = Number(o.wins);
+  const win_pct = Number(o.win_pct);
+  if (!Number.isFinite(n) || n <= 0 || !Number.isFinite(wins) || !Number.isFinite(win_pct)) return null;
+  return {
+    family: String(o.family ?? 'This family'),
+    n,
+    wins,
+    win_pct,
+    horizon: String(o.horizon ?? ''),
+    as_of: typeof o.as_of === 'string' && o.as_of ? o.as_of : null,
+    plain: String(o.plain ?? ''),
+  };
+}
+
+/**
+ * What this one alert actually did, read off the setup the engine graded.
+ *
+ * Only on a resolved card, and only where the engine recorded a result. A live
+ * alert has no outcome, and one whose window closed unmeasured has none either
+ * — both come back null and the row stays silent rather than printing a zero.
+ *
+ * The tone is the SIGN, never the size. Five picks in the source corpus carry
+ * impossible returns from an `alert_price` captured against unadjusted bars; a
+ * sign survives that and a magnitude does not, so the number is shown as the
+ * engine recorded it and the colour is decided by the sign alone.
+ */
+export function outcomeOf(
+  setup: { score_components?: unknown } | null,
+  state: AlertCardState,
+): AlertCardOutcome | null {
+  if (state !== 'closed' && state !== 'invalidated') return null;
+  const raw = (setup?.score_components as Record<string, unknown> | null | undefined)?.outcome;
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (o.win_5d !== true && o.win_5d !== false) return null;
+  const gain = Number(o.gain_5d_pct);
+  const won = o.win_5d === true;
+  return {
+    label: 'Five sessions on, close to close',
+    value: Number.isFinite(gain) ? `${gain > 0 ? '+' : ''}${gain.toFixed(1)}%` : (won ? 'Higher' : 'Lower'),
+    tone: won ? 'good' : 'bad',
+    plain: typeof o.plain === 'string' && o.plain
+      ? o.plain
+      : `Five sessions on, this closed ${won ? 'higher' : 'lower'} than the price it was called at.`,
+  };
+}
+
 /** Assemble one card. Pure — every input has already been loaded. */
 export function buildCard(input: BuildCardInput): AlertCard {
   const setup = input.setup;
@@ -679,6 +763,7 @@ export function buildCard(input: BuildCardInput): AlertCard {
 
     grade,
     score_components: components,
+    family_performance: familyPerformanceOf(setup),
 
     state: input.state,
     state_label: STATE_LABEL[input.state],
@@ -708,6 +793,11 @@ export function buildCard(input: BuildCardInput): AlertCard {
 
     fit: fitFor(input, plan),
     community: input.community,
+
+    outcome: outcomeOf(setup, input.state),
+    resolved_label: input.state === 'closed' || input.state === 'invalidated'
+      ? whenPlain(input.resolvedAt ?? input.triggeredAt ?? input.createdAt)
+      : null,
 
     primary_action: primary,
     secondary_actions: secondary,

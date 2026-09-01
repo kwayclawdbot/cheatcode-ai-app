@@ -672,9 +672,34 @@ export type AlertCommunity = {
   verification?: string | null;     // "verified"
 };
 
+/**
+ * How the family this alert came from has actually resolved (SWING-1 §4).
+ * A record with its sample size attached — never a forecast, and deliberately
+ * NOT part of the grade. The medallion is a setup-quality mark; this is history.
+ */
+export type AlertFamilyPerformance = {
+  family: string;
+  n: number;
+  wins: number;
+  win_pct: number;
+  horizon: string;
+  as_of?: string | null;
+  plain?: string | null;
+};
+
 export type AlertProgress = { pct: number; label: string } | null;
 
-export type AlertOutcome = { label: string; value?: string | null; tone?: 'good' | 'bad' | 'neutral' };
+/**
+ * What one alert did, on a History row. `plain` is the disclosure the number
+ * needs — for the Kai scanner family, that it is a close-to-close hold with no
+ * stop and no target, and so not the result of a trade anyone managed.
+ */
+export type AlertOutcome = {
+  label: string;
+  value?: string | null;
+  tone?: 'good' | 'bad' | 'neutral';
+  plain?: string | null;
+};
 
 /** The standard actionable alert card (spec §2 / §3 / §9). */
 export type AlertCard = {
@@ -697,6 +722,8 @@ export type AlertCard = {
   company_summary?: string | null;  // <= 2 sentences
   trade: AlertTradePlanStrip;
   score_components: AlertScoreComponent[];
+  /** Null unless the engine behind this alert has a graded live record. */
+  family_performance?: AlertFamilyPerformance | null;
   kai_interpretation?: string | null;
   fit?: AlertFit | null;
   community?: AlertCommunity | null;
