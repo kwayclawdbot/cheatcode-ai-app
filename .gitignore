@@ -8,3 +8,6 @@ dist/
 proof/*.tmp
 *.log
 .DS_Store
+
+# Agent worktrees (local only, contains node_modules)
+.claude/
