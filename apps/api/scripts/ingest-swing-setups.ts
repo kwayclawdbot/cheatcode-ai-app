@@ -45,9 +45,13 @@ import {
   familyPerformance,
   fingerprint,
   outcomeFor,
-  SWING_LONG_TYPES,
+  INGESTED_TYPES,
+  assertHistoryOnly,
+  directionOf,
   familyOf,
+  isHistoryOnlyType,
   isIngestibleType,
+  isReadableType,
   medallionFamilyFor,
   percentileRank,
   pct,
@@ -125,7 +129,7 @@ export async function run(opts: { since?: string; quiet?: boolean } = {}): Promi
       // Driven by the family map, not a `kai_long%` prefix: two of the three
       // types that prefix matches are five-minute opening-range breaks, and a
       // filter that cannot tell them apart is how one gets labelled 'swing'.
-      `alert_type=in.(${SWING_LONG_TYPES.join(',')})`,
+      `alert_type=in.(${INGESTED_TYPES.join(',')})`,
       `sent_at=gte.${readFrom}`,
       'order=id.asc',
     ].join('&'),
@@ -133,15 +137,17 @@ export async function run(opts: { since?: string; quiet?: boolean } = {}): Promi
 
   // The filter above is the source of truth for which families are in; this is
   // the belt, and it must stay a no-op.
-  const strayed = rows.filter((r) => !isIngestibleType(r.alert_type));
-  if (strayed.length) throw new Error(`the source returned ${strayed.length} rows outside the swing family — check ALERT_TYPE_FAMILY`);
+  const strayed = rows.filter((r) => !isReadableType(r.alert_type));
+  if (strayed.length) throw new Error(`the source returned ${strayed.length} rows outside the swing families — check ALERT_TYPE_FAMILY`);
   const longRows = rows;
 
   const population = dedupePicks(longRows);
-  const populationScores = [...population.values()].map((a) => ({
-    date: etDateFor(a.sent_at),
-    score: Number(a.breakout_score),
-  }));
+  // The percentile ranks a pick against its OWN family. Shorts are in the corpus
+  // for the record and are never graded, so they are not in the distribution
+  // either — a long's rank must not move because a short was sent that morning.
+  const populationScores = [...population.values()]
+    .filter((a) => isIngestibleType(a.alert_type))
+    .map((a) => ({ date: etDateFor(a.sent_at), score: Number(a.breakout_score) }));
 
   const ingestKeys = [...population.entries()].filter(([, a]) => etDateFor(a.sent_at) >= since);
   say(`picks: ${population.size} in the ranking window, ${ingestKeys.length} to ingest (from ${longRows.length} rows)`);
@@ -159,35 +165,58 @@ export async function run(opts: { since?: string; quiet?: boolean } = {}): Promi
     'alert_performance',
     'select=alert_id,direction,alert_type,anchor_date,win_5d,gain_5d_pct,mfe_5d_pct,mae_5d_pct,'
       + 'sessions_elapsed,resolved,outcome_method,is_primary'
-      + '&is_primary=is.true&direction=eq.long&win_5d=not.is.null&order=id.asc',
+      + '&is_primary=is.true&win_5d=not.is.null&order=id.asc',
   );
-  const perf = familyPerformance(outcomes);
+  // Both directions. `familyPerformance` splits them, and a short card must
+  // carry the SHORT family's record — 12 of 36 — never the long one.
+  const perf = familyPerformance(outcomes, 'long');
+  const perfShort = familyPerformance(outcomes, 'short');
   // Per-pick, keyed by the `sent_alerts.id` the grader anchored to. The grader
   // marks ONE row per pick `is_primary`, and `dedupePicks` picks the same lowest
   // id, so the two agree on which row a result belongs to.
   const outcomeByAlertId = new Map<number, ReturnType<typeof outcomeFor>>();
   for (const o of outcomes) if (o.alert_id !== null) outcomeByAlertId.set(Number(o.alert_id), outcomeFor(o));
-  if (perf) say(`family: ${perf.wins}/${perf.n} won at +5 sessions — ${perf.win_pct}% (as of ${perf.as_of})`);
-  else say('family: no graded outcomes for this family yet — the line is omitted rather than guessed');
+  for (const line of [perf, perfShort]) {
+    if (line) say(`family: ${line.family} — ${line.wins}/${line.n} at +5 sessions, ${line.win_pct}% (as of ${line.as_of})`);
+  }
+  if (!perf) say('family: no graded outcomes for the long family yet — the line is omitted rather than guessed');
 
   /* ---- 3. map ---------------------------------------------------------- */
   const setups: SetupInsert[] = [];
+  let shortsHeldBack = 0;
   for (const [key, alert] of ingestKeys) {
-    const score = percentileRank(Number(alert.breakout_score), etDateFor(alert.sent_at), populationScores, WINDOW_DAYS);
-    const row = setupFor({ alert, key, score, now });
-    if (perf) (row.score_components as Record<string, unknown>).family_performance = perf;
+    const short = isHistoryOnlyType(alert.alert_type);
     const outcome = outcomeByAlertId.get(Number(alert.id));
+
+    // A short exists in the app ONLY as a resolved record. One still inside its
+    // window has nothing to say on History and must never appear on Active, so
+    // it is not written at all until it has a result.
+    if (short && !outcome) { shortsHeldBack += 1; continue; }
+
+    const percentile = short
+      ? null
+      : percentileRank(Number(alert.breakout_score), etDateFor(alert.sent_at), populationScores, WINDOW_DAYS);
+    const row = setupFor({ alert, key, percentile, now });
+    const line = short ? perfShort : perf;
+    if (line) (row.score_components as Record<string, unknown>).family_performance = line;
     if (outcome) (row.score_components as Record<string, unknown>).outcome = outcome;
+    assertHistoryOnly(row);
     setups.push(row);
   }
+  if (shortsHeldBack) say(`held back: ${shortsHeldBack} short${shortsHeldBack === 1 ? '' : 's'} with no result yet — a short enters the app only once it has resolved`);
 
-  const split = bandSplit(setups);
+  const longs = setups.filter((r) => r.intent === 'buy_to_open');
+  const shorts = setups.filter((r) => r.intent === 'sell_short');
+  say(`directions: ${longs.length} long (graded, may be live) · ${shorts.length} short (record only, always expired)`);
+
+  const split = bandSplit(longs);
   say(
     `bands: A ${split.letters.A} (${pct(split.letters.A, split.n)}%) · `
     + `B ${split.letters.B} (${pct(split.letters.B, split.n)}%) · `
     + `C ${split.letters.C} (${pct(split.letters.C, split.n)}%)`,
   );
   say(`medallion: ${Object.entries(split.families).map(([k, v]) => `${k} ${pct(v, split.n)}%`).join(' · ')}`);
+  say(`ungraded (grey): ${shorts.length} short${shorts.length === 1 ? '' : 's'} — no score, which is what grey now means`);
 
   if (DRY) {
     say('dry run — nothing written');
@@ -294,7 +323,7 @@ async function declinedFamilies(src: Parameters<typeof readAll>[0], since: strin
   const out: Record<string, Record<string, number>> = {};
   for (const r of rows) {
     const family = familyOf(r.alert_type);
-    if (family === 'swing_long') continue;
+    if (family === 'swing_long' || family === 'swing_short') continue;
     const t = (r.alert_type ?? 'null').toLowerCase();
     (out[family] ??= {})[t] = ((out[family][t] ?? 0) + 1);
   }
@@ -315,7 +344,10 @@ async function retireForeignFamilies(): Promise<number> {
     'setups',
     "select=id,quote_snapshot&mode=eq.swing&quote_snapshot->>origin=eq.kai_sms_scanner",
   );
-  const foreign = mine.filter((r) => !isIngestibleType(String(r.quote_snapshot?.alert_type ?? '')));
+  // READABLE, not ingestible: a short is a family this lane owns even though it
+  // is never graded. Using the grading predicate here would delete and re-insert
+  // all 36 shorts on every run, which is the opposite of idempotent.
+  const foreign = mine.filter((r) => !isReadableType(String(r.quote_snapshot?.alert_type ?? '')));
   if (!foreign.length) return 0;
   const db = appDb();
   let gone = 0;

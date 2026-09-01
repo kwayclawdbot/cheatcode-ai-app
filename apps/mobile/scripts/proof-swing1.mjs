@@ -150,7 +150,7 @@ async function liveSwingSetups() {
   const url = (process.env.SUPABASE_URL ?? await envFromApi('SUPABASE_URL')).replace(/\/+$/, '');
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? await envFromApi('SUPABASE_SERVICE_ROLE_KEY');
   const res = await fetch(
-    `${url}/rest/v1/setups?select=id,symbol,score,grade_band,score_components,state&mode=eq.swing&state=eq.ready`
+    `${url}/rest/v1/setups?select=id,symbol,score,grade_band,grade_display,score_components,state&mode=eq.swing&state=eq.ready`
     + `&quote_snapshot->>origin=eq.kai_sms_scanner&order=score.desc`,
     { headers: { apikey: key, Authorization: `Bearer ${key}` } },
   );
@@ -247,7 +247,10 @@ const main = async () => {
       { on_screen: shown, percentile: gold.score, raw: gold.score_components?.raw_breakout_score },
     );
     ok('and it is inside 0..100, which the raw score is not', shown >= 0 && shown <= 100, shown);
-    ok(`the ${gold.symbol} medallion reads as the band the ingest computed`, (label ?? '').includes(`Grade ${gold.grade_band}`), label);
+    ok(`the ${gold.symbol} medallion reads the letter the ingest stored`, (label ?? '').includes(`Grade ${gold.grade_display}`), { label, stored: gold.grade_display });
+    // The rescale's whole justification: an alert that was actually sent must
+    // not render as "Not qualified" grey.
+    ok('no published alert reads as unqualified', shown >= 60, shown);
 
     const demotedLabel = await medallionLabel(page, demoted.symbol);
     if (demotedLabel) {
@@ -334,12 +337,52 @@ const main = async () => {
 
     // The whole History tab, read as text: nothing may show a stop or a target
     // the source never persisted.
+    // Owner ruling: the back catalogue carries the losing half too, and a short
+    // has to READ as a short.
+    const shorts = page.locator('[data-testid^="direction-"]');
+    const dirLabels = [];
+    for (let i = 0; i < await shorts.count(); i += 1) dirLabels.push(await shorts.nth(i).innerText());
+    console.log(`  · directions on History: ${[...new Set(dirLabels)].join(', ')}`);
+    ok('every history row says which side it was', dirLabels.length > 0 && dirLabels.every(Boolean), dirLabels.slice(0, 5));
+
     const historyText = (await page.locator('[data-testid="alerts-list-history"]').last().innerText()).replace(/\s+/g, ' ');
+    ok('the losing side is represented, not quietly dropped', dirLabels.some((d) => /short/i.test(d)), [...new Set(dirLabels)]);
+    ok('and the winning side still dominates the page, in proportion to the corpus',
+      dirLabels.filter((d) => /long/i.test(d)).length > dirLabels.filter((d) => /short/i.test(d)).length,
+      { long: dirLabels.filter((d) => /long/i.test(d)).length, short: dirLabels.filter((d) => /short/i.test(d)).length });
+
+    // Put the evidence in the frame: the short rows sit below the longs, and a
+    // screenshot of the part of the page that has no shorts on it proves nothing.
+    for (let i = 0; i < await shorts.count(); i += 1) {
+      if (/short/i.test(await shorts.nth(i).innerText())) {
+        await shorts.nth(i).scrollIntoViewIfNeeded().catch(() => {});
+        await page.waitForTimeout(700);
+        await shot(page, 'swing1-07-history-short');
+        break;
+      }
+    }
+
+    if (/short/i.test(historyText)) {
+      ok('a short on History reads as a short call, not a long', /A short call\./.test(historyText), historyText.slice(0, 400));
+      ok('and its result is framed by what the STOCK did', /stock closed [\d.]+% (below|above)/.test(historyText), historyText.slice(0, 400));
+      ok('and it says plainly whether the short was right', /short was (right|wrong)/.test(historyText), historyText.slice(0, 400));
+    } else {
+      throw new Error('no short reached History — the proportional split is not working');
+    }
     ok('History never claims a stop', !/\bStop\b/.test(historyText), historyText.slice(0, 200));
     ok('History never claims a target', !/\bTarget\b/.test(historyText), historyText.slice(0, 200));
 
     // And Active must not print a level the scanner never published either.
     await tap(page, 'screen-alerts', 'alerts-tab-active', 1600);
+    const activeText = (await page.locator('[data-testid="alerts-list-active"]').last().innerText()).replace(/\s+/g, ' ');
+    // The identity line on a standard card is "company · mode · direction ·
+    // instrument", so this matches the direction itself rather than the word
+    // wherever it happens to appear in a thesis.
+    ok('no short reaches Active', !/·\s*short\s*·/i.test(activeText), activeText.match(/.{0,60}short.{0,60}/i)?.[0]);
+    await tap(page, 'screen-alerts', 'alerts-tab-watching', 1400);
+    const watchingText = (await page.locator('[data-testid="alerts-list-watching"]').last().innerText()).replace(/\s+/g, ' ');
+    ok('nor Watching', !/·\s*short\s*·/i.test(watchingText), watchingText.match(/.{0,60}short.{0,60}/i)?.[0]);
+    await tap(page, 'screen-alerts', 'alerts-tab-active', 1400);
     await page.locator(`[data-testid="alert-expand-${gold.symbol}"]`).last().click();
     await page.waitForTimeout(1400);
     const activeCard = (await page.locator(`[data-testid="alert-card-${gold.symbol}"]`).last().innerText()).replace(/\s+/g, ' ');

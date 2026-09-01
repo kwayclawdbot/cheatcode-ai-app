@@ -28,7 +28,13 @@ import {
   familyOf,
   familyPerformance,
   fingerprint,
-  gradeFromPercentile,
+  outcomeFor,
+  SWING_SHORT_TYPES,
+  assertHistoryOnly,
+  gradeBandFromPercentile,
+  gradeDisplayFromScore,
+  isHistoryOnlyType,
+  scoreFromPercentile,
   isIngestibleType,
   medallionFamilyFor,
   percentileRank,
@@ -119,10 +125,14 @@ console.log('\nfamilies — long only, and swing-shaped only');
   ok('so a kai_long% prefix filter would be wrong twice out of three', !isIngestibleType('kai_long_or_break') && !isIngestibleType('kai_long_pullback_or_break'));
   eq('kai_orb_bullish is intraday too', familyOf('kai_orb_bullish'), 'intraday_long');
 
-  eq('kai_short is a short', familyOf('kai_short'), 'short');
-  eq('kai_short_shadow is a short', familyOf('kai_short_shadow'), 'short');
-  eq('kai_orb_bearish is a short', familyOf('kai_orb_bearish'), 'short');
-  ok('no short is ingestible', !['kai_short', 'kai_short_shadow', 'kai_orb_bearish', 'breakdown', 'short_idea'].some(isIngestibleType));
+  // Owner ruling: the morning short is ingested for the RECORD and nothing else.
+  eq('kai_short is the morning short, kept for History', familyOf('kai_short'), 'swing_short');
+  ok('and it is never gradeable or live', !isIngestibleType('kai_short'));
+  ok('but it is readable, for the back catalogue', isHistoryOnlyType('kai_short'));
+  eq('exactly one short type is kept', SWING_SHORT_TYPES, ['kai_short']);
+  eq('kai_short_shadow is a different model, still out', familyOf('kai_short_shadow'), 'short');
+  eq('kai_orb_bearish is out', familyOf('kai_orb_bearish'), 'short');
+  ok('no short is ever gradeable', !['kai_short', 'kai_short_shadow', 'kai_orb_bearish', 'breakdown', 'short_idea'].some(isIngestibleType));
 
   ok('an unrecognised type is declined rather than assumed', !isIngestibleType('kai_something_new'));
   eq('and classified as other', familyOf('kai_something_new'), 'other');
@@ -155,26 +165,58 @@ console.log('\nthe percentile — not the raw 31..190 score');
   eq('the future and the far past are excluded', percentileRank(50, '2026-06-10', drift), 50);
   eq('an empty window has no percentile rather than a zero', percentileRank(50, '2026-06-10', []), null);
 
-  eq('A is the top decile', gradeFromPercentile(90).band, 'A');
-  eq('just under the top decile is a B', gradeFromPercentile(89.9).band, 'B');
-  eq('B is the upper half', gradeFromPercentile(50).band, 'B');
-  eq('C is below the median', gradeFromPercentile(49.9).band, 'C');
-  eq('no percentile means no letter, not a C', gradeFromPercentile(null).band, null);
-  ok('the display letter carries no hyphen for displayGrade to convert', !(gradeFromPercentile(90).display ?? '').includes('-'));
+  eq('A is the top decile', gradeBandFromPercentile(90), 'A');
+  eq('just under the top decile is a B', gradeBandFromPercentile(89.9), 'B');
+  eq('B is the upper half', gradeBandFromPercentile(50), 'B');
+  eq('C is below the median', gradeBandFromPercentile(49.9), 'C');
+  eq('no percentile means no letter, not a C', gradeBandFromPercentile(null), null);
 
-  // The whole point of §2: this mapping must NOT make half the picks gold.
-  const uniform = Array.from({ length: 100 }, (_, i) => ({ score: i, grade_band: gradeFromPercentile(i).band }));
+  // The rescale, owner ruling: the rank is a rank, the score is a position on
+  // the band ladder. One straight line, so order is preserved exactly.
+  eq('the worst pick sits at the bottom of C, not below the ladder', scoreFromPercentile(0), 60);
+  eq('the median sits at 80', scoreFromPercentile(50), 80);
+  eq('the top decile starts at 96', scoreFromPercentile(90), 96);
+  eq('the best pick is 100', scoreFromPercentile(100), 100);
+  ok('nothing graded can fall into the grey band any more', [0, 1, 17, 49, 99].every((p) => (scoreFromPercentile(p) as number) >= 60));
+  ok('and the rescale is monotone, so it never reorders two picks',
+    [0, 7, 30, 55, 80, 99.9].every((p, i, arr) => i === 0 || (scoreFromPercentile(p) as number) > (scoreFromPercentile(arr[i - 1]) as number)));
+
+  // The letter comes off the SCORE, so it agrees with the ring bands.ts draws.
+  eq('96 reads as an A, matching the gold ring', gradeDisplayFromScore(96), 'A');
+  eq('87 reads as A minus, matching gold restrained', gradeDisplayFromScore(87), 'A\u2212');
+  eq('82 reads as B plus, matching violet', gradeDisplayFromScore(82), 'B+');
+  eq('74 reads as B', gradeDisplayFromScore(74), 'B');
+  eq('62 reads as C, matching amber', gradeDisplayFromScore(62), 'C');
+  ok('the minus is U+2212, per displayGrade', (gradeDisplayFromScore(87) ?? '').includes('\u2212'));
+  ok('no score means no letter', gradeDisplayFromScore(null) === null);
+
+  // The letter and the ring must never disagree — a card reading "Grade B" in a
+  // gold ring whose own screen-reader text says "top quality" is the failure
+  // this pairing exists to prevent.
+  ok('every score renders a letter whose family is the ring\u2019s family',
+    [60, 65, 70, 79, 80, 84, 85, 89, 90, 100].every((sc) => {
+      const letter = gradeDisplayFromScore(sc) ?? '';
+      const fam = medallionFamilyFor(sc);
+      if (fam === 'gold') return letter === 'A';
+      if (fam === 'gold_restrained') return letter === 'A\u2212';
+      if (fam === 'violet') return letter === 'B+';
+      if (fam === 'violet_graphite') return letter === 'B';
+      return letter === 'C';
+    }));
+
+  // The A/B/C split — the FILTER value — is untouched by the rescale.
+  const uniform = Array.from({ length: 100 }, (_, i) => ({ score: scoreFromPercentile(i), grade_band: gradeBandFromPercentile(i) }));
   const split = bandSplit(uniform);
-  eq('a uniform percentile puts exactly a tenth in A', split.letters.A, 10);
+  eq('a uniform percentile still puts exactly a tenth in A', split.letters.A, 10);
   eq('and four tenths in B', split.letters.B, 40);
   eq('and half in C', split.letters.C, 50);
-  eq('gold is the top decile, not 46%', split.families.gold, 10);
+  eq('and nothing lands in the grey band', split.families.neutral, 0);
   eq('the raw scanner score would have been read as gold; the percentile is not', medallionFamilyFor(124), 'gold');
 }
 
 console.log('\nthe scorecard — the scanner\'s real components, and only those');
 {
-  const c = setupFor({ alert: alert(), key: 'k', score: 80, now: new Date('2026-06-10T00:00:00Z') }).score_components;
+  const c = setupFor({ alert: alert(), key: 'k', percentile: 80, now: new Date('2026-06-10T00:00:00Z') }).score_components;
   eq('quality_score 0..20 becomes trend on 0..100', c.trend, 75);
   eq('catalyst_score 0..12 becomes catalyst on 0..100', c.catalyst, 25);
   eq('a bullish sector stance becomes market', c.market, 85);
@@ -184,7 +226,7 @@ console.log('\nthe scorecard — the scanner\'s real components, and only those'
   // The pullback_or_break subfamily writes 0 for every score it did not compute.
   const blank = setupFor({
     alert: alert({ quality_score: 0, catalyst_score: 0, flow_score: 0, rsi_at_alert: 0, sector_stance: null, catalyst_type: null }),
-    key: 'k', score: 80, now: new Date('2026-06-10T00:00:00Z'),
+    key: 'k', percentile: 80, now: new Date('2026-06-10T00:00:00Z'),
   }).score_components;
   ok('a scanner zero is a MISSING read, not a bad one — trend is absent', !('trend' in blank));
   ok('…and so is entry_quality', !('entry_quality' in blank));
@@ -242,12 +284,12 @@ console.log('\nidempotency');
     '74738ff5-5367-5958-9aee-98fffdcd1876',
   );
 
-  const row = setupFor({ alert: alert(), key: 'NVDA|2026-06-10|kai_long', score: 80, now: new Date('2026-06-10T00:00:00Z') });
+  const row = setupFor({ alert: alert(), key: 'NVDA|2026-06-10|kai_long', percentile: 80, now: new Date('2026-06-10T00:00:00Z') });
   const asPostgresReturnsIt = {
     ...row,
     // What PostgREST actually hands back: numeric as a string, timestamptz with
     // an offset instead of a Z, and the columns this ingest does not own.
-    score: '80.0',
+    score: (row.score as number).toFixed(1),
     valid_until: row.valid_until.replace('.000Z', '+00:00'),
     updated_at: new Date().toISOString(),
     discussion_room_id: null,
@@ -265,7 +307,7 @@ console.log('\nidempotency');
 
 console.log('\nthe setup row');
 {
-  const s = setupFor({ alert: alert(), key: 'NVDA|2026-06-10|kai_long', score: 95, now: new Date('2026-06-10T00:00:00Z') });
+  const s = setupFor({ alert: alert(), key: 'NVDA|2026-06-10|kai_long', percentile: 95, now: new Date('2026-06-10T00:00:00Z') });
   eq('every ingested pick is a swing setup', s.mode, 'swing');
   eq('and long', s.intent, 'buy_to_open');
   eq('the published trigger is the entry condition', (s.entry_condition as { price: number }).price, 100);
@@ -275,7 +317,60 @@ console.log('\nthe setup row');
   ok('volume and pattern are read as prose, not scored', /volume 1\.4x/.test(s.thesis_technical ?? ''));
   ok('the raw scanner score is kept for provenance', s.score_components.raw_breakout_score === 90);
   eq('a live pick is ready', s.state, 'ready');
-  eq('a pick past its window is expired', setupFor({ alert: alert(), key: 'k', score: 95, now: new Date('2027-01-01T00:00:00Z') }).state, 'expired');
+  eq('a pick past its window is expired', setupFor({ alert: alert(), key: 'k', percentile: 95, now: new Date('2027-01-01T00:00:00Z') }).state, 'expired');
+}
+
+console.log('\nshorts \u2014 History yes, Active no, and it is real in the data');
+{
+  const shortAlert = alert({ alert_type: 'kai_short', quality_score: 15, rsi_at_alert: 78 });
+  const row = setupFor({ alert: shortAlert, key: 'NVDA|2026-06-10|kai_short', percentile: 95, now: new Date('2026-06-10T00:00:00Z') });
+
+  eq('a short is written short', row.intent, 'sell_short');
+  // The picks are from June; "now" is the day after. A long here would be READY.
+  eq('a long on the same day would be live', setupFor({ alert: alert(), key: 'k', percentile: 95, now: new Date('2026-06-10T00:00:00Z') }).state, 'ready');
+  eq('a short on the same day is expired anyway \u2014 it can never hold a live state', row.state, 'expired');
+  eq('and it carries no score', row.score, null);
+  eq('no band', row.grade_band, null);
+  eq('no letter', row.grade_display, null);
+  ok('so it renders as the ungraded medallion, which is what grey now means', medallionFamilyFor(row.score) === 'neutral');
+  ok('no long-calibrated component is applied to it', !('trend' in row.score_components) && !('entry_quality' in row.score_components));
+  eq('the row says which side it was', row.score_components.direction, 'short');
+  ok('and the invalidation copy is not long-side', /close above/.test(String((row.invalidation as { plain?: string } | null)?.plain ?? 'close above')));
+
+  // The guard is the mechanism, not a filter someone has to remember.
+  assertHistoryOnly(row);
+  let threw = false;
+  try { assertHistoryOnly({ ...row, state: 'ready' }); } catch { threw = true; }
+  ok('a short that somehow became live stops the run', threw);
+  threw = false;
+  try { assertHistoryOnly({ ...row, score: 96 }); } catch { threw = true; }
+  ok('a short that somehow got graded stops the run', threw);
+
+  // The outcome must read as a short, and the number must not be flipped twice.
+  const shortOutcome = outcomeFor({
+    alert_id: 1, direction: 'short', alert_type: 'kai_short', anchor_date: '2026-06-10',
+    win_5d: true, gain_5d_pct: 6.8, is_primary: true,
+  })!;
+  eq('the position return is kept as the grader recorded it', shortOutcome.gain_5d_pct, 6.8);
+  ok('but the sentence describes the STOCK falling, not rising', /stock closed 6\.8% below/.test(shortOutcome.plain));
+  ok('and names it as a short that was right', /short was right/.test(shortOutcome.plain));
+  const shortLoss = outcomeFor({
+    alert_id: 2, direction: 'short', alert_type: 'kai_short', anchor_date: '2026-06-10',
+    win_5d: false, gain_5d_pct: -4.2, is_primary: true,
+  })!;
+  ok('a losing short says the stock went up', /stock closed 4\.2% above/.test(shortLoss.plain));
+  ok('and that the short was wrong', /short was wrong/.test(shortLoss.plain));
+
+  // The record shown on a short must be the SHORT family's, never the long one.
+  const rows = [
+    { alert_id: 1, direction: 'long', alert_type: 'kai_long', anchor_date: '2026-06-01', win_5d: true, gain_5d_pct: 4, is_primary: true },
+    { alert_id: 2, direction: 'long', alert_type: 'kai_long', anchor_date: '2026-06-02', win_5d: true, gain_5d_pct: 4, is_primary: true },
+    { alert_id: 3, direction: 'short', alert_type: 'kai_short', anchor_date: '2026-06-03', win_5d: false, gain_5d_pct: -3, is_primary: true },
+  ];
+  eq('the long line counts longs', familyPerformance(rows, 'long')?.win_pct, 100);
+  eq('the short line counts shorts', familyPerformance(rows, 'short')?.win_pct, 0);
+  ok('and says so in its own name', /short/.test(familyPerformance(rows, 'short')?.family ?? ''));
+  ok('with short-side wording', /were lower/.test(familyPerformance(rows, 'short')?.plain ?? ''));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

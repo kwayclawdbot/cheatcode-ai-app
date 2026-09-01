@@ -69,6 +69,26 @@ const SETUP_COLUMNS =
 const MORNING_ACTIVE_LIMIT = 12;
 const MORNING_HISTORY_LIMIT = 25;
 
+/**
+ * History is PROPORTIONAL BY DIRECTION, not simply the most recent rows.
+ *
+ * Ordering the back catalogue by recency alone showed 25 longs and zero shorts,
+ * because the short model stopped firing on 3 August while the longs run to
+ * today. That reproduces exactly the omission this tab exists to prevent: a
+ * record that quietly drops the losing half is not a record. So each direction
+ * gets a share of the page matching its share of the corpus — 213 long to 36
+ * short is roughly six to one — with a floor of one, so the smaller side can be
+ * under-represented but never invisible.
+ */
+function historySlots(longs: number, shorts: number, limit: number): { longs: number; shorts: number } {
+  const total = longs + shorts;
+  if (total === 0) return { longs: 0, shorts: 0 };
+  if (total <= limit) return { longs, shorts };
+  let shortSlots = Math.round((limit * shorts) / total);
+  if (shorts > 0) shortSlots = Math.max(1, Math.min(shortSlots, shorts));
+  return { longs: Math.min(longs, limit - shortSlots), shorts: shortSlots };
+}
+
 export type FeedResult = {
   cards: AlertCard[];
   counts: Record<AlertTab, number>;
@@ -149,18 +169,18 @@ export async function loadAlertCards(opts: { userId: string; requestId?: string 
     db.from('setups').select(SETUP_COLUMNS)
       .eq('mode', 'swing')
       .eq('quote_snapshot->>origin', 'kai_sms_scanner')
+      // Owner ruling: shorts are History only. The ingest already makes that
+      // structural — a short is written `expired` and can never hold a live
+      // state — so this clause is a belt, not the mechanism. Both have to be
+      // true for a short to reach Active, and neither is.
+      .eq('intent', 'buy_to_open')
       .in('state', ['discovered', 'watching', 'forming', 'ready'])
       .order('valid_until', { ascending: false })
       .limit(MORNING_ACTIVE_LIMIT),
-    db.from('setups').select(SETUP_COLUMNS)
-      .eq('mode', 'swing')
-      .eq('quote_snapshot->>origin', 'kai_sms_scanner')
-      .in('state', ['expired', 'invalidated'])
-      .order('valid_until', { ascending: false })
-      .limit(MORNING_HISTORY_LIMIT),
+    resolvedMorningByDirection(db),
   ]);
   const morningLive = (liveMorning.data ?? []) as unknown as SetupRow[];
-  const morningResolved = (resolvedMorning.data ?? []) as unknown as SetupRow[];
+  const morningResolved = resolvedMorning;
 
   // Symbols we need quotes and profiles for.
   const symbols = new Set<string>();
@@ -480,6 +500,40 @@ function fallbackQuote(symbol: string): MarketQuote {
     label_plain: 'No current price for this one.',
     session: 'closed',
   };
+}
+
+/**
+ * The resolved back catalogue, both sides, in proportion. Four small reads: a
+ * count and a page per direction. The counts are what make the proportion real
+ * rather than an assumption about which side fired more recently.
+ */
+async function resolvedMorningByDirection(db: ReturnType<typeof serviceClient>): Promise<SetupRow[]> {
+  const page = (intent: string) => db.from('setups').select(SETUP_COLUMNS)
+    .eq('mode', 'swing')
+    .eq('quote_snapshot->>origin', 'kai_sms_scanner')
+    .in('state', ['expired', 'invalidated'])
+    .eq('intent', intent)
+    .order('valid_until', { ascending: false })
+    .limit(MORNING_HISTORY_LIMIT);
+
+  const count = (intent: string) => db.from('setups')
+    .select('id', { count: 'exact', head: true })
+    .eq('mode', 'swing')
+    .eq('quote_snapshot->>origin', 'kai_sms_scanner')
+    .in('state', ['expired', 'invalidated'])
+    .eq('intent', intent);
+
+  const [longPage, shortPage, longCount, shortCount] = await Promise.all([
+    page('buy_to_open'), page('sell_short'), count('buy_to_open'), count('sell_short'),
+  ]);
+
+  const slots = historySlots(longCount.count ?? 0, shortCount.count ?? 0, MORNING_HISTORY_LIMIT);
+  const rows = [
+    ...((longPage.data ?? []) as unknown as SetupRow[]).slice(0, slots.longs),
+    ...((shortPage.data ?? []) as unknown as SetupRow[]).slice(0, slots.shorts),
+  ];
+  // Newest first once merged, so the tab still reads chronologically.
+  return rows.sort((a, b) => String(b.valid_until ?? '').localeCompare(String(a.valid_until ?? '')));
 }
 
 /** When the alert actually went out, off the snapshot the ingest stamped. */

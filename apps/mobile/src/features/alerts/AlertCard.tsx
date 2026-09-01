@@ -281,6 +281,19 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <T size={15} weight="bold">{alert.symbol}</T>
+          {/*
+            Direction is part of the record, not decoration: a short read as a
+            long is read backwards. It sits next to the ticker on every history
+            row so the outcome underneath can only be read one way.
+          */}
+          {alert.direction_label ? (
+            <View
+              testID={`direction-${alert.symbol}`}
+              style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5, backgroundColor: alpha.ivory08 }}
+            >
+              <T size={10} weight="semibold" c={color.muted} style={{ textTransform: 'capitalize' }}>{alert.direction_label}</T>
+            </View>
+          ) : null}
           <GradeChip grade={alert.grade} score={alert.score} />
           <View style={{ paddingHorizontal: 7, paddingVertical: 1, borderRadius: 5, borderWidth: 0.5, borderColor: bad ? alpha.red40 : alpha.green50 }}>
             <T size={10} c={bad ? color.red : color.green}>{alert.state_label}</T>

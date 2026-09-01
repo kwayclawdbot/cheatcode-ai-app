@@ -701,7 +701,7 @@ export function familyPerformanceOf(setup: { score_components?: unknown } | null
  * engine recorded it and the colour is decided by the sign alone.
  */
 export function outcomeOf(
-  setup: { score_components?: unknown } | null,
+  setup: { score_components?: unknown; intent?: string } | null,
   state: AlertCardState,
 ): AlertCardOutcome | null {
   if (state !== 'closed' && state !== 'invalidated') return null;
@@ -711,9 +711,18 @@ export function outcomeOf(
   if (o.win_5d !== true && o.win_5d !== false) return null;
   const gain = Number(o.gain_5d_pct);
   const won = o.win_5d === true;
+  const short = setup?.intent === 'sell_short';
+
+  // `gain_5d_pct` is the POSITION's return, already sign-corrected for direction
+  // by `alert_outcomes.py`. Printing it raw on a short would read as the stock
+  // going UP when the short worked, so a short row shows the PRICE move and the
+  // colour still comes from whether the call was right.
+  const shown = short ? -gain : gain;
   return {
-    label: 'Five sessions on, close to close',
-    value: Number.isFinite(gain) ? `${gain > 0 ? '+' : ''}${gain.toFixed(1)}%` : (won ? 'Higher' : 'Lower'),
+    label: short ? 'Five sessions on, the stock' : 'Five sessions on, close to close',
+    value: Number.isFinite(shown)
+      ? `${shown > 0 ? '+' : ''}${shown.toFixed(1)}%`
+      : (short ? (won ? 'Lower' : 'Higher') : (won ? 'Higher' : 'Lower')),
     tone: won ? 'good' : 'bad',
     plain: typeof o.plain === 'string' && o.plain
       ? o.plain

@@ -103,7 +103,7 @@ export type ScannerOutcome = {
  * is never ingested — adding a family has to be a decision someone made, not a
  * prefix that quietly matched.
  */
-export type SourceFamily = 'swing_long' | 'intraday_long' | 'short' | 'other';
+export type SourceFamily = 'swing_long' | 'swing_short' | 'intraday_long' | 'short' | 'other';
 
 export const ALERT_TYPE_FAMILY: Record<string, SourceFamily> = {
   // Swing-shaped longs. Only these are in scope for SWING-1.
@@ -116,15 +116,18 @@ export const ALERT_TYPE_FAMILY: Record<string, SourceFamily> = {
   intraday: 'intraday_long',
   orb: 'intraday_long',
 
-  // Shorts. `kai_short` is the other half of what `kai_morning_alerts.py` sends
-  // (`kai_{direction}`), 36 picks, and it is NOT ingested: the brief excludes the
-  // short family from ingestion entirely on 46 of 128 live picks — 35.9% — and
-  // the same instruction reaffirms long-only for anything that gets a grade.
-  // Flipping this one value to 'swing_long' is all it would take if the owner
-  // decides the History tab should show the losing half of the record too; that
-  // is a decision to make out loud, not a default.
-  kai_short: 'short',
-  kai_short_shadow: 'short',
+  // The other half of what `kai_morning_alerts.py` sends (`kai_{direction}`), 36
+  // picks. Owner decision: HISTORY YES, ACTIVE NO. A back catalogue that quietly
+  // drops the losing half is not a record — 12 of 36 won, 33.3% — but 35.9% over
+  // 128 live picks is not something to hand a user as actionable either.
+  //
+  // The split is enforced in the DATA, not in a view filter. A short is only
+  // written once it has RESOLVED, its state is forced to 'expired', and
+  // `assertHistoryOnly` refuses to emit one that could be read as live. Nothing
+  // downstream has to remember the rule: a row that cannot be in a live state
+  // cannot reach a live feed by any path.
+  kai_short: 'swing_short',
+  kai_short_shadow: 'short',   // a different model from the morning short; out of scope
   kai_orb_bearish: 'short',
   breakdown: 'short',
   short_idea: 'short',
@@ -143,12 +146,32 @@ export function familyOf(alertType: string | null | undefined): SourceFamily {
 }
 
 /** The `alert_type` values this lane ingests, and the only ones it reads. */
-export const SWING_LONG_TYPES = Object.entries(ALERT_TYPE_FAMILY)
-  .filter(([, f]) => f === 'swing_long')
-  .map(([t]) => t);
+const typesFor = (family: SourceFamily): string[] =>
+  Object.entries(ALERT_TYPE_FAMILY).filter(([, f]) => f === family).map(([t]) => t);
 
+/** Graded, and allowed to be live. */
+export const SWING_LONG_TYPES = typesFor('swing_long');
+/** Ingested for the record only. Never graded, never live. */
+export const SWING_SHORT_TYPES = typesFor('swing_short');
+/** Everything this lane reads at all. */
+export const INGESTED_TYPES = [...SWING_LONG_TYPES, ...SWING_SHORT_TYPES];
+
+/** In the feed as a live, graded object. Longs only. */
 export function isIngestibleType(alertType: string | null | undefined): boolean {
   return familyOf(alertType) === 'swing_long';
+}
+
+/** In the database as a resolved record, and nowhere else. */
+export function isHistoryOnlyType(alertType: string | null | undefined): boolean {
+  return familyOf(alertType) === 'swing_short';
+}
+
+export function isReadableType(alertType: string | null | undefined): boolean {
+  return isIngestibleType(alertType) || isHistoryOnlyType(alertType);
+}
+
+export function directionOf(alertType: string | null | undefined): 'long' | 'short' {
+  return isHistoryOnlyType(alertType) ? 'short' : 'long';
 }
 
 /* ------------------------------------------------------------------ */
@@ -326,17 +349,70 @@ export function percentileRank(score: number, date: string, population: ScoredDa
   return Math.round((1000 * below) / n) / 10;
 }
 
+/* ------------------------------------------------------------------ */
+/* The percentile, rescaled into the band ladder                        */
+/* ------------------------------------------------------------------ */
+
 /**
- * `grade_band` follows the same percentile as the score: A at or above the 90th,
- * B at or above the median, C below. `grade_display` is the letter — the U+2212
- * in `displayGrade` only ever appears when a letter carries a minus, and these
- * do not.
+ * THE PERCENTILE IS A RANK. `setups.score` HAS TO BE A POSITION ON A LADDER.
+ *
+ * Owner ruling: a raw 0-100 percentile put 56.3% of the corpus below 60, which
+ * `bands.ts` draws as `unqualified` — grey, "Not qualified". Every one of these
+ * picks had already cleared the scanner's own bar to be TEXTED TO PAYING
+ * SUBSCRIBERS, so rendering most of them as unqualified is a claim the data does
+ * not support; it reads as a system that does not believe its own alerts.
+ *
+ * So the rank is rescaled onto the graded part of the ladder, 60..100:
+ *
+ *     score = 60 + 0.4 x percentile        p0 -> 60   p50 -> 80   p90 -> 96
+ *
+ * One straight line, so RANK ORDER IS PRESERVED EXACTLY — this changes what the
+ * bottom of the distribution is called, never which pick is above which. The
+ * bands in `grade.ts` and `bands.ts` are untouched; the rescale happens on the
+ * way in, which is the entire point of putting a percentile there.
+ *
+ * GREY STILL EXISTS AND STILL MEANS SOMETHING. Below 60 is now unreachable for
+ * anything this engine grades, which is what makes it informative again: an
+ * object with NO grade at all — a short, which is ingested for the record and
+ * never scored — comes back with a null score and renders grey. Grey now says
+ * "Kai has no view of its own on this one" instead of being the majority state
+ * of alerts the product actually sent.
  */
-export function gradeFromPercentile(pct: number | null): { band: 'A' | 'B' | 'C' | null; display: string | null } {
-  if (pct === null || !Number.isFinite(pct)) return { band: null, display: null };
-  if (pct >= 90) return { band: 'A', display: 'A' };
-  if (pct >= 50) return { band: 'B', display: 'B' };
-  return { band: 'C', display: 'C' };
+export function scoreFromPercentile(pct: number | null): number | null {
+  if (pct === null || !Number.isFinite(pct)) return null;
+  return Math.round((60 + 0.4 * pct) * 10) / 10;
+}
+
+/**
+ * `grade_band` is the FILTER value (0001: "band for logic/filters" — it is what
+ * `setup_alert_prefs.min_grade` compares against), and it stays anchored to the
+ * percentile: A at or above the 90th, B at or above the median, C below. That
+ * split is unchanged by the rescale.
+ *
+ * `grade_display` is the LETTER ON THE MEDALLION, and it is derived from the
+ * SCORE, using the same ladder `bands.ts` colours by. That is not a second
+ * opinion — it is the only way the letter and the ring can agree. Derive the
+ * letter from the percentile instead and you ship a card reading "Grade B" in a
+ * gold ring whose own screen-reader text says "top quality", because
+ * `gradeFamily` reads the score and the letter came from somewhere else.
+ *
+ * The minus is U+2212, per `displayGrade`.
+ */
+export function gradeBandFromPercentile(pct: number | null): 'A' | 'B' | 'C' | null {
+  if (pct === null || !Number.isFinite(pct)) return null;
+  if (pct >= 90) return 'A';
+  if (pct >= 50) return 'B';
+  return 'C';
+}
+
+export function gradeDisplayFromScore(score: number | null): string | null {
+  if (score === null || !Number.isFinite(score)) return null;
+  if (score >= 90) return 'A';
+  if (score >= 85) return 'A\u2212';
+  if (score >= 80) return 'B+';
+  if (score >= 70) return 'B';
+  if (score >= 60) return 'C';
+  return 'C\u2212';
 }
 
 /* ------------------------------------------------------------------ */
@@ -443,12 +519,13 @@ export type FamilyPerformance = {
  * returns (ELPW +2707%, ELAB +778%) from an `alert_price` captured against
  * unadjusted bars: a sign-only statistic survives that, a mean does not.
  */
-export function familyPerformance(outcomes: ScannerOutcome[]): FamilyPerformance | null {
+export function familyPerformance(outcomes: ScannerOutcome[], direction: 'long' | 'short' = 'long'): FamilyPerformance | null {
+  const inFamily = direction === 'short' ? isHistoryOnlyType : isIngestibleType;
   const graded = outcomes.filter(
     (o) => o.is_primary === true
       && o.win_5d !== null
-      && (o.direction ?? '').toLowerCase() === 'long'
-      && isIngestibleType(o.alert_type),
+      && (o.direction ?? '').toLowerCase() === direction
+      && inFamily(o.alert_type),
   );
   if (!graded.length) return null;
   const n = graded.length;
@@ -458,14 +535,14 @@ export function familyPerformance(outcomes: ScannerOutcome[]): FamilyPerformance
   // the stamped line is stable across re-runs and says what it really covers.
   const asOf = graded.reduce((max, o) => (o.anchor_date && o.anchor_date > max ? o.anchor_date : max), '');
   return {
-    family: 'Swing · long · Kai scanner',
+    family: `Swing · ${direction} · Kai scanner`,
     n,
     wins,
     win_pct: pct,
     horizon: '5 sessions',
     as_of: asOf,
     plain:
-      `Of the last ${n} long swing picks this scanner published, ${wins} were higher five sessions later — ${pct}%. `
+      `Of the last ${n} ${direction} swing picks this scanner published, ${wins} ${direction === 'short' ? 'were lower' : 'were higher'} five sessions later — ${pct}%. `
       + 'Measured close to close, holding the whole way: the scanner published no stop and no target, so this is not the '
       + 'result of a trade anyone managed. It is what has happened, not what will, and the grade says nothing about it.',
   };
@@ -508,6 +585,30 @@ export function outcomeFor(row: ScannerOutcome & { mfe_5d_pct?: number | string 
   const gain = num(row.gain_5d_pct);
   const won = row.win_5d === true;
   const move = gain === null ? null : `${gain > 0 ? '+' : ''}${gain.toFixed(1)}%`;
+  // `gain_5d_pct` is the POSITION's return: `alert_outcomes.py` multiplies the
+  // raw move by `sign_for(direction)`, so a short that worked is positive here
+  // while the stock fell. Verified against the source: for `kai_short`, every
+  // win_5d=true row is positive (min +0.02) and every false one negative
+  // (max -1.20). The number needs no correction; the SENTENCE does, because
+  // "+6.8% from the price it was called at" is long-side framing and would be
+  // read backwards on a short.
+  const short = (row.direction ?? '').toLowerCase() === 'short';
+  if (short) {
+    const priceMove = gain === null ? null : `${Math.abs(gain).toFixed(1)}%`;
+    return {
+      win_5d: won,
+      gain_5d_pct: gain,
+      mfe_5d_pct: num(row.mfe_5d_pct),
+      mae_5d_pct: num(row.mae_5d_pct),
+      anchor_date: row.anchor_date ?? null,
+      sessions_elapsed: row.sessions_elapsed ?? null,
+      resolved: row.resolved === true,
+      method: row.outcome_method ?? null,
+      plain: priceMove === null
+        ? `A short call. Five sessions on, the stock was ${won ? 'lower' : 'higher'} than where it was called \u2014 the short was ${won ? 'right' : 'wrong'}.`
+        : `A short call. Five sessions on, the stock closed ${priceMove} ${won ? 'below' : 'above'} the price it was called at, so the short was ${won ? 'right' : 'wrong'} by ${priceMove}. Measured close to close, holding the whole way. No stop or target was published, so this is not the result of a managed trade.`,
+    };
+  }
   return {
     win_5d: won,
     gain_5d_pct: gain,
@@ -531,7 +632,7 @@ export type SetupInsert = {
   id: string;
   symbol: string;
   mode: 'swing';
-  intent: 'buy_to_open';
+  intent: 'buy_to_open' | 'sell_short';
   state: 'ready' | 'expired';
   score: number | null;
   grade_band: 'A' | 'B' | 'C' | null;
@@ -564,18 +665,36 @@ export type SetupInsert = {
  * no detector behind it is invented analysis. Downstream that is visible and
  * honest — no stop means `grade.ts` reports Risk/Reward as `Unknown`, which is
  * exactly right, and it is reported as a finding rather than papered over.
+ *
+ * Re-confirmed against the live source after the alert-system lane said it had
+ * persisted levels at send time: `kai_long` still carries `stop_price` on 3 of
+ * 1,247 rows, `pattern_target` on 3, `next_resistance` on 2, and the twenty most
+ * recent rows (through 2026-09-01) carry none of the three. Nothing changed
+ * here, and nothing needs to when it does — the mapping already reads all three
+ * columns, so those rows flow the moment they exist.
+ *
+ * DIRECTION. A long is graded and may be live. A short is ingested for the
+ * record ONLY: no score, no band, no letter, state forced to `expired`. That is
+ * enforced here rather than in a view, so no feed, filter or join can produce a
+ * live short — the row simply cannot hold a live state.
  */
 export function setupFor(opts: {
   alert: ScannerAlert;
   key: string;
-  score: number | null;
+  /** The rank inside the trailing window, 0..100. Null for anything ungraded. */
+  percentile: number | null;
   now: Date;
 }): SetupInsert {
-  const { alert: a, key, score } = opts;
+  const { alert: a, key } = opts;
+  const short = isHistoryOnlyType(a.alert_type);
   const etDate = etDateFor(a.sent_at);
   const anchor = anchorDateFor(a.sent_at);
   const validUntil = validUntilFor(anchor);
-  const { band, display } = gradeFromPercentile(score);
+  // A short is never graded (owner ruling: long-only for anything that gets a
+  // grade), so it carries a null score and renders as the ungraded medallion.
+  const score = short ? null : scoreFromPercentile(opts.percentile);
+  const band = short ? null : gradeBandFromPercentile(opts.percentile);
+  const display = short ? null : gradeDisplayFromScore(score);
   const entry = num(a.alert_price);
   const stop = num(a.stop_price);
   const targets: { price: number; label: string }[] = [];
@@ -591,13 +710,21 @@ export function setupFor(opts: {
     id: setupIdFor(key),
     symbol: a.ticker.toUpperCase(),
     mode: 'swing',
-    intent: 'buy_to_open',
-    state: new Date(validUntil).getTime() <= opts.now.getTime() ? 'expired' : 'ready',
+    intent: short ? 'sell_short' : 'buy_to_open',
+    // A short's state is not computed, it is FIXED. `expired` is the only state
+    // a short may hold, and the ingest refuses to write one whose window has not
+    // closed, so "History only" is a property of the row and not of a query.
+    state: short || new Date(validUntil).getTime() <= opts.now.getTime() ? 'expired' : 'ready',
     score,
     grade_band: band,
     grade_display: display,
     score_components: {
-      ...scoreComponentsFor(a),
+      // The component mapping is calibrated on the long side — `entry_quality`
+      // is RSI inverted because docs/17 §1 measured extension hurting LONGS.
+      // Applying it to a short would be a number with no measurement behind it,
+      // so a short carries provenance and its outcome, and no components at all.
+      ...(short ? {} : scoreComponentsFor(a)),
+      direction: short ? 'short' : 'long',
       source: 'kai_sms_scanner',
       pick_key: key,
       raw_breakout_score: a.breakout_score,
@@ -614,7 +741,7 @@ export function setupFor(opts: {
     },
     invalidation: stop === null
       ? null
-      : { price: stop, plain: `A daily close below $${stop} ends the idea.` },
+      : { price: stop, plain: `A daily close ${short ? 'above' : 'below'} $${stop} ends the idea.` },
     stop,
     targets,
     catalyst: catalystType
@@ -668,6 +795,22 @@ function catalystPlain(type: string): string {
   if (t === 'news') return 'A news item is the reason this is moving.';
   if (t === 'analyst_action') return 'An analyst action is the reason this is moving.';
   return `Catalyst: ${type.replace(/_/g, ' ')}.`;
+}
+
+/**
+ * The structural guarantee behind "History yes, Active no".
+ *
+ * Called on every row before it is written. A short that is not `expired`, or
+ * carries a grade, or is not `sell_short`, is a bug that would put a 33.3%
+ * family in front of a user as actionable — so it stops the run rather than
+ * being filtered downstream and forgotten about.
+ */
+export function assertHistoryOnly(row: SetupInsert): void {
+  if (row.intent !== 'sell_short') return;
+  if (row.state !== 'expired') throw new Error(`${row.symbol}: a short may only ever be expired, got '${row.state}'`);
+  if (row.score !== null || row.grade_band !== null || row.grade_display !== null) {
+    throw new Error(`${row.symbol}: a short is never graded, got score=${row.score} band=${row.grade_band}`);
+  }
 }
 
 /* ------------------------------------------------------------------ */
