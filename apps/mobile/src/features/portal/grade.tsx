@@ -1,76 +1,27 @@
 /**
- * Grade medallion + qualitative scorecard, spec 10 §4.
+ * The portal's grade imports — one file, so five screens do not each pick a
+ * medallion.
  *
- * CROSS-LANE: lane MOBILE-A owns `src/features/grade/` and ships the canonical
- * `GradeMedallion` / `Scorecard`. This module is the portal's single import
- * point for them — while A's module is in flight it renders a local
- * implementation of the SAME spec, and switching to A's is a one-line change
- * here rather than an edit in five screens.
+ * THIS FILE USED TO CARRY A SECOND IMPLEMENTATION. Its own header said lane
+ * MOBILE-A owned the canonical one in `src/features/grade/` and that switching
+ * to it was "a one-line change here rather than an edit in five screens". This
+ * is that change. The Trade Portal and the club feed now render the SAME
+ * medallion and the SAME chip as the alert cards, which is the only way the
+ * grade can mean one thing across the app.
  *
- * The rule that matters either way: a component NEVER shows a fraction.
- * Status word + 3–5 lit segments, and the 0–100 score stays small beside a
- * large letter.
+ * The qualitative `Scorecard` stays local: it is typed against the portal's own
+ * `ScoreComponent` and is a different component from A's, not a duplicate.
+ *
+ * The rule that matters either way: a component NEVER shows a fraction. Status
+ * word + 3-5 lit segments, and the 0-100 score belongs to the medallion.
  */
 import React from 'react';
 import { Pressable, View } from 'react-native';
-import { T, Num } from '../../ui/Text';
-import { alpha, color, radius } from '../../ui/tokens';
-import { gradeColor } from '../chart/semantics';
+import { T } from '../../ui/Text';
+import { alpha, color } from '../../ui/tokens';
 import type { ScoreComponent } from './types';
 
-export function GradeMedallion({
-  grade, score, size = 72, testID = 'grade-medallion',
-}: { grade: string | null; score?: number | null; size?: number; testID?: string }) {
-  const c = gradeColor(grade);
-
-  /**
-   * Spec §4: below 60 (and with no grade at all) the treatment is NEUTRAL and
-   * the object is not promoted as actionable. An ungraded alert is a real thing
-   * — a price condition you asked Kai to watch — so it keeps its place in the
-   * hierarchy and simply says it has no grade, at a smaller size.
-   */
-  if (!grade) {
-    const d = Math.round(size * 0.62);
-    return (
-      <View
-        testID={testID}
-        accessibilityLabel="Not graded. This is a condition Kai is watching, not a graded setup."
-        style={{ width: size, alignItems: 'center', gap: 4 }}
-      >
-        <View
-          style={{
-            width: d, height: d, borderRadius: d / 2, borderWidth: 1,
-            borderColor: alpha.ivory20, backgroundColor: alpha.ivory06,
-            alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          <T size={d * 0.3} weight="bold" c={color.dim}>—</T>
-        </View>
-        <T size={9.5} c={color.dim} align="center">Not graded</T>
-      </View>
-    );
-  }
-
-  return (
-    <View
-      testID={testID}
-      accessibilityLabel={`Grade ${grade}${score != null ? `, score ${score} out of 100` : ''}`}
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        borderWidth: 1.5,
-        borderColor: c,
-        backgroundColor: `${c}14`,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <T size={size * 0.38} weight="bold" c={c}>{grade}</T>
-      {score != null ? <Num size={Math.max(9, size * 0.14)} weight="regular" c={color.muted}>{`${score}/100`}</Num> : null}
-    </View>
-  );
-}
+export { GradeMedallion, GradeChip } from '../grade';
 
 function Segments({ strength, c }: { strength: number; c: string }) {
   return (
@@ -128,23 +79,3 @@ export function Scorecard({
   );
 }
 
-/** The small inline grade chip used inside Kai objects and rows. */
-export function GradeChip({ grade, testID }: { grade: string | null; testID?: string }) {
-  if (!grade) return null;
-  const c = gradeColor(grade);
-  return (
-    <View
-      testID={testID}
-      style={{
-        paddingHorizontal: 6,
-        paddingVertical: 1,
-        borderRadius: radius.sm,
-        backgroundColor: `${c}1F`,
-        borderWidth: 0.5,
-        borderColor: `${c}88`,
-      }}
-    >
-      <T size={10} weight="bold" c={c}>{grade}</T>
-    </View>
-  );
-}
