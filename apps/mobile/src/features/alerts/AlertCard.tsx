@@ -6,6 +6,9 @@ import Svg, { Path } from 'react-native-svg';
 import { alpha, color, gradientAngle, radius } from '../../ui/tokens';
 import { T, Num, Eyebrow } from '../../ui/Text';
 import { KaiOrb } from '../../ui/KaiOrb';
+// A ticker is never plain text and never a letter in a gradient square — the
+// one shared mark lives in the design system now (see src/ui/Ticker.tsx).
+import { TickerMark } from '../../ui/Ticker';
 import { GradeMedallion, GradeChip, Scorecard, gradeBand } from '../grade';
 import type { AlertCard as AlertCardModel, AlertCardState } from '../../lib/types';
 
@@ -27,19 +30,6 @@ function Chevron({ open }: { open: boolean }) {
     <Svg width={11} height={11} viewBox="0 0 24 24" fill="none" style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}>
       <Path d="M6 9l6 6 6-6" stroke={color.muted} strokeWidth={2.5} />
     </Svg>
-  );
-}
-
-function LogoTile({ symbol }: { symbol: string }) {
-  return (
-    <LinearGradient
-      colors={[alpha.ivory10, alpha.chip85]}
-      start={gradientAngle.start}
-      end={gradientAngle.end}
-      style={{ width: 30, height: 30, borderRadius: 9, borderWidth: 0.5, borderColor: alpha.ivory14, alignItems: 'center', justifyContent: 'center' }}
-    >
-      <T size={13} weight="bold">{symbol.slice(0, 1)}</T>
-    </LinearGradient>
   );
 }
 
@@ -82,7 +72,7 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
     >
       {/* Identity — logo, ticker, company, mode, direction, instrument */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <LogoTile symbol={alert.symbol} />
+        <TickerMark symbol={alert.symbol} size={30} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Pressable
             onPress={() => router.push(`/symbol/${encodeURIComponent(alert.symbol)}`)}
@@ -280,6 +270,7 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
         style={{ borderRadius: radius.xl, paddingVertical: 13, paddingHorizontal: 14, borderWidth: 0.5, borderColor: bad ? alpha.red35 : alpha.ivory14, gap: 8 }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TickerMark symbol={alert.symbol} size={22} />
           <T size={15} weight="bold">{alert.symbol}</T>
           {/*
             Direction is part of the record, not decoration: a short read as a

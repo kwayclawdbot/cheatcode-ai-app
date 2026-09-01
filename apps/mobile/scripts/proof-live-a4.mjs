@@ -258,7 +258,9 @@ const main = async () => {
     // A user-written watch with no graded setup behind it has no scorecard —
     // spec §4 leaves it unqualified rather than inventing components. Assert
     // the scorecard only where there IS a grade to explain.
-    const graded = (await page.locator(`[data-testid="medallion-${symbol}"]`).innerText()).includes('/100');
+    // The medallion shows a bare `87` in a gauge now, not `87/100`; the score
+    // element is the stable signal for "this object actually has a grade".
+    const graded = (await page.locator(`[data-testid="medallion-${symbol}"] [data-testid="grade-score"]`).count()) > 0;
     const scorecard = await page.locator(`[data-testid="scorecard-${symbol}"]`).count();
     if (graded) note(scorecard > 0, `qualitative scorecard rendered for graded ${symbol}`);
     else console.log(`  · ${symbol} is an ungraded watch — no scorecard, which is correct (§4)`);
