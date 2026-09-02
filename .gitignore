@@ -11,3 +11,6 @@ proof/*.tmp
 
 # Agent worktrees (local only, contains node_modules)
 .claude/
+
+# Vercel CLI link (local only — the project is configured on Vercel itself)
+.vercel/
