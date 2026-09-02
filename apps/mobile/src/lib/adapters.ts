@@ -956,18 +956,44 @@ const NGROUP = (v: unknown): NotificationGroup => {
   return s === 'action_required' || s === 'changes' || s === 'fyi' ? s : 'fyi';
 };
 
+/**
+ * GET /notifications answers `{ groups: { action_required, changes, fyi } }`,
+ * and its rows carry `title_plain` / `body_plain` / `read`. This adapter used
+ * to look for a flat `notifications` array of `title` / `body` / `read_at`, so
+ * it matched on nothing: every real notification fell out at `arr()`, the inbox
+ * rendered "Nothing here right now" no matter what was in the table, and the
+ * screen was only ever seen with fixtures. Found by SWING-3, whose whole point
+ * is a morning pick arriving in that list.
+ *
+ * The older spellings are still read, because an adapter's job is to be the one
+ * place a shape change cannot break the app.
+ */
 export function adaptNotifications(v: unknown): NotificationRow[] {
-  return arr(obj(v).notifications ?? v).map((raw): NotificationRow => {
+  const root = obj(v);
+  const groups = obj(root.groups);
+  const rows = Array.isArray(root.notifications)
+    ? root.notifications
+    : Object.keys(groups).length
+      // Grouping is carried on each row, so the order across groups is the only
+      // thing lost here — and the screen re-groups them itself.
+      ? [...arr(groups.action_required), ...arr(groups.changes), ...arr(groups.fyi)]
+      : arr(v);
+
+  return rows.map((raw): NotificationRow => {
     const n = obj(raw);
     const payload = obj(n.payload);
     return {
       id: str(n.id),
       group: NGROUP(n.group ?? payload.group),
-      title: str(payload.title ?? n.title ?? n.kind).replace(/_/g, ' '),
-      body: nStr(payload.body ?? n.body ?? payload.message_plain),
-      route: nStr(payload.route ?? n.route ?? payload.deep_link),
+      title: str(
+        n.title_plain ?? payload.title_plain ?? payload.title ?? n.title ?? n.kind
+      ).replace(/_/g, ' '),
+      body: nStr(n.body_plain ?? payload.body_plain ?? payload.body ?? n.body ?? payload.message_plain),
+      route: nStr(n.route ?? payload.route ?? payload.deep_link),
       created_at: nStr(n.created_at),
-      read_at: nStr(n.read_at),
+      // The route sends a boolean. `read_at` is a timestamp the row does not
+      // carry, and the screen only ever asks whether it is truthy.
+      read_at: nStr(n.read_at) ?? (n.read === true ? str(n.created_at, 'read') : null),
     };
   }).filter((n) => n.id);
 }

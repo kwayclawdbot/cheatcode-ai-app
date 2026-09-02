@@ -235,7 +235,7 @@ ok(
 
 ok(
   'every NotifyKind maps to exactly one category',
-  (['alert_trigger', 'alert_activated', 'kai_room_reply', 'debrief_ready', 'paper_reset', 'system'] as NotifyKind[])
+  (['alert_trigger', 'alert_activated', 'setup_published', 'kai_room_reply', 'debrief_ready', 'paper_reset', 'system'] as NotifyKind[])
     .every((k) => typeof KIND_CATEGORY[k] === 'string')
 );
 
@@ -243,10 +243,14 @@ section('The daily budget — proactive kinds ONLY (§4.2)');
 
 ok('alert_activated is proactive', isProactive('alert_activated'));
 ok('system is proactive', isProactive('system'));
+// SWING-3. Nobody asked for THIS symbol on THIS morning, so the morning scan's
+// picks spend the daily budget and wait out quiet hours exactly like the rest.
+ok('setup_published is proactive', isProactive('setup_published'));
 ok('alert_trigger is NOT — the user asked for exactly this one', !isProactive('alert_trigger'));
 ok('kai_room_reply is NOT — they @-mentioned Kai themselves', !isProactive('kai_room_reply'));
 ok('debrief_ready is NOT — it follows a trade they closed', !isProactive('debrief_ready'));
-ok('the proactive set is those two and no more', PROACTIVE_KINDS.size === 2);
+ok('paper_reset is NOT — they pressed the button', !isProactive('paper_reset'));
+ok('the proactive set is those three and no more', PROACTIVE_KINDS.size === 3);
 
 const spent = { prefs: prefs({ max_per_day: 5 }), sentToday: 5 };
 ok(

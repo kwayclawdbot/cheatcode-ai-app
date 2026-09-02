@@ -98,6 +98,7 @@ export type ResolveInput = {
 export const KIND_CATEGORY: Record<NotifyKind, NotificationCategory> = {
   alert_trigger: 'trade_alerts',
   alert_activated: 'trade_alerts',
+  setup_published: 'trade_alerts',
   kai_room_reply: 'community',
   debrief_ready: 'coaching',
   paper_reset: 'system',
@@ -109,6 +110,9 @@ export const KIND_CATEGORY: Record<NotifyKind, NotificationCategory> = {
  * Only these are capped by `max_per_day` (brief §4.2).
  *
  *   alert_activated  Kai decided a setup was worth a watch. The archetype.
+ *   setup_published  the morning scan published a setup. Same shape: the user
+ *                    did not ask for THIS symbol, so it spends the daily budget
+ *                    and it waits out quiet hours.
  *   system           an announcement. Nobody asked.
  *
  * Everything else follows directly from an act of the user's — their own alert
@@ -119,6 +123,7 @@ export const KIND_CATEGORY: Record<NotifyKind, NotificationCategory> = {
  */
 export const PROACTIVE_KINDS: ReadonlySet<NotifyKind> = new Set<NotifyKind>([
   'alert_activated',
+  'setup_published',
   'system',
 ]);
 

@@ -62,6 +62,7 @@ import {
   type SetupInsert,
 } from '../src/lib/swing/ingest.ts';
 import { kaiSource, readAll } from '../src/lib/swing/source.ts';
+import { publishSetups, type PublishReport } from '../src/lib/swing/publish.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ENV_FILE = process.env.ENV_FILE ?? resolve(HERE, '../.env.local');
@@ -75,6 +76,12 @@ const ARGS = process.argv.slice(2);
 const DRY = ARGS.includes('--dry-run');
 const AS_JSON = ARGS.includes('--json');
 const SINCE = arg('--since') ?? isoDaysAgo(120);
+/**
+ * Fan-out is OPT-IN on the command line and always off in `--dry-run`.
+ * A human backfilling six months of history must not be one forgotten flag away
+ * from pushing the back catalogue at every user on the system.
+ */
+const NOTIFY = ARGS.includes('--notify');
 const WINDOW_DAYS = Number(arg('--window-days') ?? PERCENTILE_WINDOW_DAYS);
 
 export type IngestSummary = {
@@ -92,6 +99,7 @@ export type IngestSummary = {
   instruments_added: number;
   band_split: ReturnType<typeof bandSplit>;
   family_performance: ReturnType<typeof familyPerformance>;
+  published: PublishReport | null;
   dry_run: boolean;
 };
 
@@ -248,13 +256,33 @@ export async function run(opts: { since?: string; quiet?: boolean } = {}): Promi
   }
   say(`setups: ${inserted} inserted, ${updated} updated, ${unchanged} unchanged`);
 
-  return summary({ since, rows: rows.length, population, ingested: setups.length, declined, retired, dupes: longRows.length - population.size, inserted, updated, unchanged, instruments: instrumentsAdded, split, perf, dry: false });
+  /* ---- 5. tell the people it matches ----------------------------------- */
+  // THE WHITELIST IS THE IDS THIS RUN CREATED, and nothing else. `setups` here
+  // holds the whole 180-day percentile window; an updated row is a re-grade of
+  // something already announced, and an unchanged row is yesterday's news.
+  const createdIds = toWrite.filter((s) => !existing.has(s.id)).map((s) => s.id);
+  let published: PublishReport | null = null;
+  if (NOTIFY) {
+    published = await publishSetups({ ids: createdIds, todayEt: etDateFor(now.toISOString()) });
+    say(
+      `published: ${published.published} of ${published.considered} new setup(s) announced to ` +
+      `${published.notified} recipient(s)` +
+      (Object.keys(published.refusals).length
+        ? ` — refused ${Object.entries(published.refusals).map(([k, v]) => `${k}:${v}`).join(' ')}`
+        : '')
+    );
+  } else if (createdIds.length) {
+    say(`published: 0 — ${createdIds.length} new setup(s) written, --notify not passed`);
+  }
+
+  return summary({ since, rows: rows.length, population, ingested: setups.length, declined, retired, dupes: longRows.length - population.size, inserted, updated, unchanged, instruments: instrumentsAdded, split, perf, published, dry: false });
 
   function summary(o: {
     since: string; rows: number; population: Map<string, ScannerAlert>; ingested: number;
     declined: Record<string, Record<string, number>>; retired: number;
     dupes: number; inserted: number; updated: number; unchanged: number;
-    instruments: number; split: ReturnType<typeof bandSplit>; perf: ReturnType<typeof familyPerformance>; dry: boolean;
+    instruments: number; split: ReturnType<typeof bandSplit>; perf: ReturnType<typeof familyPerformance>;
+    published?: PublishReport | null; dry: boolean;
   }): IngestSummary {
     return {
       since: o.since,
@@ -271,6 +299,7 @@ export async function run(opts: { since?: string; quiet?: boolean } = {}): Promi
       instruments_added: o.instruments,
       band_split: o.split,
       family_performance: o.perf,
+      published: o.published ?? null,
       dry_run: o.dry,
     };
   }

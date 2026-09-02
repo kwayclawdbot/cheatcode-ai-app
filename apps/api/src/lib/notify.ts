@@ -59,6 +59,7 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
 export type NotifyKind =
   | 'alert_activated'
   | 'alert_trigger'
+  | 'setup_published'
   | 'kai_room_reply'
   | 'debrief_ready'
   | 'paper_reset'
@@ -69,6 +70,9 @@ export const NOTIF_GROUP: Record<NotifyKind, NotificationGroup> = {
   alert_trigger: 'action_required',
   debrief_ready: 'action_required',
   alert_activated: 'changes',
+  // Kai published a setup on the morning scan. Same species as `alert_activated`
+  // — nobody asked for this one specifically — so it groups and caps the same.
+  setup_published: 'changes',
   kai_room_reply: 'changes',
   paper_reset: 'fyi',
   system: 'fyi',
