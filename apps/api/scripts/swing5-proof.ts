@@ -292,16 +292,16 @@ async function partTwo(): Promise<void> {
   const existing = await db.from('setups').select('id').eq('id', setupId).maybeSingle();
   ok('the app does not already hold this pick', !existing.data, existing.data);
 
-  // A recipient who will actually accept it. `min_grade` defaults to 'B' and
-  // SWING-1 measured band C at 46% of all picks, so a proof that used the
-  // default would be measuring the default rather than the fan-out.
+  // A recipient, and DELIBERATELY ONE WHOSE PREFERENCES ARE NEVER TOUCHED.
+  // An earlier cut of this proof upserted `min_grade: 'C'` on its actor to make
+  // sure the pick got through, which meant it was measuring its own upsert. Now
+  // that 0028 makes C the floor nobody chose, the honest test is to write
+  // nothing at all and let the signup trigger's row decide.
   const actor = await createActor();
-  const prior = await db.from('setup_alert_prefs').select('*').eq('user_id', actor).maybeSingle();
-  if (prior.data) savedPrefs.push(prior.data as Record<string, unknown>);
-  await db.from('setup_alert_prefs').upsert(
-    { user_id: actor, enabled: true, min_grade: 'C', modes: [], intents: [] } as never,
-    { onConflict: 'user_id' },
-  );
+  const { data: actorPrefs } = await db.from('setup_alert_prefs')
+    .select('min_grade,updated_at').eq('user_id', actor).maybeSingle();
+  eq('the recipient is on the untouched signup default', actorPrefs?.min_grade, 'C');
+  eq('and nothing in this proof has written to it', actorPrefs?.updated_at ?? null, null);
 
   // ── the producer writes its row, exactly as broadcast_alerts does ──
   const ins = await kai('sent_alerts', {

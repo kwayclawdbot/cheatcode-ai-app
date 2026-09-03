@@ -132,13 +132,22 @@ const main = async () => {
     if (d) bySession.set(d, [...(bySession.get(d) ?? []), s]);
   }
   const [session, picks] = [...bySession.entries()].sort((a, b) => b[1].length - a[1].length)[0];
-  const above = picks.filter((s) => s.grade_band === 'A' || s.grade_band === 'B');
-  const below = picks.filter((s) => s.grade_band === 'C');
-  if (!above.length) throw new Error(`session ${session} has no pick above the default B floor`);
+  // 0028 — THE DEFAULT FLOOR IS C, SO NOTHING IS BELOW IT. This proof used to
+  // split the session into A/B (announced) and C (silently dropped), because
+  // 0008 defaulted `min_grade` to 'B' and nobody had ever chosen it. Band C is
+  // 46% of every pick the scanner ships; on the two most recent sessions it was
+  // 2 of 3. The letter is a percentile of a score ENGINE-9 measured as no
+  // better than a coin toss at ranking outcomes, so a default floor was hiding
+  // half the product behind a number that does not forecast. Every pick now
+  // reaches an account that has never expressed a preference, and this proof
+  // checks the whole session rather than the flattering half of it.
+  const above = picks;
+  const below = [];
+  const bandC = picks.filter((s) => s.grade_band === 'C');
 
   console.log(`\nsession ${session}, ${picks.length} live pick(s) straight from the ingest:`);
   for (const s of picks) console.log(`  ${s.symbol.padEnd(6)} score ${s.score} band ${s.grade_band}`);
-  console.log(`  → ${above.length} at or above the default floor, ${below.length} below it`);
+  console.log(`  → all ${above.length} are at or above the default floor; ${bandC.length} of them are band C, which before 0028 would have reached nobody`);
 
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: 'dark' });
@@ -160,9 +169,10 @@ const main = async () => {
     const prefs = (await rest(
       `setup_alert_prefs?select=enabled,min_grade,modes,intents,symbols_include,symbols_exclude&user_id=eq.${me.user_id}`))[0];
     // 0013 stamps this row at signup. The user has expressed no preference; the
-    // floor that decides what they hear this morning is a DEFAULT, not a choice.
+    // floor that decides what they hear this morning is a DEFAULT, not a choice
+    // — which is exactly why 0028 made that default C rather than B.
     ok('their prefs are the untouched signup defaults',
-      prefs?.enabled === true && prefs?.min_grade === 'B'
+      prefs?.enabled === true && prefs?.min_grade === 'C'
       && !prefs?.symbols_include && !prefs?.symbols_exclude, prefs);
 
     console.log('\n[2] the inbox before the morning runs');
@@ -189,8 +199,11 @@ const main = async () => {
     for (const s of above) {
       ok(`${s.symbol} (band ${s.grade_band}) is on screen`, text.includes(s.symbol), text.slice(0, 400));
     }
+    for (const s of bandC) {
+      ok(`${s.symbol} is band C and reaches this default account — 0028`, text.includes(s.symbol), text.slice(0, 400));
+    }
     for (const s of below) {
-      ok(`${s.symbol} (band C) is NOT — it is under this user's floor`, !text.includes(`${s.symbol} —`), text.slice(0, 400));
+      ok(`${s.symbol} is NOT on screen — it is under this user's floor`, !text.includes(`${s.symbol} —`), text.slice(0, 400));
     }
     ok('it is filed under CHANGES', /CHANGES/.test(text), text.slice(0, 200));
     ok('and not under NEEDS YOU', !/NEEDS YOU/.test(text), text.slice(0, 200));

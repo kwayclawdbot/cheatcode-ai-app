@@ -18,6 +18,7 @@
  */
 import {
   GRADE_RANK,
+  DEFAULT_MIN_GRADE,
   BODY_MAX,
   etDateOf,
   matchesPrefs,
@@ -132,10 +133,21 @@ const why = (d: ReturnType<typeof publishable>) => (d.ok ? null : d.reason);
   eq('a C-band pick does not reach a user who asked for B and better',
     why(matchesPrefs(setup({ grade_band: 'C' }), prefs({ min_grade: 'B' }))), 'below_min_grade');
   ok('an A-band pick reaches that same user', matchesPrefs(setup({ grade_band: 'A' }), prefs({ min_grade: 'B' })).ok);
-  ok('and the default floor is B, so a C is refused with no prefs set',
-    !matchesPrefs(setup({ grade_band: 'C' }), prefs()).ok);
-  ok('a user who asked for everything gets the C',
+  // 0028: the floor nobody chose is C, not B. Band C is 46% of every pick the
+  // scanner ships, and the letter is a percentile of a score ENGINE-9 measured
+  // as no better than a coin toss at ranking outcomes — so a default floor was
+  // hiding half the product behind a number that does not forecast.
+  eq('the floor a user who never said anything gets is C', DEFAULT_MIN_GRADE, 'C');
+  ok('so a C-band pick DOES reach a user with no preference set',
+    matchesPrefs(setup({ grade_band: 'C' }), prefs()).ok);
+  ok('and one whose row exists but was never narrowed',
+    matchesPrefs(setup({ grade_band: 'C' }), prefs({ enabled: true, min_grade: null })).ok);
+  ok('a person who chose B is still honoured — the default changed, the floor did not go away',
+    !matchesPrefs(setup({ grade_band: 'C' }), prefs({ min_grade: 'B' })).ok);
+  ok('a user who explicitly asked for everything gets the C',
     matchesPrefs(setup({ grade_band: 'C' }), prefs({ min_grade: 'C' })).ok);
+  ok('and one who asked for A only still gets no C',
+    !matchesPrefs(setup({ grade_band: 'C' }), prefs({ min_grade: 'A' })).ok);
 
   eq('a swing setup does not reach someone who only wants day trades',
     why(matchesPrefs(setup(), prefs({ modes: ['day_trade'] }))), 'mode_not_wanted');

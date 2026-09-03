@@ -85,11 +85,34 @@ const no = (reason: Refusal): Decision => ({ ok: false, reason });
 /* ------------------------------------------------------------------ */
 
 /**
- * A ordering, not a preference: A is the best band, and `min_grade` means
- * "this good or better". 0008 defaults it to B, so the out-of-the-box user
- * hears about A and B and not C.
+ * An ordering, not a preference: A is the best band, and `min_grade` means
+ * "this good or better".
  */
 export const GRADE_RANK: Record<'A' | 'B' | 'C', number> = { A: 3, B: 2, C: 1 };
+
+/**
+ * The floor a user who has never said anything gets. C — everything.
+ *
+ * 0008 shipped this as 'B' and 0013 creates the prefs row at signup with
+ * nothing but a user id, so every account inherited that floor without anyone
+ * choosing it. SWING-1 measured band C at 46% of every pick the scanner ships;
+ * on 2026-08-31 and 09-01 it was 2 of the 3 morning picks. Nearly half the
+ * product was invisible to everybody.
+ *
+ * A default floor is only defensible if the letter forecasts the outcome, and
+ * it does not. The medallion is a trailing-180-day PERCENTILE of
+ * `breakout_score`, and ENGINE-9 measured that score as no better than a coin
+ * toss at ranking what a pick went on to do. The band says how CLEAN a setup
+ * looked, which is worth showing; a default floor makes it read as how likely
+ * the trade is to work, which is a claim nothing supports.
+ *
+ * It is still a real floor. Someone who wants only A and B can say so. This is
+ * the answer when nobody has.
+ *
+ * 0028 sets the same value as the column default, so the code and the schema
+ * agree; this constant is what applies to a profile with no prefs row at all.
+ */
+export const DEFAULT_MIN_GRADE: 'A' | 'B' | 'C' = 'C';
 
 /**
  * May this setup be announced to anyone at all, today?
@@ -123,13 +146,13 @@ export function etDateOf(s: PublishableSetup): string | null {
  * Does this user want to hear about this setup?
  *
  * A user with NO prefs row is not represented here at all — see
- * `recipientsFor`, which treats an absent row as the 0008 defaults rather than
- * as silence. A row that exists and says `enabled: false` is a decision.
+ * `recipientsFor`, which treats an absent row as the schema defaults rather
+ * than as silence. A row that exists and says `enabled: false` is a decision.
  */
 export function matchesPrefs(s: PublishableSetup, p: SetupPrefs): Decision {
   if (p.enabled === false) return no('prefs_disabled');
 
-  const min = p.min_grade ?? 'B';
+  const min = p.min_grade ?? DEFAULT_MIN_GRADE;
   if (s.grade_band && GRADE_RANK[s.grade_band] < GRADE_RANK[min]) {
     return no('below_min_grade');
   }
@@ -314,9 +337,9 @@ function bump(into: Record<string, number>, key: string): void {
  * Every profile, with its prefs row when it has one.
  *
  * A profile with NO `setup_alert_prefs` row has never expressed a preference,
- * and 0008's column defaults (enabled, min_grade B, both modes, both intents)
- * are what the product promises such a user. Reading only the prefs table would
- * silently mean "opted out", which is the opposite.
+ * and the schema defaults (enabled, `DEFAULT_MIN_GRADE`, both modes, both
+ * intents) are what the product promises such a user. Reading only the prefs
+ * table would silently mean "opted out", which is the opposite.
  */
 async function loadPrefs(db: ReturnType<typeof serviceClient>): Promise<SetupPrefs[]> {
   const [{ data: profileRows, error: pErr }, { data: prefRows, error: sErr }] = await Promise.all([
