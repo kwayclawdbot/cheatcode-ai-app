@@ -8,6 +8,14 @@
     {
       "path": "/api/v1/internal/push/drain",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/v1/internal/swing/ingest",
+      "schedule": "*/10 12,13,14,15,16,17,18,19,20 * * 1-5"
+    },
+    {
+      "path": "/api/v1/internal/swing/ingest",
+      "schedule": "40 21 * * 1-5"
     }
   ]
 }

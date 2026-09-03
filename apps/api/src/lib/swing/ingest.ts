@@ -1,5 +1,5 @@
 /**
- * SWING-1 — the Kai SMS scanner's long picks, translated into `setups` rows.
+ * SWING-1 — the Kai SMS scanner's picks, translated into `setups` rows.
  *
  * Everything in this file is PURE. It takes rows exactly as `sent_alerts` and
  * `alert_performance` hold them and returns the rows the app's own database
@@ -9,8 +9,13 @@
  * THREE RULES, AND THEY ARE MEASURED, NOT PREFERRED
  * (docs/BUILD-BRIEF-swing-1-sms-alerts-as-swing-setups.md)
  *
- * 1. LONG ONLY. `alert_type LIKE 'kai_long%'`. The short family closed 46 of
- *    128 live picks — 35.9% — and is excluded from ingestion entirely.
+ * 1. LIVE IS LONG ONLY — `kai_long`, and nothing else, may be graded or
+ *    actionable. The morning short family closed 46 of 128 live picks (35.9%)
+ *    and the opening-range families claim a horizon this lane does not manage.
+ *    Every one of them is still IMPORTED, as a resolved RECORD: expired,
+ *    ungraded, carrying what it actually did. Owner ruling 2026-09-03 — the
+ *    app holds every alert the product has ever sent, and exactly one family
+ *    of them is tradeable today. See `ALERT_TYPE_FAMILY`.
  *
  * 2. THE MEDALLION SCORE IS A PERCENTILE. `setups.score` is the rank of this
  *    pick's `breakout_score` inside a trailing 180-day window of long picks,
@@ -73,14 +78,15 @@ export type ScannerOutcome = {
 };
 
 /* ------------------------------------------------------------------ */
-/* Which families are swing at all                                      */
+/* Which families exist, and what each one is allowed to be             */
 /* ------------------------------------------------------------------ */
 
 /**
  * THE SOURCE STREAM IS NOT ONE FAMILY, AND `kai_long%` IS NOT A SWING FILTER.
  *
- * The brief says "long only, `alert_type LIKE 'kai_long%'`". Three types match
- * that prefix and only ONE of them is swing-shaped. Read the messages:
+ * Sixteen `alert_type` values have gone out over SMS since February. Three of
+ * them match a `kai_long%` prefix and only ONE is swing-shaped. Read the
+ * messages:
  *
  *   kai_long                     "RSI 64 has room to run and volume confirms
  *                                 conviction at 1.3x average… on a 2-5 day
@@ -90,88 +96,146 @@ export type ScannerOutcome = {
  *   kai_long_pullback_or_break   "BOH AFTER PULLBACK: 5min close $204.21 >
  *                                 OR-high $203.18 · VWAP $202.65"     → INTRADAY
  *
- * An opening-range break on a five-minute close is docs/17 §3a's family, not
- * §3b's. Writing one into `setups` as `mode='swing'` with a five-SESSION
- * `valid_until` mislabels it, and grading it at +5 sessions measures a horizon
- * the alert never claimed. So this lane ingests `kai_long` and DECLINES the
- * other two rather than relabelling them: `mode='day_trade'` is a lifecycle
- * that dies at the close, with structural invalidation, and none of that is
- * built here. They stay in the source, named and out of scope, until the day
- * -trade lane exists to take them.
+ * TWO SEPARATE QUESTIONS, AND THEY USED TO BE ANSWERED BY ONE ANSWER.
  *
- * The map is keyed on `alert_type` EXACTLY. An unrecognised type is `other` and
- * is never ingested — adding a family has to be a decision someone made, not a
- * prefix that quietly matched.
+ *   1. May this family be LIVE — a graded, actionable object a user can trade
+ *      off today?
+ *   2. Does this family EXIST in the app at all — as the record of an alert
+ *      that really went out?
+ *
+ * SWING-1 answered both with `kai_long`, so 589 of the 838 picks this product
+ * has ever sent were simply absent. Owner ruling (2026-09-03): "import past
+ * alerts via sms into the app". So question 2 is now answered YES for every
+ * family, and question 1 is still `kai_long` alone.
+ *
+ * A family that is `live: false` enters the app as a RECORD and nothing else:
+ * `state: 'expired'`, no score, no band, no medallion, and — enforced by
+ * `assertRecordOnly` on every row before it is written — no path by which it
+ * can reach a live feed. It is written only once it has RESOLVED, so a card
+ * that says nothing about what happened never appears.
+ *
+ * WHY THE OPENING-RANGE FAMILIES ARE STILL NOT LIVE. An OR break on a
+ * five-minute close is docs/17 §3a's family, not §3b's. Writing one into
+ * `setups` as `mode='swing'` with a five-SESSION `valid_until` mislabels it,
+ * and a `day_trade` lifecycle — dies at the close, structural invalidation —
+ * is not built. They carry `mode: 'day_trade'` and a same-session
+ * `valid_until` so the record is at least labelled with the horizon it
+ * claimed, and they stay out of Active until that lane exists.
+ *
+ * The map is keyed on `alert_type` EXACTLY. An unrecognised type is `other`
+ * and is never read at all — adding a family has to be a decision someone
+ * made, not a prefix that quietly matched.
  */
-export type SourceFamily = 'swing_long' | 'swing_short' | 'intraday_long' | 'short' | 'other';
+export type SourceFamily =
+  | 'swing_long'      // kai_long — the ONLY live, graded family
+  | 'swing_short'     // the morning short — record only, measured at 35.9%
+  | 'intraday_long'   // opening-range / five-minute breaks — record only
+  | 'intraday_short'  // opening-range breakdowns — record only
+  | 'legacy_long'     // the pre-April scanner's long families — record only
+  | 'legacy_short'    // the pre-April scanner's short families — record only
+  | 'other';          // unknown. Never read, never written.
+
+export type FamilySpec = {
+  /** The horizon the alert actually claimed. Drives `setups.mode`. */
+  mode: 'swing' | 'day_trade';
+  direction: 'long' | 'short';
+  /** May a pick in this family be graded and actionable? `kai_long` only. */
+  live: boolean;
+  /** How the family names itself on a performance line. */
+  label: string;
+};
+
+export const FAMILY_SPEC: Record<SourceFamily, FamilySpec> = {
+  swing_long: { mode: 'swing', direction: 'long', live: true, label: 'Swing · long · Kai scanner' },
+  swing_short: { mode: 'swing', direction: 'short', live: false, label: 'Swing · short · Kai scanner' },
+  intraday_long: { mode: 'day_trade', direction: 'long', live: false, label: 'Intraday · long · Kai scanner' },
+  intraday_short: { mode: 'day_trade', direction: 'short', live: false, label: 'Intraday · short · Kai scanner' },
+  legacy_long: { mode: 'swing', direction: 'long', live: false, label: 'Swing · long · early scanner' },
+  legacy_short: { mode: 'swing', direction: 'short', live: false, label: 'Swing · short · early scanner' },
+  other: { mode: 'swing', direction: 'long', live: false, label: 'Unclaimed' },
+};
 
 export const ALERT_TYPE_FAMILY: Record<string, SourceFamily> = {
-  // Swing-shaped longs. Only these are in scope for SWING-1.
+  // ---- LIVE ---------------------------------------------------------------
+  // Swing-shaped longs from `kai_morning_alerts.py`. The only family that may
+  // hold a grade or a live state.
   kai_long: 'swing_long',
 
-  // Intraday / opening-range longs. Correct shape, wrong lane.
+  // ---- RECORD: the other half of the morning send -------------------------
+  // 46 of 128 closed green — 35.9% over a measured 128 picks, not a thin
+  // sample. Never live, never graded; in the app so the record is whole.
+  kai_short: 'swing_short',
+
+  // ---- RECORD: opening-range / five-minute families -----------------------
+  // Correct shape, wrong lane. `kai_intraday_alerts.py` and the ORB engine.
   kai_long_or_break: 'intraday_long',
   kai_long_pullback_or_break: 'intraday_long',
   kai_orb_bullish: 'intraday_long',
   intraday: 'intraday_long',
   orb: 'intraday_long',
+  kai_orb_bearish: 'intraday_short',
 
-  // The other half of what `kai_morning_alerts.py` sends (`kai_{direction}`), 36
-  // picks. Owner decision: HISTORY YES, ACTIVE NO. A back catalogue that quietly
-  // drops the losing half is not a record — 12 of 36 won, 33.3% — but 35.9% over
-  // 128 live picks is not something to hand a user as actionable either.
-  //
-  // The split is enforced in the DATA, not in a view filter. A short is only
-  // written once it has RESOLVED, its state is forced to 'expired', and
-  // `assertHistoryOnly` refuses to emit one that could be read as live. Nothing
-  // downstream has to remember the rule: a row that cannot be in a live state
-  // cannot reach a live feed by any path.
-  kai_short: 'swing_short',
-  kai_short_shadow: 'short',   // a different model from the morning short; out of scope
-  kai_orb_bearish: 'short',
-  breakdown: 'short',
-  short_idea: 'short',
-
-  // Swing-shaped, but outside the brief's `kai_long%` constraint. Named so the
-  // exclusion is visible: docs/17 §1 measured BREAKOUT at 34.5% / -4.05%.
-  breakout: 'other',
-  pattern: 'other',
-  watchlist_swing: 'other',
-  long_idea: 'other',
-  premarket: 'other',
+  // ---- RECORD: the pre-April scanner --------------------------------------
+  // These stopped firing when the morning family took over on 2026-04-02
+  // (`watchlist_swing`, `pattern`, `breakout`, `long_idea`, `premarket`,
+  // `breakdown`, `short_idea`) or run alongside it as a separate model
+  // (`kai_short_shadow`). docs/17 §1 measured BREAKOUT at 34.5% on its own
+  // backtest; the live record says 51.9%, which is exactly why the record
+  // belongs in the app and the backtest does not.
+  breakout: 'legacy_long',
+  pattern: 'legacy_long',
+  watchlist_swing: 'legacy_long',
+  long_idea: 'legacy_long',
+  premarket: 'legacy_long',
+  breakdown: 'legacy_short',
+  short_idea: 'legacy_short',
+  kai_short_shadow: 'legacy_short',
 };
 
 export function familyOf(alertType: string | null | undefined): SourceFamily {
   return ALERT_TYPE_FAMILY[(alertType ?? '').trim().toLowerCase()] ?? 'other';
 }
 
-/** The `alert_type` values this lane ingests, and the only ones it reads. */
-const typesFor = (family: SourceFamily): string[] =>
+export function specOf(alertType: string | null | undefined): FamilySpec {
+  return FAMILY_SPEC[familyOf(alertType)];
+}
+
+/** The `alert_type` values in one family. */
+export const typesFor = (family: SourceFamily): string[] =>
   Object.entries(ALERT_TYPE_FAMILY).filter(([, f]) => f === family).map(([t]) => t);
 
 /** Graded, and allowed to be live. */
 export const SWING_LONG_TYPES = typesFor('swing_long');
-/** Ingested for the record only. Never graded, never live. */
+/** The morning short. Ingested for the record only. */
 export const SWING_SHORT_TYPES = typesFor('swing_short');
-/** Everything this lane reads at all. */
-export const INGESTED_TYPES = [...SWING_LONG_TYPES, ...SWING_SHORT_TYPES];
+/** Every type that enters the app at all — live and record together. */
+export const INGESTED_TYPES = Object.keys(ALERT_TYPE_FAMILY);
 
-/** In the feed as a live, graded object. Longs only. */
+/** In the feed as a live, graded object. `kai_long` only. */
 export function isIngestibleType(alertType: string | null | undefined): boolean {
-  return familyOf(alertType) === 'swing_long';
+  return specOf(alertType).live && familyOf(alertType) !== 'other';
 }
 
-/** In the database as a resolved record, and nowhere else. */
+/**
+ * In the database as a resolved record, and nowhere else. Every family the
+ * product has sent except `kai_long`.
+ */
 export function isHistoryOnlyType(alertType: string | null | undefined): boolean {
-  return familyOf(alertType) === 'swing_short';
+  const family = familyOf(alertType);
+  return family !== 'other' && !FAMILY_SPEC[family].live;
 }
 
 export function isReadableType(alertType: string | null | undefined): boolean {
-  return isIngestibleType(alertType) || isHistoryOnlyType(alertType);
+  return familyOf(alertType) !== 'other';
 }
 
 export function directionOf(alertType: string | null | undefined): 'long' | 'short' {
-  return isHistoryOnlyType(alertType) ? 'short' : 'long';
+  return specOf(alertType).direction;
+}
+
+/** `setups.mode` for a pick — the horizon the alert itself claimed. */
+export function modeOf(alertType: string | null | undefined): 'swing' | 'day_trade' {
+  return specOf(alertType).mode;
 }
 
 /* ------------------------------------------------------------------ */
@@ -309,9 +373,13 @@ export function plusSessions(iso: string, n: number): string {
  */
 export const EXPIRY_SESSIONS = 5;
 
-export function validUntilFor(anchorDate: string): string {
-  // 20:00 UTC on the fifth session = 4pm ET (3pm on the winter side of DST).
-  return `${plusSessions(anchorDate, EXPIRY_SESSIONS)}T20:00:00.000Z`;
+export function validUntilFor(anchorDate: string, mode: 'swing' | 'day_trade' = 'swing'): string {
+  // A day-trade alert dies at ITS OWN session's close. Giving an opening-range
+  // break a five-session window would put the wrong horizon on the record — the
+  // reason those families are not live in the first place.
+  const sessions = mode === 'day_trade' ? 0 : EXPIRY_SESSIONS;
+  // 20:00 UTC on the last session = 4pm ET (3pm on the winter side of DST).
+  return `${plusSessions(anchorDate, sessions)}T20:00:00.000Z`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -504,11 +572,15 @@ export type FamilyPerformance = {
  * win rate at +5 sessions, with the n attached. A record, never a forecast, and
  * never folded into the medallion or its colour.
  *
- * THE SAME FAMILY IT IS SHOWN ON. `isIngestibleType` gates this exactly as it
- * gates ingestion, so the number on a swing card is a swing number. The
- * opening-range families are graded at +5 sessions too, but that is not the
- * horizon they claim, and a line measuring the wrong horizon is worse than no
- * line — those families are not ingested and carry no line.
+ * THE SAME FAMILY IT IS SHOWN ON. The line is computed over the picks of ONE
+ * `SourceFamily`, so the number on a card is that card's own family's number —
+ * a `breakout` record does not borrow the morning long family's 53.6%. Cross-
+ * family averaging is how a 30.5% family ends up wearing a 50% headline.
+ *
+ * THE HORIZON IS NAMED WHEN IT IS NOT THE FAMILY'S OWN. The grader measures
+ * every family at +5 sessions. For `swing_long` that IS the claimed horizon.
+ * For an opening-range family it is NOT — the alert claimed one session — so
+ * the copy says so out loud instead of quietly reporting the wrong horizon.
  *
  * WHAT THE NUMBER IS, EXACTLY. `alert_price` to the close five sessions on. It
  * is NOT the trade a subscriber managed: the scanner publishes a stop on 3 of
@@ -519,13 +591,17 @@ export type FamilyPerformance = {
  * returns (ELPW +2707%, ELAB +778%) from an `alert_price` captured against
  * unadjusted bars: a sign-only statistic survives that, a mean does not.
  */
-export function familyPerformance(outcomes: ScannerOutcome[], direction: 'long' | 'short' = 'long'): FamilyPerformance | null {
-  const inFamily = direction === 'short' ? isHistoryOnlyType : isIngestibleType;
+export function familyPerformanceOfFamily(
+  outcomes: ScannerOutcome[],
+  family: SourceFamily,
+): FamilyPerformance | null {
+  if (family === 'other') return null;
+  const spec = FAMILY_SPEC[family];
   const graded = outcomes.filter(
     (o) => o.is_primary === true
       && o.win_5d !== null
-      && (o.direction ?? '').toLowerCase() === direction
-      && inFamily(o.alert_type),
+      && (o.direction ?? '').toLowerCase() === spec.direction
+      && familyOf(o.alert_type) === family,
   );
   if (!graded.length) return null;
   const n = graded.length;
@@ -534,18 +610,44 @@ export function familyPerformance(outcomes: ScannerOutcome[], direction: 'long' 
   // `as_of` is the last pick that has actually RESOLVED, not the wall clock, so
   // the stamped line is stable across re-runs and says what it really covers.
   const asOf = graded.reduce((max, o) => (o.anchor_date && o.anchor_date > max ? o.anchor_date : max), '');
+  const short = spec.direction === 'short';
+  const shape = spec.mode === 'day_trade' ? 'intraday' : 'swing';
+  // An intraday alert was never a five-session idea. Say which horizon the
+  // number is, rather than letting it read as the family's own.
+  const horizonNote = spec.mode === 'day_trade'
+    ? ' These were intraday alerts; +5 sessions is the only horizon the grader has ever measured them at, and it is not the one they claimed.'
+    : '';
   return {
-    family: `Swing · ${direction} · Kai scanner`,
+    family: spec.label,
     n,
     wins,
     win_pct: pct,
     horizon: '5 sessions',
     as_of: asOf,
     plain:
-      `Of the last ${n} ${direction} swing picks this scanner published, ${wins} ${direction === 'short' ? 'were lower' : 'were higher'} five sessions later — ${pct}%. `
+      `Of the last ${n} ${spec.direction} ${shape} picks this scanner published, ${wins} ${short ? 'were lower' : 'were higher'} five sessions later — ${pct}%. `
       + 'Measured close to close, holding the whole way: the scanner published no stop and no target, so this is not the '
-      + 'result of a trade anyone managed. It is what has happened, not what will, and the grade says nothing about it.',
+      + 'result of a trade anyone managed. It is what has happened, not what will, and the grade says nothing about it.'
+      + horizonNote,
   };
+}
+
+/**
+ * The live long family's line, by name. Kept because it is the one line that
+ * appears on a tradeable card, and because callers read better for it.
+ */
+export function familyPerformance(outcomes: ScannerOutcome[], direction: 'long' | 'short' = 'long'): FamilyPerformance | null {
+  return familyPerformanceOfFamily(outcomes, direction === 'short' ? 'swing_short' : 'swing_long');
+}
+
+/** Every family's own line, keyed by family. Computed in one pass. */
+export function familyPerformanceIndex(outcomes: ScannerOutcome[]): Map<SourceFamily, FamilyPerformance> {
+  const out = new Map<SourceFamily, FamilyPerformance>();
+  for (const family of Object.keys(FAMILY_SPEC) as SourceFamily[]) {
+    const line = familyPerformanceOfFamily(outcomes, family);
+    if (line) out.set(family, line);
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -631,7 +733,8 @@ export function outcomeFor(row: ScannerOutcome & { mfe_5d_pct?: number | string 
 export type SetupInsert = {
   id: string;
   symbol: string;
-  mode: 'swing';
+  /** The horizon the alert claimed. `day_trade` rows are records, never live. */
+  mode: 'swing' | 'day_trade';
   intent: 'buy_to_open' | 'sell_short';
   state: 'ready' | 'expired';
   score: number | null;
@@ -686,15 +789,21 @@ export function setupFor(opts: {
   now: Date;
 }): SetupInsert {
   const { alert: a, key } = opts;
-  const short = isHistoryOnlyType(a.alert_type);
+  // RECORD, not short. Every family except `kai_long` enters the app as the
+  // resolved record of an alert that went out: ungraded, always expired. The
+  // old name for this flag was `short`, which was true only while `kai_short`
+  // was the sole non-live family.
+  const spec = specOf(a.alert_type);
+  const record = !spec.live;
+  const short = spec.direction === 'short';
   const etDate = etDateFor(a.sent_at);
   const anchor = anchorDateFor(a.sent_at);
-  const validUntil = validUntilFor(anchor);
-  // A short is never graded (owner ruling: long-only for anything that gets a
-  // grade), so it carries a null score and renders as the ungraded medallion.
-  const score = short ? null : scoreFromPercentile(opts.percentile);
-  const band = short ? null : gradeBandFromPercentile(opts.percentile);
-  const display = short ? null : gradeDisplayFromScore(score);
+  const validUntil = validUntilFor(anchor, spec.mode);
+  // Only a live family is graded (owner ruling: `kai_long` alone gets a
+  // medallion), so a record carries a null score and renders as ungraded.
+  const score = record ? null : scoreFromPercentile(opts.percentile);
+  const band = record ? null : gradeBandFromPercentile(opts.percentile);
+  const display = record ? null : gradeDisplayFromScore(score);
   const entry = num(a.alert_price);
   const stop = num(a.stop_price);
   const targets: { price: number; label: string }[] = [];
@@ -709,23 +818,29 @@ export function setupFor(opts: {
   return {
     id: setupIdFor(key),
     symbol: a.ticker.toUpperCase(),
-    mode: 'swing',
+    // The horizon the alert CLAIMED, not the one this lane happens to grade at.
+    // An opening-range break is `day_trade` and dies at its own close.
+    mode: spec.mode,
     intent: short ? 'sell_short' : 'buy_to_open',
-    // A short's state is not computed, it is FIXED. `expired` is the only state
-    // a short may hold, and the ingest refuses to write one whose window has not
-    // closed, so "History only" is a property of the row and not of a query.
-    state: short || new Date(validUntil).getTime() <= opts.now.getTime() ? 'expired' : 'ready',
+    // A record's state is not computed, it is FIXED. `expired` is the only
+    // state it may hold, and the ingest refuses to write one whose window has
+    // not closed, so "History only" is a property of the row, not of a query.
+    state: record || new Date(validUntil).getTime() <= opts.now.getTime() ? 'expired' : 'ready',
     score,
     grade_band: band,
     grade_display: display,
     score_components: {
-      // The component mapping is calibrated on the long side — `entry_quality`
-      // is RSI inverted because docs/17 §1 measured extension hurting LONGS.
-      // Applying it to a short would be a number with no measurement behind it,
-      // so a short carries provenance and its outcome, and no components at all.
-      ...(short ? {} : scoreComponentsFor(a)),
-      direction: short ? 'short' : 'long',
+      // The component mapping is calibrated on the live long family —
+      // `entry_quality` is RSI inverted because docs/17 §1 measured extension
+      // hurting LONGS. Applying it anywhere else would be a number with no
+      // measurement behind it, so a record carries provenance and its outcome,
+      // and no components at all.
+      ...(record ? {} : scoreComponentsFor(a)),
+      direction: spec.direction,
       source: 'kai_sms_scanner',
+      family: familyOf(a.alert_type),
+      horizon: spec.mode,
+      live_family: spec.live,
       pick_key: key,
       raw_breakout_score: a.breakout_score,
       percentile_window_days: PERCENTILE_WINDOW_DAYS,
@@ -800,18 +915,30 @@ function catalystPlain(type: string): string {
 /**
  * The structural guarantee behind "History yes, Active no".
  *
- * Called on every row before it is written. A short that is not `expired`, or
- * carries a grade, or is not `sell_short`, is a bug that would put a 33.3%
- * family in front of a user as actionable — so it stops the run rather than
- * being filtered downstream and forgotten about.
+ * Called on every row before it is written. A record row that is not `expired`,
+ * or carries a grade, is a bug that would put an unmanaged family in front of a
+ * user as actionable — a 30.5% ORB short, a five-minute break with a five-day
+ * window — so it stops the run rather than being filtered downstream by a query
+ * somebody later changes.
+ *
+ * It reads the row's OWN provenance (`score_components.live_family`), not the
+ * caller's intent, so a row that lies about its family cannot slip past.
  */
-export function assertHistoryOnly(row: SetupInsert): void {
-  if (row.intent !== 'sell_short') return;
-  if (row.state !== 'expired') throw new Error(`${row.symbol}: a short may only ever be expired, got '${row.state}'`);
+export function assertRecordOnly(row: SetupInsert): void {
+  const components = (row.score_components ?? {}) as Record<string, unknown>;
+  const live = components.live_family === true;
+  if (live) return;
+  const family = String(components.family ?? 'unknown');
+  if (row.state !== 'expired') {
+    throw new Error(`${row.symbol}: a ${family} record may only ever be expired, got '${row.state}'`);
+  }
   if (row.score !== null || row.grade_band !== null || row.grade_display !== null) {
-    throw new Error(`${row.symbol}: a short is never graded, got score=${row.score} band=${row.grade_band}`);
+    throw new Error(`${row.symbol}: a ${family} record is never graded, got score=${row.score} band=${row.grade_band}`);
   }
 }
+
+/** The name this guard shipped under when `kai_short` was the only record family. */
+export const assertHistoryOnly = assertRecordOnly;
 
 /* ------------------------------------------------------------------ */
 /* Idempotency                                                          */

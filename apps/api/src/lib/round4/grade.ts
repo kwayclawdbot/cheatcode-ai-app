@@ -59,6 +59,15 @@ export function medallion(opts: {
   display: string | null;
   band: string | null;
   score: number | null;
+  /**
+   * Why this one carries no grade, when the answer is not "not yet".
+   *
+   * A record from a family the app does not grade — a morning short, an
+   * opening-range break — is never going to get a medallion, and "Not graded
+   * yet" tells a user to wait for something that is not coming. See
+   * `ALERT_TYPE_FAMILY` in `lib/swing/ingest.ts`.
+   */
+  ungradedPlain?: string | null;
 }): GradeMedallion {
   const score = opts.score === null || !Number.isFinite(opts.score) ? null : Math.round(opts.score);
   const family = gradeFamily(score, opts.display);
@@ -72,7 +81,7 @@ export function medallion(opts: {
     family,
     plain: letter
       ? `Grade ${letter}${score === null ? '' : `, score ${score} out of 100`} — ${FAMILY_PLAIN[family]}. A grade is about quality, never about permission to trade.`
-      : 'Not graded yet.',
+      : opts.ungradedPlain || 'Not graded yet.',
   };
 }
 

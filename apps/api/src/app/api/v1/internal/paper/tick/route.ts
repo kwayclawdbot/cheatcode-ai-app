@@ -26,6 +26,7 @@
 import type { NextRequest } from 'next/server';
 import { PaperTickRequest, PaperTickRound4Response } from '@shared/api';
 import { ApiError, errorResponse, validationError } from '@/lib/errors';
+import { internalAuthorized } from '@/lib/internal-auth';
 import { env } from '@/lib/env';
 import { log, newRequestId } from '@/lib/log';
 import { runPaperTick } from '@/lib/execution/tick';
@@ -36,22 +37,11 @@ export const maxDuration = 60;
 
 const NOT_FOUND = () => new ApiError('NOT_FOUND', 'That is not something this app does.');
 
-function authorized(req: NextRequest): boolean {
-  const secret = env('INTERNAL_SECRET');
-  if (!secret) return false;
-  const sent = req.headers.get('x-internal-secret') ?? '';
-  // Length-independent compare is overkill for a local secret, but a timing
-  // side-channel on an execution endpoint is not a thing to be relaxed about.
-  if (sent.length !== secret.length) return false;
-  let diff = 0;
-  for (let i = 0; i < secret.length; i += 1) diff |= sent.charCodeAt(i) ^ secret.charCodeAt(i);
-  return diff === 0;
-}
 
-export async function POST(req: NextRequest): Promise<Response> {
+async function handle(req: NextRequest): Promise<Response> {
   const requestId = newRequestId();
   try {
-    if (!authorized(req)) throw NOT_FOUND();
+    if (!internalAuthorized(req)) throw NOT_FOUND();
 
     let raw: unknown = {};
     try {
@@ -94,3 +84,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     return errorResponse(err, requestId);
   }
 }
+
+/** Vercel cron calls GET; a script may call either. See `lib/internal-auth.ts`. */
+export const GET = handle;
+export const POST = handle;

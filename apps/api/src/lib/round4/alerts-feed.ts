@@ -38,6 +38,7 @@ import { communitySentiment } from '../v5/workspace';
 import { loadFollowMarks } from '../v5/attention';
 import { buildCard, communityBlock, deriveState, reconcileVersion, NO_COMMUNITY } from './alert-cards';
 import { alertIdentity } from './alert-identity';
+import { proportionalSlots } from './history-slots';
 import { hasAlertVersionColumns } from './schema-probe';
 
 const ALERT_COLUMNS =
@@ -69,25 +70,6 @@ const SETUP_COLUMNS =
 const MORNING_ACTIVE_LIMIT = 12;
 const MORNING_HISTORY_LIMIT = 25;
 
-/**
- * History is PROPORTIONAL BY DIRECTION, not simply the most recent rows.
- *
- * Ordering the back catalogue by recency alone showed 25 longs and zero shorts,
- * because the short model stopped firing on 3 August while the longs run to
- * today. That reproduces exactly the omission this tab exists to prevent: a
- * record that quietly drops the losing half is not a record. So each direction
- * gets a share of the page matching its share of the corpus — 213 long to 36
- * short is roughly six to one — with a floor of one, so the smaller side can be
- * under-represented but never invisible.
- */
-function historySlots(longs: number, shorts: number, limit: number): { longs: number; shorts: number } {
-  const total = longs + shorts;
-  if (total === 0) return { longs: 0, shorts: 0 };
-  if (total <= limit) return { longs, shorts };
-  let shortSlots = Math.round((limit * shorts) / total);
-  if (shorts > 0) shortSlots = Math.max(1, Math.min(shortSlots, shorts));
-  return { longs: Math.min(longs, limit - shortSlots), shorts: shortSlots };
-}
 
 export type FeedResult = {
   cards: AlertCard[];
@@ -503,35 +485,40 @@ function fallbackQuote(symbol: string): MarketQuote {
 }
 
 /**
- * The resolved back catalogue, both sides, in proportion. Four small reads: a
- * count and a page per direction. The counts are what make the proportion real
- * rather than an assumption about which side fired more recently.
+ * Every family the SMS product has ever sent, in proportion. Two reads per
+ * family: a count and a page. The counts are what make the proportion real
+ * rather than an assumption about which family fired most recently.
+ *
+ * NO `mode` FILTER. The intraday families are `day_trade` records — 317 of the
+ * 826 picks — and scoping this to `swing` is exactly how they would be imported
+ * and then never seen. `origin = kai_sms_scanner` is the correct boundary: it
+ * means "an alert this product actually sent".
  */
+const HISTORY_FAMILIES = [
+  'swing_long', 'swing_short', 'intraday_long', 'intraday_short', 'legacy_long', 'legacy_short',
+] as const;
+
 async function resolvedMorningByDirection(db: ReturnType<typeof serviceClient>): Promise<SetupRow[]> {
-  const page = (intent: string) => db.from('setups').select(SETUP_COLUMNS)
-    .eq('mode', 'swing')
+  const page = (family: string) => db.from('setups').select(SETUP_COLUMNS)
     .eq('quote_snapshot->>origin', 'kai_sms_scanner')
     .in('state', ['expired', 'invalidated'])
-    .eq('intent', intent)
+    .eq('score_components->>family', family)
     .order('valid_until', { ascending: false })
     .limit(MORNING_HISTORY_LIMIT);
 
-  const count = (intent: string) => db.from('setups')
+  const count = (family: string) => db.from('setups')
     .select('id', { count: 'exact', head: true })
-    .eq('mode', 'swing')
     .eq('quote_snapshot->>origin', 'kai_sms_scanner')
     .in('state', ['expired', 'invalidated'])
-    .eq('intent', intent);
+    .eq('score_components->>family', family);
 
-  const [longPage, shortPage, longCount, shortCount] = await Promise.all([
-    page('buy_to_open'), page('sell_short'), count('buy_to_open'), count('sell_short'),
+  const [pages, counts] = await Promise.all([
+    Promise.all(HISTORY_FAMILIES.map((f) => page(f))),
+    Promise.all(HISTORY_FAMILIES.map((f) => count(f))),
   ]);
 
-  const slots = historySlots(longCount.count ?? 0, shortCount.count ?? 0, MORNING_HISTORY_LIMIT);
-  const rows = [
-    ...((longPage.data ?? []) as unknown as SetupRow[]).slice(0, slots.longs),
-    ...((shortPage.data ?? []) as unknown as SetupRow[]).slice(0, slots.shorts),
-  ];
+  const slots = proportionalSlots(counts.map((c) => c.count ?? 0), MORNING_HISTORY_LIMIT);
+  const rows = pages.flatMap((p, i) => ((p.data ?? []) as unknown as SetupRow[]).slice(0, slots[i]));
   // Newest first once merged, so the tab still reads chronologically.
   return rows.sort((a, b) => String(b.valid_until ?? '').localeCompare(String(a.valid_until ?? '')));
 }

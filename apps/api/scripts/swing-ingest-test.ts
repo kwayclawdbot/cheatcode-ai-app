@@ -20,6 +20,10 @@
  */
 import {
   SWING_LONG_TYPES,
+  INGESTED_TYPES,
+  modeOf,
+  familyPerformanceIndex,
+  assertRecordOnly,
   anchorDateFor,
   bandSplit,
   dedupePicks,
@@ -112,32 +116,111 @@ console.log('\nidentity — the port of alert_outcomes.py');
   eq('the canonical row is the lowest id, so a re-run does not flap', picks.get('NVDA|2026-06-10|kai_long')?.id, 4);
 }
 
-console.log('\nfamilies — long only, and swing-shaped only');
+console.log('\nfamilies — everything is imported, exactly one may be live');
 {
-  ok('kai_long is in', isIngestibleType('kai_long'));
+  ok('kai_long is the live family', isIngestibleType('kai_long'));
+  eq('and it is the only one', SWING_LONG_TYPES, ['kai_long']);
 
   // The trap the brief's own `kai_long%` filter walks into. Both of these are
-  // five-minute opening-range breaks; ingesting them as swing would put a
-  // 5-SESSION expiry on an intraday idea and grade it on a horizon it never
-  // claimed. They are named, classified and declined — not relabelled.
+  // five-minute opening-range breaks; grading them as swing would put a
+  // 5-SESSION expiry on an intraday idea and measure a horizon it never
+  // claimed. They are imported — as records, carrying `mode: 'day_trade'`.
   eq('kai_long_or_break is intraday, not swing', familyOf('kai_long_or_break'), 'intraday_long');
   eq('kai_long_pullback_or_break is intraday, not swing', familyOf('kai_long_pullback_or_break'), 'intraday_long');
   ok('so a kai_long% prefix filter would be wrong twice out of three', !isIngestibleType('kai_long_or_break') && !isIngestibleType('kai_long_pullback_or_break'));
   eq('kai_orb_bullish is intraday too', familyOf('kai_orb_bullish'), 'intraday_long');
+  eq('an intraday family carries the day-trade horizon', modeOf('kai_orb_bullish'), 'day_trade');
+  eq('a swing family carries the swing horizon', modeOf('kai_long'), 'swing');
 
-  // Owner ruling: the morning short is ingested for the RECORD and nothing else.
+  // Owner ruling 2026-09-03: every family the product has sent is imported for
+  // the RECORD. Live is still `kai_long` and nothing else.
   eq('kai_short is the morning short, kept for History', familyOf('kai_short'), 'swing_short');
   ok('and it is never gradeable or live', !isIngestibleType('kai_short'));
   ok('but it is readable, for the back catalogue', isHistoryOnlyType('kai_short'));
-  eq('exactly one short type is kept', SWING_SHORT_TYPES, ['kai_short']);
-  eq('kai_short_shadow is a different model, still out', familyOf('kai_short_shadow'), 'short');
-  eq('kai_orb_bearish is out', familyOf('kai_orb_bearish'), 'short');
+  eq('exactly one short type is the morning short', SWING_SHORT_TYPES, ['kai_short']);
+  eq('kai_short_shadow is a different model, imported as an early-scanner record', familyOf('kai_short_shadow'), 'legacy_short');
+  eq('kai_orb_bearish is the intraday short', familyOf('kai_orb_bearish'), 'intraday_short');
+  eq('the pre-April breakout family is imported too', familyOf('breakout'), 'legacy_long');
+  eq('so is pattern', familyOf('pattern'), 'legacy_long');
+  eq('and breakdown, on the short side', familyOf('breakdown'), 'legacy_short');
   ok('no short is ever gradeable', !['kai_short', 'kai_short_shadow', 'kai_orb_bearish', 'breakdown', 'short_idea'].some(isIngestibleType));
+  ok(
+    'nor is any non-kai_long long',
+    !['breakout', 'pattern', 'watchlist_swing', 'long_idea', 'premarket', 'orb', 'intraday', 'kai_orb_bullish'].some(isIngestibleType),
+  );
+  ok(
+    'but every one of them is imported',
+    ['breakout', 'pattern', 'watchlist_swing', 'long_idea', 'premarket', 'orb', 'intraday', 'kai_orb_bullish',
+     'kai_orb_bearish', 'breakdown', 'short_idea', 'kai_short_shadow', 'kai_long_or_break', 'kai_long_pullback_or_break'].every(isHistoryOnlyType),
+  );
+  eq('sixteen families, no more and no fewer', INGESTED_TYPES.length, 16);
 
   ok('an unrecognised type is declined rather than assumed', !isIngestibleType('kai_something_new'));
   eq('and classified as other', familyOf('kai_something_new'), 'other');
+  ok('so it is not imported either — a new family is a decision, not a match', !isHistoryOnlyType('kai_something_new'));
   ok('a null type is out', !isIngestibleType(null));
-  eq('exactly one type is ingested today', SWING_LONG_TYPES, ['kai_long']);
+}
+
+console.log('\nthe record families — imported, and structurally unable to be live');
+{
+  const orb = setupFor({
+    alert: alert({ alert_type: 'kai_orb_bullish', sent_at: '2026-06-10T13:45:00+00:00' }),
+    key: 'NVDA|2026-06-10|kai_orb_bullish',
+    percentile: 99,
+    now: new Date('2026-06-10T14:00:00Z'),
+  });
+  eq('an opening-range break is a day trade', orb.mode, 'day_trade');
+  eq('it dies at its own close, not five sessions on', orb.valid_until, '2026-06-10T20:00:00.000Z');
+  eq('it is expired the moment it is written', orb.state, 'expired');
+  eq('it carries no score even at the 99th percentile', orb.score, null);
+  eq('no band', orb.grade_band, null);
+  eq('and no letter', orb.grade_display, null);
+  eq('the row names its own family', (orb.score_components as Record<string, unknown>).family, 'intraday_long');
+  eq('and says it is not a live one', (orb.score_components as Record<string, unknown>).live_family, false);
+  eq('it is still a long', orb.intent, 'buy_to_open');
+
+  const legacy = setupFor({
+    alert: alert({ alert_type: 'breakout', sent_at: '2026-03-10T13:45:00+00:00' }),
+    key: 'NVDA|2026-03-10|breakout',
+    percentile: 99,
+    now: new Date('2026-03-10T14:00:00Z'),
+  });
+  eq('a pre-April breakout keeps the swing horizon it claimed', legacy.mode, 'swing');
+  eq('but is still only a record', legacy.state, 'expired');
+  eq('and still ungraded', legacy.score, null);
+
+  let threw = false;
+  try { assertRecordOnly({ ...orb, state: 'ready' }); } catch { threw = true; }
+  ok('a record that somehow became live stops the run', threw);
+  threw = false;
+  try { assertRecordOnly({ ...orb, score: 96 }); } catch { threw = true; }
+  ok('a record that somehow got graded stops the run', threw);
+  assertRecordOnly(orb);
+  ok('a well-formed record passes', true);
+}
+
+console.log('\nthe performance line is the card\'s OWN family');
+{
+  const rows = [
+    { alert_id: 1, direction: 'long', alert_type: 'kai_long', anchor_date: '2026-06-01', win_5d: true, gain_5d_pct: 4, is_primary: true },
+    { alert_id: 2, direction: 'long', alert_type: 'kai_long', anchor_date: '2026-06-02', win_5d: true, gain_5d_pct: 3, is_primary: true },
+    { alert_id: 3, direction: 'long', alert_type: 'kai_orb_bullish', anchor_date: '2026-06-03', win_5d: false, gain_5d_pct: -2, is_primary: true },
+    { alert_id: 4, direction: 'long', alert_type: 'kai_orb_bullish', anchor_date: '2026-06-04', win_5d: false, gain_5d_pct: -1, is_primary: true },
+  ];
+  const index = familyPerformanceIndex(rows);
+  eq('the live long family counts only its own picks', index.get('swing_long')?.n, 2);
+  eq('at its own win rate', index.get('swing_long')?.win_pct, 100);
+  eq('the intraday family counts only its own', index.get('intraday_long')?.n, 2);
+  eq('and does not borrow the long family\'s number', index.get('intraday_long')?.win_pct, 0);
+  ok(
+    'an intraday line names the horizon it is NOT measured at',
+    /not the one they claimed/.test(index.get('intraday_long')?.plain ?? ''),
+  );
+  ok(
+    'a swing line makes no such claim, because +5 sessions is its own horizon',
+    !/not the one they claimed/.test(index.get('swing_long')?.plain ?? ''),
+  );
+  eq('a family with no graded picks gets no line rather than a zero', index.get('legacy_short'), undefined);
 }
 
 console.log('\nthe percentile — not the raw 31..190 score');

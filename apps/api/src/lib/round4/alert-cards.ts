@@ -730,11 +730,34 @@ export function outcomeOf(
   };
 }
 
+/**
+ * Why a card carries no medallion — when the honest answer is not "not yet".
+ *
+ * The app imports every alert the SMS product has ever sent, and grades exactly
+ * one family of them (`kai_long`). A short, or a five-minute opening-range
+ * break, is ungraded PERMANENTLY and by decision: the grade is calibrated on
+ * the long swing family and would be a number with no measurement behind it
+ * anywhere else. "Not graded yet" would promise a grade that is not coming.
+ */
+function ungradedReason(setup: SetupRow): string | null {
+  const components = (setup.score_components ?? {}) as Record<string, unknown>;
+  if (components.source !== 'kai_sms_scanner') return null;
+  if (components.live_family !== false) return null;
+  return setup.mode === 'day_trade'
+    ? 'Not graded. This was an intraday alert, and the grade is calibrated on the swing family only.'
+    : 'Not graded. This family is kept as a record of what was sent, and the grade is calibrated on the long swing family only.';
+}
+
 /** Assemble one card. Pure — every input has already been loaded. */
 export function buildCard(input: BuildCardInput): AlertCard {
   const setup = input.setup;
   const grade: GradeMedallion = setup
-    ? medallion({ display: setup.grade_display, band: setup.grade_band, score: setup.score })
+    ? medallion({
+        display: setup.grade_display,
+        band: setup.grade_band,
+        score: setup.score,
+        ungradedPlain: ungradedReason(setup),
+      })
     : UNGRADED;
   const lv = setup ? levels(setup) : { entry: null, stop: null, targets: [], perShare: null, rr: null };
   const components = setup

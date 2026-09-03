@@ -22,7 +22,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-for (const line of readFileSync(resolve(HERE, '../.env.local'), 'utf8').split('\n')) {
+const ENV_FILE = process.env.ENV_FILE ?? '.env.local';
+for (const line of readFileSync(resolve(HERE, `../${ENV_FILE}`), 'utf8').split('\n')) {
   const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
   if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
 }
@@ -46,6 +47,7 @@ const TODAY_SHORT = ID(3);
 
 const db = serviceClient();
 const savedPrefs: Record<string, unknown>[] = [];
+const createdUsers: string[] = [];
 let actors: { id: string; label: string }[] = [];
 
 function setupRow(id: string, over: Record<string, unknown>): Record<string, unknown> {
@@ -61,12 +63,16 @@ function setupRow(id: string, over: Record<string, unknown>): Record<string, unk
 
 async function main(): Promise<void> {
   /* ---- actors: five real profiles, five different answers --------------- */
-  const { data: profiles, error: pe } = await db.from('profiles').select('user_id').limit(5);
-  if (pe || !profiles || profiles.length < 5) throw new Error(`need 5 profiles: ${pe?.message ?? profiles?.length}`);
-  actors = (profiles as { user_id: string }[]).map((p, i) => ({
-    id: p.user_id,
-    label: ['defaults', 'muted', 'wants_A_only', 'excludes_SPY', 'day_trade_only'][i],
-  }));
+  const LABELS = ['defaults', 'muted', 'wants_A_only', 'excludes_SPY', 'day_trade_only'];
+  const { data: profiles, error: pe } = await db.from('profiles').select('user_id').limit(LABELS.length);
+  if (pe) throw new Error(`read profiles: ${pe.message}`);
+  const existing = (profiles as { user_id: string }[]).map((p) => p.user_id);
+  // A stack that does not have five people on it yet still has to be able to
+  // prove the gate — so the proof PROVISIONS the actors it is short of, and
+  // deletes them again on the way out. Borrowing real accounts where they exist
+  // keeps the run honest about the prefs a real user actually carries.
+  while (existing.length < LABELS.length) existing.push(await createActor(existing.length));
+  actors = existing.map((id, i) => ({ id, label: LABELS[i] }));
 
   for (const a of actors) {
     const { data } = await db.from('setup_alert_prefs').select('*').eq('user_id', a.id).maybeSingle();
@@ -166,6 +172,44 @@ async function profileCount(): Promise<number> {
   return count ?? 0;
 }
 
+/**
+ * One throwaway account, and the `profiles` row the 0013 trigger builds from
+ * it. Recorded in `createdUsers` so `cleanup` can remove it — a proof that
+ * leaves accounts behind on a production stack is not a proof, it is litter.
+ */
+async function createActor(n: number): Promise<string> {
+  const url = (process.env.SUPABASE_URL ?? '').replace(/\/+$/, '');
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  const res = await fetch(`${url}/auth/v1/admin/users`, {
+    method: 'POST',
+    headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: `swingproof+${Date.now()}-${n}@cheatcode.test`,
+      password: `proof-${Math.random().toString(36).slice(2)}-${Date.now()}`,
+      email_confirm: true,
+    }),
+  });
+  if (!res.ok) throw new Error(`create actor ${n}: ${res.status} ${await res.text()}`);
+  const user = (await res.json()) as { id: string };
+  createdUsers.push(user.id);
+  // The profile is written by a trigger, so it lands a moment after the user.
+  for (let i = 0; i < 25; i += 1) {
+    const { data } = await db.from('profiles').select('user_id').eq('user_id', user.id).maybeSingle();
+    if (data) return user.id;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(`actor ${n}: no profile row appeared for ${user.id}`);
+}
+
+async function deleteActor(id: string): Promise<void> {
+  const url = (process.env.SUPABASE_URL ?? '').replace(/\/+$/, '');
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  await fetch(`${url}/auth/v1/admin/users/${id}`, {
+    method: 'DELETE',
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
+  });
+}
+
 async function cleanup(): Promise<void> {
   const ids = [TODAY_LONG, YESTERDAY_LONG, TODAY_SHORT];
   for (const id of ids) {
@@ -175,7 +219,15 @@ async function cleanup(): Promise<void> {
   for (const p of savedPrefs) {
     await db.from('setup_alert_prefs').upsert(p as never, { onConflict: 'user_id' });
   }
-  console.log('  cleaned up: synthetic setups, their notifications, and the borrowed prefs rows');
+  for (const id of createdUsers) {
+    await db.from('notifications').delete().eq('user_id', id);
+    await db.from('setup_alert_prefs').delete().eq('user_id', id);
+    await deleteActor(id);
+  }
+  console.log(
+    `  cleaned up: synthetic setups, their notifications, the borrowed prefs rows`
+    + `${createdUsers.length ? `, and ${createdUsers.length} provisioned actor(s)` : ''}`,
+  );
 }
 
 main()

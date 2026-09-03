@@ -1668,7 +1668,7 @@ assert c["company_summary"] and c["company_summary"].count(".") <= 3, c["company
 # spec 2/4: grade medallion carries the letter AND the 0-100 score
 g=c["grade"]
 assert g["family"] in ("gold","gold_restrained","violet","violet_graphite","amber","neutral"), g["family"]
-assert "quality" in g["plain"] or g["plain"] == "Not graded yet."
+assert "quality" in g["plain"] or g["plain"].startswith("Not graded"), g["plain"]
 # spec 4: qualitative only. NO fractions anywhere in the components.
 blob=json.dumps(c["score_components"])
 assert not re.search(r"\b\d+\s*/\s*\d+\b", blob), "a fraction reached the scorecard: "+blob[:200]
