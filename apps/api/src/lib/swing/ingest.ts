@@ -176,12 +176,10 @@ export const ALERT_TYPE_FAMILY: Record<string, SourceFamily> = {
   kai_orb_bearish: 'intraday_short',
 
   // ---- RECORD: the pre-April scanner --------------------------------------
-  // These stopped firing when the morning family took over on 2026-04-02
-  // (`watchlist_swing`, `pattern`, `breakout`, `long_idea`, `premarket`,
-  // `breakdown`, `short_idea`) or run alongside it as a separate model
-  // (`kai_short_shadow`). docs/17 §1 measured BREAKOUT at 34.5% on its own
-  // backtest; the live record says 51.9%, which is exactly why the record
-  // belongs in the app and the backtest does not.
+  // These stopped firing when the morning family took over on 2026-04-02.
+  // docs/17 §1 measured BREAKOUT at 34.5% on its own backtest; the live record
+  // says 51.9%, which is exactly why the record belongs in the app and the
+  // backtest does not.
   breakout: 'legacy_long',
   pattern: 'legacy_long',
   watchlist_swing: 'legacy_long',
@@ -189,8 +187,28 @@ export const ALERT_TYPE_FAMILY: Record<string, SourceFamily> = {
   premarket: 'legacy_long',
   breakdown: 'legacy_short',
   short_idea: 'legacy_short',
-  kai_short_shadow: 'legacy_short',
 };
+
+/**
+ * SWING-5 — A PICK NOBODY RECEIVED IS NOT HISTORY.
+ *
+ * `kai_short_shadow` is written by `record_shadow_shorts()` in
+ * `kai_morning_alerts.py`: the shorts the picker WOULD have broadcast, recorded
+ * so the tracker can measure them and DELIBERATELY never sent to anybody. Every
+ * one of the 15 rows carries an empty `humanized_message`, a null `stop_price`
+ * and a null `pattern_target`, because no SMS was ever composed for them. Ten of
+ * them reached production as History cards with no stop, no target and a blank
+ * description, and they are unfillable by construction — there is nothing to
+ * recover, since nothing was published.
+ *
+ * So the family is named here rather than merely dropped from the map above,
+ * because "we do not ingest this" and "we have never heard of this" are
+ * different statements and only one of them is true. `retireForeignFamilies`
+ * removes the ten rows an earlier run wrote. If the owner decides a shadow
+ * model belongs in the app it needs its own surface that says what it is, not a
+ * History card that reads like something a subscriber was told.
+ */
+export const EXCLUDED_TYPES = ['kai_short_shadow'] as const;
 
 export function familyOf(alertType: string | null | undefined): SourceFamily {
   return ALERT_TYPE_FAMILY[(alertType ?? '').trim().toLowerCase()] ?? 'other';
@@ -815,6 +833,12 @@ export function setupFor(opts: {
   const catalystType = (a.catalyst_type ?? '').trim();
   const pattern = (a.setup_label ?? a.detected_pattern ?? '').trim() || null;
 
+  // What the card reads. The SMS a subscriber actually received wins outright;
+  // only when there was none does the app compose one from the row's own
+  // measurements, and it says which it is.
+  const published = a.humanized_message?.trim() || null;
+  const composed = published ? null : thesisComposed(a);
+
   return {
     id: setupIdFor(key),
     symbol: a.ticker.toUpperCase(),
@@ -844,8 +868,11 @@ export function setupFor(opts: {
       pick_key: key,
       raw_breakout_score: a.breakout_score,
       percentile_window_days: PERCENTILE_WINDOW_DAYS,
+      // Which of the two the card is reading. Null when the source held no
+      // message AND no measurement to compose one from.
+      thesis_source: published ? 'published_sms' : (composed ? 'composed_from_measurements' : null),
     },
-    thesis_plain: a.humanized_message?.trim() || null,
+    thesis_plain: published ?? composed,
     thesis_technical: thesisTechnical(a),
     entry_condition: {
       price: entry,
@@ -888,6 +915,96 @@ export function setupFor(opts: {
 }
 
 /** Volume and pattern have no slot in the SWING five, so they are read as prose. */
+/**
+ * SWING-5 — the card's description, composed from measurements when no model
+ * wrote one.
+ *
+ * `thesis_plain` is what the card READS, and it comes from
+ * `sent_alerts.humanized_message` — the Opus prose the SMS product wrote. 309
+ * of 826 setups in production have none, because 309 alerts went out with an
+ * empty narrative: the early scanners never wrote one, and since 2026-08-31 the
+ * Anthropic balance has answered `400 credit balance is too low`, which
+ * `generate_narrative` correctly degrades to an empty string rather than
+ * failing the send. A blank card is the visible end of that.
+ *
+ * COMPOSED, NOT WRITTEN, AND NOT A MODEL. Every clause below names a column on
+ * the alert row. Nothing is inferred, nothing is characterised, and there is no
+ * adjective that the numbers do not license — `1.9x its average` is a
+ * measurement, `heavy volume` would be an opinion.
+ *
+ * IT IS NEVER PRESENTED AS WHAT WAS SENT. `score_components.thesis_source` says
+ * `published_sms` or `composed_from_measurements`, so a reader can always tell
+ * a recovered description from a reconstructed one — the same discipline
+ * `scan_metadata.levels` applies to a reconstructed stop.
+ *
+ * AND IT REFUSES. A row whose only measurement is its own price gets NULL, not
+ * a sentence: `entry_condition` already says what the price was, and restating
+ * it as a thesis would be a card that looks filled and says nothing. The count
+ * of nulls after this is a real count of picks the source knows nothing about.
+ *
+ * ONE IMPLEMENTATION, ON PURPOSE. This composes for the back catalogue AND for
+ * every pick that arrives from now on, so the app never depends on the producer
+ * having had a model available. The Python side does not compose a second
+ * version of the same sentence in a second language.
+ */
+export function thesisComposed(a: ScannerAlert): string | null {
+  const spec = specOf(a.alert_type);
+  const entry = num(a.alert_price);
+  const vol = num(a.volume_ratio);
+  const rsi = num(a.rsi_at_alert);
+  const stop = num(a.stop_price);
+  const target = num(a.pattern_target) ?? num(a.next_resistance);
+  const setup = (a.setup_label ?? a.detected_pattern ?? '').trim().replace(/_/g, ' ').toLowerCase();
+  const sector = (a.sector ?? '').trim();
+  const stance = (a.sector_stance ?? '').trim().toLowerCase();
+  const catalyst = (a.catalyst_type ?? '').trim().replace(/_/g, ' ').toLowerCase();
+
+  // A price on its own is not a thesis — `entry_condition` already carries it.
+  const measured = [vol && vol > 0, rsi && rsi > 0, stop, sector, setup].filter(Boolean).length;
+  if (!measured) return null;
+
+  const side = spec.direction === 'short' ? 'short' : 'long';
+  const horizon = spec.mode === 'day_trade' ? 'intraday' : 'swing';
+  const money = (n: number) => `$${n.toFixed(2)}`;
+
+  const sentences: string[] = [];
+
+  const article = /^[aeiou]/i.test(setup) ? 'an' : 'a';
+  sentences.push(
+    setup
+      ? `A ${horizon} ${side} on ${article} ${setup} setup${entry ? `, published at ${money(entry)}` : ''}.`
+      : `A ${horizon} ${side}${entry ? `, published at ${money(entry)}` : ''}.`,
+  );
+
+  const obs: string[] = [];
+  if (vol !== null && vol > 0) obs.push(`volume ran ${vol.toFixed(1)}x its average`);
+  if (rsi !== null && rsi > 0) obs.push(`RSI was ${rsi.toFixed(0)}`);
+  if (obs.length) sentences.push(`At the alert ${obs.join(' and ')}.`);
+
+  if (sector) {
+    sentences.push(
+      stance && stance !== 'neutral'
+        ? `Sector ${sector}, reading ${stance} that session.`
+        : `Sector ${sector}.`,
+    );
+  }
+
+  if (stop !== null && entry !== null && entry > 0) {
+    const risk = Math.abs(entry - stop);
+    const rr = target !== null && risk > 0 ? Math.abs(target - entry) / risk : null;
+    sentences.push(
+      target !== null
+        ? `The published stop was ${money(stop)} and the target ${money(target)}`
+          + (rr !== null && Number.isFinite(rr) ? `, about ${rr.toFixed(1)} to 1.` : '.')
+        : `The published stop was ${money(stop)}.`,
+    );
+  }
+
+  if (catalyst && catalyst !== 'none') sentences.push(`Catalyst recorded as ${catalyst}.`);
+
+  return sentences.join(' ');
+}
+
 export function thesisTechnical(a: ScannerAlert): string | null {
   const bits: string[] = [];
   const label = (a.setup_label ?? '').trim();

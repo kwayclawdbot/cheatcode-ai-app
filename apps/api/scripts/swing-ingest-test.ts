@@ -21,6 +21,9 @@
 import {
   SWING_LONG_TYPES,
   INGESTED_TYPES,
+  EXCLUDED_TYPES,
+  isReadableType,
+  thesisComposed,
   modeOf,
   familyPerformanceIndex,
   assertRecordOnly,
@@ -138,12 +141,18 @@ console.log('\nfamilies — everything is imported, exactly one may be live');
   ok('and it is never gradeable or live', !isIngestibleType('kai_short'));
   ok('but it is readable, for the back catalogue', isHistoryOnlyType('kai_short'));
   eq('exactly one short type is the morning short', SWING_SHORT_TYPES, ['kai_short']);
-  eq('kai_short_shadow is a different model, imported as an early-scanner record', familyOf('kai_short_shadow'), 'legacy_short');
+  // SWING-5: a pick nobody received is not history. Every kai_short_shadow row
+  // is an unsent shadow short — empty message, null stop, null target — so it
+  // is declined at the family map rather than imported as a blank card.
+  eq('kai_short_shadow is never broadcast, so it is not a record either', familyOf('kai_short_shadow'), 'other');
+  ok('and it is not imported', !isHistoryOnlyType('kai_short_shadow'));
+  ok('nor readable, so retireForeignFamilies removes the rows an earlier run wrote', !isReadableType('kai_short_shadow'));
+  eq('but it is named, not forgotten', [...EXCLUDED_TYPES], ['kai_short_shadow']);
   eq('kai_orb_bearish is the intraday short', familyOf('kai_orb_bearish'), 'intraday_short');
   eq('the pre-April breakout family is imported too', familyOf('breakout'), 'legacy_long');
   eq('so is pattern', familyOf('pattern'), 'legacy_long');
   eq('and breakdown, on the short side', familyOf('breakdown'), 'legacy_short');
-  ok('no short is ever gradeable', !['kai_short', 'kai_short_shadow', 'kai_orb_bearish', 'breakdown', 'short_idea'].some(isIngestibleType));
+  ok('no short is ever gradeable', !['kai_short', 'kai_orb_bearish', 'breakdown', 'short_idea'].some(isIngestibleType));
   ok(
     'nor is any non-kai_long long',
     !['breakout', 'pattern', 'watchlist_swing', 'long_idea', 'premarket', 'orb', 'intraday', 'kai_orb_bullish'].some(isIngestibleType),
@@ -151,9 +160,9 @@ console.log('\nfamilies — everything is imported, exactly one may be live');
   ok(
     'but every one of them is imported',
     ['breakout', 'pattern', 'watchlist_swing', 'long_idea', 'premarket', 'orb', 'intraday', 'kai_orb_bullish',
-     'kai_orb_bearish', 'breakdown', 'short_idea', 'kai_short_shadow', 'kai_long_or_break', 'kai_long_pullback_or_break'].every(isHistoryOnlyType),
+     'kai_orb_bearish', 'breakdown', 'short_idea', 'kai_long_or_break', 'kai_long_pullback_or_break'].every(isHistoryOnlyType),
   );
-  eq('sixteen families, no more and no fewer', INGESTED_TYPES.length, 16);
+  eq('fifteen families, no more and no fewer', INGESTED_TYPES.length, 15);
 
   ok('an unrecognised type is declined rather than assumed', !isIngestibleType('kai_something_new'));
   eq('and classified as other', familyOf('kai_something_new'), 'other');
@@ -454,6 +463,58 @@ console.log('\nshorts \u2014 History yes, Active no, and it is real in the data'
   eq('the short line counts shorts', familyPerformance(rows, 'short')?.win_pct, 0);
   ok('and says so in its own name', /short/.test(familyPerformance(rows, 'short')?.family ?? ''));
   ok('with short-side wording', /were lower/.test(familyPerformance(rows, 'short')?.plain ?? ''));
+}
+
+console.log('\nSWING-5 — the description, composed from measurements when no model wrote one');
+{
+  const published = setupFor({ alert: alert(), key: 'k', percentile: 50, now: new Date('2026-06-10T00:00:00Z') });
+  eq('a message that WAS sent is used verbatim', published.thesis_plain, 'A continuation.');
+  eq('and the row says so', published.score_components.thesis_source, 'published_sms');
+
+  const blank = alert({ humanized_message: '   ' });
+  const s = setupFor({ alert: blank, key: 'k', percentile: 50, now: new Date('2026-06-10T00:00:00Z') });
+  ok('an empty message is composed instead of left blank', (s.thesis_plain ?? '').length > 0);
+  eq('and the row never claims it was sent', s.score_components.thesis_source, 'composed_from_measurements');
+  ok('it names the horizon and the side', /swing long/.test(s.thesis_plain ?? ''));
+  ok('it quotes the volume as measured', /1\.4x its average/.test(s.thesis_plain ?? ''));
+  ok('and the RSI', /RSI was 55/.test(s.thesis_plain ?? ''));
+  ok('and the sector with its stance', /Technology, reading bullish/.test(s.thesis_plain ?? ''));
+  ok('no adjective the numbers do not license', !/(heavy|strong|explosive|massive|surging)/i.test(s.thesis_plain ?? ''));
+  ok('and no performance claim', !/\b(wins?|won|profit|returns?|gained?|outperform\w*)\b/i.test(s.thesis_plain ?? ''));
+
+  const withLevels = thesisComposed(alert({ humanized_message: '', stop_price: 95, pattern_target: 110 }))!;
+  ok('published levels are quoted when they exist', /stop was \$95\.00 and the target \$110\.00/.test(withLevels));
+  ok('with the ratio they imply and nothing more', /about 2\.0 to 1/.test(withLevels));
+
+  const shortSide = thesisComposed(alert({ alert_type: 'kai_short', humanized_message: '' }))!;
+  ok('a short is described as a short', /swing short/.test(shortSide));
+  const orb = thesisComposed(alert({ alert_type: 'kai_orb_bullish', humanized_message: '' }))!;
+  ok('an opening-range break is described at its own horizon', /intraday long/.test(orb));
+  ok('the article agrees with the setup name', /on an approaching low setup/.test(
+    thesisComposed(alert({ humanized_message: '', setup_label: 'APPROACHING_LOW' })) ?? ''));
+
+  eq(
+    'a row with nothing but a price gets NULL, because entry_condition already says the price',
+    thesisComposed(alert({
+      humanized_message: '', volume_ratio: null, rsi_at_alert: null, sector: null,
+      setup_label: null, detected_pattern: null, stop_price: null, pattern_target: null,
+      next_resistance: null, catalyst_type: null,
+    })),
+    null,
+  );
+  const empty = setupFor({
+    alert: alert({
+      humanized_message: '', volume_ratio: null, rsi_at_alert: null, sector: null,
+      setup_label: null, detected_pattern: null, catalyst_type: null,
+    }),
+    key: 'k', percentile: 50, now: new Date('2026-06-10T00:00:00Z'),
+  });
+  eq('and the provenance is null too, not a lie about a sentence that does not exist', empty.score_components.thesis_source, null);
+
+  // rsi_at_alert: 0 means "not computed" (kai_swing_trigger_engine writes it),
+  // and a zero must not be rendered as a measurement.
+  ok('a zero RSI is not computed, so it is not quoted', !/RSI was 0/.test(thesisComposed(alert({ humanized_message: '', rsi_at_alert: 0 })) ?? ''));
+  ok('nor is a zero volume ratio', !/0\.0x/.test(thesisComposed(alert({ humanized_message: '', volume_ratio: 0 })) ?? ''));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
