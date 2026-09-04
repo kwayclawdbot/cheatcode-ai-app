@@ -103,6 +103,10 @@ export default function RootLayout() {
                 <Stack.Screen name="trade/[symbol]" options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="circle/[id]" options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="order/confirmed" options={{ animation: 'slide_from_bottom' }} />
+                <Stack.Screen name="desk/index" options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="desk/themes" options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="desk/pick/[ticker]" options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="desk/theme/[theme]" options={{ animation: 'slide_from_right' }} />
               </Stack>
               {/* Kai's contextual sheet lives above every route: it opens OVER
                   the current screen and never navigates the user away (audit §5). */}

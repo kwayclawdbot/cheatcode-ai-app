@@ -2,6 +2,9 @@ import type {
   AlertDraftResponse, AlertsResponse, CreateConversationResponse, HomeResponse,
   ModeResponse, OnboardingCompleteRequest, OnboardingCompleteResponse, SetupsResponse,
 } from '@cheatcode/shared';
+import type {
+  DeskPickResponse, DeskThemeResponse, DeskThemesResponse, DeskWatchlistResponse,
+} from '@shared/desk';
 import { env, offlineMode } from './env';
 import { supabase } from './supabase';
 import { getAccessToken, recoverSession, SESSION_EXPIRED_COPY } from './auth-token';
@@ -476,6 +479,26 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ code }),
     })),
+
+  // ── the research desk ──────────────────────────────────────
+  // Read-only, with one exception: you can put a ticker on the watchlist.
+  // The desk's own picks, grades and arguments are never edited from here.
+
+  deskWatchlist: () => request<DeskWatchlistResponse>('/desk/watchlist'),
+
+  deskAddWatch: (ticker: string, theme?: string) =>
+    request<DeskWatchlistResponse>('/desk/watchlist', {
+      method: 'POST',
+      body: JSON.stringify(theme ? { ticker, theme } : { ticker }),
+    }),
+
+  deskPick: (ticker: string) =>
+    request<DeskPickResponse>(`/desk/picks/${encodeURIComponent(ticker)}`),
+
+  deskThemes: () => request<DeskThemesResponse>('/desk/themes'),
+
+  deskTheme: (theme: string) =>
+    request<DeskThemeResponse>(`/desk/themes/${encodeURIComponent(theme)}`),
 
   /** DEV_TOOLS=1 on the api-app only. */
   simulateClosedTrade: (symbol?: string) =>
