@@ -27,6 +27,16 @@ import { z } from 'zod';
 import { levels, isLong } from '../setups';
 import type { SetupRow } from './context';
 import { markPlanLevels, patchAnnotation, upsertAnnotation, listAnnotations } from '../round4/annotations';
+import {
+  computeAnchoredVwap,
+  round2 as r2,
+  type FibGrid,
+  type IntradayLevels,
+  type KeyLevels,
+  type NamedLevel,
+  type TrendLine,
+} from '../market/key-levels';
+import type { Candle } from '@shared/api';
 import { log } from '../log';
 
 /* ------------------------------------------------------------------ */
@@ -41,8 +51,25 @@ export const ChartCommandRequest = z.object({
 });
 export type ChartCommandRequest = z.infer<typeof ChartCommandRequest>;
 
-/** Named levels the model may reference. It may not reference a number. */
-const LEVEL_KEYS = [
+/**
+ * Named levels the model may reference. It may not reference a number.
+ *
+ * THE FIRST TEN ARE THE ORIGINAL VOCABULARY and every one of them resolves off
+ * a graded setup, a saved plan or the room. That is a correct rule and a very
+ * short list: open a chart on a symbol with no setup and no plan — which is most
+ * symbols, most of the time — and eight of the ten resolve to nothing. Kai was
+ * not drawing inaccurately. He had almost nothing to draw with, so he narrated
+ * marking things and the chart sat still, which from the outside is
+ * indistinguishable from drawing badly.
+ *
+ * EVERYTHING AFTER THEM IS COMPUTED FROM BARS and needs no setup to exist. A
+ * previous session's high is a field on a candle. An opening range is fifteen
+ * minutes of five-minute bars. A moving average is a recurrence over closes.
+ * None of them is a judgement and none of them is a guess, so all of them can be
+ * offered under exactly the rule that governed the first ten: Kai names WHICH,
+ * the server resolves WHAT, and a name that does not resolve draws nothing.
+ */
+const SETUP_LEVEL_KEYS = [
   'trigger',
   'entry',
   'stop',
@@ -54,7 +81,75 @@ const LEVEL_KEYS = [
   'resistance',
   'community',
 ] as const;
-type LevelKey = (typeof LEVEL_KEYS)[number];
+
+/** Computed off daily bars. Present whenever the symbol has 20 stored days. */
+const DAILY_LEVEL_KEYS = [
+  'prior_day_high',
+  'prior_day_low',
+  'prior_day_close',
+  'year_high',
+  'year_low',
+  'swing_high',
+  'swing_low',
+  'ema8',
+  'ema21',
+  'ema50',
+  'ema200',
+  'nearest_support',
+  'nearest_resistance',
+] as const;
+
+/** Computed off five-minute bars for the most recent session with any. */
+const INTRADAY_LEVEL_KEYS = [
+  'premarket_high',
+  'premarket_low',
+  'open_range_high',
+  'open_range_low',
+  'session_high',
+  'session_low',
+  'vwap',
+] as const;
+
+const LEVEL_KEYS = [...SETUP_LEVEL_KEYS, ...DAILY_LEVEL_KEYS, ...INTRADAY_LEVEL_KEYS] as const;
+type LevelKey = (typeof SETUP_LEVEL_KEYS)[number];
+
+/**
+ * What a trader actually says, mapped to what the resolver calls it.
+ *
+ * Not politeness. A model that says `pdh` and gets nothing drawn learns that
+ * the chart is unreliable, and the next thing it does is stop trying. Every
+ * alias below is a name that appears on a real chart or in a real sentence.
+ */
+const LEVEL_ALIAS: Record<string, string> = {
+  pdh: 'prior_day_high',
+  pdl: 'prior_day_low',
+  pdc: 'prior_day_close',
+  prev_high: 'prior_day_high',
+  prev_low: 'prior_day_low',
+  prev_close: 'prior_day_close',
+  previous_close: 'prior_day_close',
+  hod: 'session_high',
+  lod: 'session_low',
+  day_high: 'session_high',
+  day_low: 'session_low',
+  orb_high: 'open_range_high',
+  orb_low: 'open_range_low',
+  opening_range_high: 'open_range_high',
+  opening_range_low: 'open_range_low',
+  pmh: 'premarket_high',
+  pml: 'premarket_low',
+  '52w_high': 'year_high',
+  '52w_low': 'year_low',
+  session_vwap: 'vwap',
+  '8ema': 'ema8',
+  '21ema': 'ema21',
+  '50ema': 'ema50',
+  '200ema': 'ema200',
+  ema_8: 'ema8',
+  ema_21: 'ema21',
+  ema_50: 'ema50',
+  ema_200: 'ema200',
+};
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d', 'D', 'daily', 'five_minute'] as const;
 
@@ -113,16 +208,126 @@ export type ChartContext = {
    * price), so it deduped against neither. Two rows, two lines, one price.
    */
   levelTimeframe: string;
+
+  /* ---- computed from bars, and needing no setup to exist ---- */
+  //
+  // ALL OPTIONAL, ON PURPOSE. `loadChartContext` fills them; a test or a caller
+  // that only cares about setup levels can leave them off and every computed
+  // name simply fails to resolve, which is the same refusal an absent setup
+  // already produces. Nothing below changes what an existing context means.
+
+  /** Daily key levels: previous session, averages, the year's extremes, swings. */
+  computed?: KeyLevels | null;
+  /** The most recent session with five-minute bars: premarket, opening range, VWAP. */
+  intraday?: IntradayLevels | null;
+  /** Trendlines the algorithm found through real pivots. Never guessed. */
+  trendlines?: TrendLine[];
+  /** A fib grid over the swing the algorithm measured. */
+  fib?: FibGrid | null;
+  /**
+   * The daily series itself, for anchored VWAP.
+   *
+   * An anchored VWAP is the only thing here that cannot be precomputed: it
+   * depends on WHICH bar Kai names as the anchor, and he does not name one until
+   * he speaks. So the bars ride along and the average is computed on demand.
+   */
+  dailyBars?: Candle[];
 };
 
-export type Resolved = { price: number; label: string; kind: AnnotationKind; reason: string; provenance: string };
+export type Resolved = {
+  price: number;
+  label: string;
+  kind: AnnotationKind;
+  reason: string;
+  provenance: string;
+  /**
+   * The bar this level is ABOUT, when one bar owns it: the session that printed
+   * the previous day's high, the candle that made the year's low. Null for an
+   * average, which belongs to every bar in its window and to no single one.
+   *
+   * It is what lets the camera go to a computed level rather than only to the
+   * trigger, and what puts Kai's pointer on the right column instead of the
+   * middle of the plot.
+   */
+  ts?: string | null;
+};
+
+/** Title Case out of a snake_case name, for the chip on the chart. */
+function labelOf(name: string): string {
+  const words = name.replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * Every level computed from bars, keyed by the name Kai may say.
+ *
+ * ORDER IS THE PRECEDENCE. Daily first, then intraday, so a symbol that has
+ * both never has one silently shadow the other — the names do not collide, and
+ * this is the guarantee that they cannot start to.
+ *
+ * A LEVEL'S KIND IS DECIDED BY WHICH SIDE OF PRICE IT IS ON, not by its name. A
+ * 50-day average under price is acting as support and above it is acting as
+ * resistance, and it is the same average either way. Naming the side rather than
+ * the instrument is also what lets these levels into the director's table, which
+ * only accepts the seven kinds that name a level.
+ */
+function computedLevels(ctx: ChartContext): Map<string, Resolved> {
+  const out = new Map<string, Resolved>();
+  const add = (l: NamedLevel, current: number, sourceNote: string) => {
+    const kind: AnnotationKind = l.price < current ? 'support' : 'resistance';
+    out.set(l.name, {
+      price: r2(l.price),
+      label: labelOf(l.name),
+      kind,
+      reason: `${l.what} It sits ${l.price < current ? 'below' : 'above'} the last price, so it is acting as ${kind === 'support' ? 'support' : 'resistance'} right now.`,
+      provenance: `${l.from} ${sourceNote}`,
+      ts: l.ts,
+    });
+  };
+
+  const daily = ctx.computed ?? null;
+  if (daily) {
+    const note = `Computed from ${daily.bars} daily bars for ${ctx.symbol}.`;
+    for (const l of daily.levels) add(l, daily.current, note);
+
+    // The nearest thing in either direction, whatever kind it happens to be.
+    // This is the one name that ALWAYS resolves when there are bars at all, and
+    // it is the answer to "what is the next level up from here" — a question the
+    // old vocabulary could only answer when a setup existed.
+    const near = (side: 'support' | 'resistance') => {
+      const list = side === 'support' ? daily.support : daily.resistance;
+      const l = list[0];
+      if (!l) return;
+      out.set(`nearest_${side}`, {
+        price: r2(l.price),
+        label: side === 'support' ? 'Nearest support' : 'Nearest resistance',
+        kind: side,
+        reason:
+          `The closest level ${side === 'support' ? 'below' : 'above'} the last price is the ${l.name.replace(/_/g, ' ')} at $${r2(l.price)}. ${l.what}`,
+        provenance: `${l.from} ${note}`,
+        ts: l.ts,
+      });
+    };
+    near('support');
+    near('resistance');
+  }
+
+  const intra = ctx.intraday ?? null;
+  if (intra) {
+    const note = `Computed from ${intra.bars} five-minute bars for ${ctx.symbol} on ${intra.date}.`;
+    for (const l of intra.levels) add(l, intra.current, note);
+  }
+
+  return out;
+}
 
 /**
  * Resolve one named level against the real objects. Returns null when nothing
  * in the loaded context defines it — which is a refusal, not a failure.
  */
 export function resolveLevel(ctx: ChartContext, key: string): Resolved | null {
-  const k = String(key).toLowerCase() as LevelKey;
+  const raw = String(key).trim().toLowerCase();
+  const k = (LEVEL_ALIAS[raw] ?? raw) as LevelKey;
   const setupLevels = ctx.setup ? levels(ctx.setup) : { entry: null, stop: null, targets: [], perShare: null, rr: null };
   const long = ctx.setup ? isLong(ctx.setup.intent) : true;
   const entry = ctx.plan?.entry ?? setupLevels.entry;
@@ -223,8 +428,44 @@ export function resolveLevel(ctx: ChartContext, key: string): Resolved | null {
           }
         : null;
     default:
-      return null;
+      // Not one of the ten that come off an object — try the ones that come off
+      // bars. The setup vocabulary is checked FIRST and deliberately: if a
+      // graded setup says where the stop is, that is the stop, and an arithmetic
+      // level that happens to share a name does not get to overrule it.
+      return computedLevels(ctx).get(k) ?? null;
   }
+}
+
+/** The names that actually resolve on this chart right now. */
+export function availableLevels(ctx: ChartContext): string[] {
+  return LEVEL_KEYS.filter((k) => resolveLevel(ctx, k) !== null);
+}
+
+/**
+ * The DRAWINGS that resolve right now, as the model would have to write them.
+ *
+ * This is the anti-invention rule applied to shapes. Advertising "you can draw a
+ * trendline" on a chart where the algorithm found none is how Kai ends up
+ * narrating a line that never appears — the War Room's number-one reported bug,
+ * and the reason its prompt grew a tool-claim parity rule. Offering only what
+ * exists is the same fix enforced one layer lower down, where the model cannot
+ * forget it.
+ */
+export function availableDrawings(ctx: ChartContext): string[] {
+  const arg = (shape: string, level: string) => `{"shape":"${shape}","level":"${level}"}`;
+  const out: string[] = [];
+  for (const t of ctx.trendlines ?? []) out.push(arg('trendline', t.kind));
+  if (ctx.fib) out.push(arg('fib', 'swing'));
+  const bars = ctx.dailyBars ?? [];
+  if (bars.length) {
+    for (const a of ['year_low', 'year_high', 'swing_low', 'swing_high']) {
+      const ts = resolveLevel(ctx, a)?.ts;
+      if (!ts) continue;
+      if (computeAnchoredVwap(bars, ts, a) === null) continue;
+      out.push(arg('anchored_vwap', a));
+    }
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -292,14 +533,164 @@ async function markShape(
     };
   }
 
+  /**
+   * A TRENDLINE THE ALGORITHM FOUND, NOT ONE THE MODEL DESCRIBED.
+   *
+   * Kai names which trendline — the uptrend, the downtrend, the top of the range
+   * — and `findTrendlines` has already decided whether there is one, by walking
+   * back through the swing pivots on eighty daily bars. Both ends of what gets
+   * drawn are bars that printed. If no line qualified, this returns null and Kai
+   * has said nothing about a trendline that is not there, because the prompt
+   * only offered him the ones that exist.
+   */
+  if (shape === 'trendline') {
+    const lines = ctx.trendlines ?? [];
+    const line = lines.find((t) => t.kind === v) ?? (v === 'trend' || v === 'any' ? lines[0] : undefined);
+    if (!line) return null;
+    const ann = await upsertAnnotation(ctx.userId, {
+      ...base,
+      kind: 'trendline',
+      price: r2(line.fromPrice),
+      price2: r2(line.toPrice),
+      ts_from: line.fromTs,
+      ts_to: line.toTs,
+      text: line.label,
+      reason: `${line.label}. ${line.from}`,
+    });
+    if (!ann) return null;
+    return {
+      type: 'chart_command',
+      command: 'mark_level',
+      payload: {
+        shape: 'trendline',
+        level: line.kind,
+        price: r2(line.fromPrice),
+        price2: r2(line.toPrice),
+        from: line.fromTs,
+        to: line.toTs,
+        symbol: ctx.symbol,
+        timeframe: ctx.timeframe,
+      },
+      annotations: [ann],
+      narration: say(
+        line.broken
+          ? `I drew the ${line.kind === 'range' ? 'ceiling' : line.kind} it was following. It broke — the line stops on the bar price closed through it.`
+          : line.kind === 'range'
+            ? 'That flat ceiling is where it has been turned away twice, and it has not been through it since.'
+            : `I drew the ${line.kind === 'uptrend' ? 'rising' : 'falling'} line through the two turns it was actually made of. Nothing has closed through it yet.`
+      ),
+      provenance: line.from,
+    };
+  }
+
+  /**
+   * A FIB GRID OVER A MEASURED SWING.
+   *
+   * The one decision a fib needs is which move you are retracing, and it is the
+   * decision people get wrong and then argue about. So the model does not make
+   * it: the swing is the highest high and the lowest low in the stored window,
+   * and the direction is which of the two printed first. Five interior ratios,
+   * one grid, one gesture — the two ends are the swing high and the swing low,
+   * which are already drawable on their own and are not redrawn here.
+   */
+  if (shape === 'fib') {
+    const grid = ctx.fib ?? null;
+    if (!grid || !ctx.bars.lastTs) return null;
+    const anns: AnnotationRow[] = [];
+    for (const l of grid.levels) {
+      const kind: AnnotationKind = l.price < (ctx.bars.lastPrice ?? grid.toPrice) ? 'support' : 'resistance';
+      const a = await upsertAnnotation(ctx.userId, {
+        ...base,
+        kind,
+        price: r2(l.price),
+        ts_from: grid.toTs,
+        text: `Fib ${(l.ratio * 100).toFixed(1)}%`,
+        reason: `The ${(l.ratio * 100).toFixed(1)}% retracement of that move, at $${r2(l.price)}. ${grid.from}`,
+      });
+      if (a) anns.push(a);
+    }
+    if (!anns.length) return null;
+    return {
+      type: 'chart_command',
+      command: 'mark_level',
+      payload: {
+        shape: 'fib',
+        level: 'swing',
+        direction: grid.direction,
+        from: grid.fromTs,
+        to: grid.toTs,
+        prices: grid.levels.map((l) => r2(l.price)),
+        symbol: ctx.symbol,
+        timeframe: ctx.timeframe,
+      },
+      annotations: anns,
+      narration: say(
+        `I measured the ${grid.direction === 'up' ? 'run up' : 'drop'} and laid the retracement levels over it.`
+      ),
+      provenance: grid.from,
+    };
+  }
+
+  /**
+   * AN ANCHORED VWAP, ANCHORED TO A LEVEL — NEVER TO A DATE.
+   *
+   * The War Room's version takes `anchor_date` as a string and trusts the model
+   * to type a real one. That is the anti-invention rule with a hole in it: a
+   * plausible date produces a plausible average, and nothing downstream can tell
+   * it from a real one. Here the anchor is the NAME of a level this file has
+   * already resolved, and the timestamp comes off the bar that made it. "The
+   * VWAP from the year's low" cannot be anchored to a day the low did not happen
+   * on, because the low's date is not a parameter.
+   *
+   * It draws a horizontal at the average's CURRENT value, which is what a person
+   * means by the level. It is not the curve, and the label says as much.
+   */
+  if (shape === 'anchored_vwap' || shape === 'vwap_from') {
+    const bars = ctx.dailyBars ?? [];
+    const anchor = resolveLevel(ctx, v);
+    const anchorTs = anchor?.ts ?? (v === 'trigger' ? ctx.triggerTs : null);
+    if (!bars.length || !anchorTs) return null;
+    const av = computeAnchoredVwap(bars, anchorTs, v);
+    if (!av) return null;
+    const kind: AnnotationKind = av.price < (ctx.bars.lastPrice ?? av.price) ? 'support' : 'resistance';
+    const ann = await upsertAnnotation(ctx.userId, {
+      ...base,
+      kind,
+      price: r2(av.price),
+      ts_from: av.anchorTs,
+      text: `VWAP from ${v.replace(/_/g, ' ')}`,
+      reason:
+        `The average price everyone has paid since the ${v.replace(/_/g, ' ')}, $${r2(av.price)}. ` +
+        `It is today's value of a line that moves with every new bar, not a fixed shelf. ${av.from}`,
+    });
+    if (!ann) return null;
+    return {
+      type: 'chart_command',
+      command: 'mark_level',
+      payload: {
+        shape: 'anchored_vwap',
+        level: v,
+        price: r2(av.price),
+        anchor_ts: av.anchorTs,
+        symbol: ctx.symbol,
+        timeframe: ctx.timeframe,
+      },
+      annotations: [ann],
+      narration: say(`Anchored from the ${v.replace(/_/g, ' ')}, the average paid since then is $${r2(av.price)}.`),
+      provenance: av.from,
+    };
+  }
+
   const lv = resolveLevel(ctx, v);
   if (!lv) return null;
 
   if (shape === 'circle') {
     // The bar that made the level matter, falling back to the most recent one —
     // the same rule `zoom_trigger` already uses, so the two never disagree about
-    // which candle a level belongs to.
-    const ts = ctx.triggerTs ?? ctx.bars.lastTs;
+    // which candle a level belongs to. A COMPUTED LEVEL BRINGS ITS OWN BAR: the
+    // session that printed the previous day's high is a specific candle, and
+    // ringing the trigger's candle instead would circle the wrong week.
+    const ts = lv.ts ?? ctx.triggerTs ?? ctx.bars.lastTs;
     if (!ts) return null;
     const ann = await upsertAnnotation(ctx.userId, {
       ...base,
@@ -392,7 +783,19 @@ export async function executeChartCommand(
         return {
           type: 'chart_command',
           command: 'mark_level',
-          payload: { level: key, price: r.price, label: r.label, kind: r.kind, symbol: ctx.symbol, timeframe: ctx.timeframe },
+          payload: {
+            level: key,
+            price: r.price,
+            label: r.label,
+            kind: r.kind,
+            // WHERE THE HAND SHOULD BE. A horizontal line has no time of its
+            // own, so without this the cursor falls to the middle column on
+            // every mark. A computed level knows the bar it came from, and the
+            // client reads `ts` as exactly that hint.
+            ts: r.ts ?? null,
+            symbol: ctx.symbol,
+            timeframe: ctx.timeframe,
+          },
           annotations: ann ? [ann] : [],
           narration: say(`I marked ${r.label.toLowerCase()} at $${r.price} on the chart. ${r.reason}`),
           provenance: r.provenance,
@@ -478,9 +881,11 @@ export async function executeChartCommand(
         // every existing caller behaves exactly as it did.
         const key = typeof args.level === 'string' && args.level.trim() ? args.level : 'trigger';
         const r = resolveLevel(ctx, key);
-        // Only the trigger has a stored candle of its own on this side; any
-        // other level is framed by price, which is a real number either way.
-        const ts = r && (key === 'trigger' || key === 'entry') ? ctx.triggerTs : null;
+        // THE CANDLE THE LEVEL COMES FROM, when it has one. The trigger's is on
+        // the alert; a computed level's is the bar that printed it. Everything
+        // else — an average, a plan's stop — is framed by price alone, which is
+        // a real number either way.
+        const ts = r ? (r.ts ?? (key === 'trigger' || key === 'entry' ? ctx.triggerTs : null)) : null;
         if (!ts && !r) return null;
         return {
           type: 'chart_command',
@@ -488,11 +893,16 @@ export async function executeChartCommand(
           payload: { level: key, focus_ts: ts, price: r?.price ?? null, symbol: ctx.symbol, timeframe: ctx.timeframe },
           annotations: [],
           narration: say(
-            ts
-              ? 'I zoomed the chart to the candle where this triggered.'
-              : `I centred the chart on the ${String(r?.label ?? key).toLowerCase()}.`
+            !ts
+              ? `I centred the chart on the ${String(r?.label ?? key).toLowerCase()}.`
+              : key === 'trigger' || key === 'entry'
+                ? 'I zoomed the chart to the candle where this triggered.'
+                : `I took the chart to the bar the ${String(r?.label ?? key).toLowerCase()} came from.`
           ),
-          provenance: ts ? 'The trigger timestamp on the alert.' : (r?.provenance ?? 'The setup entry condition.'),
+          provenance:
+            ts && (key === 'trigger' || key === 'entry')
+              ? 'The trigger timestamp on the alert.'
+              : (r?.provenance ?? 'The setup entry condition.'),
         };
       }
 
@@ -736,7 +1146,14 @@ export async function executeChartCommand(
  * loud that a number in `args` will be ignored — because the fastest way to get
  * a model to stop guessing prices is to tell it the guess will be thrown away.
  */
-export function chartCommandProtocol(ctx: { symbol: string; timeframe: string; available: string[] }): string {
+export function chartCommandProtocol(ctx: {
+  symbol: string;
+  timeframe: string;
+  available: string[];
+  /** The drawings that resolve right now: `trendline:uptrend`, `fib`, and so on. */
+  drawings?: string[];
+}): string {
+  const drawings = ctx.drawings ?? [];
   return `CHART CONTROL
 
 You are talking to the user underneath a live ${ctx.symbol} chart on the
@@ -766,13 +1183,38 @@ Rules, and they are strict:
 - camera commands, for looking rather than marking: zoom_range (args.from,
   args.to — real timestamps from the objects you were given, never invented) ·
   scroll_bars (args.bars, negative goes back) · scroll_to_now ·
-  flash_annotation (args.annotation_id — pulses a mark that is ALREADY drawn) ·
-  pointer_hint (args.level or args.ts or args.rail — points, changes nothing).
+  zoom_trigger (args.level — takes the camera to the BAR a level came from, for
+  any level above, not only the trigger) · flash_annotation
+  (args.annotation_id — pulses a mark that is ALREADY drawn) · pointer_hint
+  (args.level or args.ts or args.rail — points, changes nothing).
   Use them when the thing you are describing is off screen. Describing a level
   the user cannot see is the same mistake as inventing one.
+- shapes ride mark_level with args.shape: circle (rings the bar a level came
+  from) · arrow (from the last close to a level) · zone (risk, reward, range)${
+    drawings.length
+      ? ` ·
+  ${drawings.join(' · ')}.
+  THESE ARE THE DRAWINGS THIS CHART ACTUALLY HAS RIGHT NOW — a shape not on that
+  list draws nothing, exactly like a level that is not in the data. A trendline
+  is offered only when the algorithm found one through two real turning points;
+  a fib grid only when there is a measured swing to retrace.`
+      : `.
+  No trendline, fib grid or anchored average resolves on this chart right now,
+  so do not offer to draw one.`
+  }
 - alert_from_level and prepare_trade PROPOSE. They do not arm a watch and they
   do not place an order. Say so.
-- Community levels are labelled as the room's opinion, never as your analysis.`;
+- Community levels are labelled as the room's opinion, never as your analysis.
+
+IF YOU SAY IT, YOU DRAW IT — AND IF YOU CANNOT DRAW IT, DO NOT SAY IT.
+This is the one failure that makes the whole feature look broken: you say "I
+drew the trendline" or "I marked the previous day's high", the level was not in
+the list above, the command is dropped, and the user hears you do something
+while the chart sits still. It is worse than saying nothing, because it reads as
+the chart being broken rather than as you being careful. So: every drawing verb
+in your sentence must correspond to a command in this reply, naming something
+from the lists above. If it is not on a list, drop the verb — describe what
+price has done instead.`;
 }
 
 /**

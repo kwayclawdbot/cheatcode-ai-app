@@ -38,7 +38,8 @@ import {
 } from '@/lib/kai/stream';
 import {
   ChartCommandRequest,
-  CHART_LEVEL_KEYS,
+  availableDrawings,
+  availableLevels,
   chartAnswerProtocol,
   chartCommandProtocol,
   executeChartCommand,
@@ -186,7 +187,24 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
      * function call and is the difference between a silent failure and an honest
      * answer about support and resistance.
      */
-    const chartLevels = chartCtx ? [...levelTableFor(chartCtx).keys()] : [];
+    /**
+     * TWO LISTS, BECAUSE THE TWO PATHS CAN DRAW DIFFERENT THINGS.
+     *
+     * `chartLevels` is everything `resolveLevel` answers to on this chart — the
+     * setup levels when there is a setup, plus every level computed off the
+     * stored bars, which exist whether there is a setup or not. That is what a
+     * chart_command may name.
+     *
+     * `answerLevels` is the subset the DIRECTOR may cue in an answer, which is
+     * narrower by construction: its marker grammar is a closed vocabulary and it
+     * only accepts kinds that name a level. Telling the model the command list
+     * when it is writing an answer would advertise names its markers cannot
+     * carry, and the cue would be dropped after the sentence was already written
+     * around it.
+     */
+    const chartLevels = chartCtx ? availableLevels(chartCtx) : [];
+    const chartDrawings = chartCtx ? availableDrawings(chartCtx) : [];
+    const answerLevels = chartCtx ? [...levelTableFor(chartCtx).keys()] : [];
     const chartOnScreen = chartCtx
       ? { symbol: chartCtx.symbol, timeframe: chartCtx.timeframe, levels: chartLevels }
       : null;
@@ -205,10 +223,11 @@ ${voicePromptBlock(experience, alreadyExplained)}${
             symbol: chartCtx.symbol,
             timeframe: chartCtx.timeframe,
             available: chartLevels,
+            drawings: chartDrawings,
           })}\n\n${chartAnswerProtocol({
             symbol: chartCtx.symbol,
             timeframe: chartCtx.timeframe,
-            available: chartLevels,
+            available: answerLevels,
           })}`
         : ''
     }
@@ -451,7 +470,9 @@ ${renderContext(kctx, chartOnScreen)}${sheet.prompt_block ? `\n\n${sheet.prompt_
 Answer with ONE line of JSON and nothing else.
 If the person asked for the chart to change, answer {"command":"<name>","args":{...}}.
 If they did not, answer {"command":"none"}.
-Commands: mark_level (args.level one of ${[...CHART_LEVEL_KEYS].join(', ')}) · set_timeframe (args.timeframe one of 1m,5m,15m,1h,4h,1d) · show_invalidation · mark_plan · zoom_trigger · compare_prior · highlight_community · alert_from_level (args.level) · prepare_trade.
+Commands: mark_level (args.level one of ${chartLevels.join(', ') || 'none — this chart has no level that resolves'}) · set_timeframe (args.timeframe one of 1m,5m,15m,1h,4h,1d) · show_invalidation · mark_plan · zoom_trigger (args.level) · compare_prior · highlight_community · alert_from_level (args.level) · prepare_trade${
+              chartDrawings.length ? ` · mark_level with args.shape one of ${chartDrawings.join(', ')}` : ''
+            }.
 Never include a price. Never invent a command they did not ask for.`,
               messages: [
                 { role: 'user', content: `Person: ${parsed.data.content}\n\nKai answered: ${narrative.slice(0, 600)}` },
