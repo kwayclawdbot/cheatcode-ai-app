@@ -29,6 +29,7 @@ import { fixtureDeskWatchlist, fixtureDeskWatchlistEmpty } from '../../lib/fixtu
 import { useResource } from '../../lib/useResource';
 import { useSession } from '../../lib/session';
 import { GradeMark, StateChip, LinkRow, px } from './ui';
+import { LevelTrack } from './instruments';
 import { ModeControl } from '../home/ModeSheet';
 import { secondTab } from '../nav/second-tab';
 import type { DeskWatchRow, DeskWatchlistResponse } from '@shared/desk';
@@ -239,12 +240,16 @@ function Group({ title, sub, rows, onPick }: {
                   <GradeMark grade={r.grade} size={13} />
                 </View>
                 <T size={12} c={color.dim} numberOfLines={1} style={{ marginTop: space.x2 }}>
-                  {r.theme ?? r.company ?? '—'}
+                  {r.theme ? r.theme.replace(/-/g, ' ') : r.company ?? '—'}
                 </T>
               </View>
               <View style={{ alignItems: 'flex-end', gap: space.x6 }}>
                 <Num size={15} weight="semibold" c={color.cyan}>{px(r.price)}</Num>
                 <StateChip state={r.state} />
+                {/* Where price sits between the level that kills it and the
+                    level that arms it. Drawn only when the desk wrote both
+                    down — half a track would be a picture of a guess. */}
+                <LevelTrack price={r.price} trigger={r.triggerPrice} invalidation={r.invalidation} />
               </View>
             </View>
           </LinkRow>

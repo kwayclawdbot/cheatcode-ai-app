@@ -10,19 +10,25 @@ import type { NextRequest } from 'next/server';
 import { DeskPickResponse } from '@shared/desk';
 import { authedParams, ok, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
-import { kaiSource, loadPicksForTicker } from '@/lib/desk/source';
+import { kaiSource, loadPicksForTicker, loadTheme } from '@/lib/desk/source';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = authedParams<{ ticker: string }>(
   async (_req: NextRequest, ctx: Ctx & { params: { ticker: string } }) => {
-    const picks = await loadPicksForTicker(kaiSource(), ctx.params.ticker);
+    const src = kaiSource();
+    const picks = await loadPicksForTicker(src, ctx.params.ticker);
     if (!picks.length) {
       throw new ApiError('NOT_FOUND', `The desk has not written up ${ctx.params.ticker.toUpperCase()}.`);
     }
     const [pick, ...rest] = picks;
+    // How big the claim is and when it lands belong to the THEME, not to the
+    // company. The screen shows both, so they are read off the theme table
+    // rather than guessed at from anything on the pick.
+    const themeJudgement = pick.theme ? await loadTheme(src, pick.theme) : null;
     return ok(DeskPickResponse.parse({
       pick,
+      themeJudgement,
       alsoWrittenUp: rest.map((p) => ({
         theme: p.theme ?? '',
         pickDate: p.pickDate,

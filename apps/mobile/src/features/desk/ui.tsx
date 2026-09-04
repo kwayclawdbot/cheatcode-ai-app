@@ -115,9 +115,8 @@ export function Falsifier({ label, text, tone = color.red }: {
 export function UnfinishedNote({ style }: { style?: StyleProp<ViewStyle> }) {
   return (
     <View style={[{
-      marginTop: space.x12, padding: space.x12,
-      borderRadius: radius.md, backgroundColor: alpha.ivory06,
-      borderWidth: 0.5, borderColor: alpha.ivory16,
+      marginTop: space.x16, paddingLeft: space.x14, paddingVertical: space.x4,
+      borderLeftWidth: 3, borderLeftColor: color.gold,
     }, style]}>
       <Eyebrow c={color.gold}>Never reached a verdict</Eyebrow>
       <T size={13} lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
@@ -126,28 +125,6 @@ export function UnfinishedNote({ style }: { style?: StyleProp<ViewStyle> }) {
         rejection. It owes you a re-run.
       </T>
     </View>
-  );
-}
-
-/** A labelled figure in a row of them. Tabular, so numbers line up. */
-export function Stat({ label, value, tone = color.text }: {
-  label: string; value: string; tone?: string;
-}) {
-  return (
-    <View style={{ flex: 1, minWidth: 78 }}>
-      <Eyebrow c={color.dim}>{label}</Eyebrow>
-      <Num size={16} weight="bold" c={tone} style={{ marginTop: space.x4 }}>{value}</Num>
-    </View>
-  );
-}
-
-export function StatRow({ children }: { children: React.ReactNode }) {
-  return (
-    <View style={{
-      flexDirection: 'row', flexWrap: 'wrap', gap: space.x16,
-      marginTop: space.x16, paddingTop: space.x14,
-      borderTopWidth: 1, borderTopColor: alpha.ivory08,
-    }}>{children}</View>
   );
 }
 

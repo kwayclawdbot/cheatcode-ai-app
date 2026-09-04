@@ -47,6 +47,14 @@ export type PickRow = {
   idea_grade_why: string | null; score: number | null; market_cap: number | null;
   falsifier: string | null; revisit_when: string | null; catalysts: unknown;
   why: unknown; blockers: unknown; hypothesis: string | null; thesis: string | null;
+  /**
+   * THE COLUMN DOES NOT EXIST YET. `select=*` simply does not return it, so
+   * this is `undefined` on every row today and the mapping below turns that
+   * into null. The screen has a place waiting for it. When the brain starts
+   * writing `potential_move_pct` — a percentage, the distance the desk thinks
+   * the name could travel — it arrives here and appears with no app change.
+   */
+  potential_move_pct?: number | null;
 };
 
 export type StatusRow = {
@@ -110,6 +118,10 @@ export function toPick(r: PickRow): DeskPick {
     grade: grade(r.idea_grade),
     gradeWhy: r.idea_grade_why,
     score: r.score,
+    // A number the brain does not compute yet reads as null, never as zero and
+    // never as something derived from market cap or the theme's size. A
+    // plausible wrong figure here would be worse than an empty one.
+    potentialMovePct: typeof r.potential_move_pct === 'number' ? r.potential_move_pct : null,
     marketCap: r.market_cap,
     falsifier: r.falsifier,
     revisitWhen: r.revisit_when,

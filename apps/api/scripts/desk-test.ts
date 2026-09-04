@@ -158,5 +158,42 @@ console.log('\ndesk — the watchlist join\n');
   eq('an unread watchlist has no as-of', shapeWatchlist([], []).asOf, null);
 }
 
+/*
+ * The potential move.
+ *
+ * The brain does not compute it. The column does not exist, `select=*` does not
+ * return it, and the app has a place waiting for it. The only thing that must
+ * never happen is a number appearing there that came from somewhere else — the
+ * score, the market cap, the theme's size — so these check that the field is
+ * null unless the brain itself wrote a number into it.
+ */
+{
+  console.log('\nthe potential move — a slot, not a guess');
+
+  eq('a row with no such column reads as not measured',
+    toPick(pick()).potentialMovePct, null);
+
+  eq('the ranking score is never borrowed for it',
+    toPick(pick({ score: 0.9812 })).potentialMovePct, null);
+
+  eq('market cap is never turned into one',
+    toPick(pick({ market_cap: 4.4e10, score: 0.77 })).potentialMovePct, null);
+
+  eq('a null the brain wrote stays null',
+    toPick(pick({ potential_move_pct: null })).potentialMovePct, null);
+
+  eq('a number the brain wrote comes straight through',
+    toPick(pick({ potential_move_pct: 34.5 })).potentialMovePct, 34.5);
+
+  eq('a negative one comes through unchanged, because a short can have one',
+    toPick(pick({ potential_move_pct: -18 })).potentialMovePct, -18);
+
+  eq('anything that is not a number is refused rather than coerced',
+    toPick(pick({ potential_move_pct: '34.5' as unknown as number })).potentialMovePct, null);
+
+  eq('and the score still reaches the app as itself, unrenamed',
+    toPick(pick({ score: 0.5973 })).score, 0.5973);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail === 0 ? 0 : 1);

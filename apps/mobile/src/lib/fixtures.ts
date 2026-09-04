@@ -13,6 +13,9 @@ import type {
 import type {
   DeskPickResponse, DeskThemeResponse, DeskThemesResponse, DeskWatchlistResponse,
 } from '@shared/desk';
+import {
+  REAL_AAOI_META, REAL_AAOI_THESIS, REAL_PDYN_META, REAL_PDYN_THESIS,
+} from './fixtures-desk-real';
 
 const SOURCE_TS = '2026-08-26T13:41:00.000Z';
 
@@ -938,25 +941,25 @@ export const fixtureDeskThemes: DeskThemesResponse = {
   themes: [
     {
       theme: 'Humanoid-Robotics', magnitude: 9.5, timeline: '5y+', conviction: 7,
-      trajectory: 'building', reason: 'Labour is the largest cost line in the economy and this is the first credible attempt to price it.',
+      trajectory: 'ESCALATING', reason: 'Labour is the largest cost line in the economy and this is the first credible attempt to price it.',
       outOfFavour: false, entriesTotal: 1, entries7d: 1, mined: true,
       tickers: ['TER', 'ABB', 'NVDA'],
     },
     {
-      theme: 'Data-Centre-Power', magnitude: 8.5, timeline: '2-3y', conviction: 8,
-      trajectory: 'building', reason: 'Compute is now a power problem before it is a chip problem, and the grid cannot be ordered in a quarter.',
+      theme: 'Data-Centre-Power', magnitude: 8.5, timeline: '3-5y', conviction: 8,
+      trajectory: 'ESCALATING', reason: 'Compute is now a power problem before it is a chip problem, and the grid cannot be ordered in a quarter.',
       outOfFavour: false, entriesTotal: 34, entries7d: 6, mined: true,
       tickers: ['VRT', 'GEV', 'PWR'],
     },
     {
       theme: 'Enterprise-Software-AI-Disruption', magnitude: 8, timeline: '1-2y', conviction: 6,
-      trajectory: 'building', reason: 'Seat-based pricing is being repriced by software that does the seat’s work.',
+      trajectory: 'ESCALATING', reason: 'Seat-based pricing is being repriced by software that does the seat’s work.',
       outOfFavour: false, entriesTotal: 51, entries7d: 9, mined: true,
       tickers: ['INOD', 'PLTR'],
     },
     {
       theme: 'AI-Compute-Buildout', magnitude: 7, timeline: 'now', conviction: 5,
-      trajectory: 'cooling', reason: 'The trade everyone already owns. A big theme cooling off is often the entry, not a reason to look away.',
+      trajectory: 'DE-ESCALATING', reason: 'The trade everyone already owns. A big theme cooling off is often the entry, not a reason to look away.',
       outOfFavour: true, entriesTotal: 212, entries7d: 18, mined: true,
       tickers: ['CRWV', 'NVDA', 'AMD'],
     },
@@ -975,13 +978,14 @@ export const fixtureDeskThemes: DeskThemesResponse = {
  * is not a rejection, and the screen has to say so in its own words.
  */
 const DESK_PICKS: Record<string, DeskPickResponse> = {
+  /* A graded call the desk is actually running. Sample data. */
   INOD: {
     pick: {
       ticker: 'INOD', company: 'Innodata Inc', theme: 'Enterprise-Software-AI-Disruption',
       themeRank: 1, pickDate: '2026-08-21', direction: 'long', horizon: '2q',
       status: 'active', grade: 'B+',
       gradeWhy: 'A real idea in a large theme, but the company is one of several that could capture it and the multiple already assumes it does.',
-      score: 0.5973, marketCap: 1.2e9,
+      score: 0.5973, potentialMovePct: null, marketCap: 1.2e9,
       falsifier: 'Revenue growth under +40% in the Q3 print, or the largest customer dropping below a third of revenue.',
       revisitWhen: null,
       catalysts: [
@@ -991,26 +995,219 @@ const DESK_PICKS: Record<string, DeskPickResponse> = {
       why: [
         'Revenue +57% year over year, and the growth is in the data-preparation line rather than legacy services.',
         'Gross margin has climbed four quarters running while headcount was flat.',
+        'Price has not followed (-4% over 60 sessions) while the accounts turned.',
       ],
       blockers: [
         'One customer is close to half of revenue.',
         'Nothing here is proprietary — the moat is delivery, not technology.',
       ],
-      hypothesis: 'data preparation for model training',
-      thesis: '## THE THEME\n\nModel builders have run out of clean public text and are paying for prepared data instead. That spend is new, it is large, and it lands on a handful of firms that can hire and manage annotation at scale.\n\n## THE COMPANY\n\n**Innodata** was a services business that happened to be sitting on the exact capability the labs now need. The last four quarters are the first evidence that the shift is structural rather than a single contract.\n\n- Revenue growth is accelerating, not decelerating\n- Margin is improving without a headcount build\n- The customer list is short, which is both the case and the risk\n\n## WHAT WOULD END THIS\n\nA single quarter under +40% growth. The multiple only survives while the acceleration does.',
+      hypothesis: 'Firms that prepare and label training data for model builders at scale, sold on multi-year contracts to a small number of very large customers',
+      thesis: [
+        '# INOD — Innodata Inc.',
+        '',
+        '## THE THEME',
+        '',
+        'Model builders have run out of clean public text and are paying for prepared data instead. That spend is new, it is large, and it lands on a handful of firms that can hire and manage annotation at scale. The theme is not "AI" — it is the unglamorous supply chain underneath it, which is where the margin usually ends up in the second year of a build-out.',
+        '',
+        '## WHAT THEY ACTUALLY DO',
+        '',
+        '**Innodata** runs managed teams that clean, label and structure text, image and audio data to a customer specification, and increasingly evaluate model output against it. It was a services business that happened to be sitting on the exact capability the labs now need.',
+        '',
+        '## WHY THIS ONE',
+        '',
+        'The obvious alternatives have to be named. **Scale AI** is private. **Appen (APX.AX)** has the same business and is losing the customers Innodata is winning, which is itself evidence about delivery quality. **TaskUs (TASK)** is larger but its mix is customer support, not data preparation. Innodata is the listed pure expression, and that is both the case and the risk.',
+        '',
+        '## COULD IT LEAD',
+        '',
+        'Probably not on its own. This is a supplier, not a platform, and suppliers to four customers do not set prices. What it can do is compound while the build-out lasts, which is a different and more modest claim than leadership.',
+        '',
+        '## THE CONNECTION',
+        '',
+        'The connection is direct and disclosed: the filings name data preparation for large language model training as the growth line, and the growth is in that line rather than in legacy services. This is the rare case where the segment reporting actually answers the question.',
+        '',
+        '## WHAT THE NUMBERS SAY',
+        '',
+        '**Revenue +57% year over year**, and accelerating against the prior quarter. **Gross margin up four quarters running** while headcount was flat, which is the shape of operating leverage rather than of a hiring binge. **Customer concentration near 50%** on a single account — the number that decides whether any of the rest matters.',
+        '',
+        '## WHAT WOULD HAVE TO BE TRUE',
+        '',
+        '1. **The acceleration has to survive one renewal cycle.** A contract won is not a contract renewed, and the multiple is priced on renewal.',
+        '2. **The second customer has to get bigger.** Concentration near half of revenue is the whole risk in one line.',
+        '',
+        '## THE CALL',
+        '',
+        'Long, over two quarters. The growth is real, it is in the right line, and the price has not moved with it. The grade is a B+ rather than better because several companies could capture this and the multiple already assumes this one does.',
+      ].join('\n'),
       unfinished: false,
     },
     alsoWrittenUp: [
       { theme: 'AI-Compute-Buildout', pickDate: '2026-06-02', grade: 'C', status: 'expired' },
     ],
+    themeJudgement: fixtureDeskThemes.themes.find((t) => t.theme === 'Enterprise-Software-AI-Disruption') ?? null,
   },
+
+  /*
+   * A real write-up, verbatim: eleven thousand characters, eight sections, a
+   * pass with a C on it. This is the one the redesign was briefed against.
+   */
+  PDYN: {
+    pick: {
+      ...REAL_PDYN_META,
+      themeRank: REAL_PDYN_META.themeRank,
+      potentialMovePct: null,
+      catalysts: [],
+      thesis: REAL_PDYN_THESIS,
+      unfinished: false,
+    },
+    alsoWrittenUp: [],
+    themeJudgement: {
+      theme: 'Humanoid-Robotics-Physical-AI', magnitude: 9.5, timeline: '5y+', conviction: 7,
+      trajectory: 'ESCALATING',
+      reason: 'Labour is the largest cost line in the economy and this is the first credible attempt to price it.',
+      outOfFavour: false, entriesTotal: 1, entries7d: 1, mined: true,
+      tickers: ['PDYN', 'SYM', 'ZBRA'],
+    },
+  },
+
+  /*
+   * A real write-up with NO `##` headings — its sections are bold lines. The
+   * section reader has to find them, and this is what proves it does.
+   */
+  AAOI: {
+    pick: {
+      ...REAL_AAOI_META,
+      potentialMovePct: null,
+      catalysts: [],
+      thesis: REAL_AAOI_THESIS,
+      unfinished: false,
+    },
+    alsoWrittenUp: [],
+    themeJudgement: {
+      theme: 'AI-Capex-Cycle', magnitude: 8, timeline: 'now', conviction: 8,
+      trajectory: 'ESCALATING',
+      reason: 'The spend is committed and disclosed. The question is who keeps the margin, not whether the money is spent.',
+      outOfFavour: true, entriesTotal: 212, entries7d: 18, mined: true,
+      tickers: ['AAOI', 'COHR', 'LITE'],
+    },
+  },
+
+  /*
+   * The bottom of the scale. Sample data — the brain has never written a D —
+   * kept here because a D has to read as a judgement the desk made and not as
+   * a broken screen, and that cannot be proved without one.
+   */
+  SPCE: {
+    pick: {
+      ticker: 'SPCE', company: 'Virgin Galactic Holdings', theme: 'Commercial-Space-Access',
+      themeRank: 6, pickDate: '2026-08-14', direction: 'pass', horizon: null,
+      status: 'rejected', grade: 'D',
+      gradeWhy: 'The theme is real and this company is not a way to own it. Revenue is a rounding error against the cash burn, the share count has doubled twice, and nothing in the filings connects the spending to a commercial programme with dates on it. The judgement is about the fit, not about the sector.',
+      score: 0.4084, potentialMovePct: null, marketCap: 2.4e8,
+      falsifier: 'A signed, priced flight programme with named customers and disclosed unit economics would change the case entirely.',
+      revisitWhen: 'If the company discloses a flight cadence with contracted revenue attached, and the share count stops rising, re-read it.',
+      catalysts: [],
+      why: [
+        'The theme it sits in is genuinely large and the desk holds it at 7 out of 10.',
+      ],
+      blockers: [
+        'Revenue of $1.6M against $115M of quarterly operating cash outflow. The gap is the business.',
+        'Diluted shares +212% over two years, and still rising.',
+        'No disclosed flight cadence, so there is nothing to check a forecast against.',
+      ],
+      hypothesis: 'Operators of reusable crewed launch vehicles selling seats or payload capacity on a published, repeatable flight schedule',
+      thesis: [
+        '# SPCE — Virgin Galactic Holdings',
+        '',
+        '## THE THEME',
+        '',
+        'Commercial space access is the claim that getting mass to orbit becomes cheap enough, and often enough, that whole categories of business become possible. The desk holds the theme at 7 out of 10 and is not marking it down for being early.',
+        '',
+        '## WHAT THEY ACTUALLY DO',
+        '',
+        'Virgin Galactic sells seats on a suborbital vehicle. It is a flight experience business, not an orbital launch business, and the two are frequently conflated by the coverage.',
+        '',
+        '## WHY THIS ONE',
+        '',
+        'It was handed to the desk by the search and it should not have been. **Rocket Lab (RKLB)** and **Firefly** are launch businesses with contracted manifests. This is not the same industry — the hypothesis asked for a published, repeatable flight schedule and this company does not publish one.',
+        '',
+        '## THE CONNECTION',
+        '',
+        'Weak. The connection to the theme is the word "space" and very little else in the filings.',
+        '',
+        '## WHAT THE NUMBERS SAY',
+        '',
+        '**Revenue: $1.6M in the quarter.** **Operating cash outflow: $115M in the same quarter.** **Diluted shares +212% over two years.** These three numbers are the entire read; nothing further in the filings changes what they say.',
+        '',
+        '## WHAT WOULD HAVE TO BE TRUE',
+        '',
+        '1. **A flight cadence would have to exist and be published**, with contracted revenue attached to it.',
+        '2. **The share count would have to stop rising**, because at this rate the dilution outruns any plausible revenue ramp.',
+        '',
+        '## THE CALL',
+        '',
+        'Pass, and a D on the idea. To be clear about what that D is: it is a mark on the fit between this company and this theme, made after reading the filings. The theme keeps its 7. This is the desk saying it looked and this is not the way in — which is the job, and the most common outcome of doing it.',
+      ].join('\n'),
+      unfinished: false,
+    },
+    alsoWrittenUp: [],
+    themeJudgement: {
+      theme: 'Commercial-Space-Access', magnitude: 7, timeline: '3-5y', conviction: 4,
+      trajectory: 'STABLE',
+      reason: 'Cost per kilogram to orbit is still falling and the second-order businesses have not been built yet.',
+      outOfFavour: false, entriesTotal: 9, entries7d: 0, mined: true,
+      tickers: ['RKLB', 'SPCE'],
+    },
+  },
+
+  /*
+   * A write-up filed with no headings of any kind.
+   *
+   * Every one of the fifty-seven write-ups in the brain today carries sections
+   * — forty-three with `##` headings and fourteen with bold lines — so this
+   * case is sample data. It is here because the honest fallback is a real code
+   * path and a screen state nobody would otherwise ever see: the reader says
+   * outright that there is nothing to break up and shows the argument whole,
+   * rather than inventing a structure to make the page look tidier.
+   */
+  NGS: {
+    pick: {
+      ticker: 'NGS', company: 'Natural Gas Services Group', theme: 'Data-Centre-Power',
+      themeRank: 3, pickDate: '2026-08-30', direction: 'long', horizon: '4q',
+      status: 'active', grade: null, gradeWhy: null,
+      score: 0.5512, potentialMovePct: null, marketCap: 3.1e8,
+      falsifier: 'Utilisation of the rental fleet falling below 80% for two consecutive quarters.',
+      revisitWhen: null,
+      catalysts: [],
+      why: [
+        'Rental fleet utilisation at 84% and rising for six quarters.',
+        'The revenue is contracted rather than spot, so it survives a gas price move.',
+      ],
+      blockers: ['A single basin is most of the fleet.'],
+      hypothesis: 'Owners of contracted gas compression fleets rented to producers on multi-year terms',
+      thesis: [
+        'Gas compression is the least interesting way to own the data centre power story and possibly the most direct one. Compression is what moves gas from a wellhead to a pipeline, and every megawatt of gas-fired generation added for a data centre is a call on more of it. The fleet is rented on multi-year contracts rather than sold, so the revenue does not move with the gas price the way a producer\u2019s does.',
+        '',
+        'Natural Gas Services owns roughly 1,400 compression units and rents them out. Fleet utilisation has risen for six straight quarters and now sits at 84%, which is the number that matters more than any other in this business \u2014 an idle unit earns nothing and still depreciates. Contracted revenue covers about eighteen months forward.',
+        '',
+        'The risk is concentration. Most of the fleet works one basin, and a slowdown there is not offset anywhere else. Against that, the contracts are long and the customers are the larger producers rather than the marginal ones, which is the difference between a downturn costing utilisation and a downturn costing the contract.',
+      ].join('\n'),
+      unfinished: false,
+    },
+    alsoWrittenUp: [],
+    themeJudgement: fixtureDeskThemes.themes.find((t) => t.theme === 'Data-Centre-Power') ?? null,
+  },
+
+  /*
+   * An argument that ran out of room. NOT a rejection — sixteen of nineteen
+   * "rejections" on 4 September were this, and the screen says so.
+   */
   CRWV: {
     pick: {
       ticker: 'CRWV', company: 'CoreWeave Inc', theme: 'AI-Compute-Buildout',
       themeRank: 4, pickDate: '2026-08-19', direction: null, horizon: '1q',
       status: 'stored', grade: 'C',
       gradeWhy: 'The theme is crowded and the argument never got to the part that would separate this company from the trade everyone already owns.',
-      score: 0.31, marketCap: 4.4e10,
+      score: 0.31, potentialMovePct: null, marketCap: 4.4e10,
       falsifier: null, revisitWhen: null,
       catalysts: [],
       why: ['Contracted backlog covers more than a year of revenue.'],
@@ -1020,6 +1217,7 @@ const DESK_PICKS: Record<string, DeskPickResponse> = {
       unfinished: true,
     },
     alsoWrittenUp: [],
+    themeJudgement: fixtureDeskThemes.themes.find((t) => t.theme === 'AI-Compute-Buildout') ?? null,
   },
 };
 
@@ -1056,7 +1254,9 @@ export function fixtureDeskTheme(name: string): DeskThemeResponse | null {
       .map((t) => ({
         ticker: t,
         reason: 'Named in a write-up as fitting this theme better than the company it was handed.',
-        nominatedBy: 'a write-up under this theme',
+        // The brain stores the TICKER of the write-up that named it, so the
+        // screen can say "from the RMBS write-up" and mean something.
+        nominatedBy: writtenUp[0]?.ticker ?? null,
         nominatedOn: '2026-08-30',
         scoredOn: null,
       })),

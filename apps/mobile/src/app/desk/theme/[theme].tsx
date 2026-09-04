@@ -15,14 +15,15 @@ import { ScrollView, View, ActivityIndicator, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '../../../ui/Screen';
 import { T, Num, Eyebrow } from '../../../ui/Text';
-import { ObjectCard } from '../../../ui/Panel';
 import { TickerMark } from '../../../ui/Ticker';
 import { alpha, color, radius, space } from '../../../ui/tokens';
 import { api } from '../../../lib/api';
 import { env } from '../../../lib/env';
 import { fixtureDeskTheme } from '../../../lib/fixtures';
 import { useResource } from '../../../lib/useResource';
-import { GradeMark, Prose, Stat, StatRow } from '../../../features/desk/ui';
+import { GradeMark, Prose } from '../../../features/desk/ui';
+import { Bay, Strip, ThemeGauges } from '../../../features/desk/instruments';
+import { ThesisReader } from '../../../features/desk/ThesisReader';
 import type { DeskThemeResponse } from '@shared/desk';
 
 export default function DeskThemeDetail() {
@@ -64,22 +65,27 @@ export default function DeskThemeDetail() {
           {t.theme.replace(/-/g, ' ')}
         </T>
 
-        <ObjectCard tone="kai" style={{ marginTop: space.x16, padding: space.x16 }}>
-          {t.reason && <T size={15} lh={22} c={color.text}>{t.reason}</T>}
-          <StatRow>
-            <Stat
-              label="Size at ceiling"
-              value={t.magnitude != null ? `${t.magnitude.toFixed(1)}/10` : '—'}
-              tone={(t.magnitude ?? 0) >= 8 ? color.violetLight : color.text}
+        {t.reason ? (
+          <T size={16} lh={24} c={color.text} style={{ marginTop: space.x12 }}>{t.reason}</T>
+        ) : null}
+
+        {/* The judgement, drawn. One ruled strip, not a row of cards. */}
+        <Strip style={{ marginTop: space.x20 }} testID="desk-theme-panel">
+          <Bay first>
+            <ThemeGauges
+              magnitude={t.magnitude}
+              timeline={t.timeline}
+              conviction={t.conviction}
+              trajectory={t.trajectory}
+              outOfFavour={t.outOfFavour}
             />
-            <Stat label="Timing" value={t.timeline ?? '—'} tone={color.cyan} />
-            <Stat label="Conviction" value={t.conviction != null ? `${t.conviction}/10` : '—'} />
-          </StatRow>
-          <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x12 }}>
-            Size and conviction are scored separately and never averaged. A big
-            theme the desk is not yet sure about is still a big theme.
-          </T>
-        </ObjectCard>
+            <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x14 }}>
+              Size and how sure are scored separately and never averaged. A big
+              theme the desk is not yet sure about is still a big theme, and
+              nothing is marked down for landing years out.
+            </T>
+          </Bay>
+        </Strip>
 
         {t.outOfFavour && (
           <View style={{
@@ -185,6 +191,7 @@ export default function DeskThemeDetail() {
             </View>
           </View>
         )}
+
       </ScrollView>
     </Screen>
   );

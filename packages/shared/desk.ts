@@ -77,6 +77,29 @@ export const DeskWatchAddRequest = z.object({
 export type DeskWatchAddRequest = z.infer<typeof DeskWatchAddRequest>;
 
 /**
+ * A theme is judged, never counted. Size and timing are scored separately and
+ * are never averaged into one number — nothing is marked down for being years
+ * out, because marking something down for being early is the failure the desk
+ * exists to avoid.
+ */
+export const DeskTheme = z.object({
+  theme: z.string(),
+  /** 0–10 at the theme's CEILING, not its expected value. */
+  magnitude: z.number().nullable(),
+  timeline: z.string().nullable(),
+  conviction: z.number().nullable(),
+  trajectory: z.string().nullable(),
+  reason: z.string().nullable(),
+  /** A big theme cooling off is often the entry, not a reason to look away. */
+  outOfFavour: z.boolean(),
+  entriesTotal: z.number().nullable(),
+  entries7d: z.number().nullable(),
+  mined: z.boolean(),
+  tickers: z.array(z.string()),
+});
+export type DeskTheme = z.infer<typeof DeskTheme>;
+
+/**
  * The full write-up. `thesis` is the argument in light markdown; everything
  * else is the part of it the desk committed to in a fixed shape.
  */
@@ -92,6 +115,20 @@ export const DeskPick = z.object({
   grade: IdeaGrade.nullable(),
   gradeWhy: z.string().nullable(),
   score: z.number().nullable(),
+  /**
+   * How far the desk thinks this could travel, as a percentage.
+   *
+   * NOTHING WRITES THIS YET. The brain has no column for it; the app reads it
+   * as null and the screen shows an empty measure that says so in words. It is
+   * declared here so the day the brain writes `potential_move_pct` the number
+   * appears with no further work in the app.
+   *
+   * `score` is NOT this and must never be shown as if it were. `score` is the
+   * 0-to-1 number the desk ranks candidates by — it has no units, it is not a
+   * price and it is not a return. The screen that labelled it "Move potential"
+   * was wrong, and that label is gone.
+   */
+  potentialMovePct: z.number().nullable(),
   marketCap: z.number().nullable(),
   /** The single thing that would prove the argument wrong. */
   falsifier: z.string().nullable(),
@@ -122,31 +159,18 @@ export const DeskPickResponse = z.object({
     grade: IdeaGrade.nullable(),
     status: z.string().nullable(),
   })),
+  /**
+   * The theme's OWN judgement, carried onto the pick.
+   *
+   * How big the claim is and when it lands are properties of the theme, not of
+   * the company, and the pick screen has to show both — so it reads them off
+   * the theme table rather than inferring anything from the pick. Null when
+   * the pick has no theme, or the theme is no longer being judged.
+   */
+  themeJudgement: DeskTheme.nullable().default(null),
 });
 export type DeskPickResponse = z.infer<typeof DeskPickResponse>;
 
-/**
- * A theme is judged, never counted. Size and timing are scored separately and
- * are never averaged into one number — nothing is marked down for being years
- * out, because marking something down for being early is the failure the desk
- * exists to avoid.
- */
-export const DeskTheme = z.object({
-  theme: z.string(),
-  /** 0–10 at the theme's CEILING, not its expected value. */
-  magnitude: z.number().nullable(),
-  timeline: z.string().nullable(),
-  conviction: z.number().nullable(),
-  trajectory: z.string().nullable(),
-  reason: z.string().nullable(),
-  /** A big theme cooling off is often the entry, not a reason to look away. */
-  outOfFavour: z.boolean(),
-  entriesTotal: z.number().nullable(),
-  entries7d: z.number().nullable(),
-  mined: z.boolean(),
-  tickers: z.array(z.string()),
-});
-export type DeskTheme = z.infer<typeof DeskTheme>;
 
 export const DeskThemesResponse = z.object({
   asOf: z.string().nullable(),
