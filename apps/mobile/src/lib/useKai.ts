@@ -141,7 +141,18 @@ export function useKaiWall(mode: GoalMode, seed: WallItem[]) {
     return () => clearTimeout(t);
   }, [askText, send]);
 
-  return { items, send, streaming, pinnedSetupId: pinnedSetupId || null };
+  /**
+   * Put an object into the conversation without asking Kai a question.
+   * Home uses it for the wake-up's offers: "the full report" and "what else
+   * moved" are things Kai already has, so they land in the thread directly
+   * rather than round-tripping a prompt the user never typed.
+   */
+  const append = useCallback((extra: WallItem[]) => {
+    if (!extra.length) return;
+    setItems((p) => (extra.every((e) => p.some((it) => it.id === e.id)) ? p : [...p, ...extra.filter((e) => !p.some((it) => it.id === e.id))]));
+  }, []);
+
+  return { items, send, append, streaming, pinnedSetupId: pinnedSetupId || null };
 }
 
 export const wallId = nextId;
