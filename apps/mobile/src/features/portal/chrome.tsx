@@ -50,6 +50,7 @@ const Panels = ({ size = 16, c = color.muted }: { size?: number; c?: string }) =
 
 export function PortalTopBar({
   symbol, name, quote, marketState, paper, onBack, onSwitchTicker, onOpenDrawers, onSearch, volumeLine,
+  showSearch = true,
 }: {
   symbol: string;
   name: string | null;
@@ -62,6 +63,16 @@ export function PortalTopBar({
   /** Defaults to the ticker switcher, which is the same sheet, opened focused. */
   onSearch?: () => void;
   volumeLine?: string | null;
+  /**
+   * The search pill under the price. On by default, because that is what the
+   * round-4 portal has always shown.
+   *
+   * The three-beat section turns it OFF: it has a persistent "Ask Kai about
+   * META…" composer at the bottom of every beat, so the pill's own "or ask Kai"
+   * is a second door to the same room, and the row it costs is a row the read
+   * needs. Switching symbol is still one tap — the chevron beside the ticker.
+   */
+  showSearch?: boolean;
 }) {
   const up = (quote?.change_pct ?? 0) >= 0;
   return (
@@ -117,7 +128,7 @@ export function PortalTopBar({
         </Num>
       </View>
 
-      <PortalSearchField onPress={onSearch ?? onSwitchTicker} />
+      {showSearch ? <PortalSearchField onPress={onSearch ?? onSwitchTicker} /> : null}
     </View>
   );
 }

@@ -199,7 +199,88 @@ export const fixturePortalCommunity = (symbol = 'META'): PortalCommunity => ({
   ],
 });
 
-export const fixturePortal = (symbol = 'META', ctx?: string | null): TradePortal => ({
+/** The account, positions, orders and lists behind the top bar. Same on every
+ *  fixture symbol, because they belong to the person, not to the chart. */
+const fixtureDrawers = (): TradePortal['drawers'] => ({
+  account: { value: 10000, day_change: 84.2, day_change_pct: 0.85, buying_power: 3420, kind: 'paper', label: 'PAPER', plain: 'Practice money. Nothing here can be withdrawn.' },
+  positions: [fixtureMeta, fixtureNvda],
+  open_orders: fixtureOpenOrders(),
+  watchlist: [
+    { symbol: 'META', name: 'Meta Platforms', quote: quote('META', 504.62, 2.14) },
+    { symbol: 'NVDA', name: 'NVIDIA', quote: quote('NVDA', 121.4, -1.1) },
+    { symbol: 'AAPL', name: 'Apple', quote: quote('AAPL', 227.8, 0.4) },
+  ],
+  recent: [
+    { symbol: 'TSLA', name: 'Tesla', quote: quote('TSLA', 248.1, 1.9) },
+    { symbol: 'SPY', name: 'S&P 500 ETF', quote: quote('SPY', 561.2, 0.3) },
+  ],
+});
+
+/**
+ * SYMBOLS WITH NOTHING GRADED ON THEM — which is most symbols, most of the time.
+ *
+ * Until this existed, `fixturePortal` substituted the ticker into META's numbers
+ * and every symbol in fixtures came back an A− with a plan on it. So the state a
+ * person hits most often — open a chart, there is no setup — had never once been
+ * looked at, and the honest version of Kai's answer had nowhere to be shot.
+ *
+ * These three are the ones the rest of the fixture catalogue already has no
+ * setup for (`features/trade/fixtures`, `lib/fixtures`), so nothing else changes
+ * its mind about them.
+ */
+export const BARE_FIXTURE_SYMBOLS = ['SPY', 'AAPL', 'MSFT'];
+
+const BARE_NAME: Record<string, string> = {
+  SPY: 'S&P 500 ETF',
+  AAPL: 'Apple',
+  MSFT: 'Microsoft',
+};
+
+/**
+ * A real chart, a real price, and no plan — because there is no graded setup and
+ * nothing here is going to invent one. `plan` carries the empty shape the live
+ * adapter produces when the server has no entry and no invalidation, and
+ * `execution.action` is null so no volt button offers an action that does not
+ * exist.
+ */
+export const fixtureBarePortal = (symbol: string): TradePortal => ({
+  symbol,
+  name: BARE_NAME[symbol] ?? null,
+  instrument: 'Equity',
+  mode: 'Day Trade',
+  quote: quote(symbol, symbol === 'SPY' ? 561.2 : symbol === 'AAPL' ? 227.8 : 418.4, 0.31),
+  market_state: 'Market open',
+  paper: true,
+  starred: false,
+  chart: { timeframe: 'D', timeframes: ['1m', '5m', '15m', '1h', '4h', 'D'], focus_ts: null },
+  annotations: [],
+  kai: {
+    conversation_id: null,
+    opening_message: `${symbol} is open. I have no graded setup on it, so ask me what is on the chart and I will mark it.`,
+  },
+  alert: null,
+  plan: {
+    id: null, entry: null, stop: null, targets: [], rr: null, size_plain: null,
+    risk_dollars: null, daily_cap: null, stop_attaches_plain: null,
+    action: { label: 'Build a plan', route: `/plan/new?symbol=${symbol}` },
+    empty_plain: `Kai has no entry, stop or target for ${symbol} at the moment.`,
+  },
+  community: null,
+  execution: {
+    state: 'none',
+    label: 'Nothing to do',
+    action: null,
+    detail_plain: 'Nothing to prepare yet — I need an entry and an invalidation level before there is a trade here.',
+    order: null,
+    position: null,
+  },
+  drawers: fixtureDrawers(),
+  is_fixture: true,
+  notice: null,
+});
+
+export const fixturePortal = (symbol = 'META', ctx?: string | null): TradePortal =>
+  (BARE_FIXTURE_SYMBOLS.includes(symbol.toUpperCase()) ? fixtureBarePortal(symbol.toUpperCase()) : ({
   symbol,
   name: 'Meta Platforms',
   instrument: 'Equity',
@@ -227,20 +308,7 @@ export const fixturePortal = (symbol = 'META', ctx?: string | null): TradePortal
     order: null,
     position: null,
   },
-  drawers: {
-    account: { value: 10000, day_change: 84.2, day_change_pct: 0.85, buying_power: 3420, kind: 'paper', label: 'PAPER', plain: 'Practice money. Nothing here can be withdrawn.' },
-    positions: [fixtureMeta, fixtureNvda],
-    open_orders: fixtureOpenOrders(),
-    watchlist: [
-      { symbol: 'META', name: 'Meta Platforms', quote: quote('META', 504.62, 2.14) },
-      { symbol: 'NVDA', name: 'NVIDIA', quote: quote('NVDA', 121.4, -1.1) },
-      { symbol: 'AAPL', name: 'Apple', quote: quote('AAPL', 227.8, 0.4) },
-    ],
-    recent: [
-      { symbol: 'TSLA', name: 'Tesla', quote: quote('TSLA', 248.1, 1.9) },
-      { symbol: 'SPY', name: 'S&P 500 ETF', quote: quote('SPY', 561.2, 0.3) },
-    ],
-  },
+  drawers: fixtureDrawers(),
   is_fixture: true,
   notice: null,
-});
+}) as TradePortal);
