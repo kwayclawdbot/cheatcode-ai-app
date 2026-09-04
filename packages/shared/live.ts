@@ -316,7 +316,21 @@ export type LiveZoneTarget = keyof typeof LIVE_ZONE_TARGETS;
 export const LIVE_SLIDE_NAMES = ['fundamentals', 'news', 'evidence', 'scorecard', 'clear'] as const;
 export type LiveSlideName = (typeof LIVE_SLIDE_NAMES)[number];
 
-/** The level names a `[MARK:…]` / `[ZOOM:…]` may refer to. Nothing else resolves. */
+/**
+ * The level names a `[MARK:…]` / `[ZOOM:…]` may refer to. Nothing else resolves.
+ *
+ * APPEND-ONLY, AND MEMBERSHIP HERE IS NOT PERMISSION. A cue survives only when
+ * the name is on this list AND the caller's own level table has a number for it,
+ * so adding a name broadens what CAN be said without changing what any existing
+ * table can say. The show's resolver builds its table from setup and alert rows
+ * and has none of the computed names in it; its cues are unaffected.
+ *
+ * THE EIGHT ABOVE THE LINE ALL COME OFF A GRADED SETUP OR A PLAN. On a symbol
+ * with neither, an answer could name nothing at all and Kai talked about a chart
+ * without being able to point at anything on it. The names below the line are
+ * computed from stored bars, so they resolve on any symbol with enough history —
+ * which is the difference between an answer that draws and one that describes.
+ */
 export const LIVE_MARK_TARGETS = [
   'trigger',
   'entry',
@@ -326,6 +340,28 @@ export const LIVE_MARK_TARGETS = [
   'target2',
   'support',
   'resistance',
+  /* ---- computed from bars (daily) ---- */
+  'prior_day_high',
+  'prior_day_low',
+  'prior_day_close',
+  'year_high',
+  'year_low',
+  'swing_high',
+  'swing_low',
+  'ema8',
+  'ema21',
+  'ema50',
+  'ema200',
+  'nearest_support',
+  'nearest_resistance',
+  /* ---- computed from bars (intraday) ---- */
+  'premarket_high',
+  'premarket_low',
+  'open_range_high',
+  'open_range_low',
+  'session_high',
+  'session_low',
+  'vwap',
 ] as const;
 export type LiveMarkTarget = (typeof LIVE_MARK_TARGETS)[number];
 

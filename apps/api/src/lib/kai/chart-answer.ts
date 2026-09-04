@@ -124,10 +124,12 @@ export function levelTableFor(ctx: ChartContext): Map<string, DirectorLevel> {
       kind,
       reason: r.reason,
       provenance: r.provenance,
-      // The candle a level belongs to. Only the trigger has one on the chat
-      // side; everything else rings the most recent stored bar, which is what
-      // `markShape` falls back to.
-      ts: name === 'trigger' || name === 'entry' ? ctx.triggerTs : null,
+      // THE CANDLE A LEVEL BELONGS TO. The trigger's comes off the alert; a
+      // computed level's comes off the bar that printed it — the session that
+      // made the previous day's high, the day the year's low was set. Only an
+      // average has none, because it belongs to its whole window and to no
+      // single bar, and `markShape` falls back to the most recent one.
+      ts: r.ts ?? (name === 'trigger' || name === 'entry' ? ctx.triggerTs : null),
     });
   }
   return table;
