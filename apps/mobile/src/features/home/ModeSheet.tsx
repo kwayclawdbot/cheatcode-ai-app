@@ -19,12 +19,17 @@ export const MODE_LABEL: Record<GoalMode, string> = {
  * Audit §10: mode is hidden complexity today. It has to be VISIBLE global
  * context, and switching it has to say out loud what it changes — the briefing,
  * the opportunity horizon, the default room, the chart timeframe and the risk
- * language. These four lines are exactly those five things.
+ * language. These three lines are exactly those five things, plus the sixth
+ * that arrived with the research desk: in Invest, the second tab stops being
+ * alerts and becomes the desk.
  */
 const MODE_EFFECT: Record<GoalMode, string> = {
   day_trade: 'Same-day ideas · 5-minute charts · #market-open · risk measured per trade',
   swing: 'Multi-day ideas · daily charts · #swing-ideas · risk measured per position',
-  invest: 'Long-horizon ideas · weekly charts · #beginner-questions · risk measured per portfolio',
+  // Invest also changes what the second tab IS — it becomes the research desk
+  // instead of today's alerts. That is the one effect a person can see from
+  // the moment the sheet closes, so it is named here.
+  invest: 'Long-horizon ideas · weekly charts · the research desk on your second tab · risk measured per portfolio',
 };
 
 const MODES: GoalMode[] = ['day_trade', 'swing', 'invest'];
@@ -95,8 +100,8 @@ export function ModeSheet({
   return (
     <Sheet visible={visible} onClose={onClose} title="How should Kai read the market?" testID="sheet-mode">
       <T size={12} lh={18} c={color.muted}>
-        This changes your briefing, which opportunities Kai surfaces, your default room, the chart
-        timeframe and how risk is described.
+        This changes your briefing, what your second tab shows, which opportunities Kai surfaces,
+        your default room, the chart timeframe and how risk is described.
       </T>
 
       <View style={{ gap: 8, marginTop: 4 }}>
@@ -135,7 +140,8 @@ export function ModeSheet({
       {error ? <T size={11} c={color.red}>{error}</T> : null}
       {mode === 'invest' ? (
         <T size={11} lh={16} c={color.dim}>
-          Managed investing arrives in a later release. Grading, alerts and paper practice all work today.
+          Your second tab becomes the research desk — every name the desk argued for, and why.
+          Kai placing trades for you arrives in a later release; grading, alerts and paper practice work today.
         </T>
       ) : null}
     </Sheet>

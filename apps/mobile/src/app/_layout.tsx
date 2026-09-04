@@ -23,6 +23,11 @@ const STACK_GROUPS = new Set([
   'room', 'debrief', 'contributor',            // MOBILE-B round 2
   'order', 'plan', 'position',                 // MOBILE-B round 3 (paper execution)
   'trade', 'circle',                           // MOBILE-B round 4 (portal + circles)
+  // The research desk. It is a tab in Invest mode AND a pushed screen from the
+  // Account board in every mode, so the gate has to let it mount — without
+  // this, `/desk` on a real stack bounced straight back to Home and the
+  // Account row led nowhere.
+  'desk',
   // Round 6. `(admin)` is a GROUP, so it is what `useSegments()[0]` reports for
   // every operator board. Allowing it here only lets the route mount — the
   // group's own layout then asks `/me` whether to draw anything, and the six

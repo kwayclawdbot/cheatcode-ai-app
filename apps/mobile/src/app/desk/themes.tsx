@@ -15,13 +15,15 @@ import { Screen } from '../../ui/Screen';
 import { T, Num, Eyebrow } from '../../ui/Text';
 import { alpha, color, radius, space, type as typeScale } from '../../ui/tokens';
 import { api } from '../../lib/api';
+import { env } from '../../lib/env';
+import { fixtureDeskThemes } from '../../lib/fixtures';
 import { useResource } from '../../lib/useResource';
 import type { DeskTheme, DeskThemesResponse } from '@shared/desk';
 
 export default function DeskThemes() {
   const router = useRouter();
   const load = useCallback(() => api.deskThemes(), []);
-  const res = useResource<DeskThemesResponse>(load, null, []);
+  const res = useResource<DeskThemesResponse>(load, env.FIXTURES ? fixtureDeskThemes : null, []);
   const themes = res.data?.themes ?? [];
 
   return (

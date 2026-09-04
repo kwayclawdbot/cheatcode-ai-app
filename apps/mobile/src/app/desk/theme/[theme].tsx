@@ -19,6 +19,8 @@ import { ObjectCard } from '../../../ui/Panel';
 import { TickerMark } from '../../../ui/Ticker';
 import { alpha, color, radius, space } from '../../../ui/tokens';
 import { api } from '../../../lib/api';
+import { env } from '../../../lib/env';
+import { fixtureDeskTheme } from '../../../lib/fixtures';
 import { useResource } from '../../../lib/useResource';
 import { GradeMark, Prose, Stat, StatRow } from '../../../features/desk/ui';
 import type { DeskThemeResponse } from '@shared/desk';
@@ -29,7 +31,7 @@ export default function DeskThemeDetail() {
   const name = theme ?? '';
 
   const load = useCallback(() => api.deskTheme(name), [name]);
-  const res = useResource<DeskThemeResponse>(load, null, [name]);
+  const res = useResource<DeskThemeResponse>(load, env.FIXTURES ? fixtureDeskTheme(name) : null, [name]);
 
   if (res.loading) {
     return (
@@ -62,7 +64,7 @@ export default function DeskThemeDetail() {
           {t.theme.replace(/-/g, ' ')}
         </T>
 
-        <ObjectCard tone="kai" style={{ marginTop: space.x16 }}>
+        <ObjectCard tone="kai" style={{ marginTop: space.x16, padding: space.x16 }}>
           {t.reason && <T size={15} lh={22} c={color.text}>{t.reason}</T>}
           <StatRow>
             <Stat

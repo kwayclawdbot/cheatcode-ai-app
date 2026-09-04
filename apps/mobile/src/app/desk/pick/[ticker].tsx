@@ -20,6 +20,8 @@ import { ObjectCard } from '../../../ui/Panel';
 import { TickerMark } from '../../../ui/Ticker';
 import { alpha, color, radius, space } from '../../../ui/tokens';
 import { api } from '../../../lib/api';
+import { env } from '../../../lib/env';
+import { fixtureDeskPick } from '../../../lib/fixtures';
 import { useResource } from '../../../lib/useResource';
 import {
   Falsifier, GradeMark, Prose, Stat, StatRow, UnfinishedNote, money,
@@ -38,7 +40,7 @@ export default function DeskPickDetail() {
   const symbol = (ticker ?? '').toUpperCase();
 
   const load = useCallback(() => api.deskPick(symbol), [symbol]);
-  const res = useResource<DeskPickResponse>(load, null, [symbol]);
+  const res = useResource<DeskPickResponse>(load, env.FIXTURES ? fixtureDeskPick(symbol) : null, [symbol]);
 
   if (res.loading) {
     return (
@@ -106,7 +108,7 @@ export default function DeskPickDetail() {
 
         {/* ── the claim ────────────────────────────────────────── */}
         {!pick.unfinished && (
-          <ObjectCard tone={isCall ? 'voltCard' : 'default'} style={{ marginTop: space.x16 }}>
+          <ObjectCard tone={isCall ? 'voltCard' : 'default'} style={{ marginTop: space.x16, padding: space.x16 }}>
             <Eyebrow c={color.dim}>The call</Eyebrow>
             <T size={18} weight="bold" c={color.text} style={{ marginTop: space.x6 }}>
               {isCall

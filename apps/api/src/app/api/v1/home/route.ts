@@ -42,7 +42,7 @@ import { briefingTitle, loadConversations, toSummary } from '@/lib/round4/conver
 export const dynamic = 'force-dynamic';
 
 const INVEST_NOTICE =
-  'Managed Investing arrives in a later release. Everything below still works — Kai will grade and explain, and nothing touches real money.';
+  'Your second tab is the research desk while you are in Invest mode — every name the desk argued for, and why. Kai placing trades for you arrives in a later release; everything below still works, and nothing touches real money.';
 
 export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
   ensureDevTicker();

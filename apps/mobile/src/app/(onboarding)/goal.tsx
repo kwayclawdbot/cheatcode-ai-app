@@ -13,8 +13,9 @@ import type { GoalMode } from '../../lib/types';
 
 /**
  * S01-Goal.html.
- * Invest is v1.1 in the backend — it is selectable, sets mode=invest, and Home
- * shows the honest "coming in a later release" state. It never dead-ends.
+ * Invest is a real mode now: it sets mode=invest, and the second tab becomes
+ * the research desk rather than today's alerts. What is still a later release
+ * is Kai placing the trades — Home says so, and it never dead-ends.
  */
 const GOALS: { key: GoalMode; title: string; sub: string; Icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
   { key: 'day_trade', title: 'Trade Today', sub: 'Enter and exit opportunities in one day.', Icon: Bolt },

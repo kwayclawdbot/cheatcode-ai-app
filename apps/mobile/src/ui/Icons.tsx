@@ -68,6 +68,19 @@ export const Bell = ({ size = 20, color: c = color.muted, strokeWidth = 2 }: Ico
   </S>
 );
 
+/**
+ * The research desk: a written argument, not a notification.
+ * Drawn as a bound page with lines, so it can never be mistaken for the bell it
+ * replaces in Invest mode — or for the people glyph beside it.
+ */
+export const DeskGlyph = ({ size = 20, color: c = color.muted, strokeWidth = 2 }: IconProps) => (
+  <S size={size}>
+    <Rect x={4} y={3} width={16} height={18} rx={2} stroke={c} strokeWidth={strokeWidth} />
+    <Path d="M8.5 3v18" stroke={c} strokeWidth={strokeWidth} />
+    <Path d="M11.5 8h5M11.5 12h5M11.5 16h3" stroke={c} strokeWidth={strokeWidth} />
+  </S>
+);
+
 export const Users = ({ size = 20, color: c = color.muted, strokeWidth = 2 }: IconProps) => (
   <S size={size}>
     <Path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke={c} strokeWidth={strokeWidth} />

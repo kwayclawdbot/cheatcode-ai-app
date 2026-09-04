@@ -10,6 +10,9 @@ import type {
   RiskPolicy, RoomRow, SearchResult, SetupDetail, SymbolDetail, SymbolWorkspace,
   TradeLanding, WatchingItem,
 } from './types';
+import type {
+  DeskPickResponse, DeskThemeResponse, DeskThemesResponse, DeskWatchlistResponse,
+} from '@shared/desk';
 
 const SOURCE_TS = '2026-08-26T13:41:00.000Z';
 
@@ -791,6 +794,16 @@ export const fixtureAlertsRound4: AlertsRound4 = {
   empty_copy: 'Nothing here yet. Kai will put an alert here the moment something changes.',
 };
 
+/**
+ * The quiet day: nothing needs a decision, nothing is being monitored, nothing
+ * has finished. A real state, and the one that must not dead-end.
+ */
+export const fixtureAlertsRound4Empty: AlertsRound4 = {
+  active: [], watching: [], history: [],
+  counts: { active: 0, watching: 0, history: 0 },
+  empty_copy: "Kai isn't monitoring anything for you yet. Tell him what to watch below, in your own words.",
+};
+
 export const fixtureConversations: ConversationsPayload = {
   pinned: [{ id: 'conv-pinned-1', title: 'Long-Term AI Portfolio', pinned: true, last_message_at: '2026-08-27T20:10:00.000Z' }],
   recent: [
@@ -861,4 +874,191 @@ export function fixtureOpeningLine(experience: Experience): string {
     experience,
     'confirmed',
   );
+}
+
+/* ==================================================================== */
+/* The research desk                                                    */
+/* ==================================================================== */
+
+/**
+ * The desk, with no network.
+ *
+ * These rows mirror what the brain's own tables hold — a written-up pick keeps
+ * its grade and its theme, a name you typed in has neither, and the state is
+ * what the chart is doing rather than an opinion about it. The empty version
+ * below is the same screen on the day a new account opens it, which is the one
+ * that has to lead somewhere instead of stopping dead.
+ */
+export const fixtureDeskWatchlist: DeskWatchlistResponse = {
+  asOf: '2026-09-04',
+  rows: [
+    {
+      ticker: 'INOD', company: 'Innodata Inc', theme: 'Enterprise-Software-AI-Disruption',
+      state: 'armed', stateSince: '2026-09-02', price: 54.96, triggerPrice: 57.4,
+      invalidation: 46.1, source: 'pick', grade: 'B+', horizon: '2q',
+      direction: 'long', updatedAt: '2026-09-04T15:00:00Z',
+    },
+    {
+      ticker: 'TER', company: 'Teradyne Inc', theme: 'Humanoid-Robotics',
+      state: 'coiled', stateSince: '2026-08-28', price: 168.32, triggerPrice: 176.0,
+      invalidation: 149.5, source: 'pick', grade: 'A', horizon: '4q',
+      direction: 'long', updatedAt: '2026-09-04T15:00:00Z',
+    },
+    {
+      ticker: 'VRT', company: 'Vertiv Holdings', theme: 'Data-Centre-Power',
+      state: 'triggered', stateSince: '2026-09-03', price: 141.07, triggerPrice: 138.2,
+      invalidation: 122.0, source: 'pick', grade: 'B', horizon: '2q',
+      direction: 'long', updatedAt: '2026-09-04T15:00:00Z',
+    },
+    {
+      ticker: 'CRWV', company: 'CoreWeave Inc', theme: 'AI-Compute-Buildout',
+      state: 'extended', stateSince: '2026-08-19', price: 96.4, triggerPrice: null,
+      invalidation: null, source: 'pick', grade: 'C', horizon: '1q',
+      direction: 'long', updatedAt: '2026-09-04T15:00:00Z',
+    },
+    {
+      ticker: 'COST', company: null, theme: null,
+      state: 'no_base', stateSince: '2026-09-01', price: 921.4, triggerPrice: null,
+      invalidation: null, source: 'manual', grade: null, horizon: null,
+      direction: null, updatedAt: '2026-09-04T15:00:00Z',
+    },
+  ],
+};
+
+/** The same screen with nothing on it — a new account, before the first pick. */
+export const fixtureDeskWatchlistEmpty: DeskWatchlistResponse = { asOf: '2026-09-04', rows: [] };
+
+/**
+ * Themes, largest first. Humanoid robotics scores 9.5 on ONE entry in seven
+ * days: size and timing are judged separately and nothing is marked down for
+ * being years out, so it sits at the top of this list, not the bottom.
+ */
+export const fixtureDeskThemes: DeskThemesResponse = {
+  asOf: '2026-09-04',
+  themes: [
+    {
+      theme: 'Humanoid-Robotics', magnitude: 9.5, timeline: '5y+', conviction: 7,
+      trajectory: 'building', reason: 'Labour is the largest cost line in the economy and this is the first credible attempt to price it.',
+      outOfFavour: false, entriesTotal: 1, entries7d: 1, mined: true,
+      tickers: ['TER', 'ABB', 'NVDA'],
+    },
+    {
+      theme: 'Data-Centre-Power', magnitude: 8.5, timeline: '2-3y', conviction: 8,
+      trajectory: 'building', reason: 'Compute is now a power problem before it is a chip problem, and the grid cannot be ordered in a quarter.',
+      outOfFavour: false, entriesTotal: 34, entries7d: 6, mined: true,
+      tickers: ['VRT', 'GEV', 'PWR'],
+    },
+    {
+      theme: 'Enterprise-Software-AI-Disruption', magnitude: 8, timeline: '1-2y', conviction: 6,
+      trajectory: 'building', reason: 'Seat-based pricing is being repriced by software that does the seat’s work.',
+      outOfFavour: false, entriesTotal: 51, entries7d: 9, mined: true,
+      tickers: ['INOD', 'PLTR'],
+    },
+    {
+      theme: 'AI-Compute-Buildout', magnitude: 7, timeline: 'now', conviction: 5,
+      trajectory: 'cooling', reason: 'The trade everyone already owns. A big theme cooling off is often the entry, not a reason to look away.',
+      outOfFavour: true, entriesTotal: 212, entries7d: 18, mined: true,
+      tickers: ['CRWV', 'NVDA', 'AMD'],
+    },
+  ],
+};
+
+/**
+ * One written-up argument, with no network.
+ *
+ * Only the names the fixture desk actually argued for have one. A ticker you
+ * typed in yourself gets `null` — and the screen then says nothing is written
+ * up for it, which is the truth. Inventing a thesis to fill a preview is
+ * exactly the kind of fabricated record this app refuses everywhere else.
+ *
+ * CRWV is here on purpose: its write-up stopped before it stated a call. That
+ * is not a rejection, and the screen has to say so in its own words.
+ */
+const DESK_PICKS: Record<string, DeskPickResponse> = {
+  INOD: {
+    pick: {
+      ticker: 'INOD', company: 'Innodata Inc', theme: 'Enterprise-Software-AI-Disruption',
+      themeRank: 1, pickDate: '2026-08-21', direction: 'long', horizon: '2q',
+      status: 'active', grade: 'B+',
+      gradeWhy: 'A real idea in a large theme, but the company is one of several that could capture it and the multiple already assumes it does.',
+      score: 0.5973, marketCap: 1.2e9,
+      falsifier: 'Revenue growth under +40% in the Q3 print, or the largest customer dropping below a third of revenue.',
+      revisitWhen: null,
+      catalysts: [
+        { when: 'Q3 2026', what: 'earnings — settles whether the acceleration is real or a one-off contract' },
+        { when: 'November 2026', what: 'annual contract renewals with the largest customer' },
+      ],
+      why: [
+        'Revenue +57% year over year, and the growth is in the data-preparation line rather than legacy services.',
+        'Gross margin has climbed four quarters running while headcount was flat.',
+      ],
+      blockers: [
+        'One customer is close to half of revenue.',
+        'Nothing here is proprietary — the moat is delivery, not technology.',
+      ],
+      hypothesis: 'data preparation for model training',
+      thesis: '## THE THEME\n\nModel builders have run out of clean public text and are paying for prepared data instead. That spend is new, it is large, and it lands on a handful of firms that can hire and manage annotation at scale.\n\n## THE COMPANY\n\n**Innodata** was a services business that happened to be sitting on the exact capability the labs now need. The last four quarters are the first evidence that the shift is structural rather than a single contract.\n\n- Revenue growth is accelerating, not decelerating\n- Margin is improving without a headcount build\n- The customer list is short, which is both the case and the risk\n\n## WHAT WOULD END THIS\n\nA single quarter under +40% growth. The multiple only survives while the acceleration does.',
+      unfinished: false,
+    },
+    alsoWrittenUp: [
+      { theme: 'AI-Compute-Buildout', pickDate: '2026-06-02', grade: 'C', status: 'expired' },
+    ],
+  },
+  CRWV: {
+    pick: {
+      ticker: 'CRWV', company: 'CoreWeave Inc', theme: 'AI-Compute-Buildout',
+      themeRank: 4, pickDate: '2026-08-19', direction: null, horizon: '1q',
+      status: 'stored', grade: 'C',
+      gradeWhy: 'The theme is crowded and the argument never got to the part that would separate this company from the trade everyone already owns.',
+      score: 0.31, marketCap: 4.4e10,
+      falsifier: null, revisitWhen: null,
+      catalysts: [],
+      why: ['Contracted backlog covers more than a year of revenue.'],
+      blockers: ['The debt is secured against hardware that depreciates faster than the contracts run.'],
+      hypothesis: 'rented compute at hyperscaler scale',
+      thesis: '## THE THEME\n\nCompute is being built ahead of demand on the assumption demand arrives. That has been right for two years.\n\n## THE COMPANY\n\nCoreWeave is the pure expression of it, which cuts both ways —',
+      unfinished: true,
+    },
+    alsoWrittenUp: [],
+  },
+};
+
+/** The write-up for a ticker, or null when the desk never wrote one. */
+export function fixtureDeskPick(ticker: string): DeskPickResponse | null {
+  return DESK_PICKS[ticker.toUpperCase()] ?? null;
+}
+
+const DESK_THEME_NOTES: Record<string, string> = {
+  'Humanoid-Robotics':
+    '**2026-05-14** — First entry. The claim is not that robots work; it is that labour is the largest cost line in the economy and nobody has priced an attempt on it.\n\n**2026-08-30** — Still one entry in seven days. Ranked 43rd by how much is being written about it and first by size, and the size is the number that matters.',
+  'Data-Centre-Power':
+    '**2026-04-02** — Compute is a power problem before it is a chip problem.\n\n**2026-08-27** — Utilities have started quoting connection dates in years rather than quarters. That is the constraint becoming visible in prices.',
+};
+
+/** One theme in depth, or null when the fixture desk is not reading it. */
+export function fixtureDeskTheme(name: string): DeskThemeResponse | null {
+  const theme = fixtureDeskThemes.themes.find((t) => t.theme === name);
+  if (!theme) return null;
+  const writtenUp = fixtureDeskWatchlist.rows
+    .filter((r) => r.theme === name)
+    .map((r) => ({
+      ticker: r.ticker, company: r.company, grade: r.grade,
+      status: 'active', direction: r.direction, pickDate: '2026-08-21', themeRank: 1,
+    }));
+  return {
+    theme,
+    note: DESK_THEME_NOTES[name] ?? null,
+    writtenUp,
+    // Every lead the desk has ever named is still unscored — nothing feeds them
+    // back through the pipeline. The fixture says so rather than pretending.
+    leads: theme.tickers
+      .filter((t) => !writtenUp.some((w) => w.ticker === t))
+      .map((t) => ({
+        ticker: t,
+        reason: 'Named in a write-up as fitting this theme better than the company it was handed.',
+        nominatedBy: 'a write-up under this theme',
+        nominatedOn: '2026-08-30',
+        scoredOn: null,
+      })),
+  };
 }

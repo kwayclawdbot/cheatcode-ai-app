@@ -55,7 +55,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test": "tsx scripts/wakeup-test.mts && tsx scripts/answer-runner-test.mts && tsx scripts/plan-command-test.mts && tsx scripts/trade-read-test.mts && node scripts/chart-gestures-test.mjs"
+    "test": "tsx scripts/wakeup-test.mts && tsx scripts/mode-tab-test.mts && tsx scripts/answer-runner-test.mts && tsx scripts/plan-command-test.mts && tsx scripts/trade-read-test.mts && node scripts/chart-gestures-test.mjs"
   },
   "private": true
 }

@@ -121,7 +121,7 @@ export default function Home() {
       return [{
         kind: 'notice',
         id: 'seed-invest',
-        text: data.invest_notice ?? 'Managed Investing is coming in a later release. Everything you see here still works today — grading, alerts and paper practice.',
+        text: data.invest_notice ?? 'Your second tab is the research desk while you are in Invest mode — every name the desk argued for, and why. Kai placing trades for you is a later release; grading, alerts and paper practice work today.',
       }];
     }
     return [];

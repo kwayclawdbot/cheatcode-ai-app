@@ -313,11 +313,42 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
   );
 }
 
-export function AlertsEmpty({ copy }: { copy: string }) {
+/**
+ * Nothing here — and somewhere to go.
+ *
+ * A quiet day is a real answer and the copy says so plainly. What it must not
+ * do is stop dead: an empty screen with no way off it is the app telling
+ * someone to come back later. Every offer below goes to a route that exists.
+ */
+export function AlertsEmpty({ copy, offers = [] }: {
+  copy: string;
+  offers?: { label: string; onPress: () => void; testID?: string }[];
+}) {
   return (
     <View style={{ paddingVertical: 40, paddingHorizontal: 20, gap: 8, alignItems: 'center' }} testID="alerts-empty">
       <Eyebrow c={color.dim}>NOTHING HERE</Eyebrow>
       <T size={13} c={color.muted} align="center" lh={19}>{copy}</T>
+      {offers.length ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 6 }}>
+          {offers.map((o) => (
+            <Pressable
+              key={o.label}
+              testID={o.testID}
+              accessibilityRole="button"
+              accessibilityLabel={o.label}
+              onPress={o.onPress}
+              style={({ pressed }) => ({
+                height: 38, paddingHorizontal: 15, borderRadius: radius.pill,
+                alignItems: 'center', justifyContent: 'center',
+                borderWidth: 1, borderColor: alpha.volt55, backgroundColor: alpha.volt10,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <T size={12.5} weight="semibold" c={color.volt}>{o.label}</T>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }

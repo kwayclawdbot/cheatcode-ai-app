@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { useResource } from '../../lib/useResource';
-import { fixtureAlertDetail, fixtureAlertLifecycle, fixtureAlertsRound4, fixtureAlertsSimple } from '../../lib/fixtures';
+import {
+  fixtureAlertDetail, fixtureAlertLifecycle, fixtureAlertsRound4, fixtureAlertsRound4Empty,
+  fixtureAlertsSimple,
+} from '../../lib/fixtures';
 import { mergeAlertsTab } from '../../lib/adapters';
 import type { AlertDetail, AlertDraftPreview, AlertLifecycle, AlertMonitoring, AlertsRound4, AlertsSimple, AlertTab } from '../../lib/types';
 
@@ -151,16 +154,18 @@ export function useAlertsSimple() {
  * three, so the hook keeps the three lists it has already seen and refreshes
  * one at a time. Switching tabs therefore never blanks the screen.
  */
-export function useAlertsRound4() {
+export function useAlertsRound4(fixture: 'default' | 'empty' = 'default') {
   const offline = !api.available();
+  // Fixtures preview only — lets the owner and Playwright see the quiet day.
+  const seed = fixture === 'empty' ? fixtureAlertsRound4Empty : fixtureAlertsRound4;
   const [tab, setTab] = useState<AlertTab>('active');
-  const [data, setData] = useState<AlertsRound4 | null>(offline ? fixtureAlertsRound4 : null);
+  const [data, setData] = useState<AlertsRound4 | null>(offline ? seed : null);
   const [loading, setLoading] = useState(!offline);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    if (offline) { setData(fixtureAlertsRound4); setLoading(false); return; }
+    if (offline) { setData(seed); setLoading(false); return; }
     let alive = true;
     setLoading(true);
     api.alertsRound4(tab)
@@ -177,7 +182,7 @@ export function useAlertsRound4() {
       })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [offline, tab, tick]);
+  }, [offline, seed, tab, tick]);
 
   return {
     data, loading, error, tab, setTab,

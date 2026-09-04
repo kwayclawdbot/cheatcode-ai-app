@@ -4,20 +4,39 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { alpha, chrome, color } from './tokens';
 import { T } from './Text';
-import { HomeGlyph, Bell, Users, TradeGlyph, AccountGlyph } from './Icons';
+import { HomeGlyph, Bell, Users, TradeGlyph, AccountGlyph, DeskGlyph } from './Icons';
+import { secondTab } from '../features/nav/second-tab';
+import type { GoalMode } from '../lib/types';
 
-/** L6 nav, owner-confirmed: Home · Alerts · Community · Trade · Account. */
-const ITEMS: { name: string; label: string; Icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
-  { name: 'home', label: 'Home', Icon: HomeGlyph },
-  { name: 'alerts', label: 'Alerts', Icon: Bell },
-  { name: 'community', label: 'Community', Icon: Users },
-  { name: 'trade', label: 'Trade', Icon: TradeGlyph },
-  { name: 'account', label: 'Account', Icon: AccountGlyph },
-];
+type Item = { name: string; label: string; Icon: React.ComponentType<{ size?: number; color?: string }> };
 
-export function TabBar({ state, navigation, badges }: BottomTabBarProps & { badges?: Record<string, boolean> }) {
+/**
+ * L6 nav, owner-confirmed: Home · [Alerts | Research] · Community · Trade · Account.
+ *
+ * Five items, and it stays five. The second one is the only one that moves: it
+ * is the alerts bell in Day Trade and Swing, and the research desk in Invest.
+ * The word under the glyph changes with it, because "Alerts" over a screen of
+ * themes and a watchlist is a lie the tab bar would be telling all day.
+ */
+function items(mode: GoalMode): Item[] {
+  const second = secondTab(mode);
+  return [
+    { name: 'home', label: 'Home', Icon: HomeGlyph },
+    { name: 'alerts', label: second.label, Icon: second.icon === 'desk' ? DeskGlyph : Bell },
+    { name: 'community', label: 'Community', Icon: Users },
+    { name: 'trade', label: 'Trade', Icon: TradeGlyph },
+    { name: 'account', label: 'Account', Icon: AccountGlyph },
+  ];
+}
+
+export function TabBar({ state, navigation, badges, mode = 'day_trade' }: BottomTabBarProps & {
+  badges?: Record<string, boolean>;
+  /** The person's `primary_mode`. Decides what the second tab is called. */
+  mode?: GoalMode;
+}) {
   const insets = useSafeAreaInsets();
   const activeName = state.routes[state.index]?.name;
+  const ITEMS = items(mode);
 
   return (
     <View
