@@ -234,6 +234,10 @@ export default function Account() {
           <NavRow testID="nav-memory" icon={<KaiOrb size={14} glow={false} />} label="What Kai remembers" onPress={() => router.push('/account/memory')} />
           <NavRow testID="nav-paper" icon={<Bars size={14} color={color.muted} />} label="Paper account" value={data?.paper ? `$${Math.round(data.paper.equity).toLocaleString('en-US')}` : null} onPress={() => router.push('/account/paper')} />
           <NavRow testID="nav-debriefs" icon={<Calendar size={14} color={color.muted} />} label="Trade debriefs" onPress={() => router.push('/debrief')} />
+          {/* The research desk is not a setting — it is where the slow work
+              lives. It sits here because the tab bar is five items and stays
+              five items, not because it is an afterthought. */}
+          <NavRow testID="nav-desk" icon={<KaiOrb size={14} glow={false} />} label="Research desk" onPress={() => router.push('/desk')} />
           <NavRow testID="nav-subscription" icon={<Lock size={14} color={color.muted} />} label="Plan" value={tier === 'premium' ? 'Premium' : 'Free'} onPress={() => router.push('/account/subscription')} last />
         </RowList>
 
