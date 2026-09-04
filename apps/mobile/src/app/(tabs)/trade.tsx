@@ -11,7 +11,7 @@
  * grouped snapshot — and when every one of those lists came back empty, which
  * is exactly what a new account looks like, it rendered a card that said "Find
  * a symbol". So the first thing Trade ever showed was a search prompt. The
- * whole point of the round-4 portal is that Trade is a chart you are already
+ * whole point of the Trade section is that it is a chart you are already
  * standing in front of.
  *
  * WHAT IT DOES NOW

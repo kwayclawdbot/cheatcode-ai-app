@@ -1,8 +1,18 @@
 /**
- * Fixtures proof for lane MOBILE-B round 3 — the paper-execution arc:
- * Trade landing in the brokerage hierarchy, positions list + detail, the trade
- * plan, the order ticket, and the review screen in all three risk verdicts plus
- * the accepted → filled states.
+ * Fixtures proof for the paper-execution arc: the Trade tab resolving into the
+ * section, the account/positions/orders drawer, positions list + detail, the
+ * trade plan, the order ticket, and the review screen in all three risk
+ * verdicts plus the accepted → filled states.
+ *
+ * STEPS 1, 2, 8 AND 10 WERE REWRITTEN. Steps 1 and 2 used to open `/trade` and wait for a
+ * portfolio landing screen — account strip, positions list, watchlist, movers.
+ * That screen has not existed since round 4: `/trade` is a resolver that
+ * redirects into `/trade/[symbol]`, and the account, positions and orders moved
+ * into the portal's drawer. Step 8 waited for the review screen to turn into a
+ * receipt under itself; placing an order now leaves for `/order/confirmed`,
+ * which is where accepted and filled are told apart. Step 10 waited for a
+ * `paper-strip` banner on Account that no longer exists. The old assertions
+ * could never pass again, so they now assert what the app actually does.
  *
  *   EXPO_PUBLIC_FIXTURES=1 npx expo start --port 8091
  *   node scripts/proof-b2.mjs
@@ -121,25 +131,23 @@ const main = async () => {
   page.on('console', (m) => { if (m.type() === 'error') console.log('  ! console:', m.text().slice(0, 240)); });
 
   try {
-    console.log('\n[1] Trade landing — the brokerage hierarchy');
-    await open(page, '/trade', 2200);
-    await must(page, 'paper-strip', 'account strip leads the page');
-    await must(page, 'account-value', 'account value is on screen');
-    await must(page, 'buying-power', 'buying power is on screen');
-    await must(page, 'position-row-pos-meta', 'positions come before the watchlist');
-    await must(page, 'order-row-ord-fixture-1', 'open orders are their own region');
-    await must(page, 'needs-action-na-nvda', 'items needing a decision are called out');
-    await shot(page, 'b2-01-trade-landing');
-    await page.mouse.wheel(0, 900); await settle(page, 700);
-    await shot(page, 'b2-02-trade-watchlist-search');
-    await page.mouse.wheel(0, 1100); await settle(page, 700);
-    await shot(page, 'b2-03-trade-discovery-kai');
+    console.log('\n[1] Trade opens as the section, not a portfolio landing');
+    await open(page, '/trade', 4200);
+    await must(page, 'screen-trade-portal-v2', 'the tab resolves into the Trade section');
+    await must(page, 'portal-chart', 'and lands on a chart, not a search prompt');
+    await must(page, 'portal-paper-chip', 'the paper account is named in the top bar');
+    await shot(page, 'b2-01-trade-section');
 
-    console.log('[2] mode is global context on Trade');
-    await open(page, '/trade', 1800);
-    await tap(page, 'mode-chip');
-    await must(page, 'mode-sheet', 'the mode sheet opens over Trade');
-    await shot(page, 'b2-04-trade-mode-sheet');
+    console.log('[2] the brokerage hierarchy — account, positions, orders — is in the drawer');
+    await tap(page, 'open-drawers', 1400);
+    await must(page, 'portal-drawers', 'the drawer opens over the chart');
+    await must(page, 'drawer-account', 'the account leads it');
+    await must(page, 'drawer-account-value', 'account value is on screen');
+    await must(page, 'drawer-position-pos-meta', 'positions are a region of their own');
+    await must(page, 'drawer-order-ord-fixture-1', 'and so are open orders');
+    await shot(page, 'b2-02-trade-drawers');
+    await page.mouse.wheel(0, 700); await settle(page, 700);
+    await shot(page, 'b2-03-trade-drawers-watchlist');
 
     console.log('[3] positions — V3-P1');
     await open(page, '/position', 1800);
@@ -217,14 +225,32 @@ const main = async () => {
     console.log(`  · Place paper order aria-disabled=${disabled}`);
     await shot(page, 'b2-15-review-blocker');
 
+    // Placing an order leaves the review screen for `/order/confirmed`, which is
+    // where accepted and filled are told apart. This step used to wait for the
+    // review screen to change under itself, which it no longer does.
     console.log('[8] accepted, then filled — two states, not one');
     await open(page, `${REVIEW}&setup=advisory`, 2200);
-    await tap(page, 'cta-place', 900);
-    await must(page, 'order-accepted', 'accepted is its own state');
+    await tap(page, 'cta-place', 1200);
+    await must(page, 'screen-order-confirmed', 'placing the order lands on its own receipt');
+    await must(page, 'confirmed-paper-chip', 'unmistakably the paper account');
+    const accepted = await page.getByTestId('confirmed-status').last().innerText();
+    if (!/accepted/i.test(accepted)) throw new Error(`status reads "${accepted}" — accepted must be its own state`);
+    console.log('  · accepted is its own state, and does not claim a fill');
     await shot(page, 'b2-16-order-accepted');
-    await page.getByTestId('order-filled').last().waitFor({ state: 'visible', timeout: 25_000 });
+
+    await page.getByTestId('confirmed-headline').last()
+      .filter({ hasText: /filled/i }).waitFor({ state: 'visible', timeout: 25_000 })
+      .catch(async () => {
+        for (let i = 0; i < 40; i += 1) {
+          const h = await page.getByTestId('confirmed-headline').last().innerText();
+          if (/filled/i.test(h)) return;
+          await settle(page, 500);
+        }
+        throw new Error('the order never filled');
+      });
     console.log('  · then it fills');
-    await must(page, 'view-position', 'and offers the position');
+    await must(page, 'confirmed-average-fill', 'with the average fill price');
+    await must(page, 'confirmed-primary', 'and offers the position');
     await shot(page, 'b2-17-order-filled');
 
     console.log('[9] exit now goes through the same review');
@@ -232,9 +258,12 @@ const main = async () => {
     await must(page, 'cta-place', 'an exit is confirmed like any other order');
     await shot(page, 'b2-18-review-exit');
 
-    console.log('[10] account — mode chip and paper strip');
+    // `paper-strip` was the round-3 account banner. Account now carries the mode
+    // chip and a Paper account row instead, so that is what is asserted.
+    console.log('[10] account — mode chip and the paper account');
     await open(page, '/account', 2000);
-    await must(page, 'paper-strip', 'the paper strip is on Account too');
+    await must(page, 'mode-chip', 'the mode chip is on Account');
+    await must(page, 'nav-paper', 'and the paper account has its own row');
     await shot(page, 'b2-19-account');
     await tap(page, 'mode-chip');
     await must(page, 'mode-sheet', 'the same mode sheet');

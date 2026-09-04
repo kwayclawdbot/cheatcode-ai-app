@@ -1,6 +1,11 @@
 /**
- * Portal chrome — top bar, timeframe rail, context switcher, annotation
- * inspector and the ticker switcher sheet. Asset-workspace.html is pixel truth.
+ * Portal chrome — top bar, loading skeleton, annotation inspector and the
+ * ticker switcher sheet. Asset-workspace.html is pixel truth.
+ *
+ * The timeframe rail and the Kai · Alert · Plan · Community context switcher
+ * used to live here too. They belonged to the round-4 portal, which was
+ * retired when the Trade section became one spine, and they were removed with
+ * it — nothing rendered them any more.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, TextInput, View, ScrollView } from 'react-native';
@@ -18,7 +23,7 @@ import { PaperChip } from '../trade/components';
 import { api } from '../../lib/api';
 import type { Quote, SearchResult } from '../../lib/types';
 import { kindColor } from '../chart/semantics';
-import type { Annotation, PortalContext, PortalTimeframe } from './types';
+import type { Annotation } from './types';
 import { KIND_LABEL, PROVENANCE_LABEL } from './types';
 import { publishAsk } from './ask-bus';
 
@@ -30,11 +35,6 @@ const Chevron = ({ size = 11, c = color.muted }: { size?: number; c?: string }) 
 const Back = ({ size = 20 }: { size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color.text} strokeWidth={2.2}>
     <Path d="M15 5l-7 7 7 7" />
-  </Svg>
-);
-const Layers = ({ size = 16, c = color.muted }: { size?: number; c?: string }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={2}>
-    <Path d="M7 4v16M12 8v8M17 6v12" />
   </Svg>
 );
 const Panels = ({ size = 16, c = color.muted }: { size?: number; c?: string }) => (
@@ -225,113 +225,6 @@ export function PortalChromeSkeleton({ label }: { label?: string }) {
           {bar(28, 13)}{bar(34, 13)}{bar(30, 13)}{bar(66, 13)}
         </View>
       </View>
-    </View>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Timeframe rail                                                       */
-/* ------------------------------------------------------------------ */
-
-/**
- * The strip under the chart.
- *
- * It USED to be the timeframe rail. LIVE-1 moved timeframe selection inside the
- * chart surface itself, for one reason that outranks familiarity: Kai's pointer
- * has to be able to press the button. A cursor that travels to the edge of the
- * chart and stops, while a control outside it changes state on its own, reads
- * as a script with a mascot — the exact thing this lane exists to kill.
- *
- * What is left here is what the chart cannot say about itself: whether the bars
- * are the resolution you asked for, and whether Kai's levels are showing. The
- * `timeframe-rail` testID stays because it still identifies this strip.
- */
-export function TimeframeRail({
-  value, options, onChange, exact = true, onToggleAnnotations, annotationsHidden,
-}: {
-  value: PortalTimeframe;
-  options: PortalTimeframe[];
-  onChange: (t: PortalTimeframe) => void;
-  exact?: boolean;
-  onToggleAnnotations?: () => void;
-  annotationsHidden?: boolean;
-}) {
-  // `value`, `options` and `onChange` stay in the signature: the chart owns the
-  // control, but the screen still owns the state, and a future compact layout
-  // (a circle room, the Live stage) may need the chips back without a refactor.
-  void value; void options; void onChange;
-
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} testID="timeframe-rail">
-      {!exact ? (
-        <T size={9.5} c={color.gold} testID="chart-coarser-bars">
-          Coarser bars — this resolution was not available
-        </T>
-      ) : null}
-      <View style={{ flex: 1 }} />
-      <Pressable
-        testID="toggle-annotations"
-        accessibilityRole="button"
-        accessibilityLabel={annotationsHidden ? 'Show Kai levels' : 'Hide Kai levels'}
-        accessibilityState={{ selected: !annotationsHidden }}
-        onPress={onToggleAnnotations}
-        hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
-      >
-        <Layers size={14} c={annotationsHidden ? color.dim : color.violetLight} />
-        <T size={10} c={annotationsHidden ? color.dim : color.violetLight}>
-          {annotationsHidden ? 'Levels hidden' : 'Kai levels'}
-        </T>
-      </Pressable>
-    </View>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Context switcher — Kai · Alert · Plan · Community                    */
-/* ------------------------------------------------------------------ */
-
-const CONTEXTS: { key: PortalContext; label: string }[] = [
-  { key: 'kai', label: 'Kai' },
-  { key: 'alert', label: 'Alert' },
-  { key: 'plan', label: 'Plan' },
-  { key: 'community', label: 'Community' },
-];
-
-export function ContextSwitcher({
-  value, onChange, disabled,
-}: { value: PortalContext; onChange: (c: PortalContext) => void; disabled?: Partial<Record<PortalContext, boolean>> }) {
-  return (
-    <View
-      testID="context-switcher"
-      accessibilityRole="tablist"
-      style={{ flexDirection: 'row', gap: 24, borderBottomWidth: 1, borderBottomColor: alpha.ivory08 }}
-    >
-      {CONTEXTS.map((c) => {
-        const on = c.key === value;
-        const off = disabled?.[c.key];
-        return (
-          <Pressable
-            key={c.key}
-            testID={`ctx-${c.key}`}
-            accessibilityRole="tab"
-            accessibilityLabel={c.label}
-            accessibilityState={{ selected: on, disabled: !!off }}
-            onPress={() => onChange(c.key)}
-            style={{
-              paddingBottom: 8,
-              marginBottom: -1,
-              borderBottomWidth: 2,
-              borderBottomColor: on ? color.volt : 'transparent',
-              minHeight: 32,
-            }}
-          >
-            <T size={13} weight={on ? 'bold' : 'semibold'} c={on ? color.text : off ? color.dim : color.muted}>
-              {c.label}
-            </T>
-          </Pressable>
-        );
-      })}
     </View>
   );
 }

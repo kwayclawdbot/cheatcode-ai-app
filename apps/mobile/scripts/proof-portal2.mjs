@@ -1,5 +1,9 @@
 /**
- * Fixtures proof for the rebuilt Trade section — the three beats.
+ * Fixtures proof for the Trade section — the three beats.
+ *
+ * There is no longer a second Trade section to compare against: the round-4
+ * portal and the `EXPO_PUBLIC_TRADE_V2` flag are both gone, so `/trade/:symbol`
+ * is this and only this, and an old `?v=1` link lands here too (step 7).
  *
  *   EXPO_PUBLIC_FIXTURES=1 npx expo start --web --port 8093
  *   node scripts/proof-portal2.mjs
@@ -101,7 +105,7 @@ const tap = async (page, testid, ms = 900) => {
   const page = await ctx.newPage();
 
   console.log('\n1. LOOK — the chart is the screen, and one thing is asked of you');
-  await open(page, '/trade/META?v=2', 4200);
+  await open(page, '/trade/META', 4200);
   await must(page, 'screen-trade-portal-v2', 'the rebuilt section opened');
   await must(page, 'portal2-spine', 'the spine is the navigation');
   await must(page, 'beat-look', 'beat one is what is on screen');
@@ -119,14 +123,14 @@ const tap = async (page, testid, ms = 900) => {
   await shot(page, 'p2-1b-look-levels');
 
   console.log('\n   and the one action beat one asks for takes Kai to the chart');
-  await open(page, '/trade/META?v=2', 4200);
+  await open(page, '/trade/META', 4200);
   await tap(page, 'look-read-chart', 2600);
   await must(page, 'stage-chart', 'the stage takes the screen so Kai has room to work');
   await shot(page, 'p2-1c-look-kai-reading');
   await tap(page, 'stage-close', 900).catch(() => {});
 
   console.log('\n2. DECIDE — a graded setup');
-  await open(page, '/trade/META?v=2&beat=decide', 4200);
+  await open(page, '/trade/META?beat=decide', 4200);
   await must(page, 'beat-decide', 'beat two is on screen');
   await must(page, 'grade-medallion', 'the grade is the first thing');
   await mustText(page, 'decide-headline', /A−|A-/, 'and the headline names it');
@@ -146,7 +150,7 @@ const tap = async (page, testid, ms = 900) => {
   await shot(page, 'p2-2b-decide-evidence');
 
   console.log('\n3. DECIDE — a symbol with NO graded setup');
-  await open(page, '/trade/SPY?v=2&beat=decide', 4200);
+  await open(page, '/trade/SPY?beat=decide', 4200);
   await must(page, 'decide-no-setup', 'the honest block is what renders');
   await mustText(page, 'decide-headline', /no graded setup on SPY/i, 'Kai says he has none');
   await mustText(page, 'decide-headline', /not going to hand you a plan/i, 'and that he is not going to make one up');
@@ -163,7 +167,7 @@ const tap = async (page, testid, ms = 900) => {
   await shot(page, 'p2-3-decide-no-setup');
 
   console.log('\n4. TAKE — the order confirmation card');
-  await open(page, '/trade/META?v=2&beat=decide', 4200);
+  await open(page, '/trade/META?beat=decide', 4200);
   await tap(page, 'spine-next-take', 2600);
   await must(page, 'order-confirmation-card', 'the card materialised');
   await mustText(page, 'confirm-recap', /Buy META/i, 'it names the order');
@@ -195,7 +199,7 @@ const tap = async (page, testid, ms = 900) => {
   await shot(page, 'p2-5b-receipt-filled');
 
   console.log('\n6. FAILED — what a person sees when Kai’s read does not load');
-  await open(page, '/trade/META?v=2&beat=decide&sim=readfail', 4200);
+  await open(page, '/trade/META?beat=decide&sim=readfail', 4200);
   await must(page, 'decide-kai-failed', 'the failure is stated, not hidden');
   await mustText(page, 'decide-kai-failed', /could not load my read/i, 'in Kai’s own words');
   await mustText(page, 'decide-kai-failed', /grade and the levels above.*still good/i, 'and it says what IS still trustworthy');
@@ -208,12 +212,20 @@ const tap = async (page, testid, ms = 900) => {
   await settle(page, 700);
   await shot(page, 'p2-6-kai-read-failed');
 
-  console.log('\n7. The old portal is untouched on the same route');
+  console.log('\n7. There is only one Trade section now — the old ?v=1 link lands on it');
   await open(page, '/trade/META?v=1', 4200);
-  await must(page, 'screen-trade-portal', 'v1 still opens');
-  await must(page, 'context-switcher', 'with its context switcher');
-  await must(page, 'portal-chart', 'and its chart');
-  await shot(page, 'p2-7-v1-still-works');
+  await must(page, 'screen-trade-portal-v2', 'an old ?v=1 link opens the rebuilt section');
+  await must(page, 'portal2-spine', 'with the spine');
+  await must(page, 'portal-chart', 'and the chart');
+  await mustNot(page, 'screen-trade-portal', 'the old portal is gone, not hidden');
+  await mustNot(page, 'context-switcher', 'and so is its context switcher');
+  await shot(page, 'p2-7-v1-now-lands-on-the-new-one');
+
+  console.log('\n8. /trade resolves into the section without asking for a symbol');
+  await open(page, '/trade', 5200);
+  await must(page, 'screen-trade-portal-v2', 'the tab lands inside the section');
+  await must(page, 'portal-chart', 'on a chart, not a search prompt');
+  await shot(page, 'p2-8-trade-resolves');
 
   await browser.close();
   console.log(failures ? `\n${failures} assertion(s) FAILED\n` : '\nevery state asserted and shot\n');
