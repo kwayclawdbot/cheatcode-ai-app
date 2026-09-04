@@ -451,6 +451,24 @@ export const fixtureHomeV5: HomeV5 = {
   daily_risk: { cap: 60, used: 0, remaining: 60 },
 };
 
+/**
+ * The honest-nothing day.
+ *
+ * Nothing is close, nothing moved on the names the user cares about, and Kai's
+ * report says so. This is a real state the product has to render well — the
+ * wake-up must say "there is nothing" rather than invent a reason to sound
+ * busy. Reachable in fixtures preview at `/home?fixture=quiet`.
+ */
+export const fixtureHomeV5Quiet: HomeV5 = {
+  mode: 'day_trade',
+  market: { status: 'closed', label: 'Market closed · 6:12 ET', session_ts: SOURCE_TS, freshness: 'closed' },
+  opening_line: 'Nothing needs you right now, Kway.',
+  priority: null,
+  also_watching: [],
+  briefing: null,
+  daily_risk: { cap: 60, used: 0, remaining: 60 },
+};
+
 /** V5-W1 — the one META workspace, setup as a module inside it. */
 export const fixtureWorkspace: SymbolWorkspace = {
   symbol: 'META',

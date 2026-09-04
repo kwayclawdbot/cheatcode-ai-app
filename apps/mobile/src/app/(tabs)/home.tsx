@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import { Screen } from '../../ui/Screen';
 import { T } from '../../ui/Text';
@@ -10,15 +11,14 @@ import { RichText } from '../../ui/RichText';
 import { SetupObject } from '../../ui/SetupObject';
 import { ObjectCard } from '../../ui/Panel';
 import { Composer } from '../../ui/Composer';
-import { FreshnessMark } from '../../ui/FreshnessMark';
 import { color, radius } from '../../ui/tokens';
 import {
-  AlsoWatching, ConversationsDrawer, PriorityObject, useConversations, useHomeV5, usePriorityCandles,
+  AlsoWatching, ConversationsDrawer, Wakeup, useConversations, useHomeV5, useWakeup,
 } from '../../features/home';
-import { MODE_LABEL } from '../../features/account/profile';
+import type { HomeFixture, WakeDirection } from '../../features/home';
 import { useSession } from '../../lib/session';
 import { useKaiWall } from '../../lib/useKai';
-import { alpha } from '../../ui/tokens';
+import { env } from '../../lib/env';
 import type { ConversationRow, GoalMode, WallItem } from '../../lib/types';
 
 const Hamburger = ({ onPress }: { onPress: () => void }) => (
@@ -27,8 +27,8 @@ const Hamburger = ({ onPress }: { onPress: () => void }) => (
     accessibilityRole="button"
     accessibilityLabel="Conversations"
     testID="home-threads-open"
-    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+    hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+    style={({ pressed }) => ({ opacity: pressed ? 0.6 : 0.55 })}
   >
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
       <Path d="M4 6h16M4 12h16M4 18h10" stroke={color.text} strokeWidth={2} />
@@ -42,8 +42,8 @@ const NewThread = ({ onPress }: { onPress: () => void }) => (
     accessibilityRole="button"
     accessibilityLabel="New conversation"
     testID="home-thread-new"
-    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+    hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+    style={({ pressed }) => ({ opacity: pressed ? 0.6 : 0.55 })}
   >
     <Svg width={19} height={19} viewBox="0 0 24 24" fill="none">
       <Path d="M12 5v14M5 12h14" stroke={color.volt} strokeWidth={2} />
@@ -52,68 +52,82 @@ const NewThread = ({ onPress }: { onPress: () => void }) => (
 );
 
 /**
- * Home — V5-H1-Home-priority.html.
+ * Home — Kai chat, and Kai waking up.
  *
- * The V5 hierarchy, in order and nothing above it (audit §4):
- *   1  mode chip (global context) + market status + freshness
- *   2  Kai's short opening line — what changed and why it matters
- *   3  ONE dominant priority object
- *   4  ONE primary action, state-driven
- *   5  compact "Also watching" rows
- *   6  the persistent composer
- * The morning report is no longer the top of the screen: it is seeded into the
- * conversation BELOW the priority, where the rest of the briefing belongs.
+ * The owner's brief: "home should be kai chat with a relevant message on first
+ * page load of the day … like jarvis in iron man waking up to give the most
+ * relevant info or greeting and asking what direction to go."
+ *
+ * So the screen is one message and then a conversation. What used to sit above
+ * it — a bordered header carrying a thread title, the market status and the
+ * mode label, then a separate opening line, then a priority card, then a list
+ * of also-watching rows — was four things competing before the first scroll.
+ * UX.md is explicit: "One thing visible at a time on mobile. Don't stack five
+ * panels," and "Kai is the protagonist."
+ *
+ * Everything that was in that header now either lives inside Kai's own
+ * sentence (the market state), moved to where it is actually set (the mode, on
+ * the Account board), or is one tap behind a direction Kai offers (the report,
+ * the rest of the watchlist, the symbol itself). Nothing was deleted from the
+ * product; it stopped being furniture.
  */
 export default function Home() {
-  const { profile } = useSession();
+  const { profile, session } = useSession();
+  const router = useRouter();
   /** Mode is set in onboarding and changed on the Account board (Kai profile). */
   const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? 'day_trade';
-  const { data, error, isFixture } = useHomeV5(mode);
+
+  /** Fixtures preview only — lets the owner and Playwright see the quiet day. */
+  const params = useLocalSearchParams<{ fixture?: string }>();
+  const fixture: HomeFixture =
+    env.FIXTURES && (params.fixture === 'quiet' || params.fixture === 'down') ? params.fixture : 'default';
+
+  const home = useHomeV5(mode, fixture);
+  const { data, error, isFixture } = home;
   const threads = useConversations();
   const [threadsOpen, setThreadsOpen] = useState(false);
-  /** Which conversation the workspace is showing. 'today' carries the
-   *  priority object as its opening object; the others do not. */
+  /** Which conversation the workspace is showing. 'today' is the one Kai woke into. */
   const [thread, setThread] = useState<{ kind: 'today' } | { kind: 'new' } | { kind: 'saved'; row: ConversationRow }>({ kind: 'today' });
   const [threadNonce, setThreadNonce] = useState(0);
   const activeThread = thread.kind === 'saved' ? thread.row : null;
-  const priorityCandles = usePriorityCandles(data?.priority?.symbol, data?.priority?.candles ?? []);
   const scroller = useRef<ScrollView | null>(null);
 
+  /** Offers Kai has already answered — a pill must never become a no-op. */
+  const [used, setUsed] = useState<string[]>([]);
+
+  const wake = useWakeup({
+    name: profile?.display_name,
+    // The session id exists before the profile row does, so the day's greeting
+    // is filed under the right person from the very first render.
+    userKey: session?.user?.id ?? profile?.user_id ?? 'anon',
+    home,
+  });
+
   /**
-   * The conversation below the priority. It opens with the briefing — the
-   * detail the user can read if they want it — and then behaves exactly like
-   * the wall it always was.
+   * The conversation below the wake-up.
+   *
+   * Today's thread starts EMPTY — the wake-up is the message, and the report
+   * and the watchlist are behind Kai's own offers rather than dumped on open.
+   * Opening another thread replaces it with that thread's opening notice.
    */
   const seed = useMemo<WallItem[]>(() => {
-    // Opening an older conversation replaces today's opening object with that
-    // thread — Kai picks it up rather than pretending it is this morning.
     if (thread.kind === 'saved') {
       return [{ kind: 'notice', id: `thread-${thread.row.id}-${threadNonce}`, text: `Picking up “${thread.row.title}”. Ask me anything about it.` }];
     }
     if (thread.kind === 'new') {
       return [{ kind: 'notice', id: `thread-new-${threadNonce}`, text: 'New conversation. Ask me about a symbol, a setup or your rules.' }];
     }
-    if (!data) return [];
-    const out: WallItem[] = [];
-    if (data.briefing) out.push({ kind: 'briefing', id: 'seed-briefing', briefing: data.briefing });
-    else if (data.degraded) {
-      out.push({
-        kind: 'notice',
-        id: 'seed-degraded',
-        text: data.degraded_reason ?? "I couldn't put a report together this morning. Nothing below is made up — I'll try again shortly.",
-      });
-    }
-    if (mode === 'invest') {
-      out.push({
+    if (mode === 'invest' && data) {
+      return [{
         kind: 'notice',
         id: 'seed-invest',
         text: data.invest_notice ?? 'Managed Investing is coming in a later release. Everything you see here still works today — grading, alerts and paper practice.',
-      });
+      }];
     }
-    return out;
+    return [];
   }, [data, mode, thread, threadNonce]);
 
-  const { items, send, streaming } = useKaiWall(mode, seed);
+  const { items, send, append, streaming } = useKaiWall(mode, seed);
 
   const seedCount = seed.length;
   useEffect(() => {
@@ -122,13 +136,36 @@ export default function Home() {
     return () => clearTimeout(t);
   }, [items, seedCount]);
 
-  const market = data?.market;
+  /**
+   * Every offer has to land somewhere real. A route is the server's own action
+   * route or a tab that exists; the two "show me the rest" offers are things
+   * Kai already holds, so they drop straight into the conversation.
+   */
+  const onDirection = useCallback((d: WakeDirection) => {
+    setUsed((u) => (u.includes(d.id) ? u : [...u, d.id]));
+    if (d.kind === 'route') { router.push(d.route as never); return; }
+    if (d.kind === 'retry') { wake.clear(); home.reload(); return; }
+    if (d.kind === 'briefing' && data?.briefing) {
+      append([
+        { kind: 'kai_text', id: 'wake-brief-note', text: 'The full report, as I wrote it this morning.' },
+        { kind: 'briefing', id: 'wake-briefing', briefing: data.briefing },
+      ]);
+      return;
+    }
+    if (d.kind === 'watching' && data?.also_watching.length) {
+      append([
+        { kind: 'kai_text', id: 'wake-watch-note', text: 'The rest of what I am keeping an eye on for you.' },
+        { kind: 'watching', id: 'wake-watching', rows: data.also_watching },
+      ]);
+    }
+  }, [append, data, home, router, wake]);
 
-  /** The daily conversation is titled by the API; this is the local fallback. */
-  const todayTitle = useMemo(
-    () => `Morning Briefing · ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
-    [],
-  );
+  /** The wake-up minus the offers already taken. */
+  const wakeMessage = useMemo(() => {
+    if (!wake.wakeup) return null;
+    if (!used.length) return wake.wakeup;
+    return { ...wake.wakeup, directions: wake.wakeup.directions.filter((d) => !used.includes(d.id)) };
+  }, [wake.wakeup, used]);
 
   const newThread = () => {
     setThread({ kind: 'new' });
@@ -137,34 +174,41 @@ export default function Home() {
   };
 
   const openThread = (row: ConversationRow) => {
-    setThread(row.title === todayTitle ? { kind: 'today' } : { kind: 'saved', row });
+    setThread({ kind: 'saved', row });
+    setThreadNonce((n) => n + 1);
+    setThreadsOpen(false);
+  };
+
+  const backToToday = () => {
+    setThread({ kind: 'today' });
     setThreadNonce((n) => n + 1);
     setThreadsOpen(false);
   };
 
   return (
     <Screen variant="corner" layout="tab" testID="screen-home">
-      {/* 1 — the conversation's own header: drawer · title · new thread */}
-      <View
-        style={{
-          flexDirection: 'row', alignItems: 'center', gap: 11,
-          paddingTop: 8, paddingHorizontal: 16, paddingBottom: 8,
-          borderBottomWidth: 1, borderBottomColor: alpha.ivory07,
-        }}
-      >
+      {/*
+        The only chrome. Two dim controls and no bar: no rule, no title, no
+        market chip, no mode label. A title appears ONLY when you are inside
+        another conversation, because then you genuinely need to know which.
+      */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 4, paddingHorizontal: 16, paddingBottom: 4 }}>
         <Hamburger onPress={() => setThreadsOpen(true)} />
-        <View style={{ flex: 1, minWidth: 0, alignItems: 'center' }}>
-          <T size={14} weight="semibold" numberOfLines={1} testID="home-thread-title">
-            {thread.kind === 'saved' ? thread.row.title : thread.kind === 'new' ? 'New conversation' : todayTitle}
-          </T>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: market?.status === 'open' ? color.cyan : color.muted }} />
-            <T size={10} c={color.muted}>{market?.label ?? 'Checking the market…'}</T>
-            <T size={10} c={color.dim}>·</T>
-            <T size={10} weight="semibold" c={color.volt} testID="home-mode">{MODE_LABEL[mode]}</T>
-            {market ? <FreshnessMark freshness={market.freshness} size={10} testID="market-freshness" /> : null}
-          </View>
-        </View>
+        {thread.kind === 'today' ? (
+          <View style={{ flex: 1 }} />
+        ) : (
+          <Pressable
+            testID="home-thread-title"
+            accessibilityRole="button"
+            accessibilityLabel={`${thread.kind === 'saved' ? thread.row.title : 'New conversation'}. Back to today.`}
+            onPress={backToToday}
+            style={({ pressed }) => ({ flex: 1, minWidth: 0, opacity: pressed ? 0.7 : 1 })}
+          >
+            <T size={13} weight="semibold" c={color.muted} numberOfLines={1} align="center">
+              {thread.kind === 'saved' ? thread.row.title : 'New conversation'}
+            </T>
+          </Pressable>
+        )}
         <NewThread onPress={newThread} />
       </View>
 
@@ -172,36 +216,21 @@ export default function Home() {
         ref={scroller}
         testID="kai-wall"
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingTop: 6, paddingHorizontal: 16, gap: 14, paddingBottom: 8 }}
+        contentContainerStyle={{ paddingTop: 8, paddingHorizontal: 16, gap: 14, paddingBottom: 8 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* 2 — Kai's opening line */}
+        {/* The one message. */}
         {thread.kind === 'today' ? (
-        <View style={{ flexDirection: 'row', gap: 11, alignItems: 'flex-start' }}>
-          <KaiOrb size={32} />
-          <T size={19} weight="semibold" lh={26} ls={-0.2} style={{ flex: 1, paddingTop: 2 }} testID="opening-line">
-            {data?.opening_line ?? 'Reading the tape…'}
-          </T>
-        </View>
+          <Wakeup
+            message={wakeMessage}
+            greeting={wake.greeting}
+            animate={!wake.seenBefore}
+            onDirection={onDirection}
+          />
         ) : null}
 
-        {/* 3 + 4 — the one object and the one action (today's thread only) */}
-        {thread.kind === 'today' && data?.priority ? (
-          <PriorityObject priority={data.priority} candles={priorityCandles} />
-        ) : thread.kind === 'today' && data ? (
-          <ObjectCard r={radius.xxl} style={{ padding: 16, gap: 6 }} testID="home-priority-empty">
-            <T size={15} weight="bold">Nothing needs a decision right now.</T>
-            <T size={13} lh={19} c={color.muted}>
-              Kai is watching your list. Ask a question below, or open Trade to look at something new.
-            </T>
-          </ObjectCard>
-        ) : null}
-
-        {/* 5 — secondary rows, no card weight */}
-        {thread.kind === 'today' && data ? <AlsoWatching rows={data.also_watching} /> : null}
-
-        {/* the conversation: the briefing detail and every answer since */}
+        {/* Then the conversation. */}
         {items.map((it, i) => {
           const prev = items[i - 1];
           const needsOrb = it.kind !== 'user_text' && (!prev || prev.kind === 'user_text');
@@ -215,6 +244,8 @@ export default function Home() {
               </KaiBubble>
             ) : it.kind === 'briefing' ? (
               <BriefingCard briefing={it.briefing} />
+            ) : it.kind === 'watching' ? (
+              <AlsoWatching rows={it.rows} />
             ) : it.kind === 'setup' ? (
               <SetupObject setup={it.setup} testID="wall-setup" />
             ) : it.kind === 'typing' ? (
@@ -237,12 +268,14 @@ export default function Home() {
           );
         })}
 
-        {error ? <T size={11} c={color.muted} align="center">{error}</T> : null}
-        {isFixture ? <T size={10} c={color.dim} align="center">Sample data — the service is not connected here.</T> : null}
+        {/* Kai already said this in his own words; this stays for the thread views. */}
+        {error && thread.kind !== 'today' ? <T size={11} c={color.muted} align="center">{error}</T> : null}
       </ScrollView>
 
-      {/* 6 — the composer never moves */}
-      <View style={{ paddingTop: 10, paddingHorizontal: 16, paddingBottom: 6 }}>
+      {/* The composer never moves. The preview note sits with it, not with Kai —
+          it is a fact about this build, not something Kai is telling you. */}
+      <View style={{ paddingTop: 10, paddingHorizontal: 16, paddingBottom: 6, gap: 8 }}>
+        {isFixture ? <T size={10} c={color.dim} align="center">Sample data — the service is not connected here.</T> : null}
         <Composer placeholder="Message Kai…" onSend={send} disabled={streaming} />
       </View>
 

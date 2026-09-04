@@ -121,7 +121,9 @@ export type WallItem =
   | { kind: 'setup'; id: string; setup: GradedSetup }
   | { kind: 'typing'; id: string }
   | { kind: 'action'; id: string; action: KaiActionPreview }
-  | { kind: 'notice'; id: string; text: string };
+  | { kind: 'notice'; id: string; text: string }
+  /** The "also watching" rows, revealed on request rather than stacked on open. */
+  | { kind: 'watching'; id: string; rows: AlsoWatchingRow[] };
 
 /**
  * action_preview frame (packages/shared ActionPreviewPayload) — a Kai-proposed
