@@ -1,5 +1,43 @@
 # Can Kai run on Haiku 4.5 instead of Sonnet 5?
 
+> **RE-TESTED LATER THE SAME DAY — read this box before the report below.**
+>
+> Two things changed after this was written, and the test was run again against
+> the changed code (same harness, same 18 questions, 3 runs each, Haiku arm
+> complete at 60 answers; the Sonnet arm lost its last 14 answers when the
+> account's credit balance ran out).
+>
+> 1. **The model is now chosen per feature**, not by one `KAI_MODEL` for the
+>    whole product — `apps/api/src/lib/kai/models.ts`, and `KAI_MODEL_<FEATURE>`
+>    to retune one of them without a deploy.
+> 2. **`effort` is now conditional on the model supporting it**, asked of the
+>    provider (`GET /v1/models/{id}` → `capabilities.effort.supported`). The
+>    foot-gun described below is gone.
+> 3. **A chart answer that lost its JSON wrapper is now read anyway**
+>    (`readChartAnswer`). That is what section 2(a) below is about.
+>
+> **What the re-test changed:**
+>
+> | Section below | Then | Now |
+> |---|---|---|
+> | 2(a) blank chart replies | 5 of 60 | **0 of 60** — the salvage, not the model |
+> | 2(b) invented dollar risk | 4 | **still happening** — see below |
+> | 2(c) over-limit position called compliant | 1 | **2 of 6 money answers** |
+> | invented prices | 0 of 60 | **0 of 60 again** |
+> | cost per message | $0.0038 vs $0.0094 | $0.00397 vs $0.00945 |
+>
+> The blank replies were **never the director's fault** — the director was on
+> Sonnet in both arms of this test. The prose was written by the answering model
+> into a fence whose JSON wrapper it left off, and the server binned it. That is
+> fixed in code and is fixed for both models.
+>
+> The money arithmetic is **not** fixed. Moving position sizing server-side gave
+> Haiku the right inputs and it still wrote *"110 shares — that would put your
+> position at $6,417, well within your $1,000 position limit"* and *"$998 (just
+> under your daily loss cap of $300)"*. So **the verdict below stands for chat**,
+> for a different reason than it originally gave, and `chat` ships on Sonnet 5.
+
+
 Measured 5 September 2026. Eighteen real questions, each asked **three times** to each
 model, on the owner's own account, through the app's own prompt, tools and tool loop.
 No source code was changed. Every answer is in

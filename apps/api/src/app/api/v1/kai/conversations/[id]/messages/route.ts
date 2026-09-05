@@ -26,6 +26,7 @@ import { buildSystemPrompt } from '@/lib/kai/system-prompt';
 import { SHEET_ACTION_PROTOCOL, loadSheetContext } from '@/lib/kai/sheet-context';
 import {
   CHART_ANSWER_FENCE,
+  readChartAnswer,
   CHART_COMMAND_FENCE,
   FenceSplitter,
   SseWriter,
@@ -391,15 +392,19 @@ ${renderContext(kctx, chartOnScreen, { market: false })}${sheet.prompt_block ? `
         const handleChartAnswer = async (bodies: string[]) => {
           if (!chartCtx) return;
           for (const body of bodies) {
-            let answer = '';
-            try {
-              const v = JSON.parse(body.trim()) as { answer?: unknown };
-              answer = typeof v.answer === 'string' ? v.answer : '';
-            } catch {
+            // The prose is read out of the block even when the model wrote the
+            // words and forgot the JSON around them — see `readChartAnswer`.
+            // A complete answer used to be binned over its punctuation and the
+            // user was told "I came back with nothing that time".
+            const read = readChartAnswer(body);
+            if (!read) {
               log('warn', requestId, 'chart_answer.bad_json', {});
               continue;
             }
-            if (!answer.trim()) continue;
+            if (read.how !== 'json') {
+              log('warn', requestId, 'chart_answer.salvaged', { how: read.how });
+            }
+            const answer = read.answer;
 
             const directed = await answerOnChart(chartCtx, { answer, requestId });
             if (!directed.spoken) continue;

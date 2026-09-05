@@ -24,6 +24,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { serviceClient } from '../db';
 import { log } from '../log';
 import { costUsd, type TokenCounts } from './pricing';
+import { minCacheablePrefix } from './models';
 
 /**
  * WHICH PART OF KAI SPENT THE MONEY.
@@ -116,6 +117,30 @@ export async function recordModelUsage(opts: {
       cache_creation_input_tokens: row.cache_creation_input_tokens,
       cost_usd: row.cost_usd,
     });
+
+    /**
+     * THE CLIFF, WATCHED.
+     *
+     * A prompt long enough to cache that read nothing from cache and wrote
+     * nothing to it did not cache — silently, because there is no error for it.
+     * That is what happens when a prompt falls under the model's minimum
+     * cacheable length, and Kai's chat prompt on Haiku 4.5 clears that minimum
+     * by under a thousand tokens. This is the line that would have found it in
+     * a day instead of in a bill three months later.
+     */
+    const floor = minCacheablePrefix(row.model);
+    if (
+      (row.input_tokens ?? 0) >= floor &&
+      row.cache_read_input_tokens === 0 &&
+      row.cache_creation_input_tokens === 0
+    ) {
+      log('warn', opts.meta.requestId, 'usage.prompt_never_cached', {
+        feature: row.feature,
+        model: row.model,
+        input_tokens: row.input_tokens,
+        min_cacheable_prefix: floor,
+      });
+    }
   } catch (e) {
     log('warn', opts.meta.requestId, 'usage.write_threw', {
       feature: opts.meta.feature,

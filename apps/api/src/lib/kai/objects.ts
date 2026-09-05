@@ -12,7 +12,8 @@ import {
 } from '@shared/api';
 import { serviceClient } from '../db';
 import { log } from '../log';
-import { KAI_MODEL, KAI_PROMPT_VERSION } from '../env';
+import { KAI_PROMPT_VERSION } from '../env';
+import { modelFor } from './models';
 import { quoteFromSnapshot } from '../market';
 import { entryPrice, invalidationPrice, normalizeTargets, type SetupRow } from './context';
 
@@ -37,7 +38,7 @@ export function envelope(opts: {
     id: opts.id,
     type: opts.type,
     created_at: opts.createdAt ?? new Date().toISOString(),
-    model: opts.model ?? KAI_MODEL(),
+    model: opts.model ?? modelFor('chat'),
     prompt_version: KAI_PROMPT_VERSION,
     disclosures: opts.disclosures ?? [DISCLOSURES.paperOnly, DISCLOSURES.education],
     refs: opts.refs ?? null,
@@ -63,7 +64,7 @@ export async function persistKaiObject(opts: {
         type: opts.type,
         payload: opts.payload as never,
         disclosures: opts.disclosures ?? [DISCLOSURES.paperOnly, DISCLOSURES.education],
-        model: opts.model ?? KAI_MODEL(),
+        model: opts.model ?? modelFor('chat'),
         prompt_version: KAI_PROMPT_VERSION,
         refs: (opts.refs ?? null) as never,
         user_id: opts.userId,

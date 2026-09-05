@@ -15,12 +15,13 @@ import {
   type KaiObjectEnvelope,
   type GradedSetupPayload,
 } from '@shared/api';
-import { env, KAI_MODEL } from '../env';
+import { env } from '../env';
 import { log } from '../log';
 import { KAI_OBJECT_FENCE } from './system-prompt';
 import { validateGradedSetup } from './contradiction';
 import { persistKaiObject } from './objects';
-import { recordModelUsage, type UsageMeta } from './usage';
+import { recordModelUsage, type UsageMeta, type UsageFeature } from './usage';
+import { isEffortRejection, modelFor, noteEffortRejected, supportsEffort } from './models';
 
 let client: Anthropic | null = null;
 export function anthropic(): Anthropic {
@@ -88,6 +89,84 @@ export const CHART_COMMAND_FENCE = 'chart_command';
  */
 export const CHART_ANSWER_FENCE = 'answer_on_chart';
 const CLOSE = '```';
+
+/**
+ * THE PROSE OUT OF AN `answer_on_chart` BLOCK, EVEN WHEN THE WRAPPER IS WRONG.
+ *
+ * THE FAILURE THIS ENDS. The contract is `{ "answer": "<prose>" }` and the
+ * server reads the prose out of it, directs it, and shows it — that prose IS
+ * the reply. Measured on 5 September, Haiku 4.5 wrote the prose and left the
+ * JSON off on 5 of 11 chart answers; Sonnet 5 broke the same rule once in
+ * twelve. The old handler did the textbook thing with a malformed body — logged
+ * it and dropped it — and the user got *"I came back with nothing that time"*
+ * on top of an answer that was written, complete and correct.
+ *
+ * A REPLY THAT EXISTS IS NOT THROWN AWAY OVER ITS PUNCTUATION. Three readings,
+ * in order of how much they trust the model:
+ *
+ *   1. The contract: valid JSON with a string `answer`.
+ *   2. A wrapper that started and did not finish — `{"answer": "…` cut off at
+ *      the token limit. The string is read as far as it goes.
+ *   3. No wrapper at all: the body is the prose. This is the Haiku failure.
+ *
+ * A body that looks like JSON and cannot be read either way is still dropped —
+ * showing a user a half-parsed brace is worse than saying nothing.
+ *
+ * NO HONESTY RULE IS RELAXED BY THIS. The prose is handed to the same director
+ * either way, every number it draws is still resolved server-side from a real
+ * row, and a level that does not resolve is still not drawn. The only thing
+ * that changes is whether words the model actually wrote reach the person who
+ * asked for them.
+ */
+export type ChartAnswerRead = { answer: string; how: 'json' | 'truncated_json' | 'bare_prose' } | null;
+
+export function readChartAnswer(body: string): ChartAnswerRead {
+  const raw = body.trim();
+  if (!raw) return null;
+
+  try {
+    const v = JSON.parse(raw) as { answer?: unknown };
+    if (typeof v.answer === 'string' && v.answer.trim()) return { answer: v.answer, how: 'json' };
+    return null;
+  } catch {
+    /* fall through to the two salvages */
+  }
+
+  // 2. A wrapper that began. Read the JSON string after `"answer":` by hand,
+  //    honouring escapes, and accept it unterminated.
+  const key = raw.match(/"answer"\s*:\s*"/);
+  if (key && key.index !== undefined) {
+    let out = '';
+    let i = key.index + key[0].length;
+    let closed = false;
+    for (; i < raw.length; i += 1) {
+      const c = raw[i];
+      if (c === '\\') {
+        const n = raw[i + 1];
+        if (n === 'n') out += '\n';
+        else if (n === 't') out += '\t';
+        else if (n === 'r') out += '\r';
+        else if (n !== undefined) out += n;
+        i += 1;
+        continue;
+      }
+      if (c === '"') {
+        closed = true;
+        break;
+      }
+      out += c;
+    }
+    if (out.trim()) return { answer: out, how: closed ? 'json' : 'truncated_json' };
+    return null;
+  }
+
+  // 3. No wrapper anywhere. If nothing in it looks like the JSON that was asked
+  //    for, it is the prose that was asked for.
+  if (!raw.includes('{') && !raw.includes('"answer"')) {
+    return { answer: raw, how: 'bare_prose' };
+  }
+  return null;
+}
 
 /**
  * Splits a token stream into visible text and fenced kai_object bodies.
@@ -335,13 +414,24 @@ export function messageStream(opts: {
   tools?: Anthropic.Tool[];
   cacheTail?: boolean;
   usage?: UsageMeta;
+  /**
+   * Which part of Kai is asking. It picks the model — see ./models.ts — and it
+   * is the SAME word the cost ledger groups by, so the setting and the bill
+   * cannot drift apart. Callers that record usage already name it there and
+   * need not repeat it.
+   */
+  feature?: UsageFeature;
 }) {
-  const model = KAI_MODEL();
+  const feature = opts.feature ?? opts.usage?.feature;
+  const model = modelFor(feature);
   const startedAt = Date.now();
   const s = anthropic().messages.stream({
     model,
     max_tokens: opts.maxTokens ?? 4000,
-    output_config: { effort: 'low' },
+    // NOT every model accepts this. Haiku 4.5 rejects it outright and the whole
+    // reply fails in under a second — see `supportsEffort` for why the question
+    // is asked of the provider rather than of a list of names.
+    ...(supportsEffort(model) ? { output_config: { effort: 'low' as const } } : null),
     system: opts.system,
     messages: opts.messages.map((m) => ({ role: m.role, content: m.content }) as Anthropic.MessageParam),
     ...(opts.tools?.length ? { tools: opts.tools } : null),
@@ -380,17 +470,41 @@ export async function completeOnce(opts: {
   maxTokens?: number;
   cacheTail?: boolean;
   usage?: UsageMeta;
+  /** See `messageStream`. Picks the model and names the row in the ledger. */
+  feature?: UsageFeature;
 }): Promise<string> {
-  const model = KAI_MODEL();
+  const feature = opts.feature ?? opts.usage?.feature;
+  const model = modelFor(feature);
   const startedAt = Date.now();
-  const res = await anthropic().messages.create({
-    model,
-    max_tokens: opts.maxTokens ?? 2000,
-    output_config: { effort: 'low' },
-    system: opts.system,
-    messages: opts.messages.map((m) => ({ role: m.role, content: m.content })),
-    ...(opts.cacheTail ? { cache_control: { type: 'ephemeral' as const } } : null),
-  });
+  const send = (effort: boolean) =>
+    anthropic().messages.create({
+      model,
+      max_tokens: opts.maxTokens ?? 2000,
+      ...(effort ? { output_config: { effort: 'low' as const } } : null),
+      system: opts.system,
+      messages: opts.messages.map((m) => ({ role: m.role, content: m.content })),
+      ...(opts.cacheTail ? { cache_control: { type: 'ephemeral' as const } } : null),
+    });
+  const wantedEffort = supportsEffort(model);
+  let res: Anthropic.Message;
+  try {
+    res = await send(wantedEffort);
+  } catch (e) {
+    /**
+     * THE PROVIDER GETS THE LAST WORD ON WHAT IT ACCEPTS.
+     *
+     * If the table and the lookup both said this model takes `effort` and the
+     * provider says otherwise, the provider is right. Remember it — every later
+     * call in this process, streamed ones included, stops sending it — and
+     * answer the question that was asked rather than failing it.
+     */
+    if (wantedEffort && isEffortRejection(e)) {
+      noteEffortRejected(model);
+      res = await send(false);
+    } else {
+      throw e;
+    }
+  }
   if (opts.usage) {
     await recordModelUsage({
       meta: opts.usage,

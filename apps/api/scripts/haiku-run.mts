@@ -6,15 +6,22 @@
  * three cached system blocks, the same tool definitions, the same tool loop,
  * the same MAX_TOOL_TURNS — and runs it against whichever model is named.
  *
- * Two things are deliberately NOT copied from the route:
- *   1. `output_config: { effort: 'low' }`, which Haiku 4.5 REJECTS with a 400.
- *      It is sent for Sonnet, as production does, and omitted for Haiku, which
- *      is what production would have to do.
- *   2. The user's turn is not persisted, so no conversation grows during a run.
+ * UPDATED 5 September, after the per-feature routing landed. Two changes, both
+ * so this measures the code that now ships rather than a workaround:
+ *   1. `output_config: { effort: 'low' }` is decided by `supportsEffort()` from
+ *      `src/lib/kai/models.ts` — the same capability check the route uses, which
+ *      asks the provider — instead of by a regex on the model name here.
+ *   2. The `answer_on_chart` body is read with `readChartAnswer()`, the same
+ *      salvage the route now applies, so a chart answer whose JSON wrapper is
+ *      missing is counted the way the user would experience it.
  *
- * The director behind `answer_on_chart` is held at Sonnet for BOTH arms, so the
- * only thing that differs between the two columns is the model that answers and
- * calls the tools. Its cost is recorded separately.
+ * Still deliberately NOT copied from the route: the user's turn is not
+ * persisted, so no conversation grows during a run.
+ *
+ * The director behind `answer_on_chart` is routed by feature (`chart_answer`),
+ * which puts it on Sonnet by default in both arms, so the only thing that
+ * differs between the two columns is the model that answers and calls the
+ * tools. Its cost is recorded separately.
  */
 import 'dotenv/config';
 import Anthropic from '@anthropic-ai/sdk';
@@ -30,7 +37,8 @@ import {
   executeChartCommand, ChartCommandRequest,
 } from '../src/lib/kai/chart-commands.ts';
 import { answerOnChart, levelTableFor } from '../src/lib/kai/chart-answer.ts';
-import { FenceSplitter, CHART_COMMAND_FENCE, CHART_ANSWER_FENCE } from '../src/lib/kai/stream.ts';
+import { FenceSplitter, CHART_COMMAND_FENCE, CHART_ANSWER_FENCE, readChartAnswer } from '../src/lib/kai/stream.ts';
+import { modelFor, refreshCapabilities, supportsEffort } from '../src/lib/kai/models.ts';
 import { SHEET_ACTION_PROTOCOL, loadSheetContext } from '../src/lib/kai/sheet-context.ts';
 import { QUESTIONS } from './haiku-questions.mts';
 
@@ -42,13 +50,17 @@ const arg = (k: string, d?: string) => {
   const i = process.argv.indexOf(k);
   return i > 0 ? process.argv[i + 1] : d;
 };
-const MODEL = arg('--model')!;
+// No `--model` means "whatever the shipped routing sends chat to".
+const MODEL = arg('--model') ?? modelFor('chat');
 const REPS = Number(arg('--reps', '3'));
 const OUT = arg('--out', `/tmp/haiku-run-${MODEL}.json`)!;
 const ONLY = arg('--only');
 
-// Haiku 4.5 does not accept output_config.effort — verified, 400.
-const SUPPORTS_EFFORT = !/haiku/.test(MODEL);
+// Asked of the provider, not of the model's name. `refreshCapabilities` is
+// awaited here so the first request of the run is already correct.
+await refreshCapabilities(MODEL);
+const SUPPORTS_EFFORT = supportsEffort(MODEL);
+console.log(`model=${MODEL} effort=${SUPPORTS_EFFORT ? "'low'" : 'omitted'} director=${modelFor('chart_answer')}`);
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -70,6 +82,8 @@ type AskResult = {
   tools_used: { name: string; input: unknown; result: unknown }[];
   narrative: string;
   chart_answer_prose: string[];
+  /** How each answer_on_chart body had to be read: json | truncated_json | bare_prose | dropped. */
+  answer_reads: string[];
   chart_answer_actions: unknown[];
   chart_commands: { requested: unknown; resolved: boolean; level?: string; price?: number | null }[];
   kai_objects: string[];
@@ -176,13 +190,17 @@ async function runAsk(opts: {
 
   // direct the answer_on_chart bodies (director held at Sonnet for both arms)
   const prose: string[] = [];
+  const answerReads: string[] = [];
   const actions: unknown[] = [];
   let directorCalls = 0;
   if (chartCtx) {
     for (const body of answerBodies) {
-      let ans = '';
-      try { const v = JSON.parse(body.trim()) as { answer?: unknown }; ans = typeof v.answer === 'string' ? v.answer : ''; } catch { /* keep raw */ }
-      if (!ans.trim()) { prose.push(`[UNPARSEABLE answer_on_chart body] ${body.slice(0, 400)}`); continue; }
+      // The route's own reader, so a missing JSON wrapper counts here exactly
+      // as it now counts in production: salvaged, not binned.
+      const read = readChartAnswer(body);
+      if (!read) { prose.push(`[UNPARSEABLE answer_on_chart body] ${body.slice(0, 400)}`); answerReads.push('dropped'); continue; }
+      answerReads.push(read.how);
+      const ans = read.answer;
       const d = await answerOnChart(chartCtx, { answer: ans, requestId: 'measure', voice: false });
       directorCalls += 1;
       prose.push(d.spoken);
@@ -195,7 +213,7 @@ async function runAsk(opts: {
 
   return {
     ask: '', calls, tool_turns: toolTurns, tools_used: toolsUsed, narrative: narrative.trim(),
-    chart_answer_prose: prose, chart_answer_actions: actions, chart_commands: chartCommands,
+    chart_answer_prose: prose, answer_reads: answerReads, chart_answer_actions: actions, chart_commands: chartCommands,
     kai_objects: objBodies, director_calls: directorCalls, error, convo,
   };
 }

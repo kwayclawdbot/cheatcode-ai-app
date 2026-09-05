@@ -2,7 +2,19 @@
 
 ## apps/api/.env.local (never commit)
 ANTHROPIC_API_KEY=…            # present (copied from owner env, verified 200 OK 2026-08-26)
-KAI_MODEL=claude-sonnet-5
+# KAI_MODEL   — OPTIONAL. Leave it UNSET. Setting it puts EVERY part of Kai on
+#               one model and switches the per-feature routing off. It is the
+#               one-line way back to a single model if the split misbehaves.
+# KAI_MODEL_<FEATURE> — OPTIONAL, one per feature, e.g. KAI_MODEL_CHAT.
+#               Feature names are the ones the cost ledger groups by:
+#               chat · chat_object_retry · chat_command_recovery · chart_answer
+#               briefing · debrief · assist · room · alert_draft · alert_action
+#               conversation_title
+#               Unset, the defaults in apps/api/src/lib/kai/models.ts apply.
+#               They are all claude-sonnet-5 today. Haiku 4.5 was measured on
+#               chat twice and is 58% cheaper, but still writes over-limit
+#               position sizes as if they were inside the limit — the reasons
+#               are written out in models.ts. To try it: KAI_MODEL_CHAT=claude-haiku-4-5
 SUPABASE_URL=                  # local: http://127.0.0.1:54321 (from `supabase status`); hosted: pending (org invoice overdue)
 SUPABASE_SERVICE_ROLE_KEY=     # from `supabase status`
 SUPABASE_ANON_KEY=
