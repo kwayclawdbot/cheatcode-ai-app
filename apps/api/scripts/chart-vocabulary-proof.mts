@@ -63,10 +63,17 @@ async function main(): Promise<void> {
 
   // Only symbols the instruments table knows, because `chart_annotations.symbol`
   // is a foreign key onto it and a proof that cannot write is not a proof.
-  const { data: instruments } = await db.from('instruments').select('symbol').limit(400);
+  //
+  // ASKED ABOUT, NOT LISTED. This read the FIRST 400 instruments and checked the
+  // wanted symbols against that page — so on a table of 524 it refused SPY,
+  // which is in the table, with the message "none of those symbols are in
+  // instruments". A proof that says the symbol does not exist when it does is
+  // worse than no proof, and SPY is the symbol the owner reported this on.
+  const asked = (SYMBOLS.length ? SYMBOLS : ['AAPL', 'NVDA', 'F']).map((s) => s.toUpperCase());
+  const { data: instruments } = await db.from('instruments').select('symbol').in('symbol', asked);
   const known = new Set(((instruments ?? []) as { symbol: string }[]).map((r) => r.symbol));
-  const wanted = (SYMBOLS.length ? SYMBOLS : ['AAPL', 'NVDA', 'F']).map((s) => s.toUpperCase()).filter((s) => known.has(s));
-  if (!wanted.length) throw new Error(`none of those symbols are in instruments; known examples: ${[...known].slice(0, 8).join(', ')}`);
+  const wanted = asked.filter((s) => known.has(s));
+  if (!wanted.length) throw new Error(`none of ${asked.join(', ')} is in the instruments table`);
 
   for (const symbol of wanted) {
     console.log(`\n${symbol}\n${'='.repeat(symbol.length)}`);

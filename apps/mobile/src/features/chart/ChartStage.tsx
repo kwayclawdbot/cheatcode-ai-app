@@ -61,6 +61,23 @@ export type ChartStageProps = {
   live?: boolean;
   /** What he is saying, for the lower third. */
   caption?: string | null;
+  /**
+   * WHAT IS HAPPENING WHEN HE IS NOT SAYING ANYTHING.
+   *
+   * THE BUG THIS EXISTS FOR: pressing "Kai, read this chart" opens this stage
+   * AND asks the question. The stage arriving IS the chart moving. If the
+   * answer then fails, `caption` stays null, the lower third never appears, and
+   * the user is left looking at a full-screen chart that moved and then did
+   * nothing — with the explanation sitting in a chat panel behind this modal
+   * where it cannot be read. Reproduced in fixtures; it is the owner's exact
+   * sentence.
+   *
+   * So the stage now carries the state of the ask: "Kai is reading SPY…" while
+   * he works, and the reason in his own words if he could not.
+   */
+  notice?: string | null;
+  /** `failed` tints the hairline gold — a problem, not Kai talking. */
+  noticeTone?: 'working' | 'failed' | null;
 };
 
 /* ------------------------------------------------------------------ */
@@ -74,7 +91,15 @@ export type ChartStageProps = {
  * appears from below and leaves upward has no physical explanation and the eye
  * notices even when the mind does not.
  */
-function LowerThird({ text, visible, bottom }: { text: string; visible: boolean; bottom: number }) {
+function LowerThird({
+  text, visible, bottom, tint = color.violet, testID = 'stage-lower-third',
+}: {
+  text: string;
+  visible: boolean;
+  bottom: number;
+  tint?: string;
+  testID?: string;
+}) {
   const a = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -89,6 +114,7 @@ function LowerThird({ text, visible, bottom }: { text: string; visible: boolean;
   return (
     <Animated.View
       pointerEvents="none"
+      testID={testID}
       style={{
         position: 'absolute',
         left: 0,
@@ -115,7 +141,7 @@ function LowerThird({ text, visible, bottom }: { text: string; visible: boolean;
           height: 2,
           width: 34,
           borderRadius: radius.pill,
-          backgroundColor: color.violet,
+          backgroundColor: tint,
           marginBottom: 10,
         }}
       />
@@ -129,7 +155,16 @@ function LowerThird({ text, visible, bottom }: { text: string; visible: boolean;
 /* ------------------------------------------------------------------ */
 
 export function ChartStage(props: ChartStageProps) {
-  const { open, onClose, live = false, caption } = props;
+  const { open, onClose, live = false, caption, notice, noticeTone } = props;
+
+  /**
+   * ONE LOWER THIRD, TWO JOBS. Kai's words win while he is speaking; when he is
+   * not, the stage says what it is waiting for or why it is not going to get it.
+   * The one thing it must never do is show nothing after the user asked for
+   * something.
+   */
+  const lower = live && caption ? caption : (notice ?? caption ?? null);
+  const lowerIsNotice = !(live && caption) && Boolean(notice);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const landscape = width > height;
@@ -273,10 +308,15 @@ export function ChartStage(props: ChartStageProps) {
           </View>
         ) : null}
 
-        {caption ? (
+        {lower ? (
           <LowerThird
-            text={caption}
-            visible={live}
+            text={lower}
+            // A notice is shown whether or not he is live — that is the whole
+            // point of it. `visible={live}` alone is what kept the failure off
+            // the screen.
+            visible={live || lowerIsNotice}
+            tint={lowerIsNotice && noticeTone === 'failed' ? color.gold : color.violet}
+            testID={lowerIsNotice ? 'stage-notice' : 'stage-lower-third'}
             bottom={landscape ? Math.max(insets.bottom, 8) : insets.bottom}
           />
         ) : null}

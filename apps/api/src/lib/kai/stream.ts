@@ -30,6 +30,54 @@ export function anthropicConfigured(): boolean {
   return Boolean(env('ANTHROPIC_API_KEY'));
 }
 
+/**
+ * DOES THE KEY ACTUALLY WORK — not "is one set".
+ *
+ * THE REASON THIS EXISTS. On 4-5 September the deployed key was revoked. Every
+ * Kai turn failed in under a second, every reply was written to the database as
+ * an empty stub, and the owner spent two days reporting "Kai stopped replying"
+ * and "the chart moves but nothing happens" — while `/api/v1/health` answered
+ * `{"ok":true,"anthropic":true}` the whole time, because it only ever checked
+ * that the environment variable was non-empty. A health check that cannot fail
+ * is not a health check.
+ *
+ * It asks the provider to list models: no tokens, no cost, and it is the one
+ * question that distinguishes a key that is present from a key that is accepted.
+ *
+ * ONLY AN EXPLICIT REJECTION COUNTS AS UNHEALTHY. A timeout or a network blip
+ * means we do not know, and flapping the whole service red on a dropped packet
+ * would train everyone to ignore this line — which is how the real failure got
+ * missed. A 401 or 403 is the provider telling us plainly, and that is the
+ * failure worth reporting.
+ */
+let reachable: { at: number; ok: boolean } | null = null;
+const REACHABLE_TTL_MS = 60_000;
+
+export async function anthropicReachable(): Promise<boolean> {
+  const key = env('ANTHROPIC_API_KEY');
+  if (!key) return false;
+  const now = Date.now();
+  if (reachable && now - reachable.at < REACHABLE_TTL_MS) return reachable.ok;
+  let ok = true;
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/models?limit=1', {
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.status === 401 || res.status === 403) {
+      ok = false;
+      log('error', 'health', 'anthropic.key_rejected', { status: res.status });
+    }
+  } catch (e) {
+    // Unknown, not rejected. Say nothing is wrong and log that we could not ask.
+    log('warn', 'health', 'anthropic.reachability_unknown', {
+      message: e instanceof Error ? e.message : String(e),
+    });
+  }
+  reachable = { at: now, ok };
+  return ok;
+}
+
 export const CHART_COMMAND_FENCE = 'chart_command';
 /**
  * LIVE-8. A third fence, for the whole answer rather than one action. Its body

@@ -262,6 +262,28 @@ ${renderContext(kctx, chartOnScreen)}${sheet.prompt_block ? `\n\n${sheet.prompt_
         const answerBodies: string[] = [];
         const failedBodies: string[] = [];
         let degraded = false;
+        /**
+         * WHY THIS TURN HAS NO ANSWER IN IT.
+         *
+         * THE BUG THIS EXISTS TO KILL: when the model call threw, this handler
+         * logged the exception, sent one generic error frame, and then went on
+         * to write the Kai turn with `text: ''` and `object_ids: []` — a row
+         * that is indistinguishable from an answer that happened to be empty.
+         * On the hosted database EVERY Kai reply written on 4-5 September is
+         * that stub, each one persisted under a second after the question,
+         * because the deployed Anthropic key answers `401 authentication_error`
+         * and every call fails instantly.
+         *
+         * From the outside that is two complaints and one fault: "Kai stopped
+         * replying after the morning message" (empty text) and "the chart moves
+         * but nothing happens" (no annotations were ever created, while the
+         * camera work the client does on its own still runs).
+         *
+         * So a turn with nothing in it is now written with the REASON in it,
+         * in Kai's own plain words, and the row is stamped `failed` so the
+         * client never mistakes it for an answer. Silence is not an answer.
+         */
+        let failurePlain: string | null = null;
 
         /**
          * Resolve one command body against the real objects and emit it. A body
@@ -447,8 +469,36 @@ ${renderContext(kctx, chartOnScreen)}${sheet.prompt_block ? `\n\n${sheet.prompt_
           }
         } catch (e) {
           degraded = true;
-          log('error', requestId, 'kai.stream_failed', { message: e instanceof Error ? e.message : String(e) });
-          sse.error('KAI_UNAVAILABLE', 'Kai stopped mid-answer. Nothing was acted on — try asking again.');
+          const detail = e instanceof Error ? e.message : String(e);
+          log('error', requestId, 'kai.stream_failed', { message: detail });
+          /**
+           * THE REASON IS NAMED, THE CREDENTIAL IS NOT.
+           *
+           * A failure the owner cannot act on is a failure he will report as
+           * "it just does nothing". The one distinction worth drawing on screen
+           * is between "my side is misconfigured, this will not fix itself" and
+           * "that was a blip, try again" — so a sign-in rejection from the model
+           * provider says so in plain words. The key, the provider and the
+           * status code stay in the server log where they belong.
+           */
+          failurePlain = /\b401\b|authentication_error|invalid x-api-key|API key/i.test(detail)
+            ? 'I could not sign in to the service I think with, so I have not answered. That is a setting on my side, not something you did — it needs fixing before I can read a chart or mark anything on it.'
+            : narrative.trim()
+              ? 'I stopped part way through that answer. Nothing was drawn on the chart and nothing was acted on.'
+              : 'Something went wrong on my side and I could not answer at all. Nothing was drawn on the chart and nothing was acted on.';
+          sse.error('KAI_UNAVAILABLE', failurePlain);
+        }
+
+        /**
+         * A REPLY WITH NOTHING IN IT IS ALSO A FAILURE, and it used to be a
+         * silent one — no error frame, no text, and a stub row. The user asked
+         * a question and got a blank screen back with no explanation either way.
+         */
+        if (!failurePlain && !narrative.trim() && !emitted.length && !chartFrames.length && !chartAnswers.length) {
+          degraded = true;
+          failurePlain = 'I came back with nothing that time — no words and nothing to put on the chart. Ask me again, or ask it a different way.';
+          log('warn', requestId, 'kai.empty_answer', { symbol: chartCtx?.symbol ?? null });
+          sse.error('KAI_EMPTY', failurePlain);
         }
 
         // --- one recovery pass for a missed chart change ---------------------
@@ -516,9 +566,15 @@ Never include a price. Never invent a command they did not ask for.`,
               seq: kaiSeq,
               role: 'kai',
               content: {
-                text: narrative,
+                // `narrative || failurePlain` and never `''`. A turn the user
+                // comes back to must say what happened, and a blank one says
+                // nothing at all — see `failurePlain` above.
+                text: narrative.trim() ? narrative : (failurePlain ?? ''),
                 object_ids: emitted.map((o) => o.id),
                 model: emitted[0]?.model ?? undefined,
+                // Stamped so the history renders it as a problem rather than as
+                // something Kai decided to say.
+                ...(narrative.trim() ? null : failurePlain ? { failed: true } : null),
               },
             })
             .select('id')

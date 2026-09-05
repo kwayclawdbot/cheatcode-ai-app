@@ -166,10 +166,13 @@ export default function TradePortalV2() {
       commit();
     }
     if (p.route) router.push(p.route as never);
-    return { narration: p.narration, done };
+    // `marks` is how many lines this actually put on the chart. Zero is right
+    // for a camera move and wrong-and-silent for a marking command that
+    // resolved to nothing; the hook uses the count to tell the two apart.
+    return { narration: p.narration, done, marks: p.upsert.length };
   }, [data, annotations, upsertAnnotation, setAnnotationStatus, router]);
 
-  const { turns, send, streaming, narrate, answer } = useKaiPortal({
+  const { turns, send, streaming, narrate, answer, status } = useKaiPortal({
     mode,
     portal: data,
     symbol,
@@ -195,7 +198,10 @@ export default function TradePortalV2() {
     ? 'failed'
     : read?.interpretation ? 'ready' : loading ? 'loading' : 'failed';
 
-  const askKai = useCallback((q: string) => { void send(q); }, [send]);
+  const askKai = useCallback(
+    (q: string, opts?: { expectMarks?: boolean; working?: string }) => { void send(q, opts); },
+    [send],
+  );
 
   const markLevel = useCallback((l: ReadLevel) => {
     applyCommand({
@@ -295,10 +301,15 @@ export default function TradePortalV2() {
             annotations={annotations}
             exact={exact}
             streaming={streaming}
-            turns={turns}
             onToggleLevels={() => setLevelsOpen((v) => !v)}
             onInspect={setInspecting}
-            onReadChart={() => { setStageOpen(true); askKai(READ_QUESTION(data.symbol)); }}
+            onReadChart={() => {
+              setStageOpen(true);
+              askKai(READ_QUESTION(data.symbol), {
+                expectMarks: true,
+                working: `Kai is reading the ${data.symbol} chart…`,
+              });
+            }}
             onExpand={() => setStageOpen(true)}
           />
         ) : null}
@@ -309,7 +320,10 @@ export default function TradePortalV2() {
             portal={data}
             kaiState={kaiState}
             onMark={markLevel}
-            onMarkChart={() => askKai(MARK_CHART_QUESTION(data.symbol))}
+            onMarkChart={() => askKai(MARK_CHART_QUESTION(data.symbol), {
+              expectMarks: true,
+              working: `Kai is marking the ${data.symbol} chart…`,
+            })}
             onAsk={askKai}
             onRetryRead={() => { setReadFailed(false); reload(); }}
           />
@@ -362,6 +376,28 @@ export default function TradePortalV2() {
           </View>
         ) : null}
 
+        {/*
+          KAI'S REPLY LIVES ON THE SCREEN, NOT INSIDE BEAT ONE.
+
+          THE BUG: it was rendered inside `LookBeat`, and the composer is on
+          every beat. So a question asked in DECIDE or TAKE — typed, or by
+          pressing "Mark what's on this chart", which only EXISTS in DECIDE —
+          had its entire reply rendered into a component that was not mounted.
+          The answer arrived, the narration arrived, the failure arrived, and
+          the user saw a screen that had not changed at all. Reproduced in
+          fixtures, where nothing can go wrong on the network and it still
+          showed nothing five seconds after the press.
+        */}
+        <KaiPanel turns={turns} symbol={data.symbol} />
+
+        {/*
+          NO SECOND COPY OF THE SAME SENTENCE. The panel above is the transcript
+          and it already carries the failure in Kai's own words. `status` exists
+          for the ONE surface that cannot show a transcript — the full-screen
+          stage, which is a modal over all of this — and it is passed there and
+          nowhere else.
+        */}
+
         {data.notice ? <PortalNotice text={data.notice} /> : null}
         {data.is_fixture ? <PortalNotice text="Example data — no account is connected on this build." /> : null}
       </ScrollView>
@@ -399,6 +435,8 @@ export default function TradePortalV2() {
         onChart={(h) => { stageChart.current = h; }}
         live={Boolean(answer?.live)}
         caption={answer?.text ?? null}
+        notice={status?.text ?? null}
+        noticeTone={status?.tone ?? null}
       />
 
       <View style={{ paddingHorizontal: 16, paddingBottom: 12, paddingTop: 2 }}>
@@ -449,7 +487,7 @@ export default function TradePortalV2() {
 /* ------------------------------------------------------------------ */
 
 function LookBeat({
-  symbol, markedCount, levelsOpen, annotations, exact, streaming, turns,
+  symbol, markedCount, levelsOpen, annotations, exact, streaming,
   onToggleLevels, onInspect, onReadChart, onExpand,
 }: {
   symbol: string;
@@ -458,7 +496,6 @@ function LookBeat({
   annotations: Annotation[];
   exact: boolean;
   streaming: boolean;
-  turns: Parameters<typeof KaiPanel>[0]['turns'];
   onToggleLevels: () => void;
   onInspect: (a: Annotation) => void;
   onReadChart: () => void;
@@ -509,7 +546,6 @@ function LookBeat({
         />
       </View>
 
-      <KaiPanel turns={turns} symbol={symbol} />
     </View>
   );
 }

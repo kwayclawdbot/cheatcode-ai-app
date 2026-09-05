@@ -34,7 +34,31 @@ import { playAnswer } from '../chart/answer-audio';
  * keeps a queue of one: firing the next gesture without waiting for this one
  * supersedes it, and the level it was drawing is silently never drawn.
  */
-export type PortalCommandResult = { narration: string | null; done: Promise<unknown> };
+export type PortalCommandResult = {
+  narration: string | null;
+  done: Promise<unknown>;
+  /**
+   * HOW MANY MARKS THIS COMMAND ACTUALLY PUT ON THE CHART.
+   *
+   * Zero is the normal, correct answer for every camera command — a pointer
+   * moving or a range being framed draws nothing and is not supposed to. It is
+   * also what a resolved-to-nothing marking command returns, and those two are
+   * indistinguishable from the outside: THE CHART MOVES AND NOTHING APPEARS.
+   * Counting them is what lets the screen tell the user which of the two
+   * happened instead of leaving them to guess.
+   */
+  marks: number;
+};
+
+/**
+ * What Kai is doing, for a surface that has no room for a transcript.
+ *
+ * The chart stage is the case that forced this: it covers the whole screen, so
+ * the chat panel carrying Kai's reply — and carrying the sentence saying he
+ * could not answer — is behind it and cannot be read. A user watching a
+ * full-screen chart that never gets drawn on has no way to find out why.
+ */
+export type PortalKaiStatus = { text: string; tone: 'working' | 'failed' };
 
 export type PortalTurn =
   | { kind: 'user'; id: string; text: string }
@@ -184,6 +208,11 @@ export function useKaiPortal(opts: {
    * subtitle halfway through the answer it is subtitling.
    */
   const [answer, setAnswer] = useState<{ text: string; live: boolean } | null>(null);
+  /**
+   * The one-line version of what just happened, for surfaces with no transcript.
+   * Cleared when a new question starts and never left showing a stale failure.
+   */
+  const [status, setStatus] = useState<PortalKaiStatus | null>(null);
   const portalRef = useRef(portal);
   portalRef.current = portal;
 
@@ -206,7 +235,22 @@ export function useKaiPortal(opts: {
     setTurns((prev) => [...prev, { kind: 'narration', id: nid(), text }]);
   }, []);
 
-  const send = useCallback(async (text: string) => {
+  /**
+   * `expectMarks` — the caller KNOWS this question was an instruction to draw.
+   *
+   * "Mark what is on this chart" and "read this chart" are not open questions;
+   * the user pressed a button that promises lines. When such a question comes
+   * back with no lines, saying nothing is the bug the owner reported, so the
+   * caller declares the promise here and `finish` is obliged to keep it or
+   * explain why it could not.
+   *
+   * `working` is what the stage says while he is thinking, because a full-screen
+   * chart with nothing happening on it needs to admit that something is.
+   */
+  const send = useCallback(async (
+    text: string,
+    opts?: { expectMarks?: boolean; working?: string },
+  ) => {
     const body = text.trim();
     if (!body || streaming) return;
     // Asking again abandons whatever the last answer was still drawing. The
@@ -215,6 +259,7 @@ export function useKaiPortal(opts: {
     answerRun.current?.cancel();
     answerRun.current = null;
     setAnswer(null);
+    setStatus({ text: opts?.working ?? `Kai is reading ${symbol}…`, tone: 'working' });
     const typingId = nid();
     setTurns((p) => [...p, { kind: 'user', id: nid(), text: body }, { kind: 'typing', id: typingId }]);
     setStreaming(true);
@@ -222,6 +267,10 @@ export function useKaiPortal(opts: {
     const replyId = nid();
     let started = false;
     let sawCommand = false;
+    /** Lines actually put on the chart by this answer. See `PortalCommandResult.marks`. */
+    let marksDrawn = 0;
+    /** The sentence explaining why there is no answer, if there is not one. */
+    let failure: string | null = null;
     const start = () => {
       started = true;
       setTurns((p) => p.map((t) => (t.id === typingId ? { kind: 'kai', id: replyId, text: '', streaming: true } : t)));
@@ -230,6 +279,7 @@ export function useKaiPortal(opts: {
       sawCommand = true;
       const r = cmdRef.current(c);
       if (!r) return Promise.resolve();
+      marksDrawn += r.marks;
       if (r.narration) narrate(r.narration);
       return r.done;
     };
@@ -265,6 +315,7 @@ export function useKaiPortal(opts: {
         perform: (c) => {
           const r = cmdRef.current(c);
           if (!r) return Promise.resolve();
+          marksDrawn += r.marks;
           // The command's own sentence is NOT narrated here. The answer's prose
           // already said it, in Kai's words, and repeating the server's fallback
           // line under it reads as the chart talking over him.
@@ -299,6 +350,33 @@ export function useKaiPortal(opts: {
         if (inferred) void applyCommand(inferred);
       }
       setStreaming(false);
+
+      /**
+       * THE PROMISE IS KEPT OR IT IS EXPLAINED. Never neither.
+       *
+       * This is the whole fix for "the chart moves but nothing happens". Three
+       * outcomes, and every one of them now says something on screen:
+       *
+       *   the answer failed        → his words for why, kept where it can be read
+       *   nothing resolved         → said plainly, with no line invented to fill it
+       *   lines were drawn         → the status clears and the chart speaks for itself
+       *
+       * Note what is NOT here: a fallback that draws something anyway. A level
+       * that will not resolve stays undrawn — the rule is that Kai names WHICH
+       * level and the server resolves the number, so a level with no number is
+       * a level with no line, and the honest thing is to say so.
+       */
+      if (failure) {
+        setStatus({ text: failure, tone: 'failed' });
+        return;
+      }
+      if (opts?.expectMarks && marksDrawn === 0) {
+        const line = `I did not put anything new on the ${symbol} chart. Nothing I named came back with a price off the bars I have, and I am not going to draw a line I cannot stand behind.`;
+        narrate(line);
+        setStatus({ text: line, tone: 'failed' });
+        return;
+      }
+      setStatus(null);
     };
 
     /* ---------------- fixtures: same mechanics, canned deltas ---------------- */
@@ -380,17 +458,23 @@ export function useKaiPortal(opts: {
               }
             } else if (type === 'error') {
               if (!started) start();
-              patch(replyId, (f as { message_plain?: string }).message_plain ?? '');
+              // The server's own sentence. It knows whether this was a blip or
+              // a setting that will not fix itself, and the difference is the
+              // only part of the failure the user can act on.
+              const m = (f as { message_plain?: string }).message_plain ?? '';
+              failure = m || 'Kai could not answer that just now.';
+              patch(replyId, m);
             }
           },
-          onError: (m) => { if (!started) start(); patch(replyId, m); },
+          onError: (m) => { if (!started) start(); failure = m; patch(replyId, m); },
           onDone: finish,
         },
         abort.current.signal,
       );
     } catch (e) {
       if (!started) start();
-      patch(replyId, e instanceof Error ? e.message : "I couldn't answer that just now.");
+      failure = e instanceof Error ? e.message : "I couldn't answer that just now.";
+      patch(replyId, failure);
       finish();
     }
   }, [mode, streaming, symbol, alertId, patch, narrate]);
@@ -402,7 +486,7 @@ export function useKaiPortal(opts: {
   sendRef.current = send;
   useEffect(() => subscribeAsk((q) => { void sendRef.current(q); }), []);
 
-  return { turns, send, streaming, narrate, answer };
+  return { turns, send, streaming, narrate, answer, status };
 }
 
 export { planCommand } from './plan-command';
