@@ -5,10 +5,11 @@
  * the owner can preview and Playwright can shoot every screen with no network.
  */
 import type {
-  AlertDetail, AlertLifecycle, AlertsPayload, AlertsSimple, Briefing, Candle, GradedSetup,
+  AlertDetail, AlertLifecycle, AlertsPayload, AlertsSimple, Briefing, Candle, CreditPlan,
+  Credits, CreditsPayload, GradedSetup,
   HomePayload, HomeV5, Instrument, MarketStatus, Me, MemoryRow, NotificationRow, Profile,
   RiskPolicy, RoomRow, SearchResult, SetupDetail, SymbolDetail, SymbolWorkspace,
-  TradeLanding, WatchingItem,
+  TopupPack, TradeLanding, WatchingItem,
 } from './types';
 import type {
   DeskPickResponse, DeskThemeResponse, DeskThemesResponse, DeskWatchlistResponse,
@@ -372,6 +373,148 @@ export const fixtureSymbolDetail: SymbolDetail = {
   candles: fixtureCandles,
 };
 
+/* ==================================================================== */
+/* Credits (migration 0030)                                              */
+/* ==================================================================== */
+
+/**
+ * EVERY STATE THE CREDIT SURFACES CAN BE IN, so all of them can be looked at
+ * without spending a real credit or waiting for a real month to end.
+ *
+ * These are the SERVER'S OWN SENTENCES, copied from `apps/api/src/lib/kai/
+ * plans.ts`. They are not paraphrases: the fixtures exist so the owner can see
+ * what a person will actually read, and a nicer version here would be a
+ * preview of a product that does not exist.
+ *
+ * Reached with `?fixture=warn|out|ceiling|topup` on /account/credits.
+ */
+const CREDIT_SENTENCE =
+  'Most questions cost one credit. A complicated one where I go and look several things up costs two or three.';
+
+/** A free day with everything still in front of you. */
+export const fixtureCredits: Credits = {
+  plan: 'free',
+  plan_name: 'Free',
+  granted: 10,
+  used: 3,
+  remaining: 7,
+  topup: 0,
+  available: 7,
+  pct_used: 30,
+  resets_at: '2026-09-06T04:00:00.000Z',
+  what_a_credit_is: CREDIT_SENTENCE,
+  typical_runs_per_day: 6,
+  warning_plain: null,
+  blocked: false,
+  blocked_reason: null,
+  blocked_plain: null,
+  trade_panel: false,
+};
+
+/** 80% gone. The one point at which the strip appears above the composer. */
+export const fixtureCreditsWarning: Credits = {
+  ...fixtureCredits,
+  used: 8,
+  remaining: 2,
+  available: 2,
+  pct_used: 80,
+  warning_plain: 'You have 2 credits left today — ten more tomorrow morning.',
+};
+
+/** Spent. Kai's own words, and an offer rather than an error. */
+export const fixtureCreditsOut: Credits = {
+  ...fixtureCredits,
+  used: 10,
+  remaining: 0,
+  available: 0,
+  pct_used: 100,
+  warning_plain: null,
+  blocked: true,
+  blocked_reason: 'out_of_credits',
+  blocked_plain:
+    'I have to stop there — that is your ten free credits for today. You get ten more tomorrow morning. If you would rather not wait, Pro is $59 a month and opens the Trade section too. Nothing you have asked me is lost; it is all still here.',
+};
+
+/**
+ * The OTHER kind of stop, and the reason both fixtures exist.
+ *
+ * Credits untouched, and still stopped: this month's questions cost more than
+ * the plan covers. "Come back tomorrow" would be wrong here — tomorrow stops
+ * them too — so the two states are drawn and worded separately everywhere.
+ */
+export const fixtureCreditsCeiling: Credits = {
+  plan: 'pro',
+  plan_name: 'Pro',
+  granted: 40,
+  used: 6,
+  remaining: 34,
+  topup: 0,
+  available: 34,
+  pct_used: 15,
+  resets_at: '2026-09-06T04:00:00.000Z',
+  what_a_credit_is: CREDIT_SENTENCE,
+  typical_runs_per_day: 25,
+  warning_plain: null,
+  blocked: true,
+  blocked_reason: 'ceiling',
+  blocked_plain:
+    'I have to stop there. You have not run out of credits — this month\'s questions have been unusually expensive to answer, and your plan has a cost limit behind the credits that I have reached. It clears on October 1. This is our side of the line, not yours, so if it seems wrong it is worth telling the owner.',
+  trade_panel: true,
+};
+
+/** A Pro day with purchased credits alongside the grant. */
+export const fixtureCreditsTopup: Credits = {
+  plan: 'pro',
+  plan_name: 'Pro',
+  granted: 40,
+  used: 37,
+  remaining: 3,
+  topup: 100,
+  available: 103,
+  pct_used: 26,
+  resets_at: '2026-09-06T04:00:00.000Z',
+  what_a_credit_is: CREDIT_SENTENCE,
+  typical_runs_per_day: 25,
+  warning_plain: null,
+  blocked: false,
+  blocked_reason: null,
+  blocked_plain: null,
+  trade_panel: true,
+};
+
+/** The ladder, as `GET /credits` sends it. */
+export const fixtureCreditPlans: CreditPlan[] = [
+  {
+    key: 'free', name: 'Free', price_usd: 0, daily_credits: 10, typical_runs_per_day: 6,
+    trade_panel: false,
+    blurb: 'Ten credits a day with Kai, and the community. The Trade section is on the paid plans.',
+  },
+  {
+    key: 'pro', name: 'Pro', price_usd: 59, daily_credits: 40, typical_runs_per_day: 25,
+    trade_panel: true,
+    blurb: 'About 25 questions a day with Kai, and the Trade section open.',
+  },
+  {
+    key: 'vip', name: 'VIP', price_usd: 99, daily_credits: 75, typical_runs_per_day: 50,
+    trade_panel: true,
+    blurb: 'About 50 questions a day, for when you do not want to count.',
+  },
+];
+
+export const fixtureTopupPack: TopupPack = {
+  key: 'topup_100',
+  name: 'Top-up',
+  credits: 100,
+  price_usd: 9,
+  blurb: 'Extra credits that stay with you — they do not reset with the day.',
+};
+
+export const fixtureCreditsPayload: CreditsPayload = {
+  credits: fixtureCredits,
+  plans: fixtureCreditPlans,
+  topup: fixtureTopupPack,
+};
+
 export const fixtureMe: Me = {
   profile: fixtureProfile,
   risk_policy: fixtureRiskPolicy,
@@ -406,6 +549,7 @@ export const fixtureMe: Me = {
   // over sample people would show sample revenue and a sample audit trail that
   // look exactly like real ones. Staff is a fact about a database row.
   staff: { is_staff: false, role: null, plain: 'You do not have staff access.' },
+  credits: fixtureCredits,
 };
 
 export const fixtureNotifications: NotificationRow[] = [

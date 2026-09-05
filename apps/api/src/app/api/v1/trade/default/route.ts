@@ -30,6 +30,7 @@ import {
   type TradeDefaultReason,
 } from '@shared/api';
 import { authed, ok, type Ctx } from '@/lib/http';
+import { requireTradePanel } from '@/lib/entitlements';
 import { serviceClient } from '@/lib/db';
 import { alertIdentity } from '@/lib/round4/alert-identity';
 import { hasColumns } from '@/lib/round4/schema-probe';
@@ -161,6 +162,9 @@ const LABEL: Record<TradeDefaultReason, (s: string) => string> = {
 };
 
 export const GET = authed(async (_req: Request, ctx: Ctx) => {
+  // The Trade section is a paid feature (0030). Server side, because a hidden
+  // tab is decoration and this is the gate.
+  await requireTradePanel(ctx.user.id);
   // All four reads go out together: the slowest one is the whole latency.
   const [alert, position, watchlist, recent] = await Promise.all([
     activeAlert(ctx.user.id),

@@ -39,6 +39,7 @@ import {
   type PortalContextKey,
 } from '@shared/api';
 import { authedParams, ok, parseQuery, type Ctx } from '@/lib/http';
+import { requireTradePanel } from '@/lib/entitlements';
 import { ApiError } from '@/lib/errors';
 import { ensureInstrument } from '@/lib/market/instruments';
 import { serviceClient } from '@/lib/db';
@@ -94,6 +95,9 @@ function defaultTimeframe(mode: string): string {
 
 export const GET = authedParams<{ symbol: string }>(
   async (req: NextRequest, ctx: Ctx & { params: { symbol: string } }) => {
+    // The Trade section is a paid feature (0030). Server side, because a hidden
+    // tab is decoration and this is the gate.
+    await requireTradePanel(ctx.user.id);
     ensureDevTicker();
     const q = parseQuery(req, PortalQuery);
     const symbol = ctx.params.symbol.toUpperCase();

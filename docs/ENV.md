@@ -248,3 +248,38 @@ values are baked into the bundle when Expo starts, so the `--clear` matters.
 `apps/api/src/proxy.ts` already allows `localhost`, `127.0.0.1` and `192.168.x.x`
 origins. A web build served from a real domain would need that domain added to
 `ALLOWED_ORIGINS` on Vercel; nothing else.
+
+---
+
+## Credits and the plan ladder (migration 0030)
+
+Nothing here is required for the app to run. **With no Stripe price ids set,
+credits are still granted and still enforced** — every account is free, gets ten
+credits a day, and the upgrade and top-up buttons answer "Upgrades open soon."
+rather than opening a dead checkout. That is the same rule the original single
+price already followed.
+
+```
+STRIPE_PRICE_PRO=              # price_… the $59/month plan
+STRIPE_PRICE_VIP=              # price_… the $99/month plan
+STRIPE_PRICE_TOPUP=            # price_… the one-off credit pack ($9 / 100 credits)
+STRIPE_PRICE_PREMIUM=          # the ORIGINAL single price. Still read, as the
+                               # fallback for VIP, so an environment that
+                               # predates the two-tier ladder keeps working.
+```
+
+| Variable | What it does |
+|---|---|
+| `STRIPE_PRICE_PRO` / `STRIPE_PRICE_VIP` | which subscription checkout to open, and — more importantly — **which tier a completed subscription belongs to**. The webhook reads the price id off the event and maps it back through `tierForPrice()`. A price nobody configured is logged and recorded under the legacy `premium` name rather than guessed at, because giving a Pro subscriber VIP's allowance is worse than being conservative. |
+| `STRIPE_PRICE_TOPUP` | the one-off credit pack, bought in `payment` mode, not `subscription`. The credits granted travel in the checkout session's metadata, so a pack somebody bought is honoured at the size it was sold at even if the pack is resized later. |
+| `STRIPE_WEBHOOK_SECRET` | already present — now also gates credit top-ups. Unset it and the webhook rejects everything, which means a purchase would be taken and no credits granted. **Set it before selling anything.** |
+
+**Where the numbers live.** `apps/api/src/lib/kai/plans.ts`, and nowhere else.
+Prices, daily allowances, the monthly cost ceilings, the size of a credit and
+every sentence Kai says about running out are all in that one file. A price
+change is a one-line edit there.
+
+**What is NOT an environment variable, on purpose.** Which plan a person is on
+comes from `subscriptions.tier`; whether they get the Trade section comes from
+`entitlement_flags`. Both are database rows, so they can be changed for one
+person without a deploy.

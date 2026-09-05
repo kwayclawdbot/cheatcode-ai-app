@@ -12,6 +12,7 @@
 import type { NextRequest } from 'next/server';
 import { OrderSubmitRequest, OrderSubmitResponse } from '@shared/api';
 import { authed, ok, parseBody, type Ctx } from '@/lib/http';
+import { requireTradePanel } from '@/lib/entitlements';
 import { rateLimit } from '@/lib/ratelimit';
 import { submitOrder } from '@/lib/execution/submit';
 import { ensureDevTicker } from '@/lib/execution/tick-dev';
@@ -19,6 +20,9 @@ import { ensureDevTicker } from '@/lib/execution/tick-dev';
 export const dynamic = 'force-dynamic';
 
 export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
+  // The Trade section is a paid feature (0030). Server side, because a hidden
+  // tab is decoration and this is the gate.
+  await requireTradePanel(ctx.user.id);
   ensureDevTicker();
   const body = await parseBody(req, OrderSubmitRequest);
 

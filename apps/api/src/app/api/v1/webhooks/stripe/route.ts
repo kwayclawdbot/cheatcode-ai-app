@@ -16,7 +16,8 @@ import { serviceClient } from '@/lib/db';
 import { env } from '@/lib/env';
 import { log, newRequestId } from '@/lib/log';
 import { emitUserEvent } from '@/lib/events';
-import { verifyStripeSignature } from '@/lib/stripe';
+import { tierForPrice, verifyStripeSignature } from '@/lib/stripe';
+import { grantTopup } from '@/lib/kai/credits';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,14 +69,55 @@ export async function POST(req: NextRequest): Promise<Response> {
     case 'checkout.session.completed':
     case 'customer.subscription.created':
     case 'customer.subscription.updated': {
+      /**
+       * A CREDIT PACK IS A PAYMENT, NOT A SUBSCRIPTION, and it must not touch
+       * the tier. `metadata.kind` is stamped by `createTopupSession`, so this
+       * is read off the event rather than inferred from the shape of it.
+       *
+       * The Stripe EVENT ID is the idempotency key. Stripe retries a webhook it
+       * did not get a 2xx for, up to several times over days; the unique index
+       * behind `grantTopup` is what turns those retries into one grant.
+       */
+      const meta = (object.metadata as Record<string, unknown>) ?? {};
+      if (meta.kind === 'credit_topup') {
+        const credits = Number(meta.credits);
+        const paidUsd = Number(object.amount_total) / 100;
+        if (Number.isFinite(credits) && credits > 0) {
+          await grantTopup({
+            userId,
+            credits: Math.trunc(credits),
+            priceUsd: Number.isFinite(paidUsd) ? paidUsd : 0,
+            sourceRef: String(event.id ?? object.id ?? ''),
+            requestId,
+            note: `top-up: ${String(meta.pack ?? 'pack')}`,
+          });
+        } else {
+          log('warn', requestId, 'stripe.topup_no_credits', { pack: String(meta.pack ?? '') });
+        }
+        break;
+      }
+
       const status = String(object.status ?? 'active');
       const active = status === 'active' || status === 'trialing';
+      /**
+       * WHICH PLAN, read from the price. Two tiers now share this webhook and
+       * the price id is the only thing on the event that separates them. An
+       * unrecognised price falls back to the legacy 'premium' name — which every
+       * gate already understands and which grants VIP's allowance — and is
+       * logged, because a price nobody configured is a setup mistake to fix
+       * rather than a guess to make silently.
+       */
+      const priceId = priceFromEvent(object);
+      const tier = tierForPrice(priceId);
+      if (active && !tier) {
+        log('warn', requestId, 'stripe.unknown_price', { price: priceId ?? null });
+      }
       await db.from('subscriptions').upsert(
         {
           user_id: userId,
           stripe_customer_id: strOrNull(object.customer),
           stripe_subscription_id: strOrNull(object.subscription ?? object.id),
-          tier: active ? 'premium' : 'free',
+          tier: active ? (tier ?? 'premium') : 'free',
           status,
           current_period_end: epochToIso(object.current_period_end),
         } as never,
@@ -86,7 +128,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         'system',
         'subscription',
         userId,
-        { event: 'subscription_changed', status, tier: active ? 'premium' : 'free' },
+        { event: 'subscription_changed', status, tier: active ? (tier ?? 'premium') : 'free' },
         requestId
       );
       break;
@@ -114,6 +156,20 @@ function resolveUserId(object: Record<string, unknown>): string | null {
   if (typeof fromMeta === 'string' && fromMeta) return fromMeta;
   const ref = object.client_reference_id;
   return typeof ref === 'string' && ref ? ref : null;
+}
+
+/**
+ * The price id, wherever this event happens to carry it. A subscription object
+ * puts it under `items.data[0].price.id`; a checkout session does not carry one
+ * at all, which is fine — the `customer.subscription.*` event that follows does,
+ * and it is the one that decides the tier.
+ */
+function priceFromEvent(object: Record<string, unknown>): string | null {
+  const items = (object.items as { data?: { price?: { id?: unknown } }[] })?.data;
+  const fromItems = items?.[0]?.price?.id;
+  if (typeof fromItems === 'string' && fromItems) return fromItems;
+  const plan = (object.plan as { id?: unknown })?.id;
+  return typeof plan === 'string' && plan ? plan : null;
 }
 
 function strOrNull(v: unknown): string | null {

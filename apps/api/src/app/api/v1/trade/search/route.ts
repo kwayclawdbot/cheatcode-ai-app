@@ -8,6 +8,7 @@
 import type { NextRequest } from 'next/server';
 import { TradeSearchQuery, TradeSearchResponse, type InstrumentResult } from '@shared/api';
 import { authed, ok, parseQuery, type Ctx } from '@/lib/http';
+import { requireTradePanel } from '@/lib/entitlements';
 import { serviceClient } from '@/lib/db';
 import { fetchTickerReference } from '@/lib/market/polygon';
 
@@ -16,6 +17,9 @@ export const dynamic = 'force-dynamic';
 const LIMIT = 10;
 
 export const GET = authed(async (req: NextRequest, _ctx: Ctx) => {
+  // The Trade section is a paid feature (0030). Server side, because a hidden
+  // tab is decoration and this is the gate.
+  await requireTradePanel(_ctx.user.id);
   const { q } = parseQuery(req, TradeSearchQuery);
   const term = q.trim();
   const db = serviceClient();

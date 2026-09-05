@@ -11,7 +11,7 @@ import { getAccessToken, recoverSession, SESSION_EXPIRED_COPY } from './auth-tok
 import { streamSSE, SSEHandlers } from './sse';
 import {
   adaptAlertDetail, adaptAlertLifecycle, adaptAlertPreview, adaptAlerts, adaptCandles,
-  adaptHome, adaptMe, adaptMemory, adaptNotifications, adaptPushDevice, adaptPushRegistry,
+  adaptCreditsPayload, adaptHome, adaptMe, adaptMemory, adaptNotifications, adaptPushDevice, adaptPushRegistry,
   adaptPushTest, adaptQuoteLoose, adaptSearch, adaptSetupCard, adaptSetupDetail,
   adaptSymbolDetail, adaptTradeLanding,
 } from './adapters';
@@ -26,7 +26,7 @@ import {
 } from './adapters';
 import type {
   AlertDetail, AlertDraftPreview, AlertLifecycle, AlertsPayload, AlertsRound4, AlertsSimple,
-  AlertTab, Candle, ConversationsPayload, Experience, ExplainLevel, FocusKey, GoalMode,
+  AlertTab, Candle, ConversationsPayload, CreditsPayload, Experience, ExplainLevel, FocusKey, GoalMode,
   GradedSetup, HomePayload, HomeV5, KaiProfile, Me, MemoryRow, NotificationRow,
   PushDevice, PushPlatform, PushRegistry, PushTestResult, PushTransport, Quote,
   RuleAdherence, SearchResult, SetupDetail, SymbolDetail, SymbolWorkspace, TickerPage,
@@ -219,6 +219,24 @@ export const api = {
   /** Returns a Stripe Checkout url, or throws ApiError('BILLING_NOT_CONFIGURED'). */
   billingCheckout: () =>
     request<{ url?: string }>('/billing/checkout', { method: 'POST', body: '{}' }),
+
+  /* ---------------- credits (migration 0030) ---------------- */
+
+  /**
+   * Today's allowance, the plan ladder and the top-up pack.
+   *
+   * `null` when the API predates 0030 and sends no balance — every credit
+   * surface then hides itself rather than drawing one that does not exist.
+   */
+  credits: async (): Promise<CreditsPayload | null> =>
+    adaptCreditsPayload(await request<unknown>('/credits')),
+
+  /** A one-off credit pack. Same honest shape as `billingCheckout`: no keys
+   *  configured throws ApiError('BILLING_NOT_CONFIGURED'), never a dead url. */
+  billingTopup: () =>
+    request<{ url?: string; credits?: number; price_usd?: number; plain?: string }>(
+      '/billing/topup', { method: 'POST', body: '{}' },
+    ),
 
   /* ---------------- Round 3 · V5 consolidation ---------------- */
 

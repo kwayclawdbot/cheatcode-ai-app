@@ -145,6 +145,36 @@ ACCESS_TOKEN=$(printf '%s' "$TOKENS" | python3 -c 'import json,sys; print(json.l
 if [ -z "$ACCESS_TOKEN" ]; then red "FAIL  could not sign in"; echo "$TOKENS" | head -c 400; exit 1; fi
 green "PASS  signed in"; PASS=$((PASS+1))
 
+# --- 1a. this account pays -----------------------------------------------------
+#
+# WHY THIS IS HERE NOW. Migration 0030 put the Trade section behind the paid
+# plans: a free account gets Kai and the community and no order tickets. This
+# suite was written when everything was free, so without this line forty of its
+# checks would fail on a 402 and the run would say nothing useful about whether
+# trading works.
+#
+# It is a DATABASE ROW, not a loosened gate. Nothing in the app is weakened —
+# the smoke user simply becomes a Pro subscriber, which is what someone
+# exercising order tickets would be. The free-tier gates are proved further
+# down, on their own fresh free account, which is the honest way to test both.
+curl -sS -o /dev/null -X POST "$SUPABASE_URL/rest/v1/subscriptions" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  -H 'Content-Type: application/json' -H 'Prefer: resolution=merge-duplicates' \
+  -d "{\"user_id\":\"$USER_ID\",\"tier\":\"pro\",\"status\":\"active\"}"
+set_tier() { # set_tier pro|free
+  if [ "$1" = "free" ]; then
+    curl -sS -o /dev/null -X DELETE "$SUPABASE_URL/rest/v1/subscriptions?user_id=eq.$USER_ID" \
+      -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
+  else
+    curl -sS -o /dev/null -X POST "$SUPABASE_URL/rest/v1/subscriptions" \
+      -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+      -H 'Content-Type: application/json' -H 'Prefer: resolution=merge-duplicates' \
+      -d "{\"user_id\":\"$USER_ID\",\"tier\":\"$1\",\"status\":\"active\"}"
+  fi
+}
+set_tier pro
+green "PASS  the smoke account is on Pro, so the Trade section is open to it"; PASS=$((PASS+1))
+
 # --- 1b. Trade opens on a CHART, never on a search prompt ---------------------
 # Owner feedback on round 4: "the trade page defaults to a search request vs
 # opening the trading terminal". The Trade tab no longer waits for a landing
@@ -538,6 +568,10 @@ for i in 1 2 3 4 5 6; do
     -d "{\"draft_id\":\"$DID\"}")
   [ "$CODE" = "402" ] || FILLERS="$FILLERS $DID"
 done
+# The five-watch cap is a FREE-tier rule and this account is on Pro for the
+# trading sections, so it is dropped to free for the length of this one check
+# and put back straight after. The gate is never weakened — the tier is.
+set_tier pro
 if [ "$CODE" = "402" ]; then
   green "PASS  402  POST /api/v1/alerts — free tier alert limit enforced"; PASS=$((PASS+1))
 else
@@ -2042,7 +2076,9 @@ print("  ",c["plain"])'
 # --- circles ------------------------------------------------------------------
 # The gate first. `circles_create` is seeded false for free and true for premium
 # (and a MISSING flag is false too) — so a free account is refused with an
-# upgrade, not a dead end.
+# upgrade, not a dead end. This whole block is a free-tier story, so the account
+# drops to free for it and is put back on Pro at the end.
+set_tier free
 expect "creating a circle is gated by an entitlement" 402 POST /api/v1/circles \
   '{"symbol":"META","ttl":"3d"}'
 assert_body "the refusal carries the tier, the price and where to upgrade" '
@@ -2074,7 +2110,7 @@ assert d["can_create"] is True, "premium must read circles_create true: %r" % (d
 assert "Premium" not in d["create_hint"], d["create_hint"]
 print("  can_create:",d["can_create"],"|",d["create_hint"][:90])'
 
-# Back to free for the rest of the run — the tier is arranged, not granted.
+# Back to free, to prove the gate comes back. The tier is arranged, not granted.
 sb_delete "subscriptions?user_id=eq.$USER_ID"
 check "circles list is gated again once the subscription is gone" GET /api/v1/circles
 assert_body "dropping the subscription puts the gate straight back" '
@@ -2082,6 +2118,10 @@ import json,sys
 d=json.load(sys.stdin)
 assert d["can_create"] is False, "the gate did not come back"
 print("  can_create:",d["can_create"])'
+# ...and back on Pro, because the rest of the run exercises the Trade section,
+# which 0030 put behind the paid plans. Forgetting this line is how the last
+# four hundred checks quietly turn into 402s.
+set_tier pro
 
 # A ready A-grade setup is the reason a circle exists, so the tick opens one.
 # META and NVDA already have a seeded circle, so opening one has to be proven on
@@ -3219,6 +3259,89 @@ print("  ",d["plain"])'
 
 ACCESS_TOKEN="$USER_TOKEN"
 rm -rf "$ADMIN_TMP"
+
+# =============================================================================
+# CREDITS (migration 0030)
+#
+# A fresh smoke account is a FREE account, so this is exactly the state that
+# matters most: ten credits a day, the community, and no Trade section. The
+# refusals below are the point of the section — a green run has to prove the
+# gates fire, not only that the balance reads.
+# =============================================================================
+hr; echo "CREDITS"; hr
+
+# A FRESH, GENUINELY FREE ACCOUNT. The main smoke user was put on Pro at the top
+# so the trading sections could run; proving the free gates against it would
+# prove nothing. This one has never paid for anything.
+FREE_EMAIL="smokefree+$(date +%s)@cheatcode.test"
+FREE_PASSWORD="Smoke-Free-$(date +%s)!"
+FREE_CREATE=$(curl -sS -X POST "$SUPABASE_URL/auth/v1/admin/users" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$FREE_EMAIL\",\"password\":\"$FREE_PASSWORD\",\"email_confirm\":true}")
+PAID_TOKEN="$ACCESS_TOKEN"
+ACCESS_TOKEN=$(curl -sS -X POST "$SUPABASE_URL/auth/v1/token?grant_type=password" \
+  -H "apikey: $SUPABASE_ANON_KEY" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$FREE_EMAIL\",\"password\":\"$FREE_PASSWORD\"}" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
+if [ -z "$ACCESS_TOKEN" ]; then red "FAIL  could not sign in the free account"; FAIL=$((FAIL+1)); ACCESS_TOKEN="$PAID_TOKEN"; fi
+
+check "the balance, the ladder and the top-up pack" GET /api/v1/credits
+assert_body "a new free account starts on ten credits a day and is not blocked" '
+import json,sys
+d=json.load(sys.stdin)
+c=d["credits"]
+assert c["plan"]=="free", c["plan"]
+assert c["granted"]==10, c["granted"]
+assert c["available"]==c["remaining"]+c["topup"], c
+assert c["blocked"] is False and c["blocked_reason"] is None, c
+assert c["trade_panel"] is False, "a free account must not be told it has Trade"
+# NEVER TOKENS AND NEVER OUR DOLLAR COST. The person sees credits and one
+# plain sentence; what a question cost us is the business side of it and lives
+# behind the staff-only admin route. A PLAN price is fine, that is theirs.
+blob=json.dumps(c).lower()
+for banned in ("token","usd","cache","model"):
+    assert banned not in blob, banned
+keys={p["key"] for p in d["plans"]}
+assert keys=={"free","pro","vip"}, keys
+assert d["topup"]["credits"]>0 and d["topup"]["price_usd"]>0, d["topup"]
+print("  ",c["granted"],"credits a day ·",c["what_a_credit_is"])'
+
+# The Trade section is a paid feature, and the gate is the SERVER. A hidden tab
+# in the app grants nothing, so every one of these must refuse on its own.
+expect "Trade landing is refused for a free account"  402 GET  /api/v1/trade/landing
+expect "Trade default is refused for a free account"  402 GET  /api/v1/trade/default
+expect "Trade search is refused for a free account"   402 GET  "/api/v1/trade/search?q=AAPL"
+expect "the Trade portal is refused for a free account" 402 GET /api/v1/trade/portal/AAPL
+expect "placing an order is refused for a free account" 402 POST /api/v1/orders/preview '{"symbol":"AAPL","side":"buy","qty":1}'
+assert_body "the refusal names the reason and the price rather than a bare 404" '
+import json,sys
+d=json.load(sys.stdin)["error"]
+assert d["code"]=="ENTITLEMENT_REQUIRED", d
+assert "Trade" in d["message_plain"] and "59" in d["message_plain"], d["message_plain"]
+assert d["detail"]["upgrade_link"], d
+print("  ",d["message_plain"])'
+
+# Billing is not configured on this account, so the honest answer is the point:
+# never a placeholder URL, never a fake price.
+expect "a top-up says so plainly when billing is not switched on" 503 POST /api/v1/billing/topup
+
+# The admin view is staff-only and answers 404 — not 403 — to everyone else, so
+# the surface stays unenumerable.
+expect "the credits admin view does not exist for an ordinary account" 404 GET /api/v1/admin/credits
+
+# The other half of the gate, and the one that matters commercially: a paying
+# account is not refused. A gate that refuses everybody is not a gate.
+ACCESS_TOKEN="$PAID_TOKEN"
+check "a paying account is not refused the Trade section" GET /api/v1/trade/landing
+check "and its balance is the Pro allowance, not the free one" GET /api/v1/credits
+assert_body "Pro is forty credits a day with the Trade section open" '
+import json,sys
+c=json.load(sys.stdin)["credits"]
+assert c["plan"]=="pro", c["plan"]
+assert c["granted"]==40, c["granted"]
+assert c["trade_panel"] is True, c
+print("  ",c["plan_name"],c["granted"],"credits a day, about",c["typical_runs_per_day"],"questions")'
 
 hr
 echo "passed: $PASS   failed: $FAIL"

@@ -16,7 +16,47 @@ import { ApiError } from './errors';
 export const BILLING_NOT_CONFIGURED_PLAIN = 'Upgrades open soon.';
 
 export function stripeConfigured(): boolean {
-  return Boolean(env('STRIPE_SECRET_KEY') && env('STRIPE_PRICE_PREMIUM'));
+  return Boolean(env('STRIPE_SECRET_KEY') && (env('STRIPE_PRICE_PREMIUM') || env('STRIPE_PRICE_PRO')));
+}
+
+/**
+ * THE PRICE IDS, ONE PER THING THAT CAN BE BOUGHT.
+ *
+ *   STRIPE_PRICE_PRO      $59 a month
+ *   STRIPE_PRICE_VIP      $99 a month
+ *   STRIPE_PRICE_TOPUP    the one-off credit pack
+ *   STRIPE_PRICE_PREMIUM  the ORIGINAL single price. Kept as the fallback for
+ *                         VIP so an environment that predates the two-tier
+ *                         ladder still sells the $99 plan rather than answering
+ *                         "not configured".
+ *
+ * NOTHING IS INVENTED HERE either. A tier with no price id configured answers
+ * BILLING_NOT_CONFIGURED — it never quietly sells a different one.
+ */
+export function priceIdFor(plan: 'pro' | 'vip' | 'topup'): string | undefined {
+  if (plan === 'pro') return env('STRIPE_PRICE_PRO');
+  if (plan === 'vip') return env('STRIPE_PRICE_VIP') ?? env('STRIPE_PRICE_PREMIUM');
+  return env('STRIPE_PRICE_TOPUP');
+}
+
+/**
+ * Which tier a completed Stripe subscription belongs to, by price id.
+ *
+ * WHY THIS IS NEEDED. The webhook used to have one plan to grant, so "paid"
+ * meant 'premium' and nothing had to be read off the event. With two tiers the
+ * price is the only thing that says WHICH one, and getting it wrong would give
+ * a Pro subscriber VIP's allowance or the reverse.
+ *
+ * AN UNRECOGNISED PRICE IS NOT GUESSED. It returns null, the webhook records
+ * the subscription as active under the legacy 'premium' name — which every gate
+ * already understands — and logs the price so it can be added here. A wrong
+ * tier is worse than a conservative one.
+ */
+export function tierForPrice(priceId: string | null | undefined): 'pro' | 'vip' | null {
+  if (!priceId) return null;
+  if (priceId === env('STRIPE_PRICE_PRO')) return 'pro';
+  if (priceId === env('STRIPE_PRICE_VIP') || priceId === env('STRIPE_PRICE_PREMIUM')) return 'vip';
+  return null;
 }
 
 /** Not in the canonical code list — carried as INTERNAL with the code in detail. */
@@ -55,8 +95,11 @@ export async function createCheckoutSession(opts: {
   userId: string;
   email: string | null;
   customerId: string | null;
+  /** Which plan is being bought. Defaults to VIP, which is what the single
+   *  original price sold, so an older caller keeps its behaviour exactly. */
+  plan?: 'pro' | 'vip';
 }): Promise<CheckoutSession> {
-  const price = env('STRIPE_PRICE_PREMIUM');
+  const price = priceIdFor(opts.plan ?? 'vip');
   if (!price) throw billingNotConfigured();
 
   const form: Record<string, string> = {
@@ -77,6 +120,48 @@ export async function createCheckoutSession(opts: {
   const url = session.url;
   if (typeof url !== 'string') {
     throw new ApiError('INTERNAL', 'We could not open the upgrade page. Please try again.');
+  }
+  return { id: String(session.id), url };
+}
+
+/**
+ * A ONE-OFF CREDIT PACK. `mode: payment`, not `subscription` — the whole point
+ * of a top-up is that it is bought once and the credits stay put.
+ *
+ * The metadata is what the webhook grants from: the user, the pack, and how
+ * many credits it is worth. The credit count travels ON THE EVENT rather than
+ * being looked up at grant time, so a pack somebody bought last month is
+ * honoured at the size it was sold at even if the pack is resized tomorrow.
+ */
+export async function createTopupSession(opts: {
+  userId: string;
+  email: string | null;
+  customerId: string | null;
+  packKey: string;
+  credits: number;
+}): Promise<CheckoutSession> {
+  const price = priceIdFor('topup');
+  if (!price) throw billingNotConfigured();
+
+  const form: Record<string, string> = {
+    mode: 'payment',
+    'line_items[0][price]': price,
+    'line_items[0][quantity]': '1',
+    success_url: 'cheatcodeai://billing/topup-success?session_id={CHECKOUT_SESSION_ID}',
+    cancel_url: 'cheatcodeai://billing/cancel',
+    client_reference_id: opts.userId,
+    'metadata[user_id]': opts.userId,
+    'metadata[kind]': 'credit_topup',
+    'metadata[pack]': opts.packKey,
+    'metadata[credits]': String(opts.credits),
+  };
+  if (opts.customerId) form.customer = opts.customerId;
+  else if (opts.email) form.customer_email = opts.email;
+
+  const session = await stripePost('checkout/sessions', form);
+  const url = session.url;
+  if (typeof url !== 'string') {
+    throw new ApiError('INTERNAL', 'We could not open the payment page. Please try again.');
   }
   return { id: String(session.id), url };
 }

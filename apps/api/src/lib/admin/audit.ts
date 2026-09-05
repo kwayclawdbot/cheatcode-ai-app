@@ -45,6 +45,7 @@ export type AuditAction =
   // written here
   | 'admin.overview.read'
   | 'admin.spend.read'
+  | 'admin.credits.read'
   | 'admin.people.search'
   | 'crm.person.read'
   | 'crm.person.transcript'

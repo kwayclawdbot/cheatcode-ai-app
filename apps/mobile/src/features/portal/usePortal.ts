@@ -20,18 +20,30 @@ export function usePortal(
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** True when the refusal was about the PLAN, not about a fault. */
+  const [locked, setLocked] = useState(false);
   const { alert, setup, ctx, mode } = opts;
 
   const load = useCallback(async () => {
     if (!symbol) return;
     setLoading(true);
     setError(null);
+    setLocked(false);
     try {
       const p = await portalApi.portal(symbol, { alert, setup, ctx, mode });
       setData(p);
       setAnnotations(p.annotations);
     } catch (e) {
       setData(null);
+      /**
+       * "YOUR PLAN DOES NOT COVER THIS" IS NOT "SOMETHING WENT WRONG".
+       *
+       * A free account hitting the Trade section gets a 402 from the server,
+       * and rendering that as "I could not open that chart just now" tells a
+       * person the app is broken when it is working exactly as intended. The
+       * code is kept so the screen can say the true thing instead.
+       */
+      setLocked(e instanceof TradeApiError && e.code === 'ENTITLEMENT_REQUIRED');
       setError(e instanceof TradeApiError ? e.message : 'I could not open that chart just now.');
     } finally {
       setLoading(false);
@@ -59,7 +71,7 @@ export function usePortal(
     void portalApi.patchAnnotation(id, { status }).catch(() => { /* local state is the truth the user sees */ });
   }, []);
 
-  return { data, annotations, upsertAnnotation, setAnnotationStatus, loading, error, reload: load };
+  return { data, annotations, upsertAnnotation, setAnnotationStatus, loading, error, locked, reload: load };
 }
 
 /** Candles for the selected timeframe. `exact` is false when the stack had to

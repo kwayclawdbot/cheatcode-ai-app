@@ -238,7 +238,18 @@ export default function Account() {
               lives. It sits here because the tab bar is five items and stays
               five items, not because it is an afterthought. */}
           <NavRow testID="nav-desk" icon={<KaiOrb size={14} glow={false} />} label="Research desk" onPress={() => router.push('/desk')} />
-          <NavRow testID="nav-subscription" icon={<Lock size={14} color={color.muted} />} label="Plan" value={tier === 'premium' ? 'Premium' : 'Free'} onPress={() => router.push('/account/subscription')} last />
+          {/* Credits sit ABOVE the plan on purpose: "how many questions have
+              I got left" is asked far more often than "what am I paying", and
+              the value is a real balance read from the server — never a
+              placeholder when there is nothing to show. */}
+          <NavRow
+            testID="nav-credits"
+            icon={<KaiOrb size={14} glow={false} />}
+            label="Credits"
+            value={data?.credits ? `${data.credits.available} left today` : null}
+            onPress={() => router.push('/account/credits')}
+          />
+          <NavRow testID="nav-subscription" icon={<Lock size={14} color={color.muted} />} label="Plan" value={data?.credits?.plan_name ?? (tier === 'premium' ? 'Premium' : 'Free')} onPress={() => router.push('/account/subscription')} last />
         </RowList>
 
         {/* THE OPERATOR'S DOOR. Drawn only when `/me` says this account holds a

@@ -4,6 +4,7 @@ import { TabBar } from '../../ui/TabBar';
 import { color } from '../../ui/tokens';
 import { api } from '../../lib/api';
 import { fixtureAlertsSimple } from '../../lib/fixtures';
+import { useMe } from '../../features/account/useAccount';
 import { useSession } from '../../lib/session';
 import { secondTab } from '../../features/nav/second-tab';
 import type { GoalMode } from '../../lib/types';
@@ -20,6 +21,18 @@ export default function TabsLayout() {
   const { profile } = useSession();
   const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? 'day_trade';
   const second = secondTab(mode);
+
+  /**
+   * WHETHER THE TRADE TAB IS ON THIS PLAN (migration 0030).
+   *
+   * A COURTESY, NOT A CONTROL. The mark on the glyph tells a free account that
+   * the Trade section is a paid one before they tap it; the tab still navigates
+   * exactly where it always did, and the server refuses the routes behind it
+   * whatever this says. Defaulting to unlocked matters: an API that cannot
+   * answer must not put a padlock on a section a paying customer has.
+   */
+  const me = useMe();
+  const tradeLocked = me.data?.credits ? !me.data.credits.trade_panel : false;
 
   // The badge is a real count of alerts that need a decision — never decorative.
   // In Invest mode the tab is not showing alerts, so it does not carry their
@@ -41,7 +54,12 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: color.bg } }}
       tabBar={(props) => (
-        <TabBar {...props} mode={mode} badges={{ alerts: !second.desk && needsAttention }} />
+        <TabBar
+          {...props}
+          mode={mode}
+          badges={{ alerts: !second.desk && needsAttention }}
+          locked={{ trade: tradeLocked }}
+        />
       )}
     >
       <Tabs.Screen name="home" options={{ title: 'Home' }} />

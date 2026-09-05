@@ -19,6 +19,9 @@ import type { HomeFixture, WakeDirection } from '../../features/home';
 import { useSession } from '../../lib/session';
 import { useKaiWall } from '../../lib/useKai';
 import { env } from '../../lib/env';
+import { useMe } from '../../features/account/useAccount';
+import { CreditStrip } from '../../features/account/credit-instruments';
+import { fixtureCreditsCeiling, fixtureCreditsOut, fixtureCreditsWarning } from '../../lib/fixtures';
 import type { ConversationRow, GoalMode, WallItem } from '../../lib/types';
 
 const Hamburger = ({ onPress }: { onPress: () => void }) => (
@@ -78,7 +81,7 @@ export default function Home() {
   const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? 'day_trade';
 
   /** Fixtures preview only — lets the owner and Playwright see the quiet day. */
-  const params = useLocalSearchParams<{ fixture?: string }>();
+  const params = useLocalSearchParams<{ fixture?: string; credits?: string }>();
   const fixture: HomeFixture =
     env.FIXTURES && (params.fixture === 'quiet' || params.fixture === 'down') ? params.fixture : 'default';
 
@@ -127,7 +130,33 @@ export default function Home() {
     return [];
   }, [data, mode, thread, threadNonce]);
 
-  const { items, send, append, streaming } = useKaiWall(mode, seed);
+  const { items, send, append, streaming, credits, setCredits } = useKaiWall(mode, seed);
+
+  /**
+   * THE BALANCE, SEEDED ONCE AND THEN LIVE.
+   *
+   * `/me` already carries it, so opening Home knows the balance without a
+   * request of its own. After that every reply carries the new one on the
+   * stream, so the strip is never stale and never costs a round trip.
+   *
+   * `me.credits` is null on an API build that predates the credit system, and
+   * the strip then draws nothing at all — which is right. A warning about an
+   * allowance that does not exist would be an invented one.
+   */
+  const me = useMe();
+  /**
+   * Fixtures preview only: `?credits=warn|out|ceiling` puts the strip in the
+   * state it is hard to reach on purpose. On a real stack the parameter does
+   * nothing at all — the balance is whatever the server says it is.
+   */
+  const creditFixture = env.FIXTURES ? String(params.credits ?? '') : '';
+  const meCredits = creditFixture === 'warn' ? fixtureCreditsWarning
+    : creditFixture === 'out' ? fixtureCreditsOut
+    : creditFixture === 'ceiling' ? fixtureCreditsCeiling
+    : me.data?.credits ?? null;
+  useEffect(() => {
+    if (meCredits) setCredits((prev) => prev ?? meCredits);
+  }, [meCredits, setCredits]);
 
   const seedCount = seed.length;
   useEffect(() => {
@@ -275,6 +304,17 @@ export default function Home() {
       {/* The composer never moves. The preview note sits with it, not with Kai —
           it is a fact about this build, not something Kai is telling you. */}
       <View style={{ paddingTop: 10, paddingHorizontal: 16, paddingBottom: 6, gap: 8 }}>
+        {/*
+          THE ONLY PLACE CREDITS APPEAR IN THE CONVERSATION, and only near the
+          end of one. It draws at 80% consumed or once Kai has stopped, and is
+          absent for the whole of a normal day — Home is a conversation, and a
+          counter ticking down beside it would change what the screen is about.
+        */}
+        <CreditStrip
+          credits={credits}
+          onPress={() => router.push('/account/credits')}
+          testID="home-credit-strip"
+        />
         {isFixture ? <T size={10} c={color.dim} align="center">Sample data — the service is not connected here.</T> : null}
         <Composer placeholder="Message Kai…" onSend={send} disabled={streaming} />
       </View>

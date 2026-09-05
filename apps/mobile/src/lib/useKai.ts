@@ -4,11 +4,31 @@ import { api } from './api';
 import { env } from './env';
 import { fixtureReply, fixtureSetups, fixtureSheetReply } from './fixtures';
 import type { KaiFrame, KaiObjectEnvelope } from '@cheatcode/shared';
-import { adaptActionPreview, adaptGradedSetup } from './adapters';
-import type { GoalMode, GradedSetup, WallItem } from './types';
+import { adaptActionPreview, adaptCredits, adaptGradedSetup } from './adapters';
+import type { Credits, GoalMode, GradedSetup, WallItem } from './types';
 
 let seq = 0;
 const nextId = () => `w${++seq}`;
+
+/**
+ * THE BALANCE, ARRIVING WITH THE ANSWER.
+ *
+ * The message stream carries a `credits` frame after every reply — and instead
+ * of one on a reply Kai refused to give. Reading it here means the strip above
+ * the composer is right the moment the answer lands, with no second request and
+ * no window in which the screen is showing a balance that has already moved.
+ *
+ * IT IS NOT PART OF `KaiFrame`. That union lives in `packages/shared/api.ts`,
+ * which this lane does not own, so the frame is narrowed structurally instead.
+ * The SSE reader already passes unknown events through untouched — an older app
+ * simply ignores this one, which is exactly the behaviour that makes adding a
+ * frame safe.
+ */
+function creditsFromFrame(f: unknown): Credits | null {
+  const frame = f as { type?: unknown; credits?: unknown };
+  if (frame?.type !== 'credits') return null;
+  return adaptCredits(frame.credits);
+}
 
 /**
  * Home's conversation wall.
@@ -21,6 +41,12 @@ const nextId = () => `w${++seq}`;
 export function useKaiWall(mode: GoalMode, seed: WallItem[]) {
   const [items, setItems] = useState<WallItem[]>(seed);
   const [streaming, setStreaming] = useState(false);
+  /**
+   * What the server last said the balance was. `null` until a reply carries
+   * one, which is the honest starting point — the wall does not know, so the
+   * strip does not draw. Home seeds it from `/me` on load.
+   */
+  const [credits, setCredits] = useState<Credits | null>(null);
   const convoId = useRef<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -115,6 +141,11 @@ export function useKaiWall(mode: GoalMode, seed: WallItem[]) {
             } else if (f.type === 'error') {
               if (!started) { started = true; startReply(); }
               patchText(replyId, f.message_plain);
+            } else {
+              // The balance, if this frame carried one. Anything else is
+              // ignored, which is what lets the server add a frame safely.
+              const c = creditsFromFrame(f);
+              if (c) setCredits(c);
             }
           },
           onError: (m) => {
@@ -152,7 +183,7 @@ export function useKaiWall(mode: GoalMode, seed: WallItem[]) {
     setItems((p) => (extra.every((e) => p.some((it) => it.id === e.id)) ? p : [...p, ...extra.filter((e) => !p.some((it) => it.id === e.id))]));
   }, []);
 
-  return { items, send, append, streaming, pinnedSetupId: pinnedSetupId || null };
+  return { items, send, append, streaming, credits, setCredits, pinnedSetupId: pinnedSetupId || null };
 }
 
 export const wallId = nextId;
@@ -180,6 +211,12 @@ export function useKaiThread(opts: {
   const { mode, context, key, opening } = opts;
   const [items, setItems] = useState<WallItem[]>([]);
   const [streaming, setStreaming] = useState(false);
+  /**
+   * The sheet spends credits exactly like Home does — it is the same route and
+   * the same stream — so it reads the same frame. Kai's refusal arrives here as
+   * ordinary text, in his own voice, and needs no special handling.
+   */
+  const [credits, setCredits] = useState<Credits | null>(null);
   const convoId = useRef<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -286,6 +323,11 @@ export function useKaiThread(opts: {
             } else if (f.type === 'error') {
               if (!started) { started = true; startReply(); }
               patchText(replyId, f.message_plain);
+            } else {
+              // The balance, if this frame carried one. Anything else is
+              // ignored, which is what lets the server add a frame safely.
+              const c = creditsFromFrame(f);
+              if (c) setCredits(c);
             }
           },
           onError: (m) => {
@@ -313,5 +355,5 @@ export function useKaiThread(opts: {
     setItems((p) => [...p, { kind: 'notice', id: nextId(), text }]);
   }, []);
 
-  return { items, send, streaming, removeItem, pushNotice };
+  return { items, send, streaming, credits, removeItem, pushNotice };
 }

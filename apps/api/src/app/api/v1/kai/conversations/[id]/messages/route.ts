@@ -52,6 +52,7 @@ import { autoTitle, touchConversation } from '@/lib/round4/conversations';
 import { loadChartContext } from '@/lib/round4/chart-context';
 import { answerOnChart, levelTableFor } from '@/lib/kai/chart-answer';
 import { KAI_TOOLS, TOOL_PROTOCOL, runKaiTool } from '@/lib/kai/tools';
+import { chargeQuestion, creditBlock, creditState } from '@/lib/kai/credits';
 import type Anthropic from '@anthropic-ai/sdk';
 
 export const dynamic = 'force-dynamic';
@@ -123,7 +124,22 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
       throw new ApiError('KAI_UNAVAILABLE', 'Kai is offline right now. Your message was not sent.');
     }
 
+    /**
+     * --- THE CREDIT CHECK ------------------------------------------------
+     *
+     * BEFORE the model runs, and at the ROUTE rather than inside the call,
+     * because ONE QUESTION IS ONE CHARGE and one question makes up to five
+     * model calls. See lib/kai/credits.ts for the whole rule set; the two that
+     * matter here are that it fails OPEN — a credit system that cannot be read
+     * lets the message through and shouts in the log — and that the charge
+     * happens after the answer, never before.
+     */
+    const credits = await creditState(user.id, requestId);
+
     // --- persist the user turn -------------------------------------------
+    // The question is written down even when there are no credits for it. It
+    // was asked; a conversation that silently drops what someone typed reads
+    // like the app lost it.
     const userSeq = await nextSeq(conversationId);
     await db.from('conversation_messages').insert({
       conversation_id: conversationId,
@@ -131,6 +147,46 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
       role: 'user',
       content: { text: parsed.data.content },
     });
+
+    /**
+     * OUT OF CREDITS IS SOMETHING KAI SAYS, NOT AN ERROR THE APP CATCHES.
+     *
+     * It comes back as a normal stream carrying a normal Kai turn, in his own
+     * voice, saying which limit it was and what to do about it — so it lands in
+     * the conversation like any other answer instead of as a toast over the top
+     * of one. The two reasons are DIFFERENT SENTENCES on purpose: "come back
+     * tomorrow" and "this month has cost more than the plan covers" ask
+     * different things of the person.
+     *
+     * No model call is made, so this costs nothing to serve.
+     */
+    if (credits.verdict !== 'allow' && credits.refusal_plain) {
+      const plain = credits.refusal_plain;
+      const blockedSeq = userSeq + 1;
+      await db.from('conversation_messages').insert({
+        conversation_id: conversationId,
+        seq: blockedSeq,
+        role: 'kai',
+        content: { text: plain, blocked: credits.verdict },
+      });
+      log('info', requestId, 'credits.blocked', {
+        user_id: user.id,
+        plan: credits.plan.key,
+        reason: credits.verdict,
+        available: credits.available,
+        spent_usd: credits.spent_usd,
+      });
+      const blockedStream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const sse = new SseWriter(controller);
+          sse.textDelta(plain);
+          sse.frame('credits', { type: 'credits', credits: creditBlock(credits) });
+          sse.done({ conversation_id: conversationId, message_id: '', seq: blockedSeq, degraded: false });
+          sse.close();
+        },
+      });
+      return new Response(blockedStream, { headers: { ...SSE_HEADERS, 'x-request-id': requestId } });
+    }
 
     // --- context assembly -------------------------------------------------
     const mode = (conv.mode ?? 'day_trade') as AppMode;
@@ -788,6 +844,40 @@ Never include a price. Never invent a command they did not ask for.`,
           log('warn', requestId, 'conversation.post_turn_failed', {
             message: e instanceof Error ? e.message : String(e),
           });
+        }
+
+        /**
+         * --- THE CHARGE ------------------------------------------------
+         *
+         * AFTER the answer, so nothing here can take it away — the person has
+         * already read it. The cost comes from the rows `usage.ts` wrote for
+         * THIS request id, so a question that made four model calls is one
+         * charge computed from all four.
+         *
+         * AN ANSWER THAT FAILED IS NOT CHARGED FOR. `degraded` is set when the
+         * stream broke or came back with nothing at all; the model calls behind
+         * it still cost real money, and that is exactly what the plan's dollar
+         * ceiling is there to catch. Billing someone a credit for a blank reply
+         * is not.
+         */
+        const delivered = Boolean(narrative.trim()) || emitted.length > 0
+          || chartFrames.length > 0 || chartAnswers.length > 0;
+        if (delivered) {
+          await chargeQuestion({ userId: user.id, state: credits, requestId, conversationId });
+        } else {
+          log('info', requestId, 'credits.not_charged', { user_id: user.id, reason: 'nothing_delivered' });
+        }
+
+        /**
+         * The balance goes out with the reply so the strip above the composer
+         * is right the moment the answer lands, without a second round trip.
+         * It is re-read rather than adjusted in memory: the charge is the only
+         * thing that knows what the question actually came to.
+         */
+        try {
+          sse.frame('credits', { type: 'credits', credits: creditBlock(await creditState(user.id, requestId)) });
+        } catch {
+          /* the balance strip can wait for the next read; the answer cannot */
         }
 
         sse.done({ conversation_id: conversationId, message_id: kaiMessageId, seq: kaiSeq, degraded });

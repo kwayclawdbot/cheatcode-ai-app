@@ -23,12 +23,13 @@ import { canResetPaper, resetPlain } from '@/lib/paper';
 import { readPrefs } from '@/lib/prefs';
 import { kaiProfile, ruleAdherence } from '@/lib/round4/profile-round4';
 import { loadStaffRole, staffPlain } from '@/lib/admin/staff';
+import { creditBlock, creditState } from '@/lib/kai/credits';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
   const db = serviceClient();
-  const [profile, risk, ent, account, notifPrefs, counts, adherence, staffRole] = await Promise.all([
+  const [profile, risk, ent, account, notifPrefs, counts, adherence, staffRole, credits] = await Promise.all([
     loadProfile(ctx.user.id),
     loadRiskPolicy(ctx.user.id),
     loadEntitlements(ctx.user.id),
@@ -48,6 +49,9 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
     countBlock(ctx.user.id),
     ruleAdherence(ctx.user.id),
     loadStaffRole(ctx.user.id),
+    // The Account tab draws the credit strip from this. It is the same call the
+    // message route makes, so the two can never disagree about the balance.
+    creditState(ctx.user.id, ctx.requestId),
   ]);
 
   const acc = (account.data as Record<string, unknown> | null) ?? null;
@@ -125,6 +129,9 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
       // every admin byte still comes from a `staffed()` route that asks
       // `staff_members` again. Re-derived on every /me, so a revoked role is
       // gone from the next screen the user opens rather than at token expiry.
+      // ---- 0030: the allowance ----------------------------------------
+      credits: creditBlock(credits),
+
       staff: {
         is_staff: staffRole !== null,
         role: staffRole,

@@ -21,7 +21,8 @@ import type {
   WatchingItem as ApiWatchingItem,
 } from '@cheatcode/shared';
 import type {
-  AlertRow, AlertsPayload, Briefing, BriefingLine, Freshness, GradedSetup,
+  AlertRow, AlertsPayload, Briefing, BriefingLine, CreditPlan, Credits,
+  CreditsPayload, Freshness, GradedSetup,
   HomePayload, KaiActionPreview, MarketStatus, NotificationCategory,
   NotificationCategoryMap, PushDevice, PushPlatform, PushRegistry,
   PushSubscriptionState, PushSuppression, PushTestResult, PushTransport, Quote,
@@ -791,6 +792,100 @@ const EXPLAIN_LEVEL = (v: unknown): ExplainLevel => {
   return s === 'beginner' || s === 'intermediate' || s === 'advanced' || s === 'family' ? s : 'beginner';
 };
 
+/* ==================================================================== */
+/* Credits (migration 0030)                                              */
+/* ==================================================================== */
+
+/**
+ * `null` WHEN THERE IS NOTHING TO SHOW, and that is the important half.
+ *
+ * An API build that predates 0030 answers no `credits` block at all. The right
+ * response to that is to hide every credit surface, not to invent a balance:
+ * "10 of 10 left today" rendered over a live account is a fabricated record,
+ * indistinguishable from a real one, and the person would plan around it.
+ *
+ * So this returns null unless the server actually sent a grant. Everything else
+ * is read defensively — a missing sentence becomes null and the screen says
+ * nothing rather than making one up.
+ */
+export function adaptCredits(v: unknown): Credits | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const c = obj(v);
+  const granted = nNum(c.granted);
+  // No grant means no allowance was reported. Not "zero credits" — those are
+  // completely different things and only one of them should draw a UI.
+  if (granted === null) return null;
+
+  const used = nNum(c.used) ?? 0;
+  const topup = nNum(c.topup) ?? 0;
+  const remaining = nNum(c.remaining) ?? Math.max(granted - used, 0);
+  const available = nNum(c.available) ?? remaining + topup;
+  const total = granted + topup;
+  const reason = str(c.blocked_reason);
+
+  return {
+    plan: str(c.plan, 'free'),
+    plan_name: str(c.plan_name, 'Free'),
+    granted,
+    used,
+    remaining,
+    topup,
+    available,
+    // Recomputed only when the server did not say. Percentages are cheap to
+    // derive and expensive to disagree about.
+    pct_used: nNum(c.pct_used) ?? (total > 0 ? Math.round((100 * used) / total) : 0),
+    resets_at: nStr(c.resets_at),
+    what_a_credit_is: str(c.what_a_credit_is),
+    typical_runs_per_day: nNum(c.typical_runs_per_day) ?? 0,
+    warning_plain: nStr(c.warning_plain),
+    blocked: bool(c.blocked),
+    blocked_reason: reason === 'out_of_credits' || reason === 'ceiling' ? reason : null,
+    blocked_plain: nStr(c.blocked_plain),
+    // THE DEFAULT IS OPEN, and deliberately so. This flag only decides whether
+    // the app DRAWS the Trade tab; the server refuses the routes either way. A
+    // build that cannot tell should show the tab and let the honest refusal do
+    // its job, rather than hiding a section a paying customer has.
+    trade_panel: bool(c.trade_panel, true),
+  };
+}
+
+function adaptCreditPlan(v: unknown): CreditPlan | null {
+  const p = obj(v);
+  const key = str(p.key);
+  if (!key) return null;
+  return {
+    key,
+    name: str(p.name, key),
+    price_usd: nNum(p.price_usd) ?? 0,
+    daily_credits: nNum(p.daily_credits) ?? 0,
+    typical_runs_per_day: nNum(p.typical_runs_per_day) ?? 0,
+    trade_panel: bool(p.trade_panel),
+    blurb: str(p.blurb),
+  };
+}
+
+/** `GET /credits`. Throws nothing — a shape it cannot read becomes an empty
+ *  ladder and the screen says the service is not connected. */
+export function adaptCreditsPayload(v: unknown): CreditsPayload | null {
+  const r = obj(v);
+  const credits = adaptCredits(r.credits);
+  if (!credits) return null;
+  const t = obj(r.topup);
+  const topupCredits = nNum(t.credits);
+  return {
+    credits,
+    plans: arr(r.plans).map(adaptCreditPlan).filter((p): p is CreditPlan => p !== null),
+    // A pack with no credit count is not a pack. Hidden rather than sold blank.
+    topup: topupCredits === null ? null : {
+      key: str(t.key, 'topup'),
+      name: str(t.name, 'Top-up'),
+      credits: topupCredits,
+      price_usd: nNum(t.price_usd) ?? 0,
+      blurb: str(t.blurb),
+    },
+  };
+}
+
 export function adaptMe(v: unknown): Me {
   const r = obj(v);
   const p = obj(r.profile);
@@ -856,6 +951,9 @@ export function adaptMe(v: unknown): Me {
       push_enabled: bool(settings.push_enabled, true),
       notification_categories: adaptNotificationCategories(settings.notification_categories),
     },
+    // 0030. Null when the API did not send one — every credit surface then
+    // hides itself rather than drawing a balance nobody has.
+    credits: adaptCredits(r.credits),
     // Round 6. The DEFAULT IS NOT STAFF, and it is the default for every way
     // this can be unknown: an API that predates 0025, a malformed block, a
     // fixture. A door that appears when we are unsure is a door.

@@ -38,6 +38,7 @@ import { Button } from '../../ui/Button';
 import { ScreenLoading } from '../../ui/Loading';
 import { color, radius } from '../../ui/tokens';
 import { useSession } from '../../lib/session';
+import { env } from '../../lib/env';
 import type { GoalMode } from '../../lib/types';
 import { ChartView } from '../chart/ChartView';
 import { AnnotationRail } from '../chart/AnnotationRail';
@@ -52,6 +53,7 @@ import { planCommand, useKaiPortal } from '../portal/useKaiPortal';
 import type { PortalCommandResult } from '../portal/useKaiPortal';
 import { rememberSymbol } from '../portal/last-symbol';
 import type { Annotation, ChartCommand, PortalTimeframe } from '../portal/types';
+import { TradeLocked } from './TradeLocked';
 import { Spine, SpineFooter } from './Spine';
 import { DecideBeat, type KaiReadState } from './Decide';
 import { ConfirmCard, Receipt } from './Take';
@@ -96,14 +98,14 @@ export default function TradePortalV2() {
   const { profile } = useSession();
   const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? 'day_trade';
   const params = useLocalSearchParams<{
-    symbol?: string; alert?: string; setup?: string; beat?: string; sim?: string;
+    symbol?: string; alert?: string; setup?: string; beat?: string; sim?: string; locked?: string;
   }>();
 
   const symbol = String(params.symbol ?? '').toUpperCase();
   const alertId = params.alert ? String(params.alert) : null;
   const setupId = params.setup ? String(params.setup) : null;
 
-  const { data, annotations, upsertAnnotation, setAnnotationStatus, loading, error, reload } =
+  const { data, annotations, upsertAnnotation, setAnnotationStatus, loading, error, locked, reload } =
     usePortal(symbol, { alert: alertId, setup: setupId, ctx: 'kai', mode });
 
   const [beat, setBeat] = useState<Beat>(
@@ -221,6 +223,20 @@ export default function TradePortalV2() {
         </View>
       </Screen>
     );
+  }
+
+  /**
+   * THE PLAN SAID NO, AND THAT IS NOT AN ERROR.
+   *
+   * Checked BEFORE the loading and failure branches, because a free account
+   * reaching this route — from an alert, from the desk, from a saved link — is
+   * an expected journey and not a fault. It used to land on "I could not open
+   * that chart just now" with a Try again button that could never work.
+   */
+  // `?locked=1` is a FIXTURES-ONLY preview of that screen. On a real stack the
+  // parameter does nothing: `locked` comes from the server's own 402.
+  if (locked || (env.FIXTURES && params.locked === '1')) {
+    return <TradeLocked symbol={symbol} plain={locked ? error : null} />;
   }
 
   if (!data && loading) {

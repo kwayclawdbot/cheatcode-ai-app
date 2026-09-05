@@ -333,6 +333,51 @@ export const KaiEmittedObject = z.discriminatedUnion('type', [
 ]);
 export type KaiEmittedObject = z.infer<typeof KaiEmittedObject>;
 
+/* ---- credits (migration 0030) --------------------------------------- */
+
+/**
+ * WHAT THE APP IS TOLD ABOUT THE ALLOWANCE.
+ *
+ * CREDITS ONLY. No tokens, no dollars, no model names — those are the owner's
+ * business and they live behind the staff-only admin route. The person sees a
+ * number, when it comes back, and one sentence about what a credit buys.
+ *
+ * `typical_runs_per_day` is TYPICAL and every piece of copy built on it says
+ * "about". A credit is proportional to the work a question causes, so a day of
+ * simple questions buys more than the number and a day of heavy chart lookups
+ * buys fewer. A hard promise here is one the system would break.
+ *
+ * NONE OF IT IS A GATE. Whether a message goes through is decided on the
+ * server, on the message route, every time. This block exists so the strip
+ * above the composer can be honest before somebody types.
+ */
+export const CreditsBlock = z.object({
+  plan: z.string(),
+  plan_name: z.string(),
+  /** Today's grant. It resets nightly and does not roll over. */
+  granted: z.number(),
+  used: z.number(),
+  remaining: z.number(),
+  /** Purchased credits, which do NOT reset with the day. */
+  topup: z.number(),
+  available: z.number(),
+  pct_used: z.number(),
+  resets_at: z.string(),
+  what_a_credit_is: z.string(),
+  typical_runs_per_day: z.number(),
+  /** Set once 80% of the day is gone, null before that. */
+  warning_plain: z.string().nullable(),
+  blocked: z.boolean(),
+  /** `out_of_credits` and `ceiling` mean different things and need different
+   *  actions from the person, so the reason travels with the refusal. */
+  blocked_reason: z.enum(['out_of_credits', 'ceiling']).nullable(),
+  blocked_plain: z.string().nullable(),
+  /** Whether this plan opens the Trade section. A courtesy for the tab bar —
+   *  the real gate is `entitlement_flags`, checked on every Trade route. */
+  trade_panel: z.boolean(),
+});
+export type CreditsBlock = z.infer<typeof CreditsBlock>;
+
 /* ------------------------------------------------------------------ */
 /* Kai SSE frames                                                       */
 /* ------------------------------------------------------------------ */
@@ -357,16 +402,30 @@ export const KaiFrameError = z.object({
   code: ErrorCode,
   message_plain: z.string(),
 });
+/**
+ * THE BALANCE, SENT WITH THE REPLY.
+ *
+ * It arrives just before `done` on an answered question, and instead of an
+ * answer when the balance is gone — in which case `text_delta` carried Kai
+ * saying so in his own words first, and this frame is what tells the app which
+ * of the two limits it was. Sending it on the stream means the strip above the
+ * composer is right the moment the answer lands, with no second request.
+ */
+export const KaiFrameCredits = z.object({
+  type: z.literal('credits'),
+  credits: CreditsBlock,
+});
 
 export const KaiFrame = z.discriminatedUnion('type', [
   KaiFrameTextDelta,
   KaiFrameObject,
   KaiFrameDone,
   KaiFrameError,
+  KaiFrameCredits,
 ]);
 export type KaiFrame = z.infer<typeof KaiFrame>;
 /** SSE `event:` names, one per frame type. */
-export const KAI_SSE_EVENTS = ['text_delta', 'object', 'done', 'error'] as const;
+export const KAI_SSE_EVENTS = ['text_delta', 'object', 'done', 'error', 'credits'] as const;
 
 /* ------------------------------------------------------------------ */
 /* POST /api/v1/onboarding/complete                                     */
@@ -4752,7 +4811,33 @@ export const MeStaffBlock = z.object({
 });
 export type MeStaffBlock = z.infer<typeof MeStaffBlock>;
 
+export const CreditPlanRow = z.object({
+  key: z.string(),
+  name: z.string(),
+  price_usd: z.number(),
+  daily_credits: z.number(),
+  typical_runs_per_day: z.number(),
+  trade_panel: z.boolean(),
+  blurb: z.string(),
+});
+export type CreditPlanRow = z.infer<typeof CreditPlanRow>;
+
+export const CreditsResponse = z.object({
+  credits: CreditsBlock,
+  plans: z.array(CreditPlanRow),
+  topup: z.object({
+    key: z.string(),
+    name: z.string(),
+    credits: z.number(),
+    price_usd: z.number(),
+    blurb: z.string(),
+  }),
+});
+export type CreditsResponse = z.infer<typeof CreditsResponse>;
+
 export const MeRound6Response = MeRound4Response.extend({
   staff: MeStaffBlock,
+  /** Optional so an API build that predates 0030 still parses. */
+  credits: CreditsBlock.nullable().default(null),
 });
 export type MeRound6Response = z.infer<typeof MeRound6Response>;

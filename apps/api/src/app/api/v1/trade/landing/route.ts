@@ -26,6 +26,7 @@ import {
   type RecentSymbol,
 } from '@shared/api';
 import { authed, ok, parseQuery, type Ctx } from '@/lib/http';
+import { requireTradePanel } from '@/lib/entitlements';
 import { serviceClient } from '@/lib/db';
 import { marketBlock, marketDate } from '@/lib/market';
 import { getSnapshot } from '@/lib/market/polygon';
@@ -57,6 +58,9 @@ async function universe(mode: string): Promise<string[]> {
 }
 
 export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
+  // The Trade section is a paid feature (0030). Server side, because a hidden
+  // tab is decoration and this is the gate.
+  await requireTradePanel(ctx.user.id);
   ensureDevTicker();
   const q = parseQuery(req, TradeLandingQuery);
   const db = serviceClient();

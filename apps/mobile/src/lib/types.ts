@@ -330,6 +330,85 @@ export type EntitlementFlag = {
   included: boolean;
 };
 
+/* ==================================================================== */
+/* Credits (migration 0030)                                              */
+/* ==================================================================== */
+
+/**
+ * WHAT THE APP KNOWS ABOUT THE ALLOWANCE.
+ *
+ * CREDITS ONLY. There are no tokens and no dollars in this type, and there must
+ * not be: the person is shown a number of credits, when it comes back, and one
+ * plain sentence about what a credit buys. What Kai costs to run is the owner's
+ * business and lives behind the staff-only admin board.
+ *
+ * NONE OF IT IS A GATE. Whether a message goes through is decided on the
+ * server, on the message route, every single time. This exists so the strip
+ * above the composer can be honest BEFORE somebody types — a courtesy, not a
+ * control. An app that decided for itself would be a suggestion.
+ */
+export type Credits = {
+  plan: string;
+  plan_name: string;
+  /** Today's grant. It resets nightly and does not roll over. */
+  granted: number;
+  used: number;
+  remaining: number;
+  /** Purchased credits, which do NOT reset with the day. */
+  topup: number;
+  /** Grant + purchased — what they can actually still ask with. */
+  available: number;
+  pct_used: number;
+  resets_at: string | null;
+  what_a_credit_is: string;
+  /**
+   * About how many questions a day this plan is sized for. ABOUT is the whole
+   * point: a credit is proportional to the work a question causes, so a day of
+   * simple questions buys more than this and a day of heavy chart lookups buys
+   * fewer. Never rendered as a hard promise.
+   */
+  typical_runs_per_day: number;
+  /** Set once 80% is gone, null before that. The server writes the sentence. */
+  warning_plain: string | null;
+  blocked: boolean;
+  /**
+   * The two reasons mean different things and need different actions from the
+   * person: `out_of_credits` clears tomorrow, `ceiling` is this month's cost
+   * limit and clears with the month. They are never collapsed into one.
+   */
+  blocked_reason: 'out_of_credits' | 'ceiling' | null;
+  blocked_plain: string | null;
+  /** Whether this plan opens the Trade section. A courtesy for the tab bar —
+   *  the real gate is on the server, on every Trade route. */
+  trade_panel: boolean;
+};
+
+/** One rung of the ladder, as the server describes it. Never a marketing list
+ *  typed into the app: a price change has to land in one place. */
+export type CreditPlan = {
+  key: string;
+  name: string;
+  price_usd: number;
+  daily_credits: number;
+  typical_runs_per_day: number;
+  trade_panel: boolean;
+  blurb: string;
+};
+
+export type TopupPack = {
+  key: string;
+  name: string;
+  credits: number;
+  price_usd: number;
+  blurb: string;
+};
+
+export type CreditsPayload = {
+  credits: Credits;
+  plans: CreditPlan[];
+  topup: TopupPack | null;
+};
+
 export type QuietHours = { start?: string | null; end?: string | null; enabled?: boolean };
 
 export type AppSettings = {
@@ -352,6 +431,13 @@ export type Me = {
   entitlements: EntitlementFlag[];
   memory_enabled: boolean;
   settings: AppSettings;
+  /**
+   * The daily allowance, or null. NULL IS THE HONEST DEFAULT: an API build that
+   * predates migration 0030 answers nothing here, and every credit surface then
+   * hides itself rather than drawing a balance nobody has. A fabricated "10 of
+   * 10 left" over a live account would look exactly like a real one.
+   */
+  credits: Credits | null;
   /**
    * Round 6. Whether to DRAW the operator's row in Account — a courtesy, not a
    * control (brief §3). It is re-derived by the server on every `/me`, and it
