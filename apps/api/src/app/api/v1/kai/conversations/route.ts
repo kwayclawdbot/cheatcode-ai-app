@@ -78,13 +78,52 @@ export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
     pinned.symbols = [...new Set([...(pinned.symbols ?? []), sheet.symbol])];
   }
 
+  /**
+   * A CONVERSATION ABOUT A SYMBOL IS A CONVERSATION ABOUT ITS CHART.
+   *
+   * THE BUG THIS FIXES, in the owner's words: "when asked to mark what's on
+   * chart the chart moves but nothing happens". Asked to mark SPY, Kai replied
+   * *"I have no chart data to mark or read for it"* — which is false. Twenty-one
+   * levels and eight drawings resolve on SPY off stored bars; the proof harness
+   * draws every one of them.
+   *
+   * He was not refusing. HE WAS NEVER GIVEN THE CHART. `chartCtx` in the message
+   * handler is loaded from `context.chart` on the conversation row, and only the
+   * Trade Portal ever wrote that block. Every conversation made through THIS
+   * route — the Kai sheet on the ticker page, the sheet on a plan, the workspace
+   * tabs, and the portal's own fallback when it opens without a conversation —
+   * was stamped with a `sheet` and no `chart`. So `loadChartContext` returned
+   * null, the chart protocol and the resolved level list were both left out of
+   * the prompt, no chart command could be issued, and the last line of the
+   * context told him to say he has no graded setup and invent nothing. He did
+   * exactly as instructed. The chart still moved, because the camera work runs
+   * on the client, so it looked like drawing that silently failed.
+   *
+   * THIS CHANGES NOTHING ABOUT WHAT HE MAY CLAIM. The chart block carries a
+   * symbol and a timeframe, never a price — every number is still resolved
+   * server-side from a real row, and a level that will not resolve is still
+   * dropped rather than filled in. Nor does it grant a trade plan: `setup_id`
+   * is only set when a graded setup actually exists, so an ungraded symbol gets
+   * a markable chart and still gets no entry, stop or target.
+   */
+  const chart = sheet.symbol
+    ? {
+        symbol: sheet.symbol,
+        timeframe: '1d',
+        setup_id: body.context?.kind === 'setup' ? (body.context.id ?? null) : null,
+        alert_id: body.context?.kind === 'alert' ? (body.context.id ?? null) : null,
+        plan_id: null,
+        trigger_ts: null,
+      }
+    : null;
+
   const { data, error } = await db
     .from('conversations')
     .insert({
       user_id: ctx.user.id,
       mode: body.mode,
       title: body.title ?? (sheet.context ? sheet.header_plain : null),
-      context: { pinned, sheet: body.context ?? null },
+      context: { pinned, sheet: body.context ?? null, ...(chart ? { chart } : null) },
     })
     .select('id,mode,created_at')
     .single();
