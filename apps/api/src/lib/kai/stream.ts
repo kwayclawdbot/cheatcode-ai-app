@@ -287,17 +287,32 @@ export async function gateAndPersist(opts: {
 
 export type KaiTurn = { role: 'user' | 'assistant'; content: string };
 
+/**
+ * One model turn, streamed.
+ *
+ * `messages` takes the SDK's own `MessageParam[]` as well as the plain
+ * {role, content:string} turns this app has always used, because a conversation
+ * that uses TOOLS is no longer a list of strings: the assistant turn carrying a
+ * tool call is a list of content blocks, and the reply to it is a list of
+ * `tool_result` blocks. Both have to go back on the next request verbatim.
+ *
+ * `tools` is optional and off by default. Nothing that does not want tools —
+ * the briefing job, the recovery classifier, the director — has its behaviour
+ * or its bill changed by their existing.
+ */
 export function messageStream(opts: {
   system: string;
-  messages: KaiTurn[];
+  messages: (KaiTurn | Anthropic.MessageParam)[];
   maxTokens?: number;
+  tools?: Anthropic.Tool[];
 }) {
   return anthropic().messages.stream({
     model: KAI_MODEL(),
     max_tokens: opts.maxTokens ?? 4000,
     output_config: { effort: 'low' },
     system: opts.system,
-    messages: opts.messages.map((m) => ({ role: m.role, content: m.content })),
+    messages: opts.messages.map((m) => ({ role: m.role, content: m.content }) as Anthropic.MessageParam),
+    ...(opts.tools?.length ? { tools: opts.tools } : null),
   });
 }
 

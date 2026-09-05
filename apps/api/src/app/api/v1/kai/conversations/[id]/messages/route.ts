@@ -49,6 +49,8 @@ import { containsGlossaryNote, experienceOf, termsUsed, voicePromptBlock } from 
 import { autoTitle, touchConversation } from '@/lib/round4/conversations';
 import { loadChartContext } from '@/lib/round4/chart-context';
 import { answerOnChart, levelTableFor } from '@/lib/kai/chart-answer';
+import { KAI_TOOLS, TOOL_PROTOCOL, runKaiTool } from '@/lib/kai/tools';
+import type Anthropic from '@anthropic-ai/sdk';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -217,7 +219,9 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
       mode,
     })}${sheet.prompt_block ? `\n\n${SHEET_ACTION_PROTOCOL}` : ''}
 
-${voicePromptBlock(experience, alreadyExplained)}${
+${voicePromptBlock(experience, alreadyExplained)}
+
+${TOOL_PROTOCOL}${
       chartCtx
         ? `\n\n${chartCommandProtocol({
             symbol: chartCtx.symbol,
@@ -388,22 +392,85 @@ ${renderContext(kctx, chartOnScreen)}${sheet.prompt_block ? `\n\n${sheet.prompt_
         };
 
         try {
-          const ms = messageStream({ system, messages: turns });
-          for await (const event of ms) {
-            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-              const { text, objects } = splitter.push(event.delta.text);
-              const chart = chartSplitter.push(text);
-              const ans = answerSplitter.push(chart.text);
-              if (ans.text) {
-                narrative += ans.text;
-                sse.textDelta(ans.text);
+          /**
+           * THE TOOL LOOP.
+           *
+           * Kai used to get exactly one model turn, and his whole world was the
+           * string assembled above — the user's profile, their risk policy, a
+           * handful of ranked scanner rows and a market block that says only
+           * whether the market is open. NO PRICES. Ask him about a ticker the
+           * scanner had no opinion about and he had, truthfully, nothing to say,
+           * which is what the owner saw: *"kai is not connected to any live
+           * polygon data."* Polygon was live in the same process the whole time.
+           *
+           * So he now gets tools and therefore gets more than one turn: he asks
+           * for a price or a chart's levels, the server goes and gets them from
+           * the same code the rest of the app uses, and the loop runs again with
+           * the answer in hand. It ends when he stops asking.
+           *
+           * THE SPLITTERS SPAN THE WHOLE LOOP, not one turn. They are declared
+           * outside it and only flushed after it, so a fenced block that begins
+           * in one turn and finishes in the next is still one block. Flushing per
+           * turn would cut a chart answer in half.
+           *
+           * `MAX_TOOL_TURNS` is a stop, not a target. Tools cost a round trip
+           * each and a model that keeps looking things up is a model that has
+           * stopped answering; the cap ends the loop and the reply is whatever
+           * he has said by then, which is still an answer.
+           */
+          const MAX_TOOL_TURNS = 4;
+          const convo: Anthropic.MessageParam[] = turns.map((t) => ({ role: t.role, content: t.content }));
+
+          for (let turn = 0; turn <= MAX_TOOL_TURNS; turn += 1) {
+            const ms = messageStream({
+              system,
+              messages: convo,
+              // The last permitted turn runs WITHOUT tools, so it cannot end on
+              // another request to look something up that nothing will answer.
+              tools: turn < MAX_TOOL_TURNS ? KAI_TOOLS : undefined,
+            });
+            for await (const event of ms) {
+              if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+                const { text, objects } = splitter.push(event.delta.text);
+                const chart = chartSplitter.push(text);
+                const ans = answerSplitter.push(chart.text);
+                if (ans.text) {
+                  narrative += ans.text;
+                  sse.textDelta(ans.text);
+                }
+                if (objects.length) await handleObjects(objects);
+                if (chart.objects.length) await handleChartCommands(chart.objects);
+                // Directed at the flush, not here: an answer is one performance
+                // and the whole body has to be in hand before it can be timed.
+                if (ans.objects.length) answerBodies.push(...ans.objects);
               }
-              if (objects.length) await handleObjects(objects);
-              if (chart.objects.length) await handleChartCommands(chart.objects);
-              // Directed at the flush, not here: an answer is one performance
-              // and the whole body has to be in hand before it can be timed.
-              if (ans.objects.length) answerBodies.push(...ans.objects);
             }
+
+            const finished = await ms.finalMessage();
+            if (finished.stop_reason !== 'tool_use') break;
+
+            const calls = finished.content.filter(
+              (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+            );
+            if (!calls.length) break;
+
+            // The assistant turn goes back UNCHANGED — the tool_use blocks in it
+            // are what each result is answering.
+            convo.push({ role: 'assistant', content: finished.content });
+            const results: Anthropic.ToolResultBlockParam[] = await Promise.all(
+              calls.map(async (c) => ({
+                type: 'tool_result' as const,
+                tool_use_id: c.id,
+                content: JSON.stringify(
+                  await runKaiTool(c.name, (c.input ?? {}) as Record<string, unknown>, {
+                    userId: user.id, mode, requestId,
+                  }),
+                ),
+              })),
+            );
+            // EVERY result in ONE user message. Splitting them across messages
+            // silently teaches the model to stop asking for things in parallel.
+            convo.push({ role: 'user', content: results });
           }
           const tail = splitter.flush();
           const chartTail = chartSplitter.push(tail.text);
