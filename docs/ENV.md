@@ -187,3 +187,52 @@ On a physical phone, replace `127.0.0.1` with the Mac's LAN IP in
 `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_API_BASE`.
 
 Verify the stack with `node scripts/rls-test.mjs` (expects `RLS TEST PASSED`).
+
+---
+
+## Hosted (2026-09-05) — the app with no laptop behind it
+
+The phone app now reads a database in the cloud and an API in the cloud. The
+only thing this Mac still does is hand Expo Go the app's code over Wi-Fi
+(`npx expo start`). There is no second terminal any more, and no local Supabase.
+
+| Piece | Where it is |
+|---|---|
+| App database (accounts, alerts, paper trades) | Supabase project `eqepjztjmzmpvmlqsdiz` |
+| Research brain (themes, picks, watchlist) | Supabase project `ryprohqthwflinadqotj`, read-only |
+| API | Vercel project `cheatcode-ai-api` → `https://cheatcode-ai-api.vercel.app` |
+
+**Every API secret lives on Vercel, not in this repository.** The repository is
+public. `vercel env ls production` lists the names; `apps/api/.env.prod` is the
+same set, git-ignored, for running the API locally against hosted data.
+
+**Deploying the API.** From the repository root (not `apps/api` — the project's
+root directory is already set to `apps/api`, and `packages/shared` sits outside
+it and has to travel with the upload):
+
+```
+vercel deploy --prod --archive=tgz --yes
+```
+
+**Four scheduled jobs run themselves**, defined in `apps/api/vercel.json`: the
+paper-trade tick and the push drain every minute, and the alert pipe every ten
+minutes through the session plus once after the close. The alert pipe is what
+keeps the Alerts tab current — it pulls new picks out of the scanner database
+and writes them into `setups`. Check it by hand with:
+
+```
+curl "https://cheatcode-ai-api.vercel.app/api/v1/internal/swing/ingest?dry=1" \
+  -H "Authorization: Bearer $INTERNAL_SECRET"
+```
+
+**The phone.** `apps/mobile/.env` decides which stack the app talks to, and two
+ready-made copies sit beside it: `.env.hosted` and `.env.laptop`. Switch with
+`cp .env.hosted .env` (or `.env.laptop`) then `npx expo start --clear` — the
+values are baked into the bundle when Expo starts, so the `--clear` matters.
+`apps/mobile/.env.example` is the committed, key-free version of both.
+
+**Cross-origin.** Expo Go is native, and native has no CORS, so the app calls
+`https://cheatcode-ai-api.vercel.app` directly. Expo *web* on this Mac works too:
+`apps/api/src/proxy.ts` already allows `localhost`, `127.0.0.1` and `192.168.x.x`
+origins. A web build served from a real domain would need that domain added to
+`ALLOWED_ORIGINS` on Vercel; nothing else.
