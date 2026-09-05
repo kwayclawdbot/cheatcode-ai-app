@@ -25,7 +25,8 @@ But it breaks the product in three other places, and two of them are things the 
 | Said a position 3× over the limit was inside the limit | **0** | **1** |
 | Told the owner the wrong time of day | **0** | **~12** |
 | Extra lookups per question | 0.52 | 0.55 |
-| Cost per message (cache working) | $0.0094 | $0.0038 |
+| Share of the prompt served from cache | 94.7% | 89.9% |
+| Cost per message (**both measured with caching on**) | $0.0094 | $0.0038 |
 
 The saving is about **$8 per heavy user per month**. The price of it is a Kai who returns a
 blank screen on one chart question in four, and who tells you a $3,016 position is "well
@@ -212,6 +213,60 @@ below the vwap" when it closed above all three averages.
 | Position sizing correct | 3/3 | 1/3 |
 | Remembers the previous turn | 3/3 | 3/3 |
 
+### Does Haiku actually cache? Two of the three markers never fire — and it does not matter
+
+**Both arms of this test ran with the caching already committed** — the same three marked
+system blocks plus the marked conversation tail. So every dollar figure below is *Sonnet with
+caching against Haiku with caching*, measured, not two per-token rates multiplied out.
+
+The worry was real and is confirmed: **the shortest prefix a model will cache is 1,024 tokens
+on Sonnet 5 and 4,096 on Haiku 4.5**, and a marker under that minimum creates nothing
+silently. Measured in each model's own tokens:
+
+| Marker | Sonnet 5 (min 1,024) | Haiku 4.5 (min 4,096) |
+|---|---|---|
+| after "who Kai is" | 3,425 — **caches** | 2,842 — **never caches** |
+| after "how he may act" (no chart) | 4,433 — **caches** | 3,607 — **never caches** |
+| after "how he may act" (chart open) | 7,384 — caches | 5,810 — caches |
+| after "the facts" (no chart) | 6,295 — caches | 5,048 — caches |
+
+So on Haiku, **two of the three breakpoints do nothing on a no-chart question and one does
+nothing on a chart question.** But caching is a *prefix* match, so the last marker still
+covers everything in front of it. What is lost is granularity, not caching. Running the same
+request three times — cold, again, then with the setups changed as if the scanner had
+published:
+
+| | Sonnet 5 | Haiku 4.5 |
+|---|---|---|
+| Settled: read from cache | 6,220 of 6,304 (**98.7%**) | 4,724 of 5,053 (**93.5%**) |
+| Settled: never cached, paid every time | 84 | 329 |
+| After the setups change: read from cache | 4,358 (blocks 1 and 2 survive) | **0** |
+| After the setups change: rewritten | 1,862 (just the facts) | **4,723 (the whole prompt)** |
+| Extra cost of that one call | $0.0043 | $0.0054 |
+
+That is exactly the erosion that was predicted, and on that one call Haiku costs **more** than
+Sonnet. Its size: setups publish a few times a day, so a heavy user pays it on maybe three
+messages out of fifty. **About ten cents per user per month.** It does not move the verdict.
+
+Across all 60 questions per model, the same picture: Haiku served **89.9%** of its prompt from
+cache against Sonnet's **94.7%**, and the share never cached at all was 0.05% against 0.03%.
+Haiku's saving survives the coarser caching because two other things run the other way — its
+tokenizer is more compact on the same text (6,133 tokens against 7,724 for the identical
+prompt) and its answers are shorter (251 output tokens against 391.)
+
+**But there is a cliff, and it is close.** The four tool definitions are worth about 1,250
+tokens and are rendered *before* the system prompt. They are the only reason a no-chart
+question clears Haiku's 4,096 minimum at all: 5,053 with them, **3,807 without.** Measured
+directly:
+
+> **A call with no tools caches nothing whatsoever on Haiku.** 3,807 uncached input tokens on
+> the first call, on the second, and on the third — no cache entry ever created, no error, the
+> answers all fine. Sonnet cached 4,974 of 4,988 on the same calls.
+
+That is 957 tokens of headroom on the chat path. Trim a tool, or the sheet block, or the
+voice block, and Haiku's chat prompt silently stops caching and the bill roughly doubles with
+nothing on screen to say so.
+
 ### Passes and money
 
 Both models take almost exactly the same number of round trips. **This was the main cost
@@ -238,17 +293,29 @@ risk and it did not materialise.**
 
 Haiku is 59% cheaper. **The saving is $8.36 per heavy user per month.**
 
-Two things to put next to that number:
+Three things to put next to that number:
 
-1. **The caching now landing saves more than the model switch does.** It takes Sonnet from
-   $43.64 a month to $14.10 — a $29.54 saving, three and a half times bigger than anything
-   Haiku offers on top. That work is free of risk; this is not.
-2. These figures cover the answering model only. The separate call that decides which levels
+1. **The caching that just landed saves more than the model switch does.** It takes Sonnet
+   from $43.64 a month to $14.10 — a $29.54 saving, three and a half times bigger than
+   anything Haiku offers on top. That work is free of risk; this is not.
+2. The saving is real *after* accounting for Haiku's coarser caching, because both arms were
+   measured with caching on. See the section above: two of three breakpoints never fire on
+   Haiku, which costs about ten cents a user a month, and its more compact tokenizer more
+   than pays that back.
+3. These figures cover the answering model only. The separate call that decides which levels
    get drawn on the chart also reads `KAI_MODEL`, and it was held at Sonnet for both arms so
    the comparison isolated one variable. It cost $0.19 across 30 chart answers — about
    $0.006 each. Switching `KAI_MODEL` would move that call to Haiku too, and **that was not
    tested.** Given that it has to emit clean JSON, and JSON discipline is exactly where
    Haiku failed, it should not be assumed to work.
+
+### Checked against the real ledger
+
+`kai_model_usage` now records every call. It has no Haiku rows — production runs Sonnet — so
+it cannot speak to half of this test, but it does corroborate the Sonnet baseline. Its eight
+hosted chat calls: **2 uncached tokens, 7,067 read from cache**, against my measured 2-3
+uncached and 7,318 read. Within 4%. Model calls per question, 1.60 there against 1.52 here.
+The two measurements agree.
 
 ### What this test cost
 
@@ -267,11 +334,19 @@ chart director, plus a few cents of probes. 120 answers, 186 model calls.
    the model is two lines and removes a live foot-gun.
 3. **The real saving already landed.** The prompt caching cut the bill by 68% on Sonnet.
    That is the win here; take it and stop.
-4. **If the owner still wants a cheaper model, the honest next test is the two background
-   calls that never speak to the user** — the chart director and the missed-command
-   classifier. Neither writes prose the user reads. Both would need their own measurement;
-   I have not run it and will not guess at the answer.
-5. **Worth fixing regardless of model:** the market line hands Kai a bare UTC timestamp with
+4. **Do NOT move the background calls to Haiku either.** I suggested this before measuring
+   the caching, and the measurement killed it. The briefing job, the chart director and the
+   missed-command classifier all call `completeOnce`, which sends **no tools** — and without
+   the tool definitions in front of it the prompt is 3,807 tokens, under Haiku's 4,096
+   minimum, so **it caches nothing at all, ever.** Sonnet caches those same calls in full.
+   Moving them to Haiku would halve the rate and throw away the whole cache discount on
+   them. That is the opposite of the intended trade.
+5. **Watch the 957 tokens of headroom.** The chat prompt only clears Haiku's minimum because
+   the tool definitions are counted. This matters even if nobody switches models: it is the
+   kind of cliff that gets discovered in a bill three months later, and it argues for putting
+   a line in the usage reading that flags any model call where `cache_read_input_tokens` is
+   zero on a prompt that should have been warm.
+6. **Worth fixing regardless of model:** the market line hands Kai a bare UTC timestamp with
    no timezone, while the profile says New York. Sonnet copes; a cheaper model does not.
 
 ---
@@ -290,6 +365,15 @@ Scripts are in `apps/api/scripts/haiku-*.mts`. Nothing under `apps/api/src` was 
 - `haiku-polygon-crosscheck.mts` — checks the app's own tools against Polygon directly
 - `haiku-transcripts.mts` — writes the transcript file
 - `haiku-effort-probe.mts` — the two-model, two-setting probe that found the 400
+- `haiku-cache-probe.mts` — where each marker falls against each model's minimum
+- `haiku-cache-erosion.mts` — cold / warm / setups-changed, with and without tools
+- `haiku-ledger.mts` — reads `kai_model_usage`, local and hosted
+
+**Every run in this report is a clean run.** Another lane restarted the dev server on port
+3011 partway through, which is the usual source of unexplained sign-in failures here. It
+could not have touched this: none of these scripts goes over HTTP, none signs in, none uses
+port 3011 — they run in-process against local Supabase with the service key. Across both
+arms: 186 model calls, **0 errors, 0 calls with missing usage data, 0 reruns.**
 
 **Both arms got a byte-identical prompt.** Another lane was committing to
 `apps/api/src/lib/kai` while this ran, so the prompt each question was given was recorded and
