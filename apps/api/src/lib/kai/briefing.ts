@@ -78,6 +78,7 @@ promise anything, no "big day", no urgency.`;
       system,
       messages: [{ role: 'user', content: instruction }],
       maxTokens: 1200,
+      usage: { feature: 'briefing', requestId, userId: ctx.profile.user_id },
     });
     const body = extractFence(text);
     if (!body) return { briefing: null, degraded: true, reason: 'Kai could not put a report together.' };

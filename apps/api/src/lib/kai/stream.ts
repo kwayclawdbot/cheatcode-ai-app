@@ -20,6 +20,7 @@ import { log } from '../log';
 import { KAI_OBJECT_FENCE } from './system-prompt';
 import { validateGradedSetup } from './contradiction';
 import { persistKaiObject } from './objects';
+import { recordModelUsage, type UsageMeta } from './usage';
 
 let client: Anthropic | null = null;
 export function anthropic(): Anthropic {
@@ -288,6 +289,24 @@ export async function gateAndPersist(opts: {
 export type KaiTurn = { role: 'user' | 'assistant'; content: string };
 
 /**
+ * THE SYSTEM PROMPT AS PIECES, NOT AS ONE STRING.
+ *
+ * Caching is a PREFIX match: the provider keys the cache on the exact bytes up
+ * to each marker, so one byte that changes early makes everything after it new
+ * again. A system prompt handed over as one string can only ever be all-or-
+ * nothing. Handed over as an ordered list of blocks, the stable parts can be
+ * marked and re-read while the parts that move stay outside the mark.
+ *
+ * Callers that do not care still pass a plain string and nothing changes.
+ */
+export type SystemPrompt = string | Anthropic.TextBlockParam[];
+
+/** A system block that is marked as the end of a cacheable stretch. */
+export function cached(text: string): Anthropic.TextBlockParam {
+  return { type: 'text', text, cache_control: { type: 'ephemeral' } };
+}
+
+/**
  * One model turn, streamed.
  *
  * `messages` takes the SDK's own `MessageParam[]` as well as the plain
@@ -299,36 +318,88 @@ export type KaiTurn = { role: 'user' | 'assistant'; content: string };
  * `tools` is optional and off by default. Nothing that does not want tools —
  * the briefing job, the recovery classifier, the director — has its behaviour
  * or its bill changed by their existing.
+ *
+ * `cacheTail` asks the provider to also mark the END of the conversation so
+ * far. In a tool loop that is the whole point: the same twelve thousand tokens
+ * were being re-read up to five times for one question, and marking the tail
+ * turns calls two through five into cache reads at a tenth of the price.
+ *
+ * `usage` names who is spending. Given it, the row is written when the stream
+ * finishes — see `./usage.ts`. Left out, nothing is recorded, which is how the
+ * one-off internal calls that predate this stay silent.
  */
 export function messageStream(opts: {
-  system: string;
+  system: SystemPrompt;
   messages: (KaiTurn | Anthropic.MessageParam)[];
   maxTokens?: number;
   tools?: Anthropic.Tool[];
+  cacheTail?: boolean;
+  usage?: UsageMeta;
 }) {
-  return anthropic().messages.stream({
-    model: KAI_MODEL(),
+  const model = KAI_MODEL();
+  const startedAt = Date.now();
+  const s = anthropic().messages.stream({
+    model,
     max_tokens: opts.maxTokens ?? 4000,
     output_config: { effort: 'low' },
     system: opts.system,
     messages: opts.messages.map((m) => ({ role: m.role, content: m.content }) as Anthropic.MessageParam),
     ...(opts.tools?.length ? { tools: opts.tools } : null),
+    // Top-level marker: the provider puts it on the last block it can, and
+    // moves it forward as the conversation grows. Exactly what a tool loop
+    // needs, and it costs one of the four markers rather than bookkeeping.
+    ...(opts.cacheTail ? { cache_control: { type: 'ephemeral' as const } } : null),
   });
+  const meta = opts.usage;
+  if (meta) {
+    // Fire and forget, and swallow everything. `finalMessage()` is safe to
+    // await twice — the caller awaits its own copy — and a failure here must
+    // never surface as a failed answer.
+    void s
+      .finalMessage()
+      .then((m) =>
+        recordModelUsage({
+          meta,
+          model: m.model ?? model,
+          usage: m.usage,
+          durationMs: Date.now() - startedAt,
+          stopReason: m.stop_reason ?? null,
+        })
+      )
+      .catch(() => {
+        /* the caller reports the failure; there is no usage to record */
+      });
+  }
+  return s;
 }
 
 /** Non-streaming completion used by the briefing job. */
 export async function completeOnce(opts: {
-  system: string;
+  system: SystemPrompt;
   messages: KaiTurn[];
   maxTokens?: number;
+  cacheTail?: boolean;
+  usage?: UsageMeta;
 }): Promise<string> {
+  const model = KAI_MODEL();
+  const startedAt = Date.now();
   const res = await anthropic().messages.create({
-    model: KAI_MODEL(),
+    model,
     max_tokens: opts.maxTokens ?? 2000,
     output_config: { effort: 'low' },
     system: opts.system,
     messages: opts.messages.map((m) => ({ role: m.role, content: m.content })),
+    ...(opts.cacheTail ? { cache_control: { type: 'ephemeral' as const } } : null),
   });
+  if (opts.usage) {
+    await recordModelUsage({
+      meta: opts.usage,
+      model: res.model ?? model,
+      usage: res.usage,
+      durationMs: Date.now() - startedAt,
+      stopReason: res.stop_reason ?? null,
+    });
+  }
   return res.content
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
     .map((b) => b.text)

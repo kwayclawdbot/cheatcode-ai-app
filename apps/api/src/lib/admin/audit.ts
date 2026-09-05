@@ -44,6 +44,7 @@ export type AuditAction =
   | 'crm.person.unmerge'
   // written here
   | 'admin.overview.read'
+  | 'admin.spend.read'
   | 'admin.people.search'
   | 'crm.person.read'
   | 'crm.person.transcript'

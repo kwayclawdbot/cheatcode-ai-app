@@ -157,13 +157,40 @@ export async function assembleContext(opts: {
  */
 export type ChartOnScreen = { symbol: string; timeframe: string; levels: string[] };
 
-/** Compact, unambiguous rendering of the context for the model. */
-export function renderContext(ctx: KaiContext, chart?: ChartOnScreen | null): string {
-  const lines: string[] = [];
-  lines.push(
+/**
+ * THE ONE LINE THAT CHANGES EVERY SINGLE REQUEST.
+ *
+ * `session_ts` is `new Date().toISOString()` — a fresh timestamp, to the
+ * millisecond, on every call. It used to be the FIRST line of the context,
+ * which meant the first bytes of the prompt were different every time and not
+ * one byte after it could ever be re-read from cache. Five thousand tokens of
+ * setups sat behind a timestamp and were paid for in full, every turn.
+ *
+ * So it is its own function now, and the chat route puts it at the very END of
+ * the request — after the last cache marker, next to the user's question, where
+ * a value that moves belongs. Kai is told exactly the same thing; it is just
+ * told last.
+ */
+export function renderMarketLine(ctx: KaiContext): string {
+  return (
     `MARKET: ${ctx.marketBlock.label_plain} (status=${ctx.marketBlock.status}) as of ${ctx.marketBlock.session_ts}. ` +
-      `US market holidays are NOT known to this system yet — weekends only.`
+    `US market holidays are NOT known to this system yet — weekends only.`
   );
+}
+
+/**
+ * Compact, unambiguous rendering of the context for the model.
+ *
+ * `opts.market` is on by default so every existing caller is unchanged. The
+ * chat route turns it OFF and sends `renderMarketLine` separately — see above.
+ */
+export function renderContext(
+  ctx: KaiContext,
+  chart?: ChartOnScreen | null,
+  opts?: { market?: boolean }
+): string {
+  const lines: string[] = [];
+  if (opts?.market !== false) lines.push(renderMarketLine(ctx));
   if (ctx.risk) {
     lines.push(
       `RISK POLICY: daily loss cap ${fmtUsd(ctx.risk.daily_loss_cap_usd)}, max position ${ctx.risk.max_position_pct ?? '—'}% of account, ` +

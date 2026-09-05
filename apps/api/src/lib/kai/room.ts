@@ -507,6 +507,7 @@ export async function runRoomCommand(input: RoomKaiInput): Promise<RoomKaiResult
       system,
       messages: [{ role: 'user', content: instructionFor(input) }],
       maxTokens: 1600,
+      usage: { feature: 'room', requestId: input.requestId, userId: input.profile.user_id },
     });
 
     const body = extractFence(text);

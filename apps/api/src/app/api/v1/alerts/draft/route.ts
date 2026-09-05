@@ -83,6 +83,7 @@ Use only levels the user actually gave you. Never invent a price.`,
           },
         ],
         maxTokens: 900,
+        usage: { feature: 'alert_draft', requestId: ctx.requestId, userId: ctx.user.id },
       });
       const splitter = new FenceSplitter();
       const bodies = [...splitter.push(text).objects, ...splitter.flush().objects];

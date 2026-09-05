@@ -203,6 +203,7 @@ Return ONLY a fenced kai_object block of type "alert_preview" with fields natura
           },
         ],
         maxTokens: 900,
+        usage: { feature: 'alert_action', requestId, userId },
       });
       const splitter = new FenceSplitter();
       const bodies = [...splitter.push(text).objects, ...splitter.flush().objects];

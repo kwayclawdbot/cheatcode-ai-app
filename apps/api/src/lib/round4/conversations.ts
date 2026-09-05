@@ -275,6 +275,12 @@ export async function autoTitle(opts: {
           },
         ],
         maxTokens: 40,
+        usage: {
+          feature: 'conversation_title',
+          requestId: opts.requestId ?? '-',
+          userId: opts.userId,
+          conversationId: opts.conversationId,
+        },
       });
       const cleaned = out.replace(/["'`\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
       if (cleaned.length >= 3) title = cleaned;

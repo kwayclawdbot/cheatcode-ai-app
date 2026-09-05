@@ -298,6 +298,7 @@ Do not use a number that is not in the facts above. Do not praise or scold the p
         },
       ],
       maxTokens: 700,
+      usage: { feature: 'debrief', requestId, userId: s.profile.user_id },
     });
 
     const start = text.indexOf('{');

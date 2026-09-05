@@ -123,6 +123,7 @@ Rules: keep their idea, do not replace it with yours. Never invent a price, a le
         },
       ],
       maxTokens: 900,
+      usage: { feature: 'assist', requestId: input.requestId, userId: input.userId },
     });
 
     const start = text.indexOf('{');

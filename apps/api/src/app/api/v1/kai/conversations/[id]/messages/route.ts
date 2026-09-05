@@ -21,7 +21,7 @@ import { serviceClient } from '@/lib/db';
 import { ApiError, errorResponse } from '@/lib/errors';
 import { log, newRequestId } from '@/lib/log';
 import { emitUserEvent } from '@/lib/events';
-import { assembleContext, contextNumbers, renderContext } from '@/lib/kai/context';
+import { assembleContext, contextNumbers, renderContext, renderMarketLine } from '@/lib/kai/context';
 import { buildSystemPrompt } from '@/lib/kai/system-prompt';
 import { SHEET_ACTION_PROTOCOL, loadSheetContext } from '@/lib/kai/sheet-context';
 import {
@@ -31,6 +31,7 @@ import {
   SseWriter,
   SSE_HEADERS,
   anthropicConfigured,
+  cached,
   gateAndPersist,
   messageStream,
   completeOnce,
@@ -211,39 +212,92 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
       ? { symbol: chartCtx.symbol, timeframe: chartCtx.timeframe, levels: chartLevels }
       : null;
 
-    const system = `${buildSystemPrompt({
+    /**
+     * THE PROMPT, ORDERED BY HOW OFTEN EACH PART CHANGES.
+     *
+     * WHY THE ORDER IS NOW THE POINT. The provider caches a prompt by its
+     * bytes, from the front, up to each marker. One byte that differs early
+     * makes every byte after it new again — so the ONLY layout that gets any
+     * money back is: what never changes first, what changes daily next, what
+     * changes every single request last.
+     *
+     * Before this, the whole thing was one string with a fresh timestamp
+     * buried in the middle of it, which meant nothing was ever re-used. About
+     * nine thousand of the twelve thousand tokens sent per call were the same
+     * nine thousand as last time, and every one of them was paid for at full
+     * price — up to five times over for a single question, because a question
+     * that uses a tool sends the whole prompt again on each round trip.
+     *
+     * Three blocks, three markers, in this order:
+     *
+     *   1. WHO KAI IS AND WHO HE IS TALKING TO. Changes when this person
+     *      changes their settings. Effectively never.
+     *   2. HOW HE MAY ACT — the tool protocol, the voice register, the sheet
+     *      and chart command vocabularies. Changes when they open a different
+     *      chart, or the first time a beginner is taught a word.
+     *   3. THE FACTS — risk policy, account, the ranked setups. Changes when
+     *      the scanner publishes, which is a few times a day.
+     *
+     * The market timestamp is deliberately NOT here. It moves every request,
+     * so it goes at the end of the conversation instead (see `marketLine`
+     * below), where it invalidates nothing.
+     *
+     * The tool definitions are rendered by the provider BEFORE any of this, so
+     * the marker on block 1 covers them too.
+     */
+    const systemIdentity = buildSystemPrompt({
       displayName: kctx.profile.display_name,
       experience: kctx.profile.experience,
       involvement: kctx.profile.involvement,
       explanationLevel: kctx.profile.explanation_level,
       mode,
-    })}${sheet.prompt_block ? `\n\n${SHEET_ACTION_PROTOCOL}` : ''}
+    });
 
-${voicePromptBlock(experience, alreadyExplained)}
-
-${TOOL_PROTOCOL}${
+    const systemProtocols = [
+      sheet.prompt_block ? SHEET_ACTION_PROTOCOL : null,
+      voicePromptBlock(experience, alreadyExplained),
+      TOOL_PROTOCOL,
       chartCtx
-        ? `\n\n${chartCommandProtocol({
+        ? chartCommandProtocol({
             symbol: chartCtx.symbol,
             timeframe: chartCtx.timeframe,
             available: chartLevels,
             drawings: chartDrawings,
-          })}\n\n${chartAnswerProtocol({
+          })
+        : null,
+      chartCtx
+        ? chartAnswerProtocol({
             symbol: chartCtx.symbol,
             timeframe: chartCtx.timeframe,
             available: answerLevels,
-          })}`
-        : ''
-    }
+          })
+        : null,
+    ]
+      .filter((s): s is string => Boolean(s))
+      .join('\n\n');
 
-CONTEXT (facts you may use — nothing outside this is known to you)
-${renderContext(kctx, chartOnScreen)}${sheet.prompt_block ? `\n\n${sheet.prompt_block}` : ''}`;
+    const systemFacts = `CONTEXT (facts you may use — nothing outside this is known to you)
+${renderContext(kctx, chartOnScreen, { market: false })}${sheet.prompt_block ? `\n\n${sheet.prompt_block}` : ''}`;
+
+    const system = [cached(systemIdentity), cached(systemProtocols), cached(systemFacts)];
+
+    /**
+     * The one fact that is different every time, sent last.
+     *
+     * It is attached to the user's own turn rather than to the system prompt
+     * because that is the only place a value that moves can sit without
+     * throwing away everything cached in front of it.
+     */
+    const marketLine = `${renderMarketLine(kctx)}\nUse this as the current market state and time when you answer.`;
 
     const history: KaiTurn[] = kctx.turns
       .filter((t) => t.seq !== userSeq)
       .map((t) => ({ role: t.role === 'kai' ? ('assistant' as const) : ('user' as const), content: t.content?.text ?? '' }))
       .filter((t) => t.content.length > 0);
-    const turns: KaiTurn[] = [...history, { role: 'user', content: parsed.data.content }];
+    const turns: KaiTurn[] = [
+      ...history,
+      { role: 'user', content: `${parsed.data.content}\n\n${marketLine}` },
+    ];
     const allowedNumbers = contextNumbers(kctx);
 
     // --- stream ------------------------------------------------------------
@@ -428,6 +482,19 @@ ${renderContext(kctx, chartOnScreen)}${sheet.prompt_block ? `\n\n${sheet.prompt_
               // The last permitted turn runs WITHOUT tools, so it cannot end on
               // another request to look something up that nothing will answer.
               tools: turn < MAX_TOOL_TURNS ? KAI_TOOLS : undefined,
+              // Mark the end of the conversation as well as the three system
+              // blocks. This is what makes the second and later round trips of
+              // one question cheap: everything said so far — including the tool
+              // results just handed back — is re-read from cache instead of
+              // being re-sent at full price.
+              cacheTail: true,
+              usage: {
+                feature: 'chat',
+                requestId,
+                userId: user.id,
+                conversationId,
+                turnIndex: turn,
+              },
             });
             for await (const event of ms) {
               if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
@@ -502,6 +569,10 @@ ${renderContext(kctx, chartOnScreen)}${sheet.prompt_block ? `\n\n${sheet.prompt_
                   },
                 ],
                 maxTokens: 1500,
+                // The SAME system blocks the loop just used, so this second
+                // call reads all three of them back from cache rather than
+                // paying for nine thousand tokens twice.
+                usage: { feature: 'chat_object_retry', requestId, userId: user.id, conversationId },
               });
               const rs = new FenceSplitter();
               const first = rs.push(retry);
@@ -595,6 +666,12 @@ Never include a price. Never invent a command they did not ask for.`,
                 { role: 'user', content: `Person: ${parsed.data.content}\n\nKai answered: ${narrative.slice(0, 600)}` },
               ],
               maxTokens: 120,
+              usage: {
+                feature: 'chat_command_recovery',
+                requestId,
+                userId: user.id,
+                conversationId,
+              },
             });
             const match = out.match(/\{[\s\S]*\}/);
             if (match) {

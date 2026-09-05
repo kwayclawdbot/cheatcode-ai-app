@@ -146,6 +146,7 @@ function apiAsk(requestId: string): DirectorAsk {
         system: a.system,
         messages: [{ role: 'user', content: a.user }],
         maxTokens: a.maxTokens,
+        usage: { feature: 'chart_answer', requestId },
       });
       const start = raw.indexOf('{');
       const end = raw.lastIndexOf('}');
