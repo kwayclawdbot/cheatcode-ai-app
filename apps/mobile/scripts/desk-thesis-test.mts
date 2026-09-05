@@ -19,6 +19,7 @@
  * The two real write-ups the fixtures carry are parsed here as well, so this
  * fails the day either of them stops matching what the screen expects.
  */
+import { readFileSync } from 'node:fs';
 import { parseThesis, openingSection, sectionGloss } from '../src/features/desk/thesis.ts';
 import { REAL_AAOI_THESIS, REAL_PDYN_THESIS } from '../src/lib/fixtures-desk-real.ts';
 
@@ -106,6 +107,50 @@ eq('a heading the desk writes gets its plain-English label',
   sectionGloss('WHAT WOULD HAVE TO BE TRUE'), 'the conditions, listed');
 eq('a heading nobody recognises gets no invented explanation',
   sectionGloss('SOMETHING THE DESK MADE UP TODAY'), null);
+
+/* ── what the screen says the grade means ─────────────────────────── */
+/*
+ * The explainer on the pick screen is the only place a reader is told what the
+ * grade IS. It said the grade was "how big the claim is, how underpriced it
+ * looks, and how well placed this company is" — and two of those three had no
+ * numbers behind them anywhere in the brain, so the screen was describing a
+ * judgement that was partly being invented. The brain's rubric was rebuilt on
+ * 5 September around five legs that each point at real figures. These checks
+ * exist so the screen cannot drift back to describing something else.
+ */
+const uiSrc = readFileSync(new URL('../src/features/desk/ui.tsx', import.meta.url), 'utf8');
+const pickSrc = readFileSync(new URL('../src/app/desk/pick/[ticker].tsx', import.meta.url), 'utf8');
+
+console.log('\ndesk / what the screen says the grade means');
+
+const legs = [...uiSrc.matchAll(/^  '(.+?)',$/gm)].map((m) => m[1]);
+eq('the screen lists five things, matching the desk rubric', legs.length, 5);
+ok('big change, not big company', /How big the change is/.test(uiSrc));
+ok('whether this is the name', /could end up being the name that owns it/.test(uiSrc));
+ok('whether the numbers turned', /reported numbers have started to turn/.test(uiSrc));
+ok('whether it is already priced', /price already assumes all of it/.test(uiSrc));
+ok('whether the stock is still early', /still early, or halfway up already/.test(uiSrc));
+
+/* Comments are stripped first: both files deliberately record what the old
+ * wording was and why it went, and that history must not fail the check that
+ * the wording is no longer on screen. */
+const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '');
+ok('the old invented wording is gone from the screen',
+  !/underpriced/i.test(stripComments(uiSrc))
+  && !/underpriced/i.test(stripComments(pickSrc)));
+ok('the closing promise survives', /not a forecast for this quarter/.test(uiSrc));
+ok('the calibration is on the page too', /Most are B or C/.test(uiSrc));
+ok('a great business at a full price is still a B', /already in the price is a\n          B/.test(uiSrc));
+ok('the pick screen actually renders the five legs', /<GradeLegs \/>/.test(pickSrc));
+ok('and it still prints the analyst\'s own reason', /\{pick\.gradeWhy\}/.test(pickSrc));
+
+/* Design rules on this screen: hairlines and rules only, no rounded boxes. */
+const legsBlock = uiSrc.slice(uiSrc.indexOf('export function GradeLegs'),
+                              uiSrc.indexOf('const STATE_TONE'));
+ok('the explainer is ruled, not boxed',
+  /StyleSheet\.hairlineWidth/.test(legsBlock) && !/borderRadius/.test(legsBlock));
+ok('the numerals read violet, because the grade is Kai\'s judgement',
+  /color\.violetLight/.test(legsBlock));
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 if (fail) process.exit(1);

@@ -32,7 +32,7 @@ import { api } from '../../../lib/api';
 import { env } from '../../../lib/env';
 import { fixtureDeskPick } from '../../../lib/fixtures';
 import { useResource } from '../../../lib/useResource';
-import { Falsifier, GradeMark, UnfinishedNote, money } from '../../../features/desk/ui';
+import { Falsifier, GradeLegs, GradeMark, UnfinishedNote, money } from '../../../features/desk/ui';
 import {
   Bay, BaySplit, CallMark, CatalystSpine, GradeScale, HorizonTrack, Ledger,
   PotentialMove, Provenance, Scoreboard, Strip, ThemeGauges,
@@ -210,14 +210,14 @@ export default function DeskPickDetail() {
 
         {/* ── why that grade ───────────────────────────────────── */}
         {pick.gradeWhy && (
-          <View style={{ marginTop: space.x24 }}>
+          <View style={{ marginTop: space.x24 }} testID="desk-pick-grade-why">
             <Eyebrow c={color.muted}>Why that grade</Eyebrow>
             <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
-              The grade is on the idea — how big the claim is, how underpriced it
-              looks, and how well placed this company is to be one of the names
-              that captures it. It is not a forecast for this quarter.
+              The grade asks one thing: does this look like a company before a
+              very big move? Five things count.
             </T>
-            <T size={14} lh={21} c={color.text} style={{ marginTop: space.x10 }}>
+            <GradeLegs />
+            <T size={14} lh={21} c={color.text} style={{ marginTop: space.x16 }}>
               {pick.gradeWhy}
             </T>
           </View>

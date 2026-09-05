@@ -3,18 +3,18 @@
  *
  * The desk is not the alerts lane and must not borrow its vocabulary. An alert
  * has a grade medallion because it is a trade you might take today. A desk
- * pick has a grade on the IDEA — how big the claim is, how underpriced it
- * looks, how well placed this company is to be one of the names that captures
- * it — and that is a different question with a different answer. So the grade
- * here is a plain mark with its reasoning attached, never a medallion, and
- * nothing on these screens offers to trade anything.
+ * pick has a grade on the IDEA — whether the company has the shape a company
+ * has before a very big move — and that is a different question with a
+ * different answer. So the grade here is a plain mark with its reasoning
+ * attached, never a medallion, and nothing on these screens offers to trade
+ * anything.
  *
  * Colour follows the locked grammar: cyan is market data, violet is Kai's
  * intelligence, volt is the user's own action. The desk's judgement is Kai's
  * work, so it reads violet; price and state read cyan.
  */
 import React from 'react';
-import { View, Pressable, StyleProp, ViewStyle } from 'react-native';
+import { View, Pressable, StyleProp, StyleSheet, ViewStyle } from 'react-native';
 import { T, Num, Eyebrow } from '../../ui/Text';
 import { alpha, color, radius, space } from '../../ui/tokens';
 import type { IdeaGrade, WatchState } from '@shared/desk';
@@ -48,6 +48,72 @@ export function GradeMark({ grade, size = 15 }: { grade: IdeaGrade | null; size?
       <Num size={size} weight="bold" c={strong ? color.violetLight : color.muted}>
         {grade}
       </Num>
+    </View>
+  );
+}
+
+/**
+ * The five things the grade counts, in the desk's own order.
+ *
+ * This is not a paraphrase. Each line is one leg of the rubric the analyst is
+ * held to, and each leg is graded off figures that are printed in the evidence
+ * it reads — how big the market is, whether this company could end up owning
+ * it, whether the reported numbers have started to turn, what the market
+ * already pays for those numbers, and whether the stock has already moved.
+ *
+ * It replaced a sentence that said the grade was "how big the claim is, how
+ * underpriced it looks, and how well placed this company is". Two of those
+ * three had no numbers behind them anywhere in the system, so the screen was
+ * describing a judgement that was partly being invented. Now it describes
+ * what is actually done.
+ */
+export const GRADE_LEGS: readonly string[] = [
+  'How big the change is — the market being created, not the company',
+  'Whether this company could end up being the name that owns it',
+  'Whether its reported numbers have started to turn',
+  'Whether the price already assumes all of it',
+  'Whether the stock is still early, or halfway up already',
+] as const;
+
+/**
+ * The grade, explained on the page it is shown on.
+ *
+ * Ruled rows, no boxes. The numerals are Kai's judgement, so they read violet;
+ * the rules are hairlines and nothing here is a rounded rectangle.
+ */
+export function GradeLegs() {
+  return (
+    <View style={{ marginTop: space.x12 }}>
+      {GRADE_LEGS.map((leg, i) => (
+        <View
+          key={leg}
+          testID={`desk-grade-leg-${i + 1}`}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: space.x10,
+            paddingVertical: space.x8,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: alpha.ivory10,
+          }}
+        >
+          <Num size={11} weight="bold" c={color.violetLight} style={{ width: 12 }}>
+            {i + 1}
+          </Num>
+          <T size={13} lh={19} c={color.muted} style={{ flex: 1 }}>{leg}</T>
+        </View>
+      ))}
+      <View style={{
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: alpha.ivory10,
+        paddingTop: space.x8,
+      }}>
+        <T size={12} lh={17} c={color.dim}>
+          A+ is all five. Most are B or C. The grade is on the idea, not the
+          company — a great business whose future is already in the price is a
+          B. It is not a forecast for this quarter.
+        </T>
+      </View>
     </View>
   );
 }
