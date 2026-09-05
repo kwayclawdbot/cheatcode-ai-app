@@ -40,6 +40,7 @@ import {
 } from '@shared/api';
 import { authedParams, ok, parseQuery, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
+import { ensureInstrument } from '@/lib/market/instruments';
 import { serviceClient } from '@/lib/db';
 import { marketBlock } from '@/lib/market';
 import { normalizeTimeframe, resolveQuote } from '@/lib/market/polygon';
@@ -98,10 +99,25 @@ export const GET = authedParams<{ symbol: string }>(
     const symbol = ctx.params.symbol.toUpperCase();
     const db = serviceClient();
 
-    const instrument = await db.from('instruments').select('symbol,name').eq('symbol', symbol).maybeSingle();
-    if (!instrument.data) {
-      throw new ApiError('NOT_FOUND', `I do not follow ${symbol} yet, so there is no chart to open.`);
-    }
+    /**
+     * ANY TICKER OPENS HERE — the owner's instruction, and the reversal of a
+     * refusal that read as a limit.
+     *
+     * This used to answer "I do not follow SYMBOL yet, so there is no chart to
+     * open" for anything outside the catalogue. That was never true about the
+     * DATA: Polygon prices the symbol, the resolver measures twenty-one levels
+     * on it and the tools read its company. It was true only about a missing
+     * row, and `chart_annotations` and `candles` both key onto that row — so
+     * without it Kai cannot draw on the chart at all, which is the whole point
+     * of the section.
+     *
+     * `ensureInstrument` adds the symbol from Polygon's own reference data, or
+     * refuses because the ticker DOES NOT EXIST — which is a fact about the
+     * world rather than a fact about our coverage, and is the only honest
+     * reason left to say no.
+     */
+    const known = await ensureInstrument(symbol);
+    if (!known.ok) throw new ApiError('NOT_FOUND', known.plain);
 
     const profile = await loadProfile(ctx.user.id);
     const experience = experienceOf(
@@ -350,7 +366,7 @@ export const GET = authedParams<{ symbol: string }>(
       PortalResponse.parse({
         identity: {
           symbol,
-          name: ((instrument.data as Record<string, unknown>).name as string) ?? null,
+          name: known.name,
           company_name: company.name,
           logo_url: company.logo_url,
           mode,

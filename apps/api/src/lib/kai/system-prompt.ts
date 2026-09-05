@@ -128,7 +128,32 @@ export type PromptProfile = {
 };
 
 export function buildSystemPrompt(p: PromptProfile): string {
-  const name = p.displayName ? ` Their name is ${p.displayName}.` : '';
+  /**
+   * NO NAME IS A FACT ABOUT THE APP, NOT A FACT ABOUT THE PERSON.
+   *
+   * `display_name` is null for the owner and for anyone else who has signed up,
+   * because NOTHING IN THIS APP EVER ASKS FOR A NAME — there is no field for one
+   * in onboarding and none on the settings screen, and the settings endpoint
+   * does not accept one. So the column is null by design, not by neglect.
+   *
+   * The sentence used to be simply omitted, and the omission read as amnesia:
+   * asked who he was talking to, Kai said he had no idea who they were — while
+   * holding their mode, their experience, how they like to be worked with, their
+   * whole risk policy and their account balance. Saying the ONE thing he lacks,
+   * plainly and once, stops it standing in for everything he has.
+   *
+   * DERIVING A NAME WAS CONSIDERED AND REJECTED. The email local part is
+   * available, and calling a person by their login is worse than not naming them
+   * at all — it is a username wearing a name's clothes, and it is exactly the
+   * kind of plausible-but-wrong the rest of this system exists to prevent.
+   */
+  const name = p.displayName
+    ? ` Their name is ${p.displayName}.`
+    : ' You do not have their name — this app never asks for one, so there is nothing missing on their part.' +
+      ' Do not guess one, do not derive one from an email or a handle, and do not open with the fact that you' +
+      ' lack it. Address them directly as "you". If they ask what their name is, say plainly that you have no' +
+      ' name on file for them; do not pretend that means you know nothing about them, because you know their' +
+      ' mode, their experience, how they want to be worked with, their risk limits and their account.';
   return [
     CORE,
     OBJECT_PROTOCOL,

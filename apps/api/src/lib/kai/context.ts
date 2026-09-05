@@ -56,9 +56,36 @@ export type RiskPolicyRow = {
 
 export type TurnRow = { seq: number; role: 'user' | 'kai'; content: { text?: string } };
 
+/**
+ * WHAT THE ACCOUNT IS WORTH — the number every risk rule is a percentage OF.
+ *
+ * THE BUG THIS FIXES. Asked "how many shares of CRWD could I take?", Kai
+ * answered: *"No account size on file — the 10% max-position rule is a
+ * percentage of your account balance, which I don't have access to. I'm not
+ * connected to a broker or account balance in this paper trading environment."*
+ * Every word of that was wrong. The owner's `accounts` row has existed the whole
+ * time — paper, $10,000 cash, $10,000 buying power, $10,000 equity — and it was
+ * simply never assembled into the context.
+ *
+ * So he could recite the risk policy perfectly — $300 daily cap, 10% max
+ * position, 5 open at once, 1.5 minimum reward-to-risk — and could not apply a
+ * single one of them, because every one of those rules is a fraction of a
+ * balance he had not been given. Position sizing is the core job of a trade
+ * assistant and it was the one arithmetic he could not do.
+ */
+export type AccountRow = {
+  kind: string;
+  currency: string | null;
+  cash: number | null;
+  buying_power: number | null;
+  equity: number | null;
+  starting_balance: number | null;
+};
+
 export type KaiContext = {
   profile: ProfileRow;
   risk: RiskPolicyRow | null;
+  account: AccountRow | null;
   mode: AppMode;
   setups: SetupRow[];
   pinnedSetups: SetupRow[];
@@ -117,6 +144,22 @@ export async function loadRiskPolicy(userId: string): Promise<RiskPolicyRow | nu
   return (data as unknown as RiskPolicyRow) ?? null;
 }
 
+/**
+ * The account this user actually trades. Paper is preferred when both exist:
+ * v1 executes on paper, so the balance a size must fit inside is the paper one.
+ */
+export async function loadAccount(userId: string): Promise<AccountRow | null> {
+  const db = serviceClient();
+  const { data } = await db
+    .from('accounts')
+    .select('kind,currency,cash,buying_power,equity,starting_balance')
+    .eq('user_id', userId)
+    .order('kind', { ascending: true })
+    .limit(1);
+  const row = ((data ?? []) as unknown as AccountRow[])[0];
+  return row ?? null;
+}
+
 export async function lastTurns(conversationId: string, n = KAI_HISTORY_TURNS): Promise<TurnRow[]> {
   const db = serviceClient();
   const { data, error } = await db
@@ -138,13 +181,14 @@ export async function assembleContext(opts: {
 }): Promise<KaiContext> {
   const profile = await loadProfile(opts.userId);
   const mode = opts.mode ?? profile.primary_mode;
-  const [risk, setups, pinnedSetups, turns] = await Promise.all([
+  const [risk, account, setups, pinnedSetups, turns] = await Promise.all([
     loadRiskPolicy(opts.userId),
+    loadAccount(opts.userId),
     rankedSetups(mode, opts.cap ?? 5),
     setupsByIds(opts.pinnedSetupIds ?? []),
     opts.conversationId ? lastTurns(opts.conversationId) : Promise.resolve([]),
   ]);
-  return { profile, risk, mode, setups, pinnedSetups, turns, marketBlock: marketBlock() };
+  return { profile, risk, account, mode, setups, pinnedSetups, turns, marketBlock: marketBlock() };
 }
 
 /**
@@ -195,6 +239,50 @@ export function renderContext(
     lines.push(
       `RISK POLICY: daily loss cap ${fmtUsd(ctx.risk.daily_loss_cap_usd)}, max position ${ctx.risk.max_position_pct ?? '—'}% of account, ` +
         `max open positions ${ctx.risk.max_open_positions ?? '—'}, minimum reward:risk ${ctx.risk.min_reward_risk ?? '—'}.`
+    );
+  }
+  /**
+   * THE BALANCE, AND THE TWO SUMS THAT TURN A PERCENTAGE INTO SHARES.
+   *
+   * The rules above are all fractions of this number, so without it Kai could
+   * recite the policy and apply none of it — he told the owner he had "no
+   * account size on file" while the row said $10,000.
+   *
+   * The two calculations are spelled out because they are the ones he is asked
+   * for and they are arithmetic on numbers that are all RIGHT HERE: the balance
+   * from the row, the percentage from the policy, and a stop that must come off
+   * a graded setup or the user's own mouth. Nothing in this block lets him
+   * produce a stop — sizing needs one, and where it comes from is unchanged.
+   *
+   * The cap in dollars is computed once, here, rather than left to the model.
+   * A ceiling the user is told is "10% of your account" and a ceiling in dollars
+   * must be the same ceiling, and a model doing arithmetic in prose is the one
+   * way they come out different.
+   */
+  if (ctx.account) {
+    const a = ctx.account;
+    const base = a.equity ?? a.cash ?? a.buying_power ?? null;
+    const pct = ctx.risk?.max_position_pct ?? null;
+    const capUsd = base !== null && pct !== null ? Math.round(base * (pct / 100) * 100) / 100 : null;
+    lines.push(
+      `ACCOUNT (${a.kind === 'paper' ? 'PAPER money, not real' : a.kind}): ` +
+        `equity ${fmtUsd(a.equity)}, cash ${fmtUsd(a.cash)}, buying power ${fmtUsd(a.buying_power)}` +
+        (a.starting_balance !== null ? `, started at ${fmtUsd(a.starting_balance)}` : '') +
+        '.'
+    );
+    if (capUsd !== null) {
+      lines.push(
+        `MOST YOU MAY PUT IN ONE POSITION: ${fmtUsd(capUsd)} — that is the ${pct}% cap applied to ${fmtUsd(base)}. ` +
+          'Use this figure when asked how much or how many shares; do not work the percentage out again in your head.'
+      );
+    }
+    lines.push(
+      'HOW TO ANSWER "how many shares": shares = the risk you are willing to lose divided by (entry − stop), then ' +
+        'capped so shares × entry does not exceed the position limit above. You have the balance and the limit, so ' +
+        'ANSWER THE QUESTION — never say you do not have an account size. ' +
+        'If there is no stop you cannot size a trade: say what the position limit is in dollars and roughly how many ' +
+        'shares that buys at the current price, and ask where they would get out. ' +
+        'Producing a stop yourself on a symbol with no graded setup is the one thing you may not do.'
     );
   }
   const render = (s: SetupRow, tag: string) => {
@@ -360,5 +448,9 @@ export function contextNumbers(ctx: KaiContext): number[] {
     pushAll(s.score_components);
   }
   if (ctx.risk) pushAll(ctx.risk);
+  // The balance and what it allows are numbers he was GIVEN, so they are as
+  // quotable as any level — a size he is now expected to state must not then be
+  // rejected by the validator as a number nobody gave him.
+  if (ctx.account) pushAll(ctx.account);
   return out;
 }

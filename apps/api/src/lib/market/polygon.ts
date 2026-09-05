@@ -1715,6 +1715,15 @@ export type TickerReference = {
   total_employees?: number;
   homepage_url?: string;
   branding?: { logo_url?: string; icon_url?: string };
+  /**
+   * The three fields that make a REAL `instruments` row rather than a guessed
+   * one. Polygon has always returned them; nothing read them until symbols
+   * started being added to the catalogue on demand, and a row invented without
+   * them would be exactly the placeholder that must never be written.
+   */
+  primary_exchange?: string;
+  type?: string;
+  active?: boolean;
 };
 
 /**
