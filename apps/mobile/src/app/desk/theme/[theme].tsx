@@ -105,6 +105,17 @@ export default function DeskThemeDetail() {
         {writtenUp.length > 0 && (
           <View style={{ marginTop: space.x30 }}>
             <Eyebrow c={color.muted}>Written up under this theme</Eyebrow>
+            {/* How each one actually did belongs here more than anywhere — a
+                theme is only worth what the names under it returned. Not one
+                of them has reached its horizon, so the list says so once,
+                at the top, rather than showing a column of blanks. */}
+            {writtenUp.every((w) => w.outcome == null) ? (
+              <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
+                None of these has been settled yet. The desk only marks a call
+                right or wrong once its horizon has actually run out, and the
+                oldest write-up here is still months short of that.
+              </T>
+            ) : null}
             <View style={{ marginTop: space.x8 }}>
               {writtenUp.map((w, i) => (
                 <Pressable
@@ -129,6 +140,29 @@ export default function DeskThemeDetail() {
                     </View>
                     <T size={12} c={color.dim} numberOfLines={1}>{w.company ?? '—'}</T>
                   </View>
+                  {/* The result, only when the desk settled it. Green and red
+                      are the desk being right and wrong; a pass that was
+                      measured but never scored is neither. */}
+                  {w.outcome ? (
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <T
+                        size={11}
+                        weight="bold"
+                        c={w.outcome === 'hit' ? color.green : w.outcome === 'miss' ? color.red : color.muted}
+                      >
+                        {w.outcome === 'hit' ? 'RIGHT' : w.outcome === 'miss' ? 'WRONG' : 'MEASURED'}
+                      </T>
+                      {typeof w.excessPct === 'number' ? (
+                        <Num
+                          size={12}
+                          weight="bold"
+                          c={w.excessPct > 0 ? color.green : color.red}
+                        >
+                          {`${w.excessPct > 0 ? '+' : ''}${w.excessPct.toFixed(1)}%`}
+                        </Num>
+                      ) : null}
+                    </View>
+                  ) : null}
                   <GradeMark grade={w.grade} size={13} />
                 </Pressable>
               ))}

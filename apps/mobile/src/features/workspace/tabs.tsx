@@ -264,6 +264,15 @@ export function PlanTab({ w, testID = 'tab-body-plan' }: { w: SymbolWorkspace; t
         </View>
       </View>
 
+      {/* Why the tiles are empty, said out loud.
+          These three tiles used to show an "Entry" on a symbol with no graded
+          setup, and that number was the last traded price wearing the label.
+          It is refused now (`features/orders/plan-read.ts`) and the reason
+          goes here, where the price used to be. */}
+      {p.no_plan_plain ? (
+        <T size={12.5} lh={18} c={color.gold} testID="no-plan-reason">{p.no_plan_plain}</T>
+      ) : null}
+
       {/* Size and reward-to-risk are two separate facts, and the server may
           already send either as a full sentence — never bolt a suffix onto one. */}
       {p.size ? <T size={12.5} lh={18} c={color.muted} testID="plan-size">{p.size}</T> : null}

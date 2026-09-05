@@ -47,6 +47,62 @@ export function isLongIntent(intent: PositionEffect): boolean {
 /* Size + scenarios                                                     */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Is there a plan here at all?                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What the server offers as a starting point for a plan — and, when it has
+ * nothing, WHY, in words the screen can print.
+ *
+ * THE BUG THIS EXISTS TO END. This route used to compute its suggestion as
+ * `entry ?? quote.price`. On a symbol with no graded setup that is the LAST
+ * TRADED PRICE with the word "Entry" over it: a number nobody decided,
+ * indistinguishable on a screen from a level the grading engine produced. The
+ * grading engine is the whole reason this product is worth trusting, and a
+ * conjured entry quietly borrows its authority.
+ *
+ * So the rule is the same one the Trade section already enforces, and it is
+ * the whole of this function: A PLAN IS A PLAN ONLY WHEN THERE IS AN ENTRY AND
+ * A LEVEL THAT SAYS IT WAS WRONG. An entry with no invalidation is not a
+ * cautious plan; it is a price with a label on it. Where both are missing the
+ * suggestion is empty and `no_plan_plain` says so.
+ *
+ * The quote is deliberately NOT a parameter. There is nothing this function
+ * could correctly do with it.
+ */
+export function planSuggestion(
+  symbol: string,
+  levels: { entry: number | null; stop: number | null; targets: SetupTarget[] },
+  graded: boolean
+): {
+  entry: number | null;
+  stop: number | null;
+  targets: SetupTarget[];
+  has_plan: boolean;
+  no_plan_plain: string | null;
+} {
+  const entry = levels.entry;
+  const stop = levels.stop;
+  const hasPlan = entry !== null && stop !== null;
+
+  const why = hasPlan
+    ? null
+    : entry !== null
+      ? `There is an entry on ${symbol} but no level that says the idea failed, so there is no plan here yet and nothing to size. I need to know where this is wrong before you risk anything on it.`
+      : graded
+        ? `${symbol} has a graded setup but no levels attached to it yet, so there is nothing to build a plan on. The last traded price is not an entry and I will not offer it as one.`
+        : `I have no graded setup on ${symbol}, so I have no entry and no stop to give you. What the stock last traded at is not an entry — putting that number in an entry slot would make a guess look like a plan. Set your own levels if you want to build one anyway.`;
+
+  return {
+    entry: hasPlan ? entry : null,
+    stop: hasPlan ? stop : null,
+    targets: hasPlan ? levels.targets : [],
+    has_plan: hasPlan,
+    no_plan_plain: why,
+  };
+}
+
 export function planSize(
   entry: number | null,
   stop: number | null,

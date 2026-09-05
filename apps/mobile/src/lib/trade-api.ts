@@ -31,10 +31,12 @@ import type {
   OrderType, Plan, PlanActionName, RiskCheck, RiskFinding, RiskVerdict,
 } from '../features/orders/types';
 import { SIDE_LABEL } from '../features/orders/types';
+import { suggestedLevels } from '../features/orders/plan-read';
 import type { PositionDetail, PositionRow, PositionsPayload } from '../features/positions/types';
 import type { NeedsActionItem, TradeAccount, TradeLandingV2 } from '../features/trade/types';
 import {
   clockLabel, fixtureAcceptedOrder, fixtureFilledOrder, fixtureOpenOrders, fixturePlan,
+  fixtureUngradedPlan,
   fixturePreviewAdvisory, fixturePreviewBlocker, fixturePreviewPass,
 } from '../features/orders/fixtures';
 import {
@@ -487,6 +489,7 @@ function adaptPlan(v: unknown, fallbackSymbol = ''): Plan {
   const status = str(pick(src, 'status'), 'draft');
   const orderState = pick(src, 'order_state');
   return {
+    no_plan_plain: str(pick(src, 'no_plan_plain')) || null,
     id: str(pick(src, 'id', 'plan_id')) || null,
     symbol: str(pick(src, 'symbol'), fallbackSymbol).toUpperCase(),
     name: str(pick(src, 'name')) || null,
@@ -838,7 +841,14 @@ export const tradeApi = {
    * levels, the fields come back null and the plan screen asks for them.
    */
   suggestedPlan: async (symbol: string, mode: GoalMode, setupId?: string | null): Promise<Plan> => {
-    if (!live()) return { ...fixturePlan(symbol), id: null, status: 'draft', setup_id: setupId ?? null };
+    if (!live()) {
+      // META is the one symbol the fixture desk grades. Everything else has no
+      // setup, which is the ordinary case, and it must render as no plan with
+      // the reason on screen — not as the last traded price in an Entry tile.
+      return symbol.toUpperCase() === 'META'
+        ? { ...fixturePlan(symbol), id: null, status: 'draft', setup_id: setupId ?? null }
+        : { ...fixtureUngradedPlan(symbol), setup_id: setupId ?? null };
+    }
     const raw = obj(await request<unknown>(`/symbols/${encodeURIComponent(symbol)}?mode=${mode}`));
     const planBlock = obj(pick(raw, 'plan'));
     const suggested = obj(pick(planBlock, 'suggested'));
@@ -846,16 +856,37 @@ export const tradeApi = {
     const levels = obj(pick(raw, 'levels') ?? obj(pick(raw, 'overview')).key_levels);
     const setup = obj(pick(raw, 'setup') ?? obj(pick(raw, 'overview')).setup_module);
 
+    /*
+     * THE SUGGESTION GOES THROUGH THE RULE BEFORE IT GOES ANYWHERE ELSE.
+     *
+     * `/symbols/:symbol` used to compute its entry as `entry ?? quote.price`,
+     * so an ungraded symbol came back carrying the last traded price with the
+     * word "entry" on it. The route no longer does that — but this phone can
+     * be pointed at an API that has not been redeployed, so the refusal is
+     * repeated here rather than trusted to the server. An entry without an
+     * invalidation is dropped along with the entry; see `plan-read.ts`.
+     */
+    const offered = suggestedLevels({
+      symbol,
+      entry: num(pick(suggested, 'entry') ?? pick(levels, 'entry')),
+      stop: num(pick(suggested, 'stop') ?? pick(levels, 'invalid') ?? pick(levels, 'stop')),
+      targets: arr(pick(suggested, 'targets')).length
+        ? arr(pick(suggested, 'targets'))
+          .map((t) => num(typeof t === 'object' && t !== null ? obj(t).price : t))
+          .filter((n): n is number => n != null)
+        : [num(pick(levels, 'target'))].filter((t): t is number => t != null),
+      noPlanPlain: str(pick(suggested, 'no_plan_plain')) || null,
+    });
+
     const merged: Rec = {
       symbol,
       name: pick(raw, 'name') ?? obj(pick(raw, 'identity')).name,
       intent: pick(existing, 'intent') ?? pick(setup, 'intent'),
       side: str(pick(setup, 'direction'), 'long'),
-      entry: pick(suggested, 'entry') ?? pick(levels, 'entry'),
-      stop: pick(suggested, 'stop') ?? pick(levels, 'invalid') ?? pick(levels, 'stop'),
-      targets: arr(pick(suggested, 'targets')).length
-        ? pick(suggested, 'targets')
-        : [pick(levels, 'target')].filter((t) => t != null),
+      entry: offered.entry,
+      stop: offered.stop,
+      targets: offered.targets,
+      no_plan_plain: offered.noPlanPlain,
       size: pick(suggested, 'size'),
       scenarios: pick(suggested, 'scenarios'),
       rr: pick(suggested, 'rr'),

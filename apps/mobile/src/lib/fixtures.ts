@@ -982,7 +982,7 @@ const DESK_PICKS: Record<string, DeskPickResponse> = {
   INOD: {
     pick: {
       ticker: 'INOD', company: 'Innodata Inc', theme: 'Enterprise-Software-AI-Disruption',
-      themeRank: 1, pickDate: '2026-08-21', direction: 'long', horizon: '2q',
+      themeRank: 1, pickDate: '2026-01-15', direction: 'long', horizon: '2q',
       status: 'active', grade: 'B+',
       gradeWhy: 'A real idea in a large theme, but the company is one of several that could capture it and the multiple already assumes it does.',
       score: 0.5973, potentialMovePct: null, marketCap: 1.2e9,
@@ -1002,6 +1002,17 @@ const DESK_PICKS: Record<string, DeskPickResponse> = {
         'Nothing here is proprietary — the moat is delivery, not technology.',
       ],
       hypothesis: 'Firms that prepare and label training data for model builders at scale, sold on multi-year contracts to a small number of very large customers',
+      /*
+       * A call that has run its course and won. Sample data — nothing in the
+       * brain has reached a horizon yet — kept because the settled state is
+       * the whole point of the scoreboard and cannot be proved without one.
+       * Written 15 January, two quarters, settled 16 July: +41.2% against an
+       * S&P that made 12.6% over the same stretch, so the desk was 28.6 ahead
+       * and that is the number that decides it.
+       */
+      entryPrice: 34.80, entryBenchmark: 690.20,
+      returnPct: 41.2, excessPct: 28.6, outcome: 'hit', gradedAt: '2026-07-16',
+      revisitCount: 2, revisitCheckedAt: '2026-05-02', news90d: 12, nominatedBy: 'RMBS',
       thesis: [
         '# INOD — Innodata Inc.',
         '',
@@ -1099,7 +1110,7 @@ const DESK_PICKS: Record<string, DeskPickResponse> = {
   SPCE: {
     pick: {
       ticker: 'SPCE', company: 'Virgin Galactic Holdings', theme: 'Commercial-Space-Access',
-      themeRank: 6, pickDate: '2026-08-14', direction: 'pass', horizon: null,
+      themeRank: 6, pickDate: '2025-08-14', direction: 'pass', horizon: '4q',
       status: 'rejected', grade: 'D',
       gradeWhy: 'The theme is real and this company is not a way to own it. Revenue is a rounding error against the cash burn, the share count has doubled twice, and nothing in the filings connects the spending to a commercial programme with dates on it. The judgement is about the fit, not about the sector.',
       score: 0.4084, potentialMovePct: null, marketCap: 2.4e8,
@@ -1115,6 +1126,19 @@ const DESK_PICKS: Record<string, DeskPickResponse> = {
         'No disclosed flight cadence, so there is nothing to check a forecast against.',
       ],
       hypothesis: 'Operators of reusable crewed launch vehicles selling seats or payload capacity on a published, repeatable flight schedule',
+      /*
+       * A PASS, measured and deliberately not scored. Sample data.
+       *
+       * The desk prices the names it declined as well as the ones it backed,
+       * because a desk that only grades what it bought cannot tell a good
+       * standard from an expensive one. This one fell 51% while the market
+       * rose 9% — declining it was worth 60 points — but it is still recorded
+       * as `not_scored`, because a pass had no direction to be right about and
+       * must never be counted into a hit rate.
+       */
+      entryPrice: 4.62, entryBenchmark: 641.50,
+      returnPct: -51.3, excessPct: -60.4, outcome: 'not_scored', gradedAt: '2026-08-14',
+      revisitCount: 0, revisitCheckedAt: null, news90d: 41, nominatedBy: null,
       thesis: [
         '# SPCE — Virgin Galactic Holdings',
         '',
@@ -1172,7 +1196,7 @@ const DESK_PICKS: Record<string, DeskPickResponse> = {
   NGS: {
     pick: {
       ticker: 'NGS', company: 'Natural Gas Services Group', theme: 'Data-Centre-Power',
-      themeRank: 3, pickDate: '2026-08-30', direction: 'long', horizon: '4q',
+      themeRank: 3, pickDate: '2025-08-30', direction: 'long', horizon: '4q',
       status: 'active', grade: null, gradeWhy: null,
       score: 0.5512, potentialMovePct: null, marketCap: 3.1e8,
       falsifier: 'Utilisation of the rental fleet falling below 80% for two consecutive quarters.',
@@ -1184,6 +1208,18 @@ const DESK_PICKS: Record<string, DeskPickResponse> = {
       ],
       blockers: ['A single basin is most of the fleet.'],
       hypothesis: 'Owners of contracted gas compression fleets rented to producers on multi-year terms',
+      /*
+       * THE CASE THAT EXISTS TO BE SEEN. Sample data.
+       *
+       * This one went UP — +3.1% over the year — and the desk was still wrong,
+       * because the S&P made 12.5% over the same year and anyone who simply
+       * held the index did better. Green on the raw number and red on the one
+       * that counts. A scoreboard that showed only the return would call this
+       * a win, and that is exactly the lie this instrument exists to stop.
+       */
+      entryPrice: 22.10, entryBenchmark: 601.40,
+      returnPct: 3.1, excessPct: -9.4, outcome: 'miss', gradedAt: '2026-08-30',
+      revisitCount: 0, revisitCheckedAt: null, news90d: 3, nominatedBy: null,
       thesis: [
         'Gas compression is the least interesting way to own the data centre power story and possibly the most direct one. Compression is what moves gas from a wellhead to a pipeline, and every megawatt of gas-fired generation added for a data centre is a call on more of it. The fleet is rented on multi-year contracts rather than sold, so the revenue does not move with the gas price the way a producer\u2019s does.',
         '',
@@ -1213,6 +1249,15 @@ const DESK_PICKS: Record<string, DeskPickResponse> = {
       why: ['Contracted backlog covers more than a year of revenue.'],
       blockers: ['The debt is secured against hardware that depreciates faster than the contracts run.'],
       hypothesis: 'rented compute at hyperscaler scale',
+      /*
+       * The ordinary state, and the one every real row is in today: stamped on
+       * the day, one quarter to run, nothing settled. Written 19 August with a
+       * 1q horizon, so the desk measures it on 18 November — until then the
+       * scoreboard has a starting line, a dashed run and a date, and no result.
+       */
+      entryPrice: 82.40, entryBenchmark: 758.90,
+      returnPct: null, excessPct: null, outcome: null, gradedAt: null,
+      revisitCount: 0, revisitCheckedAt: null, news90d: 214, nominatedBy: null,
       thesis: '## THE THEME\n\nCompute is being built ahead of demand on the assumption demand arrives. That has been right for two years.\n\n## THE COMPANY\n\nCoreWeave is the pure expression of it, which cuts both ways —',
       unfinished: true,
     },
@@ -1242,6 +1287,9 @@ export function fixtureDeskTheme(name: string): DeskThemeResponse | null {
     .map((r) => ({
       ticker: r.ticker, company: r.company, grade: r.grade,
       status: 'active', direction: r.direction, pickDate: '2026-08-21', themeRank: 1,
+      // Nothing under any theme has reached its horizon, so nothing is
+      // settled. The screen says that once, rather than ruling a blank column.
+      outcome: null, excessPct: null,
     }));
   return {
     theme,

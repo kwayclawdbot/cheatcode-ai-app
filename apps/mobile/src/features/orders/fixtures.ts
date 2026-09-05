@@ -145,6 +145,9 @@ export const fixtureOpenOrders = (): OrderRow[] => [fixtureAcceptedOrder()];
 
 export const fixturePlan = (symbol = 'META'): Plan => ({
   id: 'plan-fixture-1',
+  // A complete plan: an entry AND a level that says it was wrong, so there is
+  // nothing to explain away. `fixtureUngradedPlan` below is the other case.
+  no_plan_plain: null,
   symbol,
   name: symbol === 'META' ? 'Meta Platforms, Inc.' : null,
   side: 'long',
@@ -163,4 +166,44 @@ export const fixturePlan = (symbol = 'META'): Plan => ({
   quote: { ...fixtureQuote, price: 508.4 },
   setup_id: 'setup-meta-1',
   order_state: 'No order yet — nothing is placed until you review it.',
+});
+
+/**
+ * A symbol with NO GRADED SETUP, which is the ordinary case and the one the
+ * screen used to get wrong.
+ *
+ * The route used to answer this shape with `entry: 178.42` — the last traded
+ * price with the word "entry" over it — and the plan screen printed it into an
+ * Entry tile. Here there is no entry, no stop, no target, no size, and the
+ * reason is carried in words so the screen can print it where the price was.
+ *
+ * The quote is still real and still shown, because what a stock last traded at
+ * is a fact. It just is not an entry.
+ */
+export const fixtureUngradedPlan = (symbol: string): Plan => ({
+  id: null,
+  no_plan_plain:
+    `I have no graded setup on ${symbol}, so I have no entry and no stop to give you. `
+    + 'What it last traded at is not an entry — putting that number here would make a '
+    + 'guess look like a plan. Set the levels yourself if you want to build one anyway.',
+  symbol,
+  name: null,
+  side: 'long',
+  entry: null,
+  stop: null,
+  targets: [],
+  size_shares: null,
+  size_notional: null,
+  size_plain:
+    'Without both an entry and a level that says you were wrong, there is no risk to '
+    + 'size against — so I will not put a number on it.',
+  rr: null,
+  if_target: null,
+  if_stopped: null,
+  daily_cap: { cap: 60, used: 0 },
+  exit_style: 'auto',
+  status: 'draft',
+  quote: { ...fixtureQuote, symbol, price: 178.42 },
+  setup_id: null,
+  order_state: `Nothing working on ${symbol} right now.`,
 });

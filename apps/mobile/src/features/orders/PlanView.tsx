@@ -26,6 +26,7 @@ import {
   BackButton, KaiLine, LevelTile, PaperChip, QuoteLine, RiskBar, ScenarioTile, money, signedMoney,
 } from '../trade/components';
 import type { ExitStyle, Plan } from './types';
+import { entrySlot, planStanding } from './plan-read';
 
 type EditKind = 'entry' | 'target' | 'stop' | 'size';
 
@@ -118,7 +119,18 @@ export function PlanView({
     && Math.abs(scenarios.down) + (plan.daily_cap.used ?? 0) > plan.daily_cap.cap;
 
   const sized = (plan.size_notional ?? 0) > 0 || (plan.size_shares ?? 0) > 0;
-  const ready = plan.entry != null && plan.stop != null && sized;
+  /**
+   * IS THERE A PLAN HERE AT ALL.
+   *
+   * An entry and a level that says it was wrong, or there is nothing to review
+   * — the same rule the Trade section enforces, applied here at last. The
+   * screen used to print the server's suggested entry into the tile below and
+   * on an ungraded symbol that number was the LAST TRADED PRICE with the word
+   * "Entry" over it. It is refused now, and the reason is written out where the
+   * tile would have been read.
+   */
+  const standing = planStanding(plan);
+  const ready = standing.hasPlan && sized;
 
   return (
     <Screen variant="dome" layout="tab" testID={testID}>
@@ -148,7 +160,11 @@ export function PlanView({
           </T>
         </Pressable>
 
-        {!sized ? (
+        {/* Ask for the size only once there is something to size. With no
+            entry and no stop the server's size sentence says the same thing
+            as the reason under the tiles, and two gold blocks in a row saying
+            one thing reads as an error rather than as an explanation. */}
+        {!sized && standing.hasPlan ? (
           <T size={12} c={color.gold} lh={17} align="center" testID="needs-size">
             {plan.size_plain
               ? `${plan.size_plain} Tap the amount to decide it yourself.`
@@ -159,7 +175,7 @@ export function PlanView({
         {/* Entry · Target · Stop */}
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pressable style={{ flex: 1 }} testID="edit-entry" accessibilityRole="button" accessibilityLabel="Change entry" onPress={() => openEdit('entry')}>
-            <LevelTile label="Entry" value={plan.entry != null ? String(plan.entry) : '—'} tone="entry" testID="tile-entry" />
+            <LevelTile label="Entry" value={entrySlot(plan)} tone="entry" testID="tile-entry" />
           </Pressable>
           <Pressable style={{ flex: 1 }} testID="edit-target" accessibilityRole="button" accessibilityLabel="Change target" onPress={() => openEdit('target')}>
             <LevelTile label="Target" value={target != null ? String(target) : '—'} tone="target" testID="tile-target" />
@@ -168,6 +184,13 @@ export function PlanView({
             <LevelTile label="Stop" value={plan.stop != null ? String(plan.stop) : '—'} tone="stop" testID="tile-stop" />
           </Pressable>
         </View>
+
+        {/* Why there is nothing to review — said, not implied by three dashes. */}
+        {standing.blockedPlain ? (
+          <T size={12} c={color.gold} lh={18} testID="no-plan-reason">
+            {standing.blockedPlain}
+          </T>
+        ) : null}
 
         {/* What each end of it is worth, in dollars. */}
         <View style={{ flexDirection: 'row', gap: 8 }}>

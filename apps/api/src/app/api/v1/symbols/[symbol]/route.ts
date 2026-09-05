@@ -45,7 +45,7 @@ import { listWatchlist } from '@/lib/watchlist';
 import { loadPaperAccount } from '@/lib/execution/engine';
 import { loadOpenPositions } from '@/lib/execution/positions-view';
 import { dailyRisk } from '@/lib/execution/risk';
-import { PLAN_COLUMNS, exitStylePlain, planScenarios, planSize, rrFor, rrPlain, toPlanRow } from '@/lib/execution/plans';
+import { PLAN_COLUMNS, exitStylePlain, planScenarios, planSize, planSuggestion, rrFor, rrPlain, toPlanRow } from '@/lib/execution/plans';
 import { decisionChain } from '@/lib/execution/chain';
 import { ensureDevTicker } from '@/lib/execution/tick-dev';
 import {
@@ -197,16 +197,27 @@ export const GET = authedParams<{ symbol: string }>(
     const existingPlan = planRow ? toPlanRow(planRow, policy, account?.equity ?? null) : null;
 
     const setupLevels = current ? levels(current) : { entry: null, stop: null, targets: [], perShare: null, rr: null };
-    const suggestedEntry = setupLevels.entry ?? quote.price;
+
+    /*
+     * This used to read `setupLevels.entry ?? quote.price`, which meant a
+     * symbol with no graded setup still came back carrying an "entry" that was
+     * simply the last traded price wearing the label. The Trade section refuses
+     * that downstream; the plan screen did not, and printed it as a decided
+     * level. It is refused HERE now, at the source, so no screen can show it:
+     * a plan needs an entry AND a level that says it was wrong, or there is no
+     * plan and `no_plan_plain` says why in words the screen prints as they are.
+     */
+    const suggestion = planSuggestion(symbol, setupLevels, Boolean(current?.grade_display));
+    const suggestedEntry = suggestion.entry;
     const suggestedSize = planSize(
       suggestedEntry,
-      setupLevels.stop,
-      setupLevels.targets,
+      suggestion.stop,
+      suggestion.targets,
       policy,
       account?.equity ?? null,
       null
     );
-    const suggestedRr = rrFor(suggestedEntry, setupLevels.stop, setupLevels.targets);
+    const suggestedRr = rrFor(suggestedEntry, suggestion.stop, suggestion.targets);
     const openOrders = (ordersRes.data ?? []) as Record<string, unknown>[];
     const risk = await dailyRisk(ctx.user.id, policy?.daily_loss_cap_usd ?? null);
 
@@ -357,8 +368,8 @@ export const GET = authedParams<{ symbol: string }>(
           grade: current?.grade_display ?? null,
           scenarios: planScenarios(
             suggestedEntry,
-            setupLevels.stop,
-            setupLevels.targets,
+            suggestion.stop,
+            suggestion.targets,
             suggestedSize.shares,
             current ? isLong(current.intent) : true
           ),
@@ -375,15 +386,20 @@ export const GET = authedParams<{ symbol: string }>(
           existing_plan: existingPlan,
           suggested: {
             entry: suggestedEntry,
-            stop: setupLevels.stop,
-            targets: setupLevels.targets,
+            stop: suggestion.stop,
+            targets: suggestion.targets,
+            // Whether there is anything here at all, and why not. The screen
+            // prints `no_plan_plain` verbatim rather than leaving three
+            // dashes the reader has to interpret.
+            has_plan: suggestion.has_plan,
+            no_plan_plain: suggestion.no_plan_plain,
             size: suggestedSize,
             rr: suggestedRr,
             rr_plain: rrPlain(suggestedRr, policy),
             scenarios: planScenarios(
               suggestedEntry,
-              setupLevels.stop,
-              setupLevels.targets,
+              suggestion.stop,
+              suggestion.targets,
               suggestedSize.shares,
               current ? isLong(current.intent) : true
             ),

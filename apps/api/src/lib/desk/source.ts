@@ -19,12 +19,14 @@
  */
 import { kaiSource, readAll, type KaiSource } from '../swing/source';
 import type {
-  DeskCatalyst, DeskPick, DeskTheme, DeskThemeLead, DeskWatchRow, IdeaGrade, WatchState,
+  DeskCatalyst, DeskPick, DeskTheme, DeskThemeLead, DeskWatchRow, IdeaGrade, PickOutcome,
+  WatchState,
 } from '@shared/desk';
 
 export { kaiSource, type KaiSource };
 
 const GRADES = ['A+', 'A', 'B+', 'B', 'C', 'D'] as const;
+const OUTCOMES = ['hit', 'miss', 'not_scored'] as const;
 const STATES = [
   'no_base', 'coiled', 'armed', 'triggered', 'failed',
   'invalidated', 'extended', 'cooled', 'expired',
@@ -47,6 +49,36 @@ export type PickRow = {
   idea_grade_why: string | null; score: number | null; market_cap: number | null;
   falsifier: string | null; revisit_when: string | null; catalysts: unknown;
   why: unknown; blockers: unknown; hypothesis: string | null; thesis: string | null;
+
+  /*
+   * The scoreboard columns. All of them are real columns on `brain_picks` and
+   * all of them are `double precision` / `text` / `timestamptz` — checked
+   * against the live schema on 5 September rather than assumed:
+   *
+   *   entry_price          double precision   the stock's close on the pick date
+   *   entry_benchmark      double precision   SPY's close on that same date
+   *   return_pct           double precision   the move at the horizon
+   *   excess_pct           double precision   that move minus SPY's
+   *   outcome              text               hit | miss | not_scored
+   *   graded_at            timestamptz        when it was settled
+   *
+   * On that day 31 of 32 rows carried an entry price and a benchmark, and
+   * ZERO carried a return, an excess or an outcome — nothing has reached its
+   * horizon yet. That is the normal state of this table and the screen is
+   * built for it.
+   */
+  entry_price: number | null; entry_benchmark: number | null;
+  return_pct: number | null; excess_pct: number | null;
+  outcome: string | null; graded_at: string | null;
+
+  /*
+   * Provenance. `revisit_count` is NOT NULL in the schema and reads 0 on every
+   * row because nothing in the brain increments it; `nominated_by` is null on
+   * every row because nothing feeds nominations back in. `news_90d` is the
+   * only one of the three that is actually populated.
+   */
+  revisit_count: number | null; revisit_checked_at: string | null;
+  news_90d: number | null; nominated_by: string | null;
   /**
    * THE COLUMN DOES NOT EXIST YET. `select=*` simply does not return it, so
    * this is `undefined` on every row today and the mapping below turns that
@@ -78,6 +110,21 @@ type NominationRow = {
 
 export const grade = (v: string | null): IdeaGrade | null =>
   v && (GRADES as readonly string[]).includes(v) ? (v as IdeaGrade) : null;
+
+/**
+ * The settled verdict, or nothing.
+ *
+ * Matched against the three words the brain actually writes, exactly like the
+ * grade is. Anything else — a word from a future version, a stray string —
+ * reads as "not settled" rather than being promoted onto the scoreboard, which
+ * is the failure mode that would put a verdict on a screen that nobody reached.
+ */
+export const outcome = (v: string | null): PickOutcome | null =>
+  v && (OUTCOMES as readonly string[]).includes(v) ? (v as PickOutcome) : null;
+
+/** A number the brain wrote, or null. Never coerced from a string. */
+export const num = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) ? v : null;
 
 export const state = (v: string | null): WatchState =>
   v && (STATES as readonly string[]).includes(v) ? (v as WatchState) : 'no_base';
@@ -130,6 +177,23 @@ export function toPick(r: PickRow): DeskPick {
     blockers: strings(r.blockers),
     hypothesis: r.hypothesis,
     thesis: r.thesis,
+
+    // The scoreboard, read off the row and nowhere else. `score` is not a
+    // return, `market_cap` is not a return, and neither is ever allowed to
+    // fill one of these slots — that substitution is exactly the bug that put
+    // "Move potential 0.597" on a screen, and it is what desk-test pins down.
+    entryPrice: num(r.entry_price),
+    entryBenchmark: num(r.entry_benchmark),
+    returnPct: num(r.return_pct),
+    excessPct: num(r.excess_pct),
+    outcome: outcome(r.outcome),
+    gradedAt: r.graded_at ?? null,
+
+    revisitCount: num(r.revisit_count),
+    revisitCheckedAt: r.revisit_checked_at ?? null,
+    news90d: num(r.news_90d),
+    nominatedBy: r.nominated_by?.trim() || null,
+
     unfinished: r.falsifier === NO_CALL_LINE,
   };
 }

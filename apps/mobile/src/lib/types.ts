@@ -536,6 +536,12 @@ export type PlanNumbers = {
   size?: string | null;
   rr?: string | null;
   scenarios: Scenario[];
+  /**
+   * Why there is no plan, when there is not one. A plan needs an entry AND a
+   * level that says it was wrong; the symbol screen prints this instead of
+   * three dashes. See `features/orders/plan-read.ts`.
+   */
+  no_plan_plain?: string | null;
 };
 
 export type WorkspaceHistoryItem = { id: string; label: string; at?: string | null; route?: string | null };

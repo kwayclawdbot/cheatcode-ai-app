@@ -156,6 +156,15 @@ export type Plan = {
   setup_id: string | null;
   /** "No order yet" / "Order accepted" — the decision chain, in one line. */
   order_state: string | null;
+  /**
+   * Why there is no plan here, in words, when there is not one.
+   *
+   * A plan needs an entry AND a level that says it was wrong. When either is
+   * missing the screen prints this instead of leaving the reader to work out
+   * what three dashes mean. See `plan-read.ts` for the rule and for the fake
+   * entry it exists to stop.
+   */
+  no_plan_plain: string | null;
 };
 
 export type PlanActionName = 'activate' | 'cancel' | 'adjust_stop' | 'adjust_target' | 'set_exit_style';

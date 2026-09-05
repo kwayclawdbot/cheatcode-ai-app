@@ -17,9 +17,10 @@
  *     the desk argued for.
  */
 import {
-  catalysts, grade, shapeWatchlist, state, strings, toPick,
+  catalysts, grade, num, outcome, shapeWatchlist, state, strings, toPick,
   type PickRow, type StatusRow,
 } from '../src/lib/desk/source.ts';
+import { settlesOn } from '@shared/desk';
 
 let pass = 0;
 let fail = 0;
@@ -49,7 +50,13 @@ function pick(over: Partial<PickRow> = {}): PickRow {
     score: 0.5973, market_cap: 1.2e9, falsifier: 'Q3 revenue growth below +40%',
     revisit_when: null, catalysts: [{ when: 'Q3 2026', what: 'earnings — settles the acceleration' }],
     why: ['revenue +57% YoY'], blockers: [], hypothesis: 'data preparation for model training',
-    thesis: '## THE THEME\n\nSomething.', ...over,
+    thesis: '## THE THEME\n\nSomething.',
+    // The scoreboard, in the state every real row is in: stamped on the day,
+    // nothing settled, because no write-up has reached its horizon yet.
+    entry_price: 54.96, entry_benchmark: 773.17,
+    return_pct: null, excess_pct: null, outcome: null, graded_at: null,
+    revisit_count: 0, revisit_checked_at: null, news_90d: 7, nominated_by: null,
+    ...over,
   };
 }
 
@@ -193,6 +200,130 @@ console.log('\ndesk — the watchlist join\n');
 
   eq('and the score still reaches the app as itself, unrenamed',
     toPick(pick({ score: 0.5973 })).score, 0.5973);
+}
+
+/*
+ * THE SCOREBOARD.
+ *
+ * For an accumulation system this is the only thing that ever settles an
+ * argument, and it is the part of the record most likely to be quietly filled
+ * in from something else. The rule under test is the same rule that caught
+ * "Move potential 0.597": a slot on this screen is filled by ITS OWN column or
+ * it stays empty. The score is not a return. The market cap is not a return.
+ * The entry price is not a benchmark. None of them may stand in.
+ */
+{
+  console.log('\nthe scoreboard — a result, or nothing');
+
+  eq('the entry the desk stamped comes through as it is',
+    toPick(pick({ entry_price: 100.38 })).entryPrice, 100.38);
+
+  eq('and so does the S&P it stamped beside it',
+    toPick(pick({ entry_benchmark: 773.17 })).entryBenchmark, 773.17);
+
+  // The one that would look right and be wrong. Both are prices in dollars on
+  // the same day, so a mix-up produces a plausible screen and a false result.
+  ok('the entry price never stands in for the benchmark',
+    toPick(pick({ entry_price: 100.38, entry_benchmark: null })).entryBenchmark === null);
+  ok('and the benchmark never stands in for the entry',
+    toPick(pick({ entry_price: null, entry_benchmark: 773.17 })).entryPrice === null);
+
+  eq('an unsettled call has no return',
+    toPick(pick()).returnPct, null);
+  eq('an unsettled call has no excess',
+    toPick(pick()).excessPct, null);
+  eq('an unsettled call has no verdict',
+    toPick(pick()).outcome, null);
+
+  eq('the ranking score is never read as a return',
+    toPick(pick({ score: 0.5973 })).returnPct, null);
+  eq('nor as the move against the market',
+    toPick(pick({ score: 0.5973, market_cap: 4.4e10 })).excessPct, null);
+
+  eq('a settled return comes through unchanged',
+    toPick(pick({ return_pct: 41.2 })).returnPct, 41.2);
+  eq('a loss keeps its sign',
+    toPick(pick({ return_pct: -51.3, excess_pct: -60.4 })).excessPct, -60.4);
+
+  // A name that went UP and still lost to the index. If the app ever showed
+  // the raw return as the verdict it would call this a win.
+  {
+    const p = toPick(pick({ return_pct: 3.1, excess_pct: -9.4, outcome: 'miss' }));
+    ok('a name that rose and still lost to the market reads as a miss',
+      p.returnPct! > 0 && p.excessPct! < 0 && p.outcome === 'miss', p);
+  }
+
+  eq('hit is a verdict', outcome('hit'), 'hit');
+  eq('miss is a verdict', outcome('miss'), 'miss');
+  eq('a measured pass is neither', outcome('not_scored'), 'not_scored');
+  eq('a word the brain does not write is not promoted to a verdict', outcome('won'), null);
+  eq('and neither is an empty string', outcome(''), null);
+  eq('no outcome is no outcome', outcome(null), null);
+
+  eq('graded_at says when it was settled',
+    toPick(pick({ graded_at: '2026-07-16T10:00:00Z' })).gradedAt, '2026-07-16T10:00:00Z');
+  eq('and is null while it is still running', toPick(pick()).gradedAt, null);
+
+  eq('a number written as a string is refused rather than parsed',
+    num('41.2'), null);
+  eq('and so is a NaN', num(Number.NaN), null);
+  eq('but a real zero is a real zero, not a blank', num(0), 0);
+}
+
+/*
+ * When a blank scoreboard fills.
+ *
+ * `settlesOn` restates ONE line of the brain's own settler — 1q is 91 days,
+ * 2q is 182, 4q is 365, counted from the pick date. It exists so an empty
+ * scoreboard can say why it is empty. It must never produce a date out of a
+ * horizon the brain does not settle on.
+ */
+{
+  console.log('\nwhen a blank scoreboard fills');
+
+  eq('two quarters is 182 days from the pick date',
+    settlesOn('2026-01-15', '2q'), '2026-07-16');
+  eq('one quarter is 91', settlesOn('2026-08-19', '1q'), '2026-11-18');
+  eq('four quarters is a year', settlesOn('2025-08-30', '4q'), '2026-08-30');
+
+  // Twelve of the thirty-two write-ups have no horizon. The settler skips
+  // them, so they can NEVER be settled, and the screen has to say so rather
+  // than invent a date.
+  eq('no horizon means no settlement date, ever', settlesOn('2026-09-03', null), null);
+  eq('a horizon the settler does not know gets no date', settlesOn('2026-09-03', '3q'), null);
+  eq('no pick date means no date', settlesOn(null, '2q'), null);
+  eq('and a broken date is not guessed at', settlesOn('not a date', '2q'), null);
+}
+
+/*
+ * Provenance.
+ *
+ * Three facts that are not judgements. The failure to avoid is presenting a
+ * column nothing writes as if it were a measurement.
+ */
+{
+  console.log('\nprovenance — attention, not evidence');
+
+  eq('the news count comes through as the plain integer it is',
+    toPick(pick({ news_90d: 9 })).news90d, 9);
+  eq('a company with no coverage found reads as zero, which is a real reading',
+    toPick(pick({ news_90d: 0 })).news90d, 0);
+  eq('an uncounted one reads as nothing, not as zero',
+    toPick(pick({ news_90d: null })).news90d, null);
+
+  // Nothing in the brain increments this. Every row reads 0 and the screen
+  // says why; what it must not do is turn 0 into a missing value.
+  eq('a revisit count of zero survives as zero',
+    toPick(pick({ revisit_count: 0 })).revisitCount, 0);
+  eq('and a real count comes through',
+    toPick(pick({ revisit_count: 3 })).revisitCount, 3);
+
+  eq('nobody nominated it, so nobody is named',
+    toPick(pick({ nominated_by: null })).nominatedBy, null);
+  eq('an empty string is not a company',
+    toPick(pick({ nominated_by: '   ' })).nominatedBy, null);
+  eq('and a real nominator comes through',
+    toPick(pick({ nominated_by: 'RMBS' })).nominatedBy, 'RMBS');
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

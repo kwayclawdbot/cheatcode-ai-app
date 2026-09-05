@@ -33,6 +33,9 @@ export const GET = authedParams<{ theme: string }>(
         ticker: p.ticker, company: p.company, grade: p.grade,
         status: p.status, direction: p.direction, pickDate: p.pickDate,
         themeRank: p.themeRank,
+        // How it actually turned out, once its horizon ran out. Null on every
+        // row today; the list says so rather than showing a blank column.
+        outcome: p.outcome, excessPct: p.excessPct,
       })),
       leads,
     }));

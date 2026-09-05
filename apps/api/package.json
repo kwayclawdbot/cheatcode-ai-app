@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx scripts/push-policy-test.ts && tsx scripts/freshness-test.ts && tsx scripts/answer-on-chart-test.mts && tsx scripts/chart-vocabulary-test.mts && tsx scripts/history-slots-test.ts && tsx scripts/swing-ingest-test.ts && tsx scripts/swing-publish-test.ts && tsx scripts/desk-test.ts",
+    "test": "tsx scripts/push-policy-test.ts && tsx scripts/freshness-test.ts && tsx scripts/answer-on-chart-test.mts && tsx scripts/chart-vocabulary-test.mts && tsx scripts/history-slots-test.ts && tsx scripts/swing-ingest-test.ts && tsx scripts/swing-publish-test.ts && tsx scripts/desk-test.ts && tsx scripts/plan-suggestion-test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

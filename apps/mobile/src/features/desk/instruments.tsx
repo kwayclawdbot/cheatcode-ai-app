@@ -23,9 +23,10 @@
  * says so in words and stays empty.
  */
 import React from 'react';
-import { View, StyleProp, ViewStyle } from 'react-native';
+import { Pressable, View, StyleProp, ViewStyle } from 'react-native';
 import Svg, { Line, Path, Polyline } from 'react-native-svg';
 import { T, Num, Eyebrow } from '../../ui/Text';
+import { TickerMark } from '../../ui/Ticker';
 import { alpha, color, radius, space } from '../../ui/tokens';
 import type { IdeaGrade } from '@shared/desk';
 
@@ -598,5 +599,420 @@ export function LevelTrack({ price, trigger, invalidation }: {
         <T size={9} c={color.green}>arms</T>
       </View>
     </View>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* the scoreboard — how the idea did against the market                */
+/* ------------------------------------------------------------------ */
+
+/** A date the desk wrote, said the way a person says it. */
+function saidDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+  });
+}
+
+const pct = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(1)}%`;
+
+const HORIZON_SAID: Record<string, string> = {
+  '1q': 'a quarter', '2q': 'two quarters', '3q': 'three quarters', '4q': 'a year',
+};
+
+/**
+ * THE SCOREBOARD.
+ *
+ * For a research desk that accumulates rather than trades, this is the only
+ * thing that ever settles an argument, and it is the one reading on this screen
+ * that is a fact rather than a judgement. So it is drawn biggest.
+ *
+ * WHAT A WIN IS HERE. Not "it went up". The desk stamps the price it was
+ * looking at on the day it made the claim AND what the S&P 500 was worth at the
+ * same moment, then measures both again when the horizon has actually elapsed.
+ * A long that made 4% in a quarter the market made 9% was right about nothing.
+ * So the headline is the DIFFERENCE, and the raw return sits underneath it as
+ * context rather than as the verdict.
+ *
+ * The market's own move is `return − excess`. That is not an estimate and not
+ * a substitution: it is the desk's own definition of excess rearranged, and it
+ * is drawn only when the desk published both halves. Everything else on this
+ * instrument is a column read straight off the row.
+ *
+ * TODAY IT IS ALMOST ALWAYS EMPTY, and that is the state this was designed
+ * around. On 5 September not one of the thirty-two write-ups had reached its
+ * horizon, so none of them had a return, an excess or a verdict. An empty
+ * scoreboard that says when it fills is worth something; a fabricated one is
+ * worth less than nothing. Three different kinds of empty are told apart:
+ *
+ *   · stamped and waiting  — there is an entry and a date it settles on;
+ *   · stamped and stuck    — no horizon was written, so nothing will settle it;
+ *   · never stamped        — no entry price, so there is nothing to measure.
+ */
+export function Scoreboard({
+  outcome, returnPct, excessPct, entryPrice, entryBenchmark,
+  pickDate, horizon, gradedAt, settlesOn, direction,
+}: {
+  outcome: 'hit' | 'miss' | 'not_scored' | null;
+  returnPct: number | null;
+  excessPct: number | null;
+  entryPrice: number | null;
+  entryBenchmark: number | null;
+  pickDate: string | null;
+  horizon: string | null;
+  gradedAt: string | null;
+  settlesOn: string | null;
+  direction: 'long' | 'short' | 'pass' | null;
+}) {
+  const nn = (v: number | null): v is number => typeof v === 'number' && Number.isFinite(v);
+  const settled = nn(returnPct) || nn(excessPct) || outcome != null;
+
+  return (
+    <Strip testID="desk-pick-scoreboard">
+      <Bay first>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x8 }}>
+          <Eyebrow c={color.violetLight}>Against the market</Eyebrow>
+          <T size={11} c={color.dim} style={{ marginLeft: 'auto' }}>
+            {settled ? `settled ${saidDate(gradedAt) ?? ''}`.trim() : 'not settled'}
+          </T>
+        </View>
+
+        {settled
+          ? <Settled outcome={outcome} returnPct={returnPct} excessPct={excessPct} direction={direction} />
+          : <Waiting
+              entryPrice={entryPrice}
+              entryBenchmark={entryBenchmark}
+              pickDate={pickDate}
+              horizon={horizon}
+              settlesOn={settlesOn}
+            />}
+      </Bay>
+    </Strip>
+  );
+}
+
+/** A call that has run its course. The gap is the answer. */
+function Settled({ outcome, returnPct, excessPct, direction }: {
+  outcome: 'hit' | 'miss' | 'not_scored' | null;
+  returnPct: number | null; excessPct: number | null;
+  direction: 'long' | 'short' | 'pass' | null;
+}) {
+  const nn = (v: number | null): v is number => typeof v === 'number' && Number.isFinite(v);
+
+  /*
+   * A PASS IS MEASURED, NOT SCORED, AND THE COLOURS HAVE TO KNOW IT.
+   *
+   * On a name the desk backed, a negative excess is the desk losing, and red
+   * is the truth. On a name the desk DECLINED, the same negative number is the
+   * stock falling after it was turned down — which is the pass being right.
+   * Painting that red would tell the reader the desk lost money on a position
+   * it never took, and get the direction of the judgement backwards.
+   *
+   * So a pass gets no verdict colour at all. The figure is stated as what it
+   * is — what the name did after it was declined — and the reading is left to
+   * the person, because the desk itself declines to score it.
+   */
+  const isPass = outcome === 'not_scored' || direction === 'pass';
+  const ahead = nn(excessPct) ? excessPct > 0 : null;
+  const tone = isPass || ahead == null ? color.muted : ahead ? color.green : color.red;
+
+  // The market's own move over the same stretch. The desk's definition of
+  // excess, rearranged — shown only when it published both halves of it.
+  const market = nn(returnPct) && nn(excessPct) ? returnPct - excessPct : null;
+  const span = Math.max(
+    Math.abs(returnPct ?? 0), Math.abs(market ?? 0), Math.abs(excessPct ?? 0), 1,
+  );
+
+  const verdict = isPass
+    ? 'This one was passed on, so it is measured and never scored. It has no direction to be right about and it is kept out of the hit rate — but a desk that only grades what it bought cannot tell a good standard from an expensive one.'
+    : outcome === 'hit'
+      ? `The desk was right${direction === 'short' ? ' to be short' : ''}. The number that counts is the gap: beating the market is the claim, not going up.`
+      : outcome === 'miss'
+        ? `The desk was wrong${direction === 'short' ? ' to be short' : ''}. The number that counts is the gap: beating the market is the claim, not going up.`
+        : 'The desk recorded no verdict on this one.';
+
+  return (
+    <View style={{ marginTop: space.x10 }}>
+      {nn(excessPct) ? (
+        <View
+          accessibilityLabel={`${pct(excessPct)} against the S and P 500`}
+          style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x10 }}
+        >
+          <Num size={38} weight="bold" c={tone} style={{ lineHeight: 42 }} testID="scoreboard-excess">
+            {pct(excessPct)}
+          </Num>
+          <T size={14} weight="semibold" c={tone} style={{ flex: 1 }}>
+            {isPass
+              ? `what it did against the S&P 500 after the desk declined it`
+              : ahead ? 'ahead of the S&P 500' : 'behind the S&P 500'}
+          </T>
+        </View>
+      ) : (
+        <T size={17} weight="bold" c={color.muted} testID="scoreboard-excess">
+          The gap against the market was never worked out
+        </T>
+      )}
+
+      {/* Two runs on ONE axis: the idea in Kai's violet, the market in cyan,
+          both leaving the same zero line at the same scale, so the gap between
+          them is the picture rather than something to be worked out. The zero
+          line is drawn once, through both, because there is only one of it. */}
+      <View style={{ marginTop: space.x14 }}>
+        <View
+          pointerEvents="none"
+          style={{
+            // starts at the first bar, not at its label — a rule through a
+            // word is a mistake, not an axis
+            position: 'absolute', left: '50%', top: 21, bottom: 15,
+            width: 1, backgroundColor: alpha.ivory25,
+          }}
+        />
+        <View style={{ gap: space.x12 }}>
+          <RunBar
+            label={isPass ? 'The name, after it was declined' : 'This idea'}
+            value={returnPct}
+            span={span}
+            tone={color.violet}
+          />
+          <RunBar label="The S&P 500" value={market} span={span} tone={color.cyan} />
+        </View>
+        <T size={9} c={color.dim} align="center" style={{ marginTop: space.x4 }}>
+          flat — where both started
+        </T>
+      </View>
+
+      <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x12 }}>
+        {verdict}{nn(returnPct) && nn(excessPct)
+          ? ''
+          : ' The desk settled it without publishing both halves, so only what it wrote is shown.'}
+      </T>
+    </View>
+  );
+}
+
+/** One run along a shared axis. Nothing is drawn for a figure that is missing. */
+function RunBar({ label, value, span, tone }: {
+  label: string; value: number | null; span: number; tone: string;
+}) {
+  const known = typeof value === 'number' && Number.isFinite(value);
+  const frac = known ? Math.min(Math.abs(value!) / span, 1) : 0;
+  const up = known && value! >= 0;
+  return (
+    <View accessibilityLabel={`${label} ${known ? pct(value!) : 'not published'}`}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x8 }}>
+        <T size={12} c={color.muted}>{label}</T>
+        <Num size={13} weight="bold" c={known ? tone : color.dim} style={{ marginLeft: 'auto' }}>
+          {known ? pct(value!) : 'not published'}
+        </Num>
+      </View>
+      {/* The run leaves the shared zero line in the direction it went. The
+          line itself belongs to the pair, not to this bar, so it is not drawn
+          here — half a line per bar is not an axis. */}
+      <View style={{ flexDirection: 'row', height: 10, marginTop: space.x6 }}>
+        <View style={{ flex: 1, alignItems: 'flex-end', justifyContent: 'center' }}>
+          {known && !up && (
+            <View style={{ height: 10, width: `${frac * 100}%`, backgroundColor: tone, opacity: 0.9 }} />
+          )}
+        </View>
+        <View style={{ width: 1 }} />
+        <View style={{ flex: 1, justifyContent: 'center' }}>
+          {known && up && (
+            <View style={{ height: 10, width: `${frac * 100}%`, backgroundColor: tone, opacity: 0.9 }} />
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * A call whose horizon has not run out — the ordinary case.
+ *
+ * What DOES exist is the starting line, and it is worth showing: the desk
+ * stamped both prices on the day it made the claim, precisely so the result
+ * can never be reconstructed later against a number it never saw.
+ */
+function Waiting({ entryPrice, entryBenchmark, pickDate, horizon, settlesOn }: {
+  entryPrice: number | null; entryBenchmark: number | null;
+  pickDate: string | null; horizon: string | null; settlesOn: string | null;
+}) {
+  const nn = (v: number | null): v is number => typeof v === 'number' && Number.isFinite(v);
+  const stamped = nn(entryPrice);
+  const said = horizon ? (HORIZON_SAID[horizon.toLowerCase()] ?? horizon) : null;
+
+  const why = !stamped
+    ? 'No entry price was ever stamped for this one, so there is nothing to measure a result from. Nothing here can be filled in later without grading the desk against a price it never saw.'
+    : settlesOn
+      ? `Nothing is settled until the horizon has actually run out. The desk measures this one on ${saidDate(settlesOn)}${said ? `, ${said} after it was written` : ''}.`
+      : 'No horizon was written down for this one, so there is no date the desk will ever measure it on. Until one is written it cannot be settled at all.';
+
+  return (
+    <View style={{ marginTop: space.x10 }}>
+      <T size={19} weight="bold" c={color.muted} testID="scoreboard-excess">
+        No result yet
+      </T>
+
+      {stamped ? (
+        <View style={{ marginTop: space.x14 }}>
+          <Eyebrow c={color.dim}>Where it starts from</Eyebrow>
+          <View style={{ flexDirection: 'row', marginTop: space.x8 }}>
+            <View style={{ flex: 1 }}>
+              <T size={12} c={color.muted}>This idea</T>
+              <Num size={20} weight="bold" c={color.violetLight} testID="scoreboard-entry">
+                {`$${entryPrice!.toFixed(2)}`}
+              </Num>
+            </View>
+            <View style={{ width: 1, backgroundColor: alpha.ivory08 }} />
+            <View style={{ flex: 1, paddingLeft: space.x14 }}>
+              <T size={12} c={color.muted}>The S&P 500</T>
+              {nn(entryBenchmark) ? (
+                <Num size={20} weight="bold" c={color.cyan} testID="scoreboard-benchmark">
+                  {entryBenchmark.toFixed(2)}
+                </Num>
+              ) : (
+                <T size={15} weight="bold" c={color.dim}>not stamped</T>
+              )}
+            </View>
+          </View>
+          {pickDate ? (
+            <T size={11} c={color.dim} style={{ marginTop: space.x6 }}>
+              {`both taken at the close on ${saidDate(pickDate)}`}
+            </T>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* the open run: a marked start, then dashes to a date nothing has reached */}
+      <View style={{ marginTop: space.x14 }}>
+        <Svg width="100%" height={16} viewBox="0 0 120 16" preserveAspectRatio="none">
+          <Line x1={1} y1={3} x2={1} y2={13} stroke={stamped ? color.violet : alpha.ivory25}
+            strokeWidth={2} vectorEffect="non-scaling-stroke" />
+          <Line x1={1} y1={8} x2={112} y2={8} stroke={alpha.ivory16} strokeWidth={2}
+            strokeDasharray="4 5" vectorEffect="non-scaling-stroke" />
+          {settlesOn ? (
+            <Line x1={112} y1={4} x2={112} y2={12} stroke={alpha.cyan40} strokeWidth={2}
+              vectorEffect="non-scaling-stroke" />
+          ) : null}
+        </Svg>
+      </View>
+
+      <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x6 }}>{why}</T>
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* provenance — where it came from and how much attention it has had   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The quieter half of the record.
+ *
+ * Three facts that are not judgements and are not results: who put the idea
+ * forward, how many times anyone has been back to it, and how loud the press
+ * was around the company in the ninety days before it was written up.
+ *
+ * They read as provenance, not as a score. That is deliberate — none of them is
+ * evidence for or against the argument, and drawing them at the same weight as
+ * the grade or the scoreboard would say they were.
+ *
+ * THE NEWS COUNT IS SHOWN RAW AND NOTHING IS DONE TO IT. It only means anything
+ * measured against how big the company is, and the desk makes that comparison
+ * itself, in its own words, in the evidence list above — "quiet for what it
+ * is". The app does not recompute the expectation and does not invent a verdict
+ * on the number.
+ */
+export function Provenance({ revisitCount, revisitCheckedAt, news90d, nominatedBy, onOpenNominator }: {
+  revisitCount: number | null;
+  revisitCheckedAt: string | null;
+  news90d: number | null;
+  nominatedBy: string | null;
+  onOpenNominator?: (ticker: string) => void;
+}) {
+  const rows: React.ReactNode[] = [];
+
+  if (nominatedBy) {
+    rows.push(
+      <Fact key="nom" label="Put forward by" first>
+        <Pressable
+          disabled={!onOpenNominator}
+          onPress={() => onOpenNominator?.(nominatedBy)}
+          accessibilityRole={onOpenNominator ? 'button' : undefined}
+          testID="provenance-nominator"
+          style={({ pressed }) => ({
+            flexDirection: 'row', alignItems: 'center', gap: space.x8,
+            opacity: pressed ? 0.6 : 1,
+          })}
+        >
+          <TickerMark symbol={nominatedBy} size={22} />
+          <Num size={15} weight="bold" c={color.text}>{nominatedBy}</Num>
+          <T size={12} c={color.dim} style={{ flex: 1 }}>
+            named this company in its own write-up
+          </T>
+          {onOpenNominator ? <T size={12} c={color.volt}>open ›</T> : null}
+        </Pressable>
+      </Fact>,
+    );
+  }
+
+  rows.push(
+    <Fact key="revisit" label="Times revisited" first={rows.length === 0}>
+      <T size={15} weight="bold" c={revisitCount ? color.text : color.muted}>
+        {revisitCount == null
+          ? 'not recorded'
+          : revisitCount === 0
+            ? 'Never'
+            : `${revisitCount} time${revisitCount === 1 ? '' : 's'}`}
+      </T>
+      <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
+        {revisitCount === 0
+          ? 'Every write-up in the desk reads zero here, because nothing in the research brain goes back and counts. It is a gap in the record, not evidence the idea was ignored.'
+          : revisitCheckedAt
+            ? `Last looked at on ${saidDate(revisitCheckedAt)}.`
+            : 'Nothing has recorded when it was last looked at.'}
+      </T>
+    </Fact>,
+  );
+
+  rows.push(
+    <Fact key="news" label="Press in the 90 days before">
+      {news90d == null ? (
+        <T size={15} weight="bold" c={color.muted}>not counted</T>
+      ) : (
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x8 }}>
+          <Num size={22} weight="bold" c={color.cyan} testID="provenance-news">{news90d}</Num>
+          <T size={13} c={color.muted}>
+            {news90d === 1 ? 'news item' : 'news items'}
+          </T>
+        </View>
+      )}
+      <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
+        A plain count of what the search found. On its own it says nothing — the
+        same number is silence for a giant and a crowd for a small company — so
+        the desk only draws a conclusion from it in the evidence above, and only
+        when it counted.
+      </T>
+    </Fact>,
+  );
+
+  return (
+    <View testID="desk-pick-provenance">
+      <Eyebrow c={color.muted}>Where this came from</Eyebrow>
+      <Strip style={{ marginTop: space.x10 }}>{rows}</Strip>
+    </View>
+  );
+}
+
+/** One provenance line. Ruled off, never boxed. */
+function Fact({ label, children, first = false }: {
+  label: string; children: React.ReactNode; first?: boolean;
+}) {
+  return (
+    <Bay first={first}>
+      <Eyebrow c={color.dim}>{label}</Eyebrow>
+      <View style={{ marginTop: space.x6 }}>{children}</View>
+    </Bay>
   );
 }

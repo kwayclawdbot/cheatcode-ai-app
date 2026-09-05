@@ -35,10 +35,10 @@ import { useResource } from '../../../lib/useResource';
 import { Falsifier, GradeMark, UnfinishedNote, money } from '../../../features/desk/ui';
 import {
   Bay, BaySplit, CallMark, CatalystSpine, GradeScale, HorizonTrack, Ledger,
-  PotentialMove, Strip, ThemeGauges,
+  PotentialMove, Provenance, Scoreboard, Strip, ThemeGauges,
 } from '../../../features/desk/instruments';
 import { ThesisReader } from '../../../features/desk/ThesisReader';
-import type { DeskPickResponse } from '@shared/desk';
+import { settlesOn, type DeskPickResponse } from '@shared/desk';
 
 export default function DeskPickDetail() {
   const { ticker } = useLocalSearchParams<{ ticker: string }>();
@@ -173,6 +173,26 @@ export default function DeskPickDetail() {
           ) : null}
         </Strip>
 
+        {/* ── how it actually did ──────────────────────────────── */}
+        {/* Placed directly under the panel, ahead of everything the desk
+            merely argued, because a result outranks an argument. On a call
+            that has not run its course it is the starting line and the date
+            it settles on — which is the whole record that exists today. */}
+        <View style={{ marginTop: space.x24 }}>
+          <Scoreboard
+            outcome={pick.outcome}
+            returnPct={pick.returnPct}
+            excessPct={pick.excessPct}
+            entryPrice={pick.entryPrice}
+            entryBenchmark={pick.entryBenchmark}
+            pickDate={pick.pickDate}
+            horizon={pick.horizon}
+            gradedAt={pick.gradedAt}
+            settlesOn={settlesOn(pick.pickDate, pick.horizon)}
+            direction={pick.direction}
+          />
+        </View>
+
         {/* ── what kills it ────────────────────────────────────── */}
         {pick.falsifier && !pick.unfinished ? (
           <View style={{ marginTop: space.x24 }} testID="desk-pick-falsifier">
@@ -249,6 +269,19 @@ export default function DeskPickDetail() {
             ))}
           </View>
         )}
+
+        {/* ── where it came from ──────────────────────────────── */}
+        {/* Last, and quietly. None of this is evidence for or against the
+            argument; putting it any higher would say that it was. */}
+        <View style={{ marginTop: space.x30 }}>
+          <Provenance
+            revisitCount={pick.revisitCount}
+            revisitCheckedAt={pick.revisitCheckedAt}
+            news90d={pick.news90d}
+            nominatedBy={pick.nominatedBy}
+            onOpenNominator={(t) => router.push(`/desk/pick/${encodeURIComponent(t)}`)}
+          />
+        </View>
 
         {res.isFixture ? (
           <T size={10} c={color.dim} style={{ marginTop: space.x20 }}>

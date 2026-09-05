@@ -10,6 +10,7 @@
  * the screen says so.
  */
 import { adaptCandles, adaptQuoteLoose, adaptSetupCard, freshnessOf } from './adapters';
+import { suggestedLevels } from '../features/orders/plan-read';
 import type {
   AlertRow, AlertsSimple, AlsoWatchingRow, AttentionAlert, Candle, GoalMode, GradedSetup,
   HomePriority, HomeV5, MarketStatus, MonitoringRow, PlanNumbers, PositionModule,
@@ -426,11 +427,27 @@ export function adaptWorkspace(v: unknown, symbol: string): SymbolWorkspace {
   const planTargets = arr(planSuggested.targets)
     .map((t) => nNum(obj(t).price) ?? nNum(t))
     .filter((n): n is number => n != null);
+  /*
+   * THE SAME REFUSAL AS THE PLAN SCREEN, because this tab shows the same
+   * three tiles. `/symbols/:symbol` used to fill its suggested entry with the
+   * last traded price on a symbol with no setup; the route no longer does, and
+   * this drops it anyway in case the phone is talking to an older API. An
+   * entry with no invalidation goes out along with the entry — half a plan on
+   * a screen is read as a plan.
+   */
+  const offered = suggestedLevels({
+    symbol: str(r.symbol ?? identity.symbol),
+    entry: nNum(planSuggested.entry) ?? levels.entry ?? null,
+    stop: nNum(planSuggested.stop) ?? levels.invalid ?? null,
+    targets: planTargets.length ? planTargets : (levels.target != null ? [levels.target] : []),
+    noPlanPlain: nStr(planSuggested.no_plan_plain),
+  });
   const suggested: PlanNumbers | null = Object.keys(planSuggested).length || levels.entry != null
     ? {
-        entry: nNum(planSuggested.entry) ?? levels.entry,
-        stop: nNum(planSuggested.stop) ?? levels.invalid,
-        targets: planTargets.length ? planTargets : (levels.target != null ? [levels.target] : []),
+        entry: offered.entry,
+        stop: offered.stop,
+        targets: offered.targets,
+        no_plan_plain: offered.noPlanPlain,
         size: nStr(obj(planSuggested.size).plain) ?? nStr(planSuggested.size_plain),
         rr: nStr(planSuggested.rr_plain)
           ?? (nNum(planSuggested.rr) != null ? `${nNum(planSuggested.rr)!.toFixed(1)} : 1` : null),
