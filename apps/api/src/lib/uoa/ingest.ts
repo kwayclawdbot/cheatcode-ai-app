@@ -413,11 +413,18 @@ export function setupFromUoaRecord(record: Record<string, unknown>): UoaSetupRow
       escalated_from_watchlist: record.escalated_from_watchlist === true,
     },
 
+    // THE REHEARSAL LABEL GOES ON BOTH THESES, because the surfaces disagree
+    // about which one they show: the expanded card reads `thesis_plain` and a
+    // History row reads `thesis_technical`. Labelling only the first left the
+    // History row — the ONE place a rehearsal is most likely to be mistaken for
+    // a delivered alert — saying nothing at all.
     thesis_plain: isReplay
       ? `${REPLAY_PREFIX} ${storyFor({ company, ticker, direction, filters })}`
       : storyFor({ company, ticker, direction, filters }),
     // The engine's own one-line summary, kept verbatim as the technical read.
-    thesis_technical: typeof record.alert_text === 'string' ? record.alert_text : null,
+    thesis_technical: typeof record.alert_text === 'string'
+      ? (isReplay ? `${REPLAY_PREFIX} ${record.alert_text}` : record.alert_text)
+      : null,
 
     entry_condition: {
       kind: 'published_trigger',

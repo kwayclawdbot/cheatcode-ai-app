@@ -93,6 +93,27 @@ function rrRatio(rr?: string | null): number | null {
 }
 
 /**
+ * A component the scorer actually MEASURED, or nothing.
+ *
+ * `scoreComponents` on the server returns all five specs for the mode every
+ * time, and fills the ones it has no reading for with `status: 'Unknown'` and
+ * `strength: 0`. That is right for the scorecard, where "I have no read on
+ * this" is a sentence worth printing — and wrong for a BAR, because a bar of
+ * length zero is a picture of "as bad as it gets", not of "not measured". The
+ * two must not look the same, and at 0 of 5 segments they do.
+ *
+ * So a bar is drawn from a component only when the scorer put a reading in it.
+ * This matters most for the unusual-options-activity family, which measures one
+ * thing and leaves four Unknown — under the old rule that card drew three
+ * quarters of a scorecard in empty bars and looked like a terrible setup rather
+ * than a narrow one.
+ */
+function measured(c: AlertScoreComponent | null): AlertScoreComponent | null {
+  if (!c) return null;
+  return c.status.trim().toLowerCase() === 'unknown' ? null : c;
+}
+
+/**
  * The three bars, in the order a trader reads them. A bar appears only when
  * there is something behind it: a score from the engine, or a component the
  * scorer actually filled in. Nothing is invented to keep the row even.
@@ -102,11 +123,11 @@ function tradeBars(alert: AlertCardModel): Bar[] {
   const comps = alert.score_components ?? [];
   const bars: Bar[] = [];
 
-  const trendC = pick(comps, ['trend']);
+  const trendC = measured(pick(comps, ['trend']));
   if (s.trend != null) bars.push({ key: 'trend', label: 'Trend strength', pct: s.trend, readout: String(Math.round(s.trend)), mono: true });
   else if (trendC) bars.push({ key: 'trend', label: 'Trend strength', pct: fromSegments(trendC.strength), readout: trendC.status });
 
-  const rrC = pick(comps, ['risk_reward', 'rr']);
+  const rrC = measured(pick(comps, ['risk_reward', 'rr']));
   const ratio = rrRatio(alert.trade.rr);
   // 3 to 1 fills the bar — past that the extra reward is not what decides it.
   const rrPct = s.rr ?? (ratio != null ? Math.round(Math.min(ratio / 3, 1) * 100) : rrC ? fromSegments(rrC.strength) : null);
@@ -120,7 +141,7 @@ function tradeBars(alert: AlertCardModel): Bar[] {
     });
   }
 
-  const optC = pick(comps, ['options_activity', 'options', 'options_flow']);
+  const optC = measured(pick(comps, ['options_activity', 'options', 'options_flow']));
   if (s.options_activity != null) {
     bars.push({ key: 'options', label: 'Options activity', pct: s.options_activity, readout: String(Math.round(s.options_activity)), mono: true });
   } else if (optC) {
@@ -252,11 +273,22 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
             that used to sit here now lives under "The story" below.
           */}
           {hasStrip ? (
+            /*
+              A LEVEL WITH NO NUMBER IS NOT DRAWN.
+              These four used to fall back to an em-dash, which puts a red box
+              labelled "Stop" on a card that has no stop — and a red box labelled
+              Stop is read as a stop, whatever is printed inside it. For an
+              engine that produces no exit levels at all (the
+              unusual-options-activity family) that is not a cosmetic gap: it is
+              the card implying a risk plan nothing behind it ever computed.
+              The `note` below already explains the absence in a sentence, which
+              is where an absence belongs.
+            */
             <View style={{ flexDirection: 'row', gap: 6 }}>
-              <LevelCell label="Current" value={trade.current ?? '—'} c={color.text} bg={alpha.ivory04} border={alpha.ivory10} />
-              <LevelCell label="Entry" value={trade.entry ?? '—'} c={color.cyan} bg={color.cyanTint} border={alpha.cyan40} />
-              <LevelCell label="Stop" value={trade.stop ?? '—'} c={color.red} bg={color.redTint} border={alpha.red40} />
-              <LevelCell label="Target" value={trade.target ?? '—'} c={color.green} bg={color.greenTint} border={alpha.green40} />
+              {trade.current ? <LevelCell label="Current" value={trade.current} c={color.text} bg={alpha.ivory04} border={alpha.ivory10} /> : null}
+              {trade.entry ? <LevelCell label="Entry" value={trade.entry} c={color.cyan} bg={color.cyanTint} border={alpha.cyan40} /> : null}
+              {trade.stop ? <LevelCell label="Stop" value={trade.stop} c={color.red} bg={color.redTint} border={alpha.red40} /> : null}
+              {trade.target ? <LevelCell label="Target" value={trade.target} c={color.green} bg={color.greenTint} border={alpha.green40} /> : null}
             </View>
           ) : null}
 
@@ -266,14 +298,33 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
           ) : null}
 
           {/* What it costs YOU — a number, so it stays with the levels. */}
+          {/*
+            "Your risk $58" is a number with a label. When there is no number,
+            the server sends a SENTENCE instead ("I cannot size this one yet —
+            without both an entry and an invalidation level there is no risk to
+            size against"), and pouring that into the same slot produced
+            "Your risk I cannot size this one yet…" wrapped around a gold dash.
+            A sentence is rendered as a sentence.
+          */}
           {alert.fit ? (
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <T size={11} c={color.muted}>
-                Your risk <Num size={11} c={color.gold}>{alert.fit.risk_amount ?? '—'}</Num>
-                {alert.fit.cap_line ? ` · ${alert.fit.cap_line}` : ''}
-              </T>
-              {alert.fit.conflicts ? <T size={11} c={color.muted}>{alert.fit.conflicts}</T> : null}
-            </View>
+            (() => {
+              const amount = alert.fit.risk_amount ?? null;
+              const isNumber = !!amount && /^[$\d]/.test(amount.trim());
+              if (amount && !isNumber) {
+                return <T size={11} c={color.muted} lh={17}>{amount}</T>;
+              }
+              return (
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  {amount ? (
+                    <T size={11} c={color.muted}>
+                      Your risk <Num size={11} c={color.gold}>{amount}</Num>
+                      {alert.fit.cap_line ? ` · ${alert.fit.cap_line}` : ''}
+                    </T>
+                  ) : <View />}
+                  {alert.fit.conflicts ? <T size={11} c={color.muted}>{alert.fit.conflicts}</T> : null}
+                </View>
+              );
+            })()
           ) : null}
 
           {/*

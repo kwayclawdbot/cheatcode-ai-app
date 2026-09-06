@@ -28,7 +28,12 @@ import type { GoalMode } from '../../lib/types';
  * this screen cannot disagree with the tab about what is running.
  */
 const GOALS: { key: GoalMode; title: string; sub: string; Icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
-  { key: 'day_trade', title: 'Trade Today', sub: 'Enter and exit in one day. Kai is not calling these yet.', Icon: Bolt },
+  // "Kai is not calling these yet" was true while the mode was archived and is
+  // not any more: the unusual-options-activity engine publishes same-day alerts
+  // into this lane. The line now says what the mode is rather than apologising
+  // for it — and says that it is selective, because a person who picks this and
+  // then sees nothing on a quiet day should have been told that here.
+  { key: 'day_trade', title: 'Trade Today', sub: 'Enter and exit in one day. Alerts only on the days the setup appears.', Icon: Bolt },
   { key: 'swing', title: 'Trade Over Time', sub: 'Hold opportunities for days or weeks.', Icon: Calendar },
   { key: 'invest', title: 'Build My Portfolio', sub: 'Grow long-term wealth with less involvement.', Icon: Bars },
 ];
