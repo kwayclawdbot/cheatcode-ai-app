@@ -58,14 +58,34 @@ const allowed = new Set([...declared.matchAll(/'([^']+)'/g)].map((m) => m[1]));
  */
 const GATE_HANDLES_ITSELF = new Set(['(tabs)', '(auth)', '(onboarding)']);
 
-const entries = fs.readdirSync(APP, { withFileTypes: true })
+const dir = fs.readdirSync(APP, { withFileTypes: true });
+
+const entries = dir
   .filter((e) => e.isDirectory())
   .map((e) => e.name)
   .filter((n) => !GATE_HANDLES_ITSELF.has(n));
 
+/**
+ * A top-level FILE is a route too, and `useSegments()[0]` reports its name the
+ * same way it reports a directory's — `/leaderboard` comes back as
+ * `'leaderboard'`. This test used to look only at directories, which made a
+ * single-file screen look like dead configuration the moment it was correctly
+ * added to the gate.
+ *
+ * They are counted for the STALE check but deliberately NOT for the MISSING
+ * one: `index.tsx` is the app's own entry point and the two `*-check` screens
+ * are developer surfaces that nothing pushes to from a signed-in session, so
+ * requiring them in the gate would be requiring dead configuration of a
+ * different kind.
+ */
+const fileRoutes = dir
+  .filter((e) => e.isFile() && /\.tsx$/.test(e.name))
+  .map((e) => e.name.replace(/\.tsx$/, ''))
+  .filter((n) => n !== '_layout' && n !== 'index');
+
 console.log('\nThe session gate knows every route group');
 console.log('---------------------------------------');
-console.log(`  · src/app has ${entries.length} pushable groups; the gate allows ${allowed.size}`);
+console.log(`  · src/app has ${entries.length} pushable groups and ${fileRoutes.length} single-file routes; the gate allows ${allowed.size}`);
 
 const missing = entries.filter((n) => !allowed.has(n));
 ok(
@@ -77,7 +97,13 @@ ok(
 // The one that actually broke, named so the regression cannot come back quietly.
 ok("the reply-with-quote screen's group is allowed", allowed.has('thread'));
 
-const stale = [...allowed].filter((n) => !entries.includes(n));
+// The social layer's two pushed destinations, named for the same reason: the
+// composer and the board are reached from the club board on a real session.
+ok('the community call composer is allowed', allowed.has('community'));
+ok('the leaderboard is allowed', allowed.has('leaderboard'));
+
+const known = new Set([...entries, ...fileRoutes]);
+const stale = [...allowed].filter((n) => !known.has(n));
 ok(
   'the gate allows nothing that is not a route any more',
   stale.length === 0,

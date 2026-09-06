@@ -89,13 +89,14 @@ export function useTake(read: TradeRead | null, portal: TradePortal | null) {
    * every time the order is read back, so "Accepted — waiting to fill" becomes
    * "Filled at 504.62" on its own without the user having to go looking.
    */
-  const send = useCallback(async () => {
+  const send = useCallback(async (shareTrade?: boolean) => {
     const preview = state.preview;
     if (!preview) return;
     setState((s) => ({ ...s, phase: 'sending', error: null }));
     let placed: OrderRow;
     try {
-      placed = await tradeApi.submit(preview.preview_id);
+      // The per-order sharing answer travels with the order it belongs to.
+      placed = await tradeApi.submit(preview.preview_id, undefined, shareTrade);
     } catch (e) {
       if (!alive.current) return;
       setState((s) => ({

@@ -7,6 +7,7 @@ import { KaiObjectView } from './KaiObjects';
 import type { MessageMedia, ReactionKind, RoomMessage } from '../types';
 import { MediaStrip, QuoteBlock, ReactionBar, ThreadLine } from './Social';
 import { PostBody } from './PostBody';
+import { FollowButton } from '../../social/FollowButton';
 
 /**
  * One message in a room (V3-C1 / S81).
@@ -32,6 +33,7 @@ const roleTone = (label: string): 'gold' | 'kai' | 'green' | 'neutral' => {
 export function MessageRow({
   message, selected, onSelect, onOpenAuthor, onMore, showStructured = true,
   onReact, onReply, onOpenThread, onOpenMedia, onTicker, onOpenQuote, hideThreadLine,
+  showFollow = false,
 }: {
   message: RoomMessage;
   selected?: boolean;
@@ -39,6 +41,14 @@ export function MessageRow({
   onOpenAuthor?: () => void;
   onMore?: () => void;
   showStructured?: boolean;
+  /**
+   * Draw the compact follow control at the end of the author line. Off by
+   * default, and the CALLER decides — this component cannot know whether the
+   * author is the person reading, and offering to follow yourself is the
+   * silliest thing a social feature can do. Never true for Kai either: he is
+   * not a member and there is nothing to subscribe to.
+   */
+  showFollow?: boolean;
   onReact?: (kind: ReactionKind) => void;
   /** Answer this one, quoting it. Absent = this surface does not reply. */
   onReply?: () => void;
@@ -108,6 +118,17 @@ export function MessageRow({
             <DisclosureChip label={m.position_disclosure.label} holds={m.position_disclosure.holds} />
           ) : null}
           <T size={10} c={color.muted}>{m.time_label}</T>
+          {/*
+            Follow, at the end of the author line. It is a SIBLING of the name's
+            pressable and never a child of it: on web a role of "button" renders
+            as a real <button>, and one cannot contain another. This is the same
+            rule that keeps MediaStrip outside the body pressable below.
+          */}
+          {showFollow && !isKai && m.author.user_id ? (
+            <View style={{ marginLeft: 'auto' }}>
+              <FollowButton userId={m.author.user_id} compact testID={`message-follow-${m.id}`} />
+            </View>
+          ) : null}
         </View>
 
         {/* The body is the tap target for selection so the row never nests a

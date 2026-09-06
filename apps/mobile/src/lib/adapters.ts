@@ -29,6 +29,11 @@ import type {
   SetupState, WatchingItem,
 } from './types';
 import type {
+  Belt, BeltBlock, CommunityCall, CommunityCallStatus, ContributorSocial, FollowFeed,
+  FollowFeedItem, FollowState, Leaderboard, LeaderboardPeriod, LeaderboardRow, PointsExplainer,
+  SharedTrade, SharedTradeOutcome, SocialAuthor, SocialDirection, SocialRecord,
+} from './types';
+import type {
   AdminAuditPage, AdminInviteRow, AdminInvitesPage, AdminInviteTotals, AdminMetric,
   AdminOverview, AdminPeopleFilter, AdminPeoplePage, AdminPerson, AdminPersonRow,
   AdminScores, AdminSegmentRow, AdminSourceState, AdminSyncRun, AdminTimelineRow,
@@ -955,6 +960,16 @@ export function adaptMe(v: unknown): Me {
       // server's own defaults are, so the screen reads the same either way.
       push_enabled: bool(settings.push_enabled, true),
       notification_categories: adaptNotificationCategories(settings.notification_categories),
+      /**
+       * 0038. WHETHER THIS PERSON SHOWS THEIR TRADES, AND THE DEFAULT IS NO.
+       *
+       * `bool(x, false)` rather than `bool(x, true)`: sharing is opt-in, and
+       * every way this value can be unknown — an API that predates the column,
+       * a malformed block, a fixture — has to mean "not sharing". A default of
+       * true would publish somebody's positions because a field was missing,
+       * which is not a bug you can apologise for afterwards.
+       */
+      share_trades: bool(settings.share_trades, false),
     },
     // 0030. Null when the API did not send one — every credit surface then
     // hides itself rather than drawing a balance nobody has.
@@ -2039,5 +2054,255 @@ export function adaptRedeem(v: unknown): InviteRedeemResult {
     tier: str(r.tier) === 'premium' ? 'premium' : 'free',
     subscription_plain: str(a6(r.subscription).plain),
     plain: str(r.plain),
+  };
+}
+
+/* =========================================================================
+ * SOCIAL — following, member calls, shared trades, belts and the board.
+ *
+ * Same defensive rule as every adapter above: coerce, never trust. A missing
+ * number stays null rather than becoming a zero, because on these surfaces a
+ * zero is a claim — "0% accurate" and "nothing has resolved yet" are opposite
+ * sentences, and only one of them is true.
+ *
+ * NOTHING HERE READS A SIZE OR A DOLLAR P/L, even defensively. If a future
+ * payload carried one it would be dropped on the floor here, which is where a
+ * promise that has to hold belongs.
+ * ====================================================================== */
+
+const BELTS: Belt[] = ['white', 'blue', 'purple', 'brown', 'black'];
+
+export const adaptBelt = (v: unknown): Belt => {
+  const s = r4str(v).toLowerCase();
+  return (BELTS as string[]).includes(s) ? (s as Belt) : 'white';
+};
+
+const BELT_LABEL: Record<Belt, string> = {
+  white: 'White belt', blue: 'Blue belt', purple: 'Purple belt',
+  brown: 'Brown belt', black: 'Black belt',
+};
+
+export function adaptBeltBlock(v: unknown): BeltBlock {
+  const b = r4obj(v);
+  const key = adaptBelt(b.key ?? b.belt ?? v);
+  const progress = r4num(b.progress);
+  return {
+    key,
+    label: r4str(b.label, BELT_LABEL[key]),
+    next_at: r4num(b.next_at),
+    next_label: r4nul(b.next_label),
+    // Clamped, because a progress bar drawn past its own track reads as a bug
+    // rather than as an achievement.
+    progress: progress == null ? null : Math.max(0, Math.min(1, progress)),
+  };
+}
+
+export function adaptPointsExplainer(v: unknown): PointsExplainer {
+  const e = r4obj(v);
+  return {
+    lines: r4arr(e.lines).map((l) => r4str(l)).filter(Boolean),
+    belts: r4arr(e.belts).map((b) => {
+      const o = r4obj(b);
+      const key = adaptBelt(o.key);
+      return { key, label: r4str(o.label, BELT_LABEL[key]), min_points: r4num(o.min_points) ?? 0 };
+    }),
+  };
+}
+
+/**
+ * An author always has SOMETHING to draw. A member with no display name and no
+ * username is still a person who posted, so the fallbacks are "Member" and a
+ * single letter — never a blank line where a name goes, and never their id.
+ */
+export function adaptSocialAuthor(v: unknown): SocialAuthor {
+  const a = r4obj(v);
+  const handle = r4nul(a.handle);
+  const name = r4str(a.display_name ?? a.name, handle ?? 'Member');
+  return {
+    user_id: r4str(a.user_id ?? a.id),
+    handle,
+    display_name: name,
+    avatar_url: r4nul(a.avatar_url),
+    initial: r4str(a.initial, name.trim().slice(0, 1).toUpperCase() || 'M'),
+    belt: adaptBelt(a.belt),
+  };
+}
+
+const direction = (v: unknown): SocialDirection => (r4str(v).toLowerCase() === 'short' ? 'short' : 'long');
+
+const CALL_STATUS: CommunityCallStatus[] = ['open', 'target', 'stop', 'expired', 'withdrawn'];
+
+export function adaptCommunityCall(v: unknown, i = 0): CommunityCall {
+  const c = r4obj(v);
+  const status = r4str(c.status).toLowerCase();
+  const entry = r4num(c.entry);
+  const stop = r4num(c.stop);
+  const target = r4num(c.target);
+  return {
+    id: r4str(c.id, `call-${i}`),
+    author: adaptSocialAuthor(c.author),
+    symbol: r4str(c.symbol, '—').toUpperCase(),
+    direction: direction(c.direction),
+    entry,
+    stop,
+    target,
+    thesis: r4str(c.thesis ?? c.body),
+    // `scoreable` is generated in 0038. It is recomputed here only when the
+    // payload does not carry it — never overridden, because the database's
+    // answer is the one the points were actually awarded against.
+    scoreable: typeof c.scoreable === 'boolean'
+      ? c.scoreable
+      : entry != null && (stop != null || target != null),
+    status: (CALL_STATUS as string[]).includes(status) ? (status as CommunityCallStatus) : 'open',
+    result_pct: r4num(c.result_pct),
+    outcome_label: r4nul(c.outcome_label),
+    published_at: r4str(c.published_at ?? c.created_at),
+    time_label: r4str(c.time_label),
+    resolved_at: r4nul(c.resolved_at),
+  };
+}
+
+export const adaptCommunityCalls = (v: unknown): CommunityCall[] => {
+  const o = r4obj(v);
+  const list = Array.isArray(v) ? v : r4arr(o.calls ?? o.items);
+  return list.map(adaptCommunityCall).filter((c) => c.symbol !== '—');
+};
+
+const TRADE_OUTCOME: SharedTradeOutcome[] = ['open', 'target', 'stop', 'closed'];
+
+/**
+ * A shared trade must have an entry — it is an executed trade, and one with no
+ * entry price is not a record of anything. `null` is returned for a row that
+ * has none, and the caller drops it, rather than drawing a trade with a hole
+ * where the only price that definitely existed should be.
+ */
+export function adaptSharedTrade(v: unknown, i = 0): SharedTrade | null {
+  const t = r4obj(v);
+  const entry = r4num(t.entry);
+  const symbol = r4str(t.symbol).toUpperCase();
+  if (entry == null || !symbol) return null;
+  const outcome = r4str(t.outcome).toLowerCase();
+  return {
+    id: r4str(t.id, `trade-${i}`),
+    author: adaptSocialAuthor(t.author),
+    symbol,
+    direction: direction(t.direction),
+    entry,
+    stop: r4num(t.stop),
+    target: r4num(t.target),
+    outcome: (TRADE_OUTCOME as string[]).includes(outcome) ? (outcome as SharedTradeOutcome) : 'open',
+    outcome_label: r4nul(t.outcome_label),
+    result_pct: r4num(t.result_pct),
+    opened_at: r4str(t.opened_at ?? t.created_at),
+    time_label: r4str(t.time_label),
+    closed_at: r4nul(t.closed_at),
+  };
+}
+
+export const adaptSharedTrades = (v: unknown): SharedTrade[] => {
+  const o = r4obj(v);
+  const list = Array.isArray(v) ? v : r4arr(o.trades ?? o.items);
+  return list.map(adaptSharedTrade).filter((t): t is SharedTrade => t !== null);
+};
+
+export function adaptFollowFeed(v: unknown): FollowFeed {
+  const f = r4obj(v);
+  const items: FollowFeedItem[] = [];
+  r4arr(f.items).forEach((raw, i) => {
+    const row = r4obj(raw);
+    const kind = r4str(row.kind);
+    const at = r4str(row.at);
+    if (kind === 'call' && row.call) {
+      items.push({ kind: 'call', at, call: adaptCommunityCall(row.call, i) });
+      return;
+    }
+    if (kind === 'trade' && row.trade) {
+      const trade = adaptSharedTrade(row.trade, i);
+      if (trade) items.push({ kind: 'trade', at, trade });
+    }
+  });
+  // Newest first. The server already orders it; sorting here means a feed that
+  // arrives out of order is still readable rather than subtly wrong.
+  items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+  return {
+    items,
+    follows_nobody: r4bool(f.follows_nobody),
+    empty_plain: r4nul(f.empty_plain),
+  };
+}
+
+export function adaptFollowState(v: unknown, userId = ''): FollowState {
+  const f = r4obj(v);
+  const inner = r4obj(f.follow);
+  const src = Object.keys(inner).length ? inner : f;
+  return {
+    user_id: r4str(src.user_id, userId),
+    following: r4bool(src.following),
+    follower_count: r4num(src.follower_count) ?? 0,
+    following_count: r4num(src.following_count) ?? 0,
+  };
+}
+
+export function adaptSocialRecord(v: unknown): SocialRecord | null {
+  const r = r4obj(v);
+  if (!Object.keys(r).length) return null;
+  const accuracy = r4num(r.accuracy);
+  return {
+    points: r4num(r.points) ?? 0,
+    wins: r4num(r.wins) ?? 0,
+    losses: r4num(r.losses) ?? 0,
+    resolved: r4num(r.resolved) ?? 0,
+    // A fraction on the wire and a percentage on the screen are both common;
+    // anything at or under 1 is read as the fraction. Null stays null — "no
+    // accuracy yet" and "0% accurate" are opposite claims.
+    accuracy: accuracy == null ? null : accuracy <= 1 ? Math.round(accuracy * 100) : Math.round(accuracy),
+    belt: adaptBeltBlock(r.belt),
+    in_warmup: r4bool(r.in_warmup),
+  };
+}
+
+export function adaptLeaderboardRow(v: unknown, i = 0): LeaderboardRow {
+  const r = r4obj(v);
+  const accuracy = r4num(r.accuracy);
+  return {
+    rank: r4num(r.rank) ?? i + 1,
+    author: adaptSocialAuthor(r.author),
+    points: r4num(r.points) ?? 0,
+    wins: r4num(r.wins) ?? 0,
+    resolved: r4num(r.resolved) ?? 0,
+    accuracy: accuracy == null ? null : accuracy <= 1 ? Math.round(accuracy * 100) : Math.round(accuracy),
+    is_you: r4bool(r.is_you),
+  };
+}
+
+const PERIODS: LeaderboardPeriod[] = ['week', 'month', 'all'];
+
+export function adaptLeaderboard(v: unknown, fallbackPeriod: LeaderboardPeriod = 'week'): Leaderboard {
+  const b = r4obj(v);
+  const period = r4str(b.period).toLowerCase();
+  const rows = r4arr(b.rows).map(adaptLeaderboardRow);
+  const you = Object.keys(r4obj(b.you)).length ? adaptLeaderboardRow(b.you) : null;
+  return {
+    period: (PERIODS as string[]).includes(period) ? (period as LeaderboardPeriod) : fallbackPeriod,
+    rows,
+    // Pinned only when it is genuinely off the list. A row drawn twice reads
+    // as a bug in the ranking, which is the one thing a board cannot afford.
+    you: you && !rows.some((r) => r.is_you) ? you : null,
+    explainer: adaptPointsExplainer(b.explainer),
+    empty_plain: r4nul(b.empty_plain),
+  };
+}
+
+/** `GET /contributors/:id`, the community half. Absent blocks stay absent. */
+export function adaptContributorSocial(v: unknown, userId = ''): ContributorSocial {
+  const c = r4obj(v);
+  const profile = r4obj(c.profile);
+  const authorSrc = c.author ?? (Object.keys(profile).length ? profile : null);
+  return {
+    author: authorSrc ? adaptSocialAuthor(authorSrc) : null,
+    follow: adaptFollowState(c.follow ?? c, userId),
+    record: adaptSocialRecord(c.record ?? c.social_record),
+    calls: adaptCommunityCalls(c.calls),
+    trades: adaptSharedTrades(c.shared_trades ?? c.trades),
   };
 }

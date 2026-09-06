@@ -59,6 +59,7 @@ import { DecideBeat, type KaiReadState } from './Decide';
 import { ConfirmCard, Receipt } from './Take';
 import { readPortal, type Beat, type ReadLevel } from './read';
 import { useTake } from './useTake';
+import { useMe } from '../account/useAccount';
 
 /**
  * The chart is the subject in beat one and the ground in beat two.
@@ -185,6 +186,13 @@ export default function TradePortalV2() {
 
   const read = useMemo(() => (data ? readPortal(data) : null), [data]);
   const take = useTake(read, data);
+  /**
+   * Read only for the sharing default on the confirmation card. It is the
+   * account-level answer; the card's own switch is what actually travels with
+   * the order, so a `/me` that has not landed yet means "not shared", which is
+   * the safe direction to be wrong in.
+   */
+  const me = useMe();
 
   /**
    * The failure a person is most likely to hit, made visible.
@@ -367,7 +375,8 @@ export default function TradePortalV2() {
                   size={take.size ?? { shares: null, plain: '', risk_usd: null }}
                   sending={take.phase === 'sending'}
                   error={take.error}
-                  onSend={() => { void take.send(); }}
+                  shareDefault={me.data?.settings.share_trades ?? false}
+                  onSend={(shareTrade) => { void take.send(shareTrade); }}
                   onCancel={() => { take.reset(); setBeat('decide'); }}
                 />
               ) : null

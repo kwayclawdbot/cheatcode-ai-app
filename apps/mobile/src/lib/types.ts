@@ -457,6 +457,13 @@ export type AppSettings = {
   push_enabled: boolean;
   /** Round 5: an ABSENT key means on. `{}` is a user who never touched them. */
   notification_categories: NotificationCategoryMap;
+  /**
+   * 0038: does this person show the trades they take. OPT-IN, and every
+   * unknown reads as false — see `adaptMe`. What "shown" means is fixed by the
+   * table rather than by this flag: direction and levels, never size and never
+   * dollars.
+   */
+  share_trades: boolean;
 };
 
 export type Me = {
@@ -536,6 +543,8 @@ export type NotificationCategory =
   | 'order_status'
   | 'community'
   | 'coaching'
+  /** 0038: somebody followed you, or somebody you follow published a call. */
+  | 'social'
   | 'system';
 
 export type NotificationCategoryMap = Partial<Record<NotificationCategory, boolean>>;
@@ -1254,4 +1263,175 @@ export type InviteRedeemResult = {
   tier: 'free' | 'premium';
   subscription_plain: string;
   plain: string;
+};
+
+/* =========================================================================
+ * SOCIAL — following, member calls, shared trades, belts and the board.
+ *
+ * The wire contract is the SOCIAL section at the end of
+ * `packages/shared/api.ts` (schema: migrations 0038 objects, 0039 scoring).
+ * These are the view-model twins of those shapes.
+ *
+ * THE ONE RULE THAT GOVERNS EVERY TYPE BELOW: A SHARED TRADE CARRIES LEVELS
+ * AND NEVER A SIZE. There is no quantity, no notional and no dollar P/L in
+ * anything here, because there is none in the table either. `result_pct` is a
+ * percentage move off the entry — a fact about the instrument, not about
+ * somebody's account. If a field like that ever appears in this section, the
+ * thing it came from is wrong, not this file.
+ * ====================================================================== */
+
+/** The ladder, ordered white → black. `belt_for()` in 0039 is the authority. */
+export type Belt = 'white' | 'blue' | 'purple' | 'brown' | 'black';
+
+export type BeltBlock = {
+  key: Belt;
+  label: string;
+  /** Points needed for the belt above this one. Null at black. */
+  next_at: number | null;
+  next_label: string | null;
+  /** 0–1 toward the next belt. Null at black, where there is nothing to fill. */
+  progress: number | null;
+};
+
+/**
+ * The scoring formula, in the words the app prints — served rather than
+ * hardcoded, so the numbers a member reads are the numbers the database used.
+ * A scoring system nobody can check reads as rigged, and two copies of it is
+ * how the printed one starts lying.
+ */
+export type PointsExplainer = {
+  lines: string[];
+  belts: { key: Belt; label: string; min_points: number }[];
+};
+
+/** Author identity, as every social surface renders it. */
+export type SocialAuthor = {
+  user_id: string;
+  handle: string | null;
+  display_name: string;
+  avatar_url: string | null;
+  initial: string;
+  belt: Belt;
+};
+
+export type SocialDirection = 'long' | 'short';
+
+export type CommunityCallStatus = 'open' | 'target' | 'stop' | 'expired' | 'withdrawn';
+
+/**
+ * A member's own published call. It is NEVER graded: there is no letter, no
+ * score and no score bar anywhere on it, because nothing graded it. The card
+ * renders through the ungraded AlertCard path — see `CommunityCallCard`.
+ */
+export type CommunityCall = {
+  id: string;
+  author: SocialAuthor;
+  symbol: string;
+  direction: SocialDirection;
+  entry: number | null;
+  stop: number | null;
+  target: number | null;
+  thesis: string;
+  /** Entry plus a stop or a target. Only these can ever score. */
+  scoreable: boolean;
+  status: CommunityCallStatus;
+  result_pct: number | null;
+  /** "Hit target" · "Stopped" · "Still open" · "Expired unresolved". */
+  outcome_label: string | null;
+  published_at: string;
+  time_label: string;
+  resolved_at: string | null;
+};
+
+export type SharedTradeOutcome = 'open' | 'target' | 'stop' | 'closed';
+
+/** An executed paper trade its owner chose to show. Levels, never a size. */
+export type SharedTrade = {
+  id: string;
+  author: SocialAuthor;
+  symbol: string;
+  direction: SocialDirection;
+  entry: number;
+  stop: number | null;
+  target: number | null;
+  outcome: SharedTradeOutcome;
+  outcome_label: string | null;
+  result_pct: number | null;
+  opened_at: string;
+  time_label: string;
+  closed_at: string | null;
+};
+
+/** One row in the Following feed. Discriminated so the list renders either. */
+export type FollowFeedItem =
+  | { kind: 'call'; at: string; call: CommunityCall }
+  | { kind: 'trade'; at: string; trade: SharedTrade };
+
+export type FollowFeed = {
+  items: FollowFeedItem[];
+  /** True when you follow nobody — a different sentence from "they posted nothing". */
+  follows_nobody: boolean;
+  empty_plain: string | null;
+};
+
+/** The follow button's whole state, so the phone never infers it. */
+export type FollowState = {
+  user_id: string;
+  following: boolean;
+  follower_count: number;
+  following_count: number;
+};
+
+/**
+ * The record shown on a profile. `accuracy` is the number beside every board
+ * row, present so the board teaches that being right is what is measured.
+ */
+export type SocialRecord = {
+  points: number;
+  wins: number;
+  losses: number;
+  resolved: number;
+  /** 0–100, or null while nothing has resolved. Never a dollar figure. */
+  accuracy: number | null;
+  belt: BeltBlock;
+  /** True while the first five resolutions still count at face value. */
+  in_warmup: boolean;
+};
+
+export type LeaderboardPeriod = 'week' | 'month' | 'all';
+
+export type LeaderboardRow = {
+  rank: number;
+  author: SocialAuthor;
+  points: number;
+  wins: number;
+  resolved: number;
+  accuracy: number | null;
+  is_you: boolean;
+};
+
+export type Leaderboard = {
+  period: LeaderboardPeriod;
+  rows: LeaderboardRow[];
+  /**
+   * The caller's own row when it is NOT in `rows`, so the board can pin it.
+   * Null when they are already on screen or have never scored.
+   */
+  you: LeaderboardRow | null;
+  explainer: PointsExplainer;
+  empty_plain: string | null;
+};
+
+/**
+ * `GET /contributors/:id`, extended. The community half of a profile: who they
+ * are, whether you follow them, what their record is, and what they published.
+ * Every field is independently nullable — an API build that predates 0038
+ * answers the old profile and this comes back empty rather than invented.
+ */
+export type ContributorSocial = {
+  author: SocialAuthor | null;
+  follow: FollowState;
+  record: SocialRecord | null;
+  calls: CommunityCall[];
+  trades: SharedTrade[];
 };

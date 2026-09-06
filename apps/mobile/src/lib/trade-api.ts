@@ -774,11 +774,27 @@ export const tradeApi = {
     }), t);
   },
 
-  submit: async (previewId: string, key?: string): Promise<OrderRow> => {
+  /**
+   * `shareTrade` is the PER-ORDER answer to "does the club see this one".
+   *
+   * It is sent explicitly, true or false, on every submit rather than being
+   * omitted when false. An absent key would leave the decision to whatever the
+   * account-level default happens to be at that moment, and a person who just
+   * turned the switch off on this particular ticket would have no way to know
+   * which of the two won. The one they touched last wins, and it travels.
+   *
+   * An API build that predates 0038 ignores the extra key, which is the right
+   * behaviour: no sharing table, nothing shared.
+   */
+  submit: async (previewId: string, key?: string, shareTrade?: boolean): Promise<OrderRow> => {
     if (!live()) return fixtureAcceptedOrder();
     return adaptOrder(await request<unknown>('/orders/submit', {
       method: 'POST',
-      body: JSON.stringify({ preview_id: previewId, idempotency_key: key ?? idempotencyKey() }),
+      body: JSON.stringify({
+        preview_id: previewId,
+        idempotency_key: key ?? idempotencyKey(),
+        ...(shareTrade === undefined ? null : { share_trade: shareTrade }),
+      }),
     }));
   },
 

@@ -29,6 +29,9 @@
  *                      target is the most advice-shaped thing in the app
  *   NOT_ADVICE_PAPER   on the paper account — the money is not real, and the
  *                      fills are not real either
+ *   NOT_ADVICE_COMMUNITY_CALL
+ *                      on a card another member published — the shortest line
+ *                      here, because it is read dozens of times in a scroll
  *   NOT_ADVICE_LONG    the full sentence, on the account and plan screens
  *
  * ---------------------------------------------------------------------------
@@ -63,6 +66,26 @@ export const NOT_ADVICE_SETUP =
 /** On the paper account and the order surfaces. */
 export const NOT_ADVICE_PAPER =
   'Paper trading is practice with money that does not exist. Fills use delayed prices, so a real order would not have filled the same way. Nothing here is investment advice.';
+
+/**
+ * On a card another MEMBER published — a call, or a trade they chose to show.
+ *
+ * DELIBERATELY THE SHORTEST LINE IN THIS FILE, and it is short for a reason
+ * rather than by oversight. A member's call card is read dozens of times in a
+ * scroll; the paragraph that belongs under a graded house setup would become
+ * furniture here inside a day and stop being read at all — which is worse than
+ * a short line, because it teaches people to skip the small print. Five words
+ * that survive the hundredth reading beat forty that do not.
+ *
+ * It also says the one thing that is actually in doubt on this surface: whose
+ * words these are. Kai's authorship is never ambiguous — his cards are violet
+ * and carry his mark. A member's card looks like a trade idea because it is
+ * one, and the sentence names who is behind it.
+ *
+ * There is NO exit advice anywhere near this line and none may be added. The
+ * app does not tell anyone when to get out of somebody else's idea.
+ */
+export const NOT_ADVICE_COMMUNITY_CALL = 'Community trade, not advice.';
 
 /** The full sentence, for account-level screens. */
 export const NOT_ADVICE_LONG =

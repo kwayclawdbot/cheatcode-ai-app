@@ -1,43 +1,42 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Wash } from '../../ui/Wash';
 import { T, Num, Eyebrow } from '../../ui/Text';
 import { ObjectCard } from '../../ui/Panel';
-import { Button } from '../../ui/Button';
 import { Check } from '../../ui/Icons';
 import { alpha, color, radius } from '../../ui/tokens';
 import { communityApi } from '../../lib/community-api';
 import { Avatar, DisclosureChip, RoleChip, Sheet, SheetRow, StackHeader } from '../../features/community/ui/Chrome';
 import { Flag, MuteGlyph } from '../../features/community/ui/Icons';
+import {
+  BeltChip, BeltProgress, CommunityCallCard, FollowButton, SharedTradeRow, useContributorSocial,
+} from '../../features/social';
 import type { ContributorProfile } from '../../features/community/types';
 
 /**
  * S85 contributor profile.
  *
- * 08 §8 is the whole brief for this screen: evidence-based context, never
- * points, streaks, leaderboards or profit contests. There is no rank on this
- * screen and no P/L anywhere — the counts describe behaviour (did they say what
- * would prove them wrong, did they disclose the outcome), not performance.
+ * ── WHAT CHANGED, AND WHY THE OLD HEADER COMMENT IS GONE ────────────────
+ * This file used to say: "the artboard's Follow is volt and implies a follows
+ * table — there isn't one, so this saves the contributor to a local list on
+ * this device and says so." There is one now (migration 0038), so the deviation
+ * is closed: the button is the real `FollowButton`, it writes
+ * `POST /follows/:id`, and the AsyncStorage list, its key and its "saved on
+ * this device" notice are deleted rather than left dormant.
  *
- * DEVIATIONS: the artboard's "Follow" is volt and implies a follows table —
- * there isn't one, so this saves the contributor to a local list on this device
- * and says so. The feedback bars are ivory rather than the artboard's volt,
- * because volt means "your action" and a rating other people gave is not one.
+ * The other reversal is bigger and is the owner's, not this lane's. The screen
+ * used to end with "No rankings, no leaderboards, no profit contests." The app
+ * now has points, belts and a board, so that line was the screen contradicting
+ * the product — and a footer that argues with the tab bar is worse than no
+ * footer. What survives the reversal is the half that is still true and is
+ * still enforced by the schema: OUTCOMES ONLY, and never dollar P/L. The new
+ * lines say that, and nothing more.
+ *
+ * The feedback bars stay ivory rather than the artboard's volt, unchanged:
+ * volt means "your action", and a rating other people gave is not one.
  */
-
-const SAVED_KEY = 'cc.saved_contributors.v1';
-
-async function readSaved(): Promise<string[]> {
-  try {
-    const raw = await AsyncStorage.getItem(SAVED_KEY);
-    return raw ? (JSON.parse(raw) as string[]) : [];
-  } catch {
-    return [];
-  }
-}
 
 function StatCell({ label, value }: { label: string; value: string }) {
   return (
@@ -79,35 +78,32 @@ export default function Contributor() {
 
   const [profile, setProfile] = useState<ContributorProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saved, setSaved] = useState(false);
   const [muted, setMuted] = useState(false);
   const [sheet, setSheet] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [exampleData, setExampleData] = useState(false);
 
+  /** The community half — follow state, record, belt, calls, shared trades. */
+  const social = useContributorSocial(id);
+  const record = social.data?.record ?? null;
+  const author = social.data?.author ?? null;
+  const follow = social.data?.follow ?? null;
+
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [{ profile: p, source }, list] = await Promise.all([communityApi.contributor(id), readSaved()]);
+      const { profile: p, source } = await communityApi.contributor(id);
       if (!alive) return;
       setProfile(p);
       setExampleData(communityApi.available() && source === 'fixtures');
       setMuted(p.muted);
-      setSaved(list.includes(id));
       setLoading(false);
     })();
     return () => { alive = false; };
   }, [id]);
 
-  const toggleSave = useCallback(async () => {
-    const list = await readSaved();
-    const next = list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
-    await AsyncStorage.setItem(SAVED_KEY, JSON.stringify(next));
-    setSaved(next.includes(id));
-    setNotice(next.includes(id)
-      ? 'Saved on this device. Following across devices arrives with the next release.'
-      : 'Removed from your saved list.');
-  }, [id]);
+  const handle = author?.handle ?? profile?.handle ?? null;
+  const followers = follow?.follower_count ?? null;
 
   return (
     <View style={{ flex: 1, backgroundColor: color.bg }} testID="screen-contributor">
@@ -137,15 +133,35 @@ export default function Contributor() {
             </ObjectCard>
           ) : null}
 
+          {/*
+            IDENTITY. The username is drawn here for the first time — it was
+            never on this screen, which meant the one name a member is actually
+            addressed by in a room was missing from their own profile.
+            The follow control sits BESIDE the identity block, never inside a
+            pressable, so web never nests one button in another.
+          */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
             <Avatar
-              initial={profile.initial}
+              initial={author?.initial ?? profile.initial}
+              url={author?.avatar_url ?? null}
               size={60}
               tone={profile.role_labels.some((r) => roleTone(r) === 'gold') ? 'educator' : 'neutral'}
             />
-            <View style={{ flex: 1 }}>
-              <T size={20} weight="bold">{profile.display_name}</T>
-              <View style={{ flexDirection: 'row', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <T size={20} weight="bold" numberOfLines={1}>{profile.display_name}</T>
+              {handle ? (
+                <T size={12.5} c={color.muted} testID="contributor-handle">{`@${handle}`}</T>
+              ) : (
+                <T size={12.5} c={color.dim} testID="contributor-handle">No username</T>
+              )}
+              <View style={{ flexDirection: 'row', gap: 5, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                {author ? <BeltChip belt={author.belt} testID="contributor-belt" /> : null}
+                {followers != null ? (
+                  <T size={11} c={color.muted} testID="contributor-followers">
+                    <Num size={11} weight="semibold">{String(followers)}</Num>
+                    {followers === 1 ? ' follower' : ' followers'}
+                  </T>
+                ) : null}
                 {profile.verified_identity ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 0.5, borderColor: alpha.green40 }}>
                     <Check size={9} color={color.green} />
@@ -159,11 +175,96 @@ export default function Contributor() {
             </View>
           </View>
 
+          {/* THE PRIMARY ACTION, up here where the identity is, because that
+              is the question this screen answers first: do I want to see what
+              this person publishes? */}
+          <FollowButton userId={id} initial={follow} testID="follow-contributor" />
+
+          {/* THE RECORD. Outcomes, and the ladder they add up to. */}
+          {record ? (
+            <>
+              <Eyebrow c={color.volt}>RECORD</Eyebrow>
+              <ObjectCard r={radius.xl} style={{ padding: 15, gap: 14 }} testID="contributor-record">
+                <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 16 }}>
+                  <View style={{ flex: 1 }}>
+                    {record.accuracy != null ? (
+                      <Num size={28} weight="bold" testID="record-accuracy">{`${record.accuracy}%`}</Num>
+                    ) : (
+                      <T size={22} c={color.dim} testID="record-accuracy">—</T>
+                    )}
+                    <T size={11} c={color.muted} style={{ marginTop: 2 }}>
+                      {record.accuracy != null ? 'of resolved calls hit the target' : 'nothing has resolved yet'}
+                    </T>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Num size={18} weight="semibold" c={color.volt}>{String(record.points)}</Num>
+                    <T size={11} c={color.muted}>points</T>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 18 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
+                    <Num size={13} weight="semibold" c={color.green}>{String(record.wins)}</Num>
+                    <T size={11} c={color.muted}>hit target</T>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
+                    <Num size={13} weight="semibold" c={color.red}>{String(record.losses)}</Num>
+                    <T size={11} c={color.muted}>stopped</T>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
+                    <Num size={13} weight="semibold">{String(record.resolved)}</Num>
+                    <T size={11} c={color.muted}>resolved</T>
+                  </View>
+                </View>
+
+                <View style={{ paddingTop: 12, borderTopWidth: 0.5, borderTopColor: alpha.ivory08 }}>
+                  <BeltProgress block={record.belt} testID="contributor-belt-progress" />
+                </View>
+
+                {/* WHY A SMALL SAMPLE IS SAID OUT LOUD. Four calls and three
+                    wins is 75%, and printed beside a member with two hundred
+                    it is a lie of arithmetic. The server flags it; the screen
+                    prints the flag. */}
+                {record.in_warmup ? (
+                  <T size={11} lh={16} c={color.gold} testID="record-warmup">
+                    Early days — too few resolved calls for this to mean much yet.
+                  </T>
+                ) : null}
+              </ObjectCard>
+            </>
+          ) : null}
+
+          {/* THEIR CALLS. The same card the feed draws, so a call read here is
+              the call read there. */}
+          {social.data?.calls.length ? (
+            <>
+              <Eyebrow c={color.volt}>PUBLISHED CALLS</Eyebrow>
+              <View style={{ gap: 10 }} testID="contributor-calls">
+                {social.data.calls.map((c) => <CommunityCallCard key={c.id} call={c} />)}
+              </View>
+            </>
+          ) : null}
+
+          {/* THEIR TRADES. Levels and outcomes; there is no size and no dollar
+              anywhere in the type, so there is none to leak here. */}
+          {social.data?.trades.length ? (
+            <>
+              <Eyebrow>TRADES</Eyebrow>
+              <View style={{ gap: 8 }} testID="contributor-trades">
+                {social.data.trades.map((t) => <SharedTradeRow key={t.id} trade={t} />)}
+              </View>
+              <T size={10} c={color.dim} style={{ marginTop: -4 }}>
+                Trades they chose to show. Direction and levels only — never size, and never dollars.
+              </T>
+            </>
+          ) : null}
+
+          <Eyebrow>CONTRIBUTION HISTORY</Eyebrow>
           <ObjectCard r={radius.xl} style={{ padding: 14, flexDirection: 'row', flexWrap: 'wrap', rowGap: 12, columnGap: 12 }}>
             {profile.history.map((h) => <StatCell key={h.label} label={h.label} value={h.value} />)}
           </ObjectCard>
           <T size={10} c={color.muted} style={{ marginTop: -6 }}>
-            Contribution history — what they posted and disclosed. Not a rank, and never profit.
+            What they posted and disclosed. Outcomes only — never profit, and never account size.
           </T>
 
           {profile.feedback.length ? (
@@ -207,15 +308,9 @@ export default function Contributor() {
             </ObjectCard>
           ) : null}
 
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
-            <Button
-              testID="save-contributor"
-              label={saved ? 'Saved' : 'Save'}
-              accessibilityHint="Keeps this contributor on a list stored on this device."
-              height={44}
-              style={{ flex: 1 }}
-              onPress={toggleSave}
-            />
+          {/* Mute and report keep their places; Save and its device-local
+              notice are gone with the follows table's arrival. */}
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 2, justifyContent: 'flex-end' }}>
             <Pressable
               testID="mute-contributor"
               accessibilityRole="button"
@@ -242,8 +337,9 @@ export default function Contributor() {
             </Pressable>
           </View>
 
-          <T size={10} lh={15} c={color.dim}>
-            No rankings, no leaderboards, no profit contests. What you see is what they wrote and what they disclosed.
+          <T size={10} lh={15} c={color.dim} testID="contributor-footer">
+            Outcomes only. A call counts when it had an entry and a level to be wrong at — nothing here is
+            profit, and no number on this screen is money.
           </T>
         </ScrollView>
       )}

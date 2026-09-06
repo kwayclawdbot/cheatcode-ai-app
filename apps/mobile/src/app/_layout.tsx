@@ -40,6 +40,13 @@ const STACK_GROUPS = new Set([
   // screens behind it hold no data that did not come from a `staffed()` route.
   // `join` is the other end of an invite link and is deliberately not staff-only.
   '(admin)', 'join',
+  // The social layer. `community` is the call composer (`/community/call/new`),
+  // pushed from the club board; `leaderboard` is the board, pushed from the
+  // same header. Both are ordinary member routes — the gate has to list them
+  // or a real session bounces straight back to Home, which is the exact bug
+  // `thread` hit above and which fixtures mode cannot see, because fixtures
+  // skip the gate entirely.
+  'community', 'leaderboard',
 ]);
 
 /**
@@ -149,6 +156,11 @@ export default function RootLayout() {
                 <Stack.Screen name="desk/themes" options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="desk/pick/[ticker]" options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="desk/theme/[theme]" options={{ animation: 'slide_from_right' }} />
+                {/* Publishing a call is a composition, so it comes up from the
+                    bottom the way the alert composer does. The board is a
+                    place you go, so it slides in from the side. */}
+                <Stack.Screen name="community/call/new" options={{ animation: 'slide_from_bottom' }} />
+                <Stack.Screen name="leaderboard" options={{ animation: 'slide_from_right' }} />
               </Stack>
               {/* Kai's contextual sheet lives above every route: it opens OVER
                   the current screen and never navigates the user away (audit §5). */}

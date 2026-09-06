@@ -17,7 +17,7 @@ import { NOT_ADVICE_LONG } from '../../features/legal/disclaimers';
 import { api } from '../../lib/api';
 import { env } from '../../lib/env';
 import { useSession } from '../../lib/session';
-import { useKaiProfile, useMe } from '../../features/account/useAccount';
+import { useKaiProfile, useMe, useSettingsWriter } from '../../features/account/useAccount';
 import { FOCUS_CHIP, FOCUS_ORDER } from '../../features/account/profile';
 import { ModeSheet, MODE_LABEL } from '../../features/trade/ModeSheet';
 import { PaperChip } from '../../features/trade/components';
@@ -56,6 +56,7 @@ export default function Account() {
   const router = useRouter();
   const { profile, signOut, patchProfile } = useSession();
   const { data, loading, isFixture, notAvailable, reload } = useMe();
+  const settings = useSettingsWriter(reload);
   const [memory, setMemory] = useState<boolean>(profile?.memory_enabled ?? true);
   const [simulating, setSimulating] = useState(false);
   const [simResult, setSimResult] = useState<string | null>(null);
@@ -65,6 +66,26 @@ export default function Account() {
   React.useEffect(() => {
     setMemory(data?.memory_enabled ?? profile?.memory_enabled ?? true);
   }, [data?.memory_enabled, profile?.memory_enabled]);
+
+  /**
+   * SHARING IS READ, NEVER ASSUMED.
+   *
+   * It starts false and is only ever moved by an answer from `/me`. A screen
+   * that guessed "probably on" would show somebody a switch claiming their
+   * trades are public when they are not — or, far worse, the reverse.
+   */
+  const [shareTrades, setShareTrades] = useState(false);
+  React.useEffect(() => {
+    if (data) setShareTrades(data.settings.share_trades);
+  }, [data?.settings.share_trades, data]);
+
+  const toggleShareTrades = async (v: boolean) => {
+    setShareTrades(v);
+    const ok = await settings.save({ share_trades: v });
+    // The server refused. The switch goes back where it was rather than
+    // sitting on a state nothing agreed to.
+    if (!ok) setShareTrades(!v);
+  };
 
   /**
    * WHAT THIS PERSON IS CALLED, AND WHAT WE REFUSE TO CALL THEM.
@@ -208,6 +229,45 @@ export default function Account() {
             <T size={13} c={color.dim}>{identity?.avatar_url ? 'Set' : 'None'}</T>
           </Row>
         </RowList>
+
+        {/* WHAT THE CLUB SEES.
+            Its own section, directly under YOU, because it is a privacy answer
+            and privacy answers do not belong buried under a settings chevron.
+            The switch is OFF until the server says otherwise — never assumed,
+            never optimistically on. */}
+        <Eyebrow>WHAT THE CLUB SEES</Eyebrow>
+        <RowList testID="sharing">
+          <Row last>
+            <View style={{ flex: 1 }}>
+              <T size={14}>Share my trades</T>
+              {/*
+                THE PROMISE, IN ONE LINE, AND IT IS ENFORCEABLE.
+                It is not a reassurance written by a designer: the shared-trade
+                table has no quantity, no notional and no P/L column
+                (migration 0038), so there is nothing for a future screen to
+                accidentally render. That is why the sentence can be this
+                definite.
+              */}
+              <T size={11.5} lh={16.5} c={color.muted} style={{ marginTop: 3 }}>
+                Direction and levels are shown. Size and dollars never are.
+              </T>
+            </View>
+            <Toggle
+              testID="toggle-share-trades"
+              value={shareTrades}
+              label="Share my trades"
+              onChange={toggleShareTrades}
+            />
+          </Row>
+        </RowList>
+        <T size={10} lh={15} c={color.dim} style={{ marginTop: -4 }}>
+          {shareTrades
+            ? 'Trades you take appear on your profile and in your followers’ feed. You can still turn any single one off when you send it.'
+            : 'Off. Nothing you trade is shown to anybody, and calls you publish are a separate, deliberate act.'}
+        </T>
+        {settings.error ? (
+          <T size={11.5} c={color.red} testID="sharing-error" style={{ marginTop: -4 }}>{settings.error}</T>
+        ) : null}
 
         {/* YOUR KAI PROFILE — the three answers that shape how Kai works.
             Tapping a row changes it and writes PUT /settings. */}

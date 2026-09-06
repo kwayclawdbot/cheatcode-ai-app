@@ -117,8 +117,12 @@ const main = async () => {
     console.log('[6] contributor');
     await open(page, '/contributor/u-jordan');
     await shot(page, 'b-14-contributor');
-    await tap(page, 'save-contributor', 800);
-    await shot(page, 'b-15-contributor-saved');
+    // `save-contributor` is gone. It saved the person to an AsyncStorage list
+    // on this device, which is what the screen did while there was no follows
+    // table; there is one now (migration 0038), so the button is a real Follow
+    // and the shot is named for what it shows.
+    await tap(page, 'follow-contributor', 900);
+    await shot(page, 'b-15-contributor-following');
 
     console.log('[7] debriefs');
     await open(page, '/debrief');

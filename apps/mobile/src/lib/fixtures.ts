@@ -12,6 +12,10 @@ import type {
   TopupPack, TradeLanding, WatchingItem,
 } from './types';
 import type {
+  CommunityCall, ContributorSocial, FollowFeed, FollowState, Leaderboard, LeaderboardPeriod,
+  LeaderboardRow, PointsExplainer, SharedTrade, SocialAuthor, SocialRecord,
+} from './types';
+import type {
   DeskPickResponse, DeskThemeResponse, DeskThemesResponse, DeskWatchlistResponse,
 } from '@shared/desk';
 import {
@@ -559,6 +563,10 @@ export const fixtureMe: Me = {
     // — an absent key means on, exactly as the server reads it.
     push_enabled: true,
     notification_categories: {},
+    // 0038: the sample account is NOT sharing its trades. The fixture has to
+    // show the default a real new account gets, or the screenshot teaches the
+    // wrong thing about a privacy switch.
+    share_trades: false,
   },
   // Round 6. THE SAMPLE ACCOUNT IS NOT STAFF, and never will be: fixtures mode
   // is the owner-preview and Playwright path, and an operator's board rendered
@@ -1507,3 +1515,230 @@ export function fixtureDeskTheme(name: string): DeskThemeResponse | null {
       })),
   };
 }
+
+/* =========================================================================
+ * SOCIAL — so every new screen renders offline.
+ *
+ * These are members, not house alerts: no letter grade, no score, no bar
+ * anywhere. Two of the four calls below are deliberately NOT scoreable (a
+ * thesis and a direction, no levels), because that is the common case the
+ * composer's incentive line exists to change, and a fixture set where every
+ * call is perfect would hide it.
+ * ====================================================================== */
+
+const SOCIAL_ME = 'user-me';
+
+export const fixtureSocialAuthors: Record<string, SocialAuthor> = {
+  priya: {
+    user_id: 'user-priya', handle: 'priya_r', display_name: 'Priya Raman',
+    avatar_url: null, initial: 'P', belt: 'brown',
+  },
+  marcus: {
+    user_id: 'user-marcus', handle: 'marcusk', display_name: 'Marcus Kim',
+    avatar_url: null, initial: 'M', belt: 'blue',
+  },
+  dee: {
+    user_id: 'user-dee', handle: 'dee', display_name: 'Dee Okafor',
+    avatar_url: null, initial: 'D', belt: 'black',
+  },
+  me: {
+    user_id: SOCIAL_ME, handle: 'kway', display_name: 'Kway',
+    avatar_url: null, initial: 'K', belt: 'white',
+  },
+};
+
+export const fixtureCommunityCalls: CommunityCall[] = [
+  {
+    id: 'call-1',
+    author: fixtureSocialAuthors.priya,
+    symbol: 'META',
+    direction: 'long',
+    entry: 504,
+    stop: 496.5,
+    target: 522,
+    thesis: '$META has held 480 three times and just reclaimed VWAP. I want the 504 break with volume.',
+    scoreable: true,
+    status: 'open',
+    result_pct: null,
+    outcome_label: 'Still open',
+    published_at: '2026-09-06T13:38:00.000Z',
+    time_label: '9:38',
+    resolved_at: null,
+  },
+  {
+    id: 'call-2',
+    author: fixtureSocialAuthors.dee,
+    symbol: 'NVDA',
+    direction: 'short',
+    entry: 902,
+    stop: 918,
+    target: 860,
+    thesis: 'First lower high since the run started. $NVDA loses 902 and the crowd that bought the gap is trapped.',
+    scoreable: true,
+    status: 'target',
+    result_pct: 4.7,
+    outcome_label: 'Hit target',
+    published_at: '2026-09-04T14:02:00.000Z',
+    time_label: 'Fri',
+    resolved_at: '2026-09-05T18:40:00.000Z',
+  },
+  {
+    id: 'call-3',
+    author: fixtureSocialAuthors.marcus,
+    symbol: 'AMD',
+    direction: 'long',
+    entry: null,
+    stop: null,
+    target: null,
+    thesis: 'Watching $AMD into the data-centre print. No levels yet — I want to see how it opens.',
+    scoreable: false,
+    status: 'open',
+    result_pct: null,
+    outcome_label: 'Still open',
+    published_at: '2026-09-06T12:55:00.000Z',
+    time_label: '8:55',
+    resolved_at: null,
+  },
+  {
+    id: 'call-4',
+    author: fixtureSocialAuthors.marcus,
+    symbol: 'TSLA',
+    direction: 'long',
+    entry: 244,
+    stop: 236,
+    target: 268,
+    thesis: 'Base at 236 since July. $TSLA over 244 with the 20-day rising is the whole idea.',
+    scoreable: true,
+    status: 'stop',
+    result_pct: -3.3,
+    outcome_label: 'Stopped',
+    published_at: '2026-09-02T15:10:00.000Z',
+    time_label: 'Tue',
+    resolved_at: '2026-09-03T17:22:00.000Z',
+  },
+];
+
+export const fixtureSharedTrades: SharedTrade[] = [
+  {
+    id: 'shared-1',
+    author: fixtureSocialAuthors.dee,
+    symbol: 'AAPL',
+    direction: 'long',
+    entry: 227.4,
+    stop: 222,
+    target: 238,
+    outcome: 'target',
+    outcome_label: 'Closed at the target',
+    result_pct: 4.6,
+    opened_at: '2026-09-03T14:31:00.000Z',
+    time_label: 'Wed',
+    closed_at: '2026-09-05T19:55:00.000Z',
+  },
+  {
+    id: 'shared-2',
+    author: fixtureSocialAuthors.priya,
+    symbol: 'SPY',
+    direction: 'short',
+    entry: 561.2,
+    stop: 566,
+    target: null,
+    outcome: 'open',
+    outcome_label: 'Open',
+    result_pct: null,
+    opened_at: '2026-09-06T13:20:00.000Z',
+    time_label: '9:20',
+    closed_at: null,
+  },
+];
+
+export const fixtureFollowFeed: FollowFeed = {
+  items: [
+    { kind: 'call', at: '2026-09-06T13:38:00.000Z', call: fixtureCommunityCalls[0] },
+    { kind: 'trade', at: '2026-09-06T13:20:00.000Z', trade: fixtureSharedTrades[1] },
+    { kind: 'call', at: '2026-09-04T14:02:00.000Z', call: fixtureCommunityCalls[1] },
+    { kind: 'trade', at: '2026-09-03T14:31:00.000Z', trade: fixtureSharedTrades[0] },
+    { kind: 'call', at: '2026-09-02T15:10:00.000Z', call: fixtureCommunityCalls[3] },
+  ],
+  follows_nobody: false,
+  empty_plain: null,
+};
+
+/** You follow nobody. A different screen from "they posted nothing". */
+export const fixtureFollowFeedNobody: FollowFeed = {
+  items: [],
+  follows_nobody: true,
+  empty_plain: null,
+};
+
+export const fixtureSocialRecord: SocialRecord = {
+  points: 148,
+  wins: 11,
+  losses: 6,
+  resolved: 17,
+  accuracy: 65,
+  belt: { key: 'brown', label: 'Brown belt', next_at: 250, next_label: 'Black belt', progress: 0.59 },
+  in_warmup: false,
+};
+
+export const fixturePointsExplainer: PointsExplainer = {
+  lines: [
+    'A call scores only if it has an entry and either a stop or a target. Without those there is nothing to be right or wrong about.',
+    'A call that reaches its target is worth 10 points. One that is stopped costs 4.',
+    'A call nobody resolved inside 10 sessions expires and scores nothing.',
+    'Accuracy is resolved calls that hit the target, out of all resolved calls. Withdrawn calls stay on the record.',
+  ],
+  belts: [
+    { key: 'white', label: 'White belt', min_points: 0 },
+    { key: 'blue', label: 'Blue belt', min_points: 40 },
+    { key: 'purple', label: 'Purple belt', min_points: 100 },
+    { key: 'brown', label: 'Brown belt', min_points: 180 },
+    { key: 'black', label: 'Black belt', min_points: 250 },
+  ],
+};
+
+export function fixtureLeaderboard(period: LeaderboardPeriod = 'week'): Leaderboard {
+  const rows: LeaderboardRow[] = [
+    { rank: 1, author: fixtureSocialAuthors.dee, points: 262, wins: 19, resolved: 24, accuracy: 79, is_you: false },
+    { rank: 2, author: fixtureSocialAuthors.priya, points: 148, wins: 11, resolved: 17, accuracy: 65, is_you: false },
+    { rank: 3, author: fixtureSocialAuthors.marcus, points: 74, wins: 7, resolved: 14, accuracy: 50, is_you: false },
+  ];
+  return {
+    period,
+    rows,
+    // Off the bottom of the board, which is the case the pinned row exists for.
+    you: { rank: 18, author: fixtureSocialAuthors.me, points: 12, wins: 2, resolved: 5, accuracy: 40, is_you: true },
+    explainer: fixturePointsExplainer,
+    empty_plain: null,
+  };
+}
+
+export const fixtureFollowState: FollowState = {
+  user_id: 'user-priya', following: false, follower_count: 34, following_count: 12,
+};
+
+/**
+ * The contributor screen draws TWO payloads side by side — the community
+ * profile (`communityApi.contributor`) and this one — so the fixture author
+ * here is the same person as `fixtureContributor` in
+ * `features/community/fixtures.ts`. When they disagreed, the offline screen
+ * showed one member's name over another member's username, which is a fixture
+ * bug that reads exactly like a real identity bug.
+ */
+const FIXTURE_JORDAN: SocialAuthor = {
+  user_id: 'u-jordan', handle: 'jordan', display_name: 'Jordan',
+  avatar_url: null, initial: 'J', belt: 'brown',
+};
+
+export const fixtureContributorSocial: ContributorSocial = {
+  author: FIXTURE_JORDAN,
+  follow: { user_id: 'u-jordan', following: false, follower_count: 34, following_count: 12 },
+  record: fixtureSocialRecord,
+  // A profile shows THIS MEMBER'S calls, so the fixture re-authors them rather
+  // than borrowing the feed's. A profile listing somebody else's work is a
+  // fixture that teaches the wrong thing about what the screen is.
+  calls: [
+    { ...fixtureCommunityCalls[0], id: 'call-jordan-1', author: FIXTURE_JORDAN },
+    { ...fixtureCommunityCalls[3], id: 'call-jordan-2', author: FIXTURE_JORDAN },
+  ],
+  trades: [{ ...fixtureSharedTrades[1], id: 'shared-jordan-1', author: FIXTURE_JORDAN }],
+};

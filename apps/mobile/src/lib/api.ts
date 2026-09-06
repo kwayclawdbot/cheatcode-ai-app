@@ -1,6 +1,7 @@
 import type {
-  AlertDraftResponse, AlertsResponse, CreateConversationResponse, HandleCheckResponse, HomeResponse,
-  ModeResponse, OnboardingCompleteRequest, OnboardingCompleteResponse, SetupsResponse,
+  AlertDraftResponse, AlertsResponse, CreateCommunityCallBody, CreateConversationResponse,
+  HandleCheckResponse, HomeResponse, ModeResponse, OnboardingCompleteRequest,
+  OnboardingCompleteResponse, SetupsResponse,
 } from '@cheatcode/shared';
 import type {
   DeskPickResponse, DeskThemeResponse, DeskThemesResponse, DeskWatchlistResponse,
@@ -24,6 +25,10 @@ import {
   adaptAuditPage, adaptInviteRow, adaptInvitesPage, adaptOverview, adaptPeoplePage,
   adaptPerson, adaptRedeem, adaptSegments, adaptSourceState, adaptSources, adaptSyncRun,
 } from './adapters';
+import {
+  adaptCommunityCall, adaptCommunityCalls, adaptContributorSocial, adaptFollowFeed,
+  adaptFollowState, adaptLeaderboard,
+} from './adapters';
 import type {
   AlertDetail, AlertDraftPreview, AlertLifecycle, AlertsPayload, AlertsRound4, AlertsSimple,
   AlertTab, Candle, ConversationsPayload, CreditsPayload, Experience, ExplainLevel, FocusKey, GoalMode,
@@ -36,6 +41,9 @@ import type {
   AdminAuditPage, AdminInviteRow, AdminInvitesPage, AdminOverview, AdminPeopleFilter,
   AdminPeoplePage, AdminPerson, AdminSegmentRow, AdminSourceState, AdminSyncRun,
   InviteRedeemResult,
+} from './types';
+import type {
+  CommunityCall, ContributorSocial, FollowFeed, FollowState, Leaderboard, LeaderboardPeriod,
 } from './types';
 
 export class ApiError extends Error {
@@ -581,6 +589,68 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(symbol ? { symbol } : {}),
     }),
+
+  /* ---------------- the social layer (migrations 0038 + 0039) ---------- */
+
+  /**
+   * Follow / unfollow. BOTH ANSWER THE WHOLE BUTTON STATE — following, the
+   * follower count, the following count — so the phone never has to infer what
+   * just happened or add one to a number it is guessing at.
+   */
+  follow: async (userId: string): Promise<FollowState> =>
+    adaptFollowState(
+      await request<unknown>(`/follows/${encodeURIComponent(userId)}`, { method: 'POST', body: '{}' }),
+      userId,
+    ),
+
+  unfollow: async (userId: string): Promise<FollowState> =>
+    adaptFollowState(
+      await request<unknown>(`/follows/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
+      userId,
+    ),
+
+  /**
+   * `GET /feed/following` — calls and shared trades from the people you
+   * follow, newest first. `follows_nobody` is a separate fact from an empty
+   * list, because "you follow nobody" and "nobody you follow has posted" need
+   * different sentences and different offers.
+   */
+  followFeed: async (): Promise<FollowFeed> =>
+    adaptFollowFeed(await request<unknown>('/feed/following')),
+
+  /** `POST /community/calls`. Levels are optional; a thesis is not. */
+  createCommunityCall: async (body: CreateCommunityCallBody): Promise<CommunityCall> =>
+    adaptCommunityCall(await request<unknown>('/community/calls', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })),
+
+  /** `GET /community/calls?user_id=` — everything, or one member's. */
+  communityCalls: async (userId?: string): Promise<CommunityCall[]> =>
+    adaptCommunityCalls(await request<unknown>(
+      `/community/calls${userId ? `?user_id=${encodeURIComponent(userId)}` : ''}`,
+    )),
+
+  /**
+   * Withdraw a call. It is NOT a delete: the row stays with status
+   * `withdrawn`, so a member cannot quietly remove a call that went against
+   * them and leave a record that only contains the good ones.
+   */
+  withdrawCommunityCall: async (id: string): Promise<CommunityCall> =>
+    adaptCommunityCall(await request<unknown>(
+      `/community/calls/${encodeURIComponent(id)}/withdraw`, { method: 'POST', body: '{}' },
+    )),
+
+  /**
+   * `GET /leaderboard?period=` — the board, plus the caller's own row when it
+   * is off-screen, plus the scoring rules in the server's own words.
+   */
+  leaderboard: async (period: LeaderboardPeriod): Promise<Leaderboard> =>
+    adaptLeaderboard(await request<unknown>(`/leaderboard?period=${period}`), period),
+
+  /** `GET /contributors/:id` — the community half of a member's profile. */
+  contributorSocial: async (userId: string): Promise<ContributorSocial> =>
+    adaptContributorSocial(await request<unknown>(`/contributors/${encodeURIComponent(userId)}`), userId),
 };
 
 export type { ExplainLevel };

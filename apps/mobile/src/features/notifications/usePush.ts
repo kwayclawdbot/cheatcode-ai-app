@@ -52,6 +52,11 @@ const CATEGORY_ORDER: { key: NotificationCategory; label: string; sub: string }[
   { key: 'trade_alerts', label: 'Alerts you set', sub: 'A level you asked Kai to watch gives way.' },
   { key: 'order_status', label: 'Your orders and positions', sub: 'An order fills, a position closes.' },
   { key: 'community', label: 'Replies to you', sub: 'Kai answers you in a room.' },
+  // 0038. It sits under "Replies to you" because it is the same kind of thing
+  // — somebody in the club did something involving you — and above debriefs,
+  // which are Kai's. The sentence names both halves so nobody has to guess
+  // whether turning it off silences their own follower notifications too.
+  { key: 'social', label: 'People you follow', sub: 'Someone you follow publishes a call, or someone follows you.' },
   { key: 'coaching', label: 'Debriefs', sub: 'A trade is closed and Kai has read it back.' },
   { key: 'system', label: 'Account and service', sub: 'Resets, plan changes, service notices.' },
 ];

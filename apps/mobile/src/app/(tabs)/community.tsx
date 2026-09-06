@@ -14,7 +14,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, View } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import Svg, { Circle as SvgCircle, Path } from 'react-native-svg';
 import { Screen } from '../../ui/Screen';
 import { T, Num } from '../../ui/Text';
@@ -35,6 +35,10 @@ import type { Circle, CircleTtl } from '../../features/circles/types';
 import type { MessageReactions, ReactionKind, Room, RoomMessage } from '../../features/community/types';
 import { ModeSegmented } from '../../features/home';
 import { DEFAULT_MODE } from '../../features/nav/second-tab';
+import { Segmented } from '../../ui/Segmented';
+import {
+  BeltUpSheet, CommunityCallCard, PREVIEW_BELT, SharedTradeRow, useBeltUp, useFollowFeed,
+} from '../../features/social';
 import type { GoalMode } from '../../lib/types';
 
 const MODE_ORDER = ['day_trade', 'swing', 'invest'];
@@ -57,8 +61,29 @@ const MembersIcon = () => (
   </Svg>
 );
 
+/**
+ * The two feeds this tab carries.
+ *
+ * ROOMS is what the club has always been: three mode rooms, everybody in them.
+ * FOLLOWING is the other half of a social layer — the people you chose, and
+ * only them. They are the same tab because they answer the same question
+ * ("what is the club saying") at two different widths, and splitting them into
+ * separate tabs would make the narrow one look like a second-class room.
+ *
+ * It is a `Segmented`, the app's existing in-object view switch, rather than
+ * anything new: this is a view of one screen, which is exactly what that
+ * control already means everywhere else in the app.
+ */
+type FeedKey = 'rooms' | 'following';
+
+const FEEDS: { key: FeedKey; label: string }[] = [
+  { key: 'rooms', label: 'Rooms' },
+  { key: 'following', label: 'Following' },
+];
+
 export default function Community() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ feed?: string; belt?: string }>();
   const { profile, session } = useSession();
   /** The one global mode, read the same way every other screen reads it. */
   const mode = (profile?.primary_mode as GoalMode) ?? DEFAULT_MODE;
@@ -83,6 +108,16 @@ export default function Community() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+
+  /** The belt moment. Read from the server; `?belt=1` forces the preview. */
+  const beltUp = useBeltUp(myUserId);
+  const [beltPreview, setBeltPreview] = useState<typeof PREVIEW_BELT | null>(
+    params.belt === '1' ? PREVIEW_BELT : null,
+  );
+
+  /** Which feed is on screen. `?feed=following` lands here from the composer. */
+  const [feed, setFeed] = useState<FeedKey>(params.feed === 'following' ? 'following' : 'rooms');
+  const following = useFollowFeed();
 
   const [roomId, setRoomId] = useState<string | null>(null);
   const [messages, setMessages] = useState<RoomMessage[]>([]);
@@ -359,6 +394,43 @@ export default function Community() {
         </Pressable>
       </View>
 
+      {/* WHICH FEED, AND THE TWO SOCIAL ACTIONS.
+          It sits above the scroll view rather than inside it because it is
+          chrome for the screen, not content in it — scrolling away the control
+          that says which feed you are reading is how people get lost. */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 10, gap: 9 }}>
+        <Segmented options={FEEDS} value={feed} onChange={setFeed} testID="community-feed" />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Pressable
+            testID="community-publish-call"
+            accessibilityRole="button"
+            accessibilityLabel="Publish a call"
+            accessibilityHint="Your own trade idea, with your name on it."
+            onPress={() => router.push('/community/call/new' as never)}
+            style={({ pressed }) => ({
+              height: 30, paddingHorizontal: 13, borderRadius: radius.pill,
+              alignItems: 'center', justifyContent: 'center',
+              borderWidth: 1, borderColor: alpha.volt55, backgroundColor: alpha.volt10,
+              transform: [{ scale: pressed ? 0.97 : 1 }],
+            })}
+          >
+            <T size={11.5} weight="semibold" c={color.volt}>Publish a call</T>
+          </Pressable>
+          <View style={{ flex: 1 }} />
+          <Pressable
+            testID="community-board"
+            accessibilityRole="button"
+            accessibilityLabel="The board"
+            accessibilityHint="Members ranked on how often their calls were right."
+            onPress={() => router.push('/leaderboard' as never)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
+          >
+            <T size={11.5} weight="semibold" c={color.muted}>The board</T>
+          </Pressable>
+        </View>
+      </View>
+
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 16 }}
@@ -367,11 +439,18 @@ export default function Community() {
           <RefreshControl
             refreshing={refreshing}
             tintColor={color.violet}
-            onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }}
+            onRefresh={async () => {
+              setRefreshing(true);
+              await load();
+              following.reload();
+              setRefreshing(false);
+            }}
           />
         }
       >
-        {loading ? (
+        {feed === 'following' ? (
+          <FollowingFeed feed={following} onPublish={() => router.push('/community/call/new' as never)} />
+        ) : loading ? (
           <View style={{ paddingVertical: 40, alignItems: 'center' }}>
             <ActivityIndicator color={color.violet} />
           </View>
@@ -461,6 +540,10 @@ export default function Community() {
                   onOpenQuote={(qid) => router.push(`/thread/${encodeURIComponent(qid)}` as never)}
                   reactionNotice={reactionNotice[m.id] ?? null}
                   onActions={() => openActions(m)}
+                  // Never on your own post, and never on Kai's — the component
+                  // handles Kai, the screen is the only thing that knows which
+                  // of these people is the person reading.
+                  showFollow={!!myUserId && m.author.user_id !== myUserId && m.author.user_id !== 'me'}
                 />
               )) : (
                 // An empty room says it is empty and says what to do about it.
@@ -503,6 +586,10 @@ export default function Community() {
         )}
       </ScrollView>
 
+      {/* The composer posts INTO A ROOM, so it is not drawn over a feed that
+          has no room to post into. The Following feed's own action is
+          "Publish a call", which is above and is a different act. */}
+      {feed === 'rooms' ? (
       <View style={{ paddingHorizontal: 16, paddingBottom: 8, paddingTop: 4, gap: 8 }}>
         {postNotice ? (
           <Pressable
@@ -528,6 +615,7 @@ export default function Community() {
           onRemoveAttachment={media.remove}
         />
       </View>
+      ) : null}
 
       <CreateCircleSheet
         visible={createOpen}
@@ -535,6 +623,25 @@ export default function Community() {
         canCreate={canCreate}
         hint={createHint}
         onCreate={createCircle}
+      />
+
+      {/*
+        MOVING UP A BELT — the one rare moment in this layer that is allowed a
+        little movement, and it lives here because this is where the social
+        layer lives. `?belt=1` forces it, the way `?sim=readfail` forces the
+        portal's failure state: a rare screen nobody has opened is a screen
+        nobody has designed.
+      */}
+      <BeltUpSheet
+        visible={!!beltPreview || !!beltUp.block}
+        belt={(beltPreview ?? beltUp.block)?.key ?? 'white'}
+        label={(beltPreview ?? beltUp.block)?.label}
+        onClose={() => { setBeltPreview(null); beltUp.dismiss(); }}
+        onSeeBoard={() => {
+          setBeltPreview(null);
+          beltUp.dismiss();
+          router.push('/leaderboard' as never);
+        }}
       />
 
       <MessageActionsSheet
@@ -551,5 +658,111 @@ export default function Community() {
         onKeep={async (t, reason) => afterModeration(await moderationApi.keepMessage(t.messageId, reason))}
       />
     </Screen>
+  );
+}
+
+/**
+ * THE FOLLOWING FEED — calls and shared trades from the people you chose.
+ *
+ * TWO EMPTY STATES, AND THEY ARE NOT THE SAME SCREEN. "You follow nobody" is a
+ * thing the reader can fix in one tap and the offer is to go and find people.
+ * "Nobody you follow has posted" is a quiet day and there is nothing to fix —
+ * the offer there is to publish something yourself. Collapsing the two into one
+ * "Nothing here" would make a quiet day look like a broken feature, and a
+ * broken feature look like a quiet day.
+ *
+ * Newest first, and the two object types keep their different weights: a call
+ * is a volt card because somebody is making an argument, a shared trade is a
+ * plain row because it is a record.
+ */
+function FollowingFeed({
+  feed, onPublish,
+}: {
+  feed: ReturnType<typeof useFollowFeed>;
+  onPublish: () => void;
+}) {
+  const router = useRouter();
+
+  if (feed.loading && !feed.data) {
+    return (
+      <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+        <ActivityIndicator color={color.violet} />
+      </View>
+    );
+  }
+
+  if (feed.error) {
+    return (
+      <View style={{ padding: 16 }} testID="following-error">
+        <T size={13} lh={19} c={color.muted}>{feed.error}</T>
+      </View>
+    );
+  }
+
+  const data = feed.data;
+
+  if (!data || !data.items.length) {
+    const nobody = data?.follows_nobody ?? true;
+    return (
+      <View
+        testID={nobody ? 'following-empty-nobody' : 'following-empty-quiet'}
+        style={{ paddingHorizontal: 16, paddingVertical: 26, gap: 8 }}
+      >
+        <T size={14.5} weight="semibold">
+          {nobody ? 'You are not following anybody yet.' : 'Nobody you follow has posted yet.'}
+        </T>
+        <T size={12.5} lh={18.5} c={color.muted}>
+          {data?.empty_plain
+            ?? (nobody
+              ? 'Follow a few members and this becomes their calls and their trades, newest first. Tap a name in the rooms to see what they have published.'
+              : 'A quiet day on your list. You could be the one who posts.')}
+        </T>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+          <Pressable
+            testID="following-empty-action"
+            accessibilityRole="button"
+            accessibilityLabel={nobody ? 'Read the rooms' : 'Publish a call'}
+            onPress={nobody ? () => router.push('/community' as never) : onPublish}
+            style={({ pressed }) => ({
+              height: 38, paddingHorizontal: 15, borderRadius: radius.pill,
+              alignItems: 'center', justifyContent: 'center',
+              borderWidth: 1, borderColor: alpha.volt55, backgroundColor: alpha.volt10,
+              transform: [{ scale: pressed ? 0.97 : 1 }],
+            })}
+          >
+            <T size={12.5} weight="semibold" c={color.volt}>
+              {nobody ? 'Read the rooms' : 'Publish a call'}
+            </T>
+          </Pressable>
+          <Pressable
+            testID="following-empty-board"
+            accessibilityRole="button"
+            accessibilityLabel="The board"
+            onPress={() => router.push('/leaderboard' as never)}
+            style={({ pressed }) => ({
+              height: 38, paddingHorizontal: 15, borderRadius: radius.pill,
+              alignItems: 'center', justifyContent: 'center',
+              borderWidth: 0.5, borderColor: alpha.ivory24,
+              opacity: pressed ? 0.75 : 1,
+            })}
+          >
+            <T size={12.5} weight="semibold" c={color.muted}>The board</T>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ paddingHorizontal: 16, paddingTop: 10, gap: 12 }} testID="following-feed">
+      {data.items.map((item) => (
+        item.kind === 'call'
+          ? <CommunityCallCard key={`call-${item.call.id}`} call={item.call} showFollow />
+          : <SharedTradeRow key={`trade-${item.trade.id}`} trade={item.trade} />
+      ))}
+      {feed.isFixture ? (
+        <T size={10} c={color.dim} align="center">Example feed — the service is not connected here.</T>
+      ) : null}
+    </View>
   );
 }

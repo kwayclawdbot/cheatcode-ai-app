@@ -18,6 +18,7 @@ import { Avatar } from './Chrome';
 import type { MessageMedia, ReactionKind, RoomMessage } from '../types';
 import { MediaStrip, QuoteBlock, ReactionBar, ThreadLine } from './Social';
 import { PostBody } from './PostBody';
+import { FollowButton } from '../../social/FollowButton';
 
 /**
  * The feed's body.
@@ -84,9 +85,22 @@ export function SetupObjectCard({
 
 export function ClubMessage({
   message, onTicker, onReact, onReply, onOpenSetup, reactionNotice, onActions, onOpenThread,
-  onOpenMedia, onOpenQuote,
+  onOpenMedia, onOpenQuote, showFollow = false,
 }: {
   message: RoomMessage;
+  /**
+   * The compact follow control at the end of the author line.
+   *
+   * `ClubMessage` and `MessageRow` are SEPARATE components with separate
+   * author lines — the club board draws this one, a room draws the other — so
+   * the affordance had to be added twice or it would exist on one surface and
+   * not the other, which is exactly the drift that produced two different
+   * `$TICKER` treatments before `PostBody` was extracted.
+   *
+   * Off by default and decided by the caller: this component cannot tell
+   * whether the author is the person reading, and Kai is never followable.
+   */
+  showFollow?: boolean;
   onTicker: (symbol: string) => void;
   onReact?: (kind: ReactionKind) => void;
   /** Answer this post, quoting it. */
@@ -147,6 +161,14 @@ export function ClubMessage({
             <T key={r} size={9.5} c={color.dim}>{r}</T>
           ))}
           <T size={10} c={color.dim}>{message.time_label}</T>
+          {/* A sibling of the name, never a child of a pressable. The row
+              above is a Pressable but deliberately carries no button role
+              (see the comment on it), so this is legal markup on web. */}
+          {showFollow && !kai && message.author.user_id ? (
+            <View style={{ marginLeft: 'auto' }}>
+              <FollowButton userId={message.author.user_id} compact testID={`club-follow-${message.id}`} />
+            </View>
+          ) : null}
         </View>
 
         {message.deleted ? (

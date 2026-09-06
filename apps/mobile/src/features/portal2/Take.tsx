@@ -20,11 +20,12 @@
  *
  * ACCEPTED IS NOT FILLED, anywhere, ever.
  */
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { T, Eyebrow, Num } from '../../ui/Text';
 import { ObjectCard } from '../../ui/Panel';
 import { Button } from '../../ui/Button';
+import { Toggle } from '../../ui/Toggle';
 import { Rule } from '../../ui/DataRow';
 import { alpha, color, radius } from '../../ui/tokens';
 import { Check } from '../../ui/Icons';
@@ -52,15 +53,22 @@ function Line({ label, value, tint, testID }: {
 /* ------------------------------------------------------------------ */
 
 export function ConfirmCard({
-  read, preview, size, sending, error, onSend, onCancel,
+  read, preview, size, sending, error, onSend, onCancel, shareDefault = false,
 }: {
   read: TradeRead;
   preview: OrderPreview;
   size: TakeSize;
   sending: boolean;
   error: string | null;
-  onSend: () => void;
+  /** The share answer for THIS order travels with the send. */
+  onSend: (shareTrade: boolean) => void;
   onCancel: () => void;
+  /**
+   * The account-level "Share my trades" setting, read from `/me`. It is the
+   * STARTING POSITION of the per-order switch and nothing more — the whole
+   * point of having a switch here is that this one order can differ.
+   */
+  shareDefault?: boolean;
 }) {
   const entry = read.because.find((l) => l.key === 'entry')?.price ?? null;
   const stop = read.because.find((l) => l.key === 'stop')?.price ?? null;
@@ -70,6 +78,10 @@ export function ConfirmCard({
   const risk = preview.max_loss ?? r.risk_usd ?? size.risk_usd;
   const verdict = preview.risk.verdict;
   const verdictTint = verdict === 'blocker' ? color.red : verdict === 'advisory' ? color.gold : color.green;
+  const [share, setShare] = useState(shareDefault);
+  // A card that re-prices keeps the answer the person just gave; only a
+  // genuinely new default (the account setting changing) moves it.
+  useEffect(() => { setShare(shareDefault); }, [shareDefault]);
 
   return (
     <View style={{ gap: 14 }} testID="beat-take">
@@ -127,6 +139,43 @@ export function ConfirmCard({
         </View>
       </ObjectCard>
 
+      {/*
+        SHOW THIS ONE TO THE CLUB — asked HERE, per order, not only once in
+        settings. Sharing a trade is a decision about a particular trade, and
+        an account-level switch alone would mean somebody's worst idea goes out
+        because of a choice they made weeks earlier about a different one. The
+        account setting is the starting position; this is the answer.
+
+        It sits BELOW the risk block and ABOVE the send button, in the same
+        order the rest of this card follows: you pass the number, then you pass
+        the audience, then you send.
+      */}
+      <View
+        testID="confirm-share"
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 12,
+          paddingVertical: 11, paddingHorizontal: 14, borderRadius: radius.xl,
+          borderWidth: 0.5, borderColor: share ? alpha.volt50 : alpha.ivory12,
+          backgroundColor: share ? alpha.volt08 : 'transparent',
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <T size={13} weight="semibold" c={share ? color.volt : color.text}>Show this one to the club</T>
+          <T size={11.5} lh={16.5} c={color.muted} style={{ marginTop: 3 }}>
+            {share
+              ? 'Direction and levels only. Your size and your dollars are never shown.'
+              : 'Off. Nobody sees this trade.'}
+          </T>
+        </View>
+        <Toggle
+          testID="toggle-share-this-trade"
+          value={share}
+          label="Show this trade to the club"
+          disabled={sending}
+          onChange={setShare}
+        />
+      </View>
+
       {error ? (
         <T size={13} lh={19} c={color.red} testID="confirm-error">{error}</T>
       ) : null}
@@ -138,7 +187,7 @@ export function ConfirmCard({
           height={52}
           loading={sending}
           disabled={sending || verdict === 'blocker'}
-          onPress={onSend}
+          onPress={() => onSend(share)}
           testID="confirm-send"
           accessibilityHint={`Places a paper order to ${preview.side_label.toLowerCase()} ${preview.symbol}. Nothing is sent until you press this.`}
         />

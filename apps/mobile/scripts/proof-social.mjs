@@ -109,7 +109,12 @@ if (await like.count()) {
   note(await page.locator('[data-testid="react-pick-disagree"]').count() > 0, 'thumbs down is one of the six');
 
   // Tap-away closes it without giving a reaction.
-  await page.locator('[data-testid="reaction-picker-dismiss"]').click();
+  // Clicked near the CORNER of the dismiss layer, not its centre: the picker
+  // floats over that layer and its position follows the post, so the middle of
+  // the backdrop lands on the picker itself whenever the feed's chrome grows
+  // by a row. A tap-away test that only works at one scroll offset is testing
+  // the layout, not the dismissal.
+  await page.locator('[data-testid="reaction-picker-dismiss"]').click({ position: { x: 6, y: 6 } });
   await page.waitForTimeout(500);
   note(!(await has('reaction-picker')), 'tapping away closes it');
 }
