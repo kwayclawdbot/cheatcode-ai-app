@@ -7,6 +7,7 @@
  */
 import type {
   RoomRow, MessageRow, MessageAuthor, KaiObjectEnvelope, MessageReactions, ReactionKind, MessageMedia,
+  MessageQuote,
 } from '@shared/api';
 import { serviceClient } from './db';
 import { ApiError } from './errors';
@@ -153,12 +154,15 @@ export function toRoomRow(
  * level to shape the row it returns, and it can only do that for a literal —
  * split it over a `+` and every read through it degrades to an error type.
  *
- * The last four are migration 0033's. `reaction_counts` and `attachment_count`
- * are denormalised onto the message precisely so that reading them is free:
- * they arrive with the row the room was already fetching.
+ * The middle four are migration 0033's. `reaction_counts` and
+ * `attachment_count` are denormalised onto the message precisely so that
+ * reading them is free: they arrive with the row the room was already fetching.
+ *
+ * `quoted_message_id` is migration 0035's and is an ID, not the quoted words —
+ * `quotesFor` below turns a page of them into rendered quotes in one query.
  */
 export const MESSAGE_COLUMNS =
-  'id,room_id,user_id,seq,kind,body,parent_id,refs,structured_idea,position_disclosure,deleted,created_at,reaction_counts,reply_count,attachment_count,author_deleted';
+  'id,room_id,user_id,seq,kind,body,parent_id,refs,structured_idea,position_disclosure,deleted,created_at,reaction_counts,reply_count,attachment_count,author_deleted,quoted_message_id';
 
 /**
  * WHICH REACTIONS DID *THIS* PERSON GIVE — for a whole page, in one query.
@@ -243,6 +247,93 @@ export async function authorsFor(userIds: string[]): Promise<Map<string, Message
   return out;
 }
 
+/**
+ * THE POSTS A PAGE OF MESSAGES IS QUOTING, RESOLVED IN ONE QUERY.
+ *
+ * `messages.quoted_message_id` (migration 0035) holds an id and never a copy of
+ * the words, so the quoted line has to be read back on every render. Done
+ * naively that is one lookup per quoting message; done here it is one `in (...)`
+ * over the page's quoted ids plus the one `authorsFor` round trip the page was
+ * already making anyway. Same rule as `reactionsMineFor`: batched, or not at
+ * all.
+ *
+ * IT IS READ THROUGH `messages_public`, not through `messages`, which is what
+ * makes it safe to skip a per-quote membership check. The view carries its own
+ * membership test, and the database refuses a quote pointing at another room
+ * (0035 §2b), so a quote can only ever resolve to a post the reader was already
+ * entitled to see.
+ *
+ * A REMOVED POST COMES BACK AS `deleted` WITH NO TEXT. Never its words — if a
+ * removal left the quoted line standing in ten replies, the removal would be
+ * theatre. A quote we cannot read at all (the row is gone, or something went
+ * wrong) comes back the same way rather than as a blank, because "This post was
+ * removed" is the honest thing to show and an empty box is not.
+ */
+const QUOTE_MAX_CHARS = 180;
+
+export async function quotesFor(quotedIds: string[]): Promise<Map<string, MessageQuote>> {
+  const out = new Map<string, MessageQuote>();
+  const ids = [...new Set(quotedIds.filter(Boolean))];
+  if (!ids.length) return out;
+
+  const db = serviceClient();
+  const { data } = await db
+    .from('messages_public')
+    .select('id,user_id,body,deleted,author_deleted')
+    .in('id', ids);
+
+  const rows = (data ?? []) as Record<string, unknown>[];
+  // The same author lookup every other read uses, so a quoted post is signed
+  // exactly the way the post itself is.
+  const authors = await authorsFor(rows.map((r) => String(r.user_id ?? '')));
+
+  for (const r of rows) {
+    const id = String(r.id);
+    const removed = Boolean(r.deleted);
+    const author = r.user_id ? (authors.get(String(r.user_id)) ?? null) : null;
+    out.set(id, {
+      message_id: id,
+      author_name: quoteAuthorName(author, Boolean(r.author_deleted), r.user_id == null),
+      handle: author?.handle ?? null,
+      text: removed ? '' : quoteSnippet((r.body as string) ?? null),
+      deleted: removed,
+    });
+  }
+
+  // Every id asked for comes back, the same guarantee `authorsFor` makes. A
+  // quote that resolved to nothing is a removal as far as the screen is
+  // concerned; the alternative is a reply answering an invisible gap.
+  for (const id of ids) {
+    if (out.has(id)) continue;
+    out.set(id, { message_id: id, author_name: 'A member', handle: null, text: '', deleted: true });
+  }
+  return out;
+}
+
+/**
+ * Who to put above the quoted line. Never empty, and never the wrong person:
+ * a null `user_id` means Kai ONLY when the author did not delete their account,
+ * which is the same trap `toMessageRow` avoids with `author_deleted`.
+ */
+function quoteAuthorName(author: MessageAuthor | null, authorDeleted: boolean, noUserId: boolean): string {
+  if (authorDeleted) return 'A member who left';
+  if (noUserId) return 'Kai';
+  return author?.display_name || author?.handle || 'A member';
+}
+
+/**
+ * Two lines of the quoted post, cut at a word so it does not end mid-word.
+ * Newlines collapse, because a quote is a reminder of what was said and not a
+ * second copy of the post's layout.
+ */
+function quoteSnippet(body: string | null): string {
+  const text = (body ?? '').replace(/\s+/g, ' ').trim();
+  if (text.length <= QUOTE_MAX_CHARS) return text;
+  const cut = text.slice(0, QUOTE_MAX_CHARS);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${(lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
 export async function objectsFor(objectIds: string[]): Promise<Map<string, KaiObjectEnvelope>> {
   const out = new Map<string, KaiObjectEnvelope>();
   const ids = [...new Set(objectIds.filter(Boolean))];
@@ -273,7 +364,11 @@ export function toMessageRow(
   row: Record<string, unknown>,
   authors: Map<string, MessageAuthor>,
   objects: Map<string, KaiObjectEnvelope>,
-  extras?: { mine?: Map<string, ReactionKind[]>; media?: Map<string, MessageMedia[]> }
+  extras?: {
+    mine?: Map<string, ReactionKind[]>;
+    media?: Map<string, MessageMedia[]>;
+    quotes?: Map<string, MessageQuote>;
+  }
 ): MessageRow {
   const refs = (row.refs as Record<string, unknown>) ?? null;
   const objectId = typeof refs?.kai_object_id === 'string' ? refs.kai_object_id : null;
@@ -296,7 +391,31 @@ export function toMessageRow(
     reactions: reactionsOf(row, extras?.mine?.get(String(row.id)) ?? []),
     reply_count: Number(row.reply_count ?? 0),
     media: extras?.media?.get(String(row.id)) ?? [],
+    quote: quoteOf(row, extras?.quotes),
   };
+}
+
+/**
+ * A message that quotes nothing gets null. A message that quotes something the
+ * caller did not hand us a resolution for gets a removal, never a silent null —
+ * dropping the quote would make the reply read as an answer to whatever is
+ * above it, which is the exact confusion quoting exists to fix.
+ */
+function quoteOf(
+  row: Record<string, unknown>,
+  quotes: Map<string, MessageQuote> | undefined
+): MessageQuote | null {
+  const quotedId = (row.quoted_message_id as string) ?? null;
+  if (!quotedId) return null;
+  return (
+    quotes?.get(quotedId) ?? {
+      message_id: quotedId,
+      author_name: 'A member',
+      handle: null,
+      text: '',
+      deleted: true,
+    }
+  );
 }
 
 /**

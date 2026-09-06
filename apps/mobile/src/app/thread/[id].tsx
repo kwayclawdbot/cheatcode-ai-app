@@ -1,18 +1,25 @@
 /**
  * ONE POST AND ITS COMMENTS.
  *
- * THREADS ARE ONE LEVEL DEEP and this screen is what that decision looks like:
- * the post at the top with a rule under it, the comments below in the order
- * they were written, and a composer that always answers the POST. There is no
- * reply-to-a-reply affordance anywhere on it, because there is no such thing —
- * the database refuses one (migration 0033 §1), and an affordance that leads to
- * a refusal is worse than no affordance.
+ * THREADS ARE ONE LEVEL DEEP IN THE DATABASE and this screen is what that
+ * decision looks like: every comment here has `parent_id = the post`, and the
+ * database refuses anything else (migration 0033 §1). That has not changed.
+ *
+ * WHAT HAS CHANGED is that you can now answer a COMMENT. Answering a comment
+ * still writes a comment on the POST — same `parent_id`, same one level — and
+ * records WHICH comment it was answering as a quote. The screen then draws it
+ * indented under that comment. So the conversation reads as a thread while the
+ * table stays flat, and there is no reply-to-a-reply-to-a-reply to get lost in:
+ * an answer to an indented comment is drawn beside it, not further right.
+ *
+ * ONE LEVEL OF INDENT IS THE WHOLE RULE. On a phone, a second level leaves
+ * about twelve characters a line.
  *
  * A REMOVED COMMENT KEEPS ITS PLACE. Its words are gone and the gap stays,
  * because a comment that answers something no longer there reads as a
  * non-sequitur unless you can see that something was removed.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,15 +27,55 @@ import { Wash } from '../../ui/Wash';
 import { T } from '../../ui/Text';
 import { ObjectCard } from '../../ui/Panel';
 import { alpha, color, radius } from '../../ui/tokens';
-import { communityApi } from '../../lib/community-api';
+import { communityApi, quoteOf } from '../../lib/community-api';
 import { StackHeader } from '../../features/community/ui/Chrome';
 import { MessageRow } from '../../features/community/ui/Message';
 import { RoomComposer } from '../../features/community/ui/RoomComposer';
 import { useAttachments } from '../../features/media/useAttachments';
 import type { MessageReactions, ReactionKind, RoomMessage } from '../../features/community/types';
 
+/**
+ * Which comment each answer belongs under.
+ *
+ * A comment quoting the POST is top level. A comment quoting another COMMENT is
+ * drawn under that comment — and if it quotes one that is itself indented, it
+ * is walked up to that one's top-level anchor rather than nested deeper. The
+ * walk is bounded: a quote chain in a thread cannot be longer than the thread,
+ * but a bound that is not written down is a loop waiting for bad data.
+ */
+function layOut(parentId: string, replies: RoomMessage[]) {
+  const byId = new Map(replies.map((r) => [r.id, r]));
+  const children = new Map<string, RoomMessage[]>();
+  const top: RoomMessage[] = [];
+
+  const anchorFor = (start: string): string => {
+    let at = start;
+    for (let hop = 0; hop < 8; hop++) {
+      const q = byId.get(at)?.quote?.message_id;
+      if (!q || q === parentId || !byId.has(q)) return at;
+      at = q;
+    }
+    return at;
+  };
+
+  for (const r of replies) {
+    const q = r.quote?.message_id;
+    // Quoting the post, quoting nothing, or quoting something not on this
+    // screen: it sits at the top level. A quote we cannot resolve to a sibling
+    // is not a reason to hide the comment.
+    if (!q || q === parentId || !byId.has(q) || q === r.id) {
+      top.push(r);
+      continue;
+    }
+    const anchor = anchorFor(q);
+    if (anchor === r.id) { top.push(r); continue; }
+    children.set(anchor, [...(children.get(anchor) ?? []), r]);
+  }
+  return { top, children };
+}
+
 export default function ThreadScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, quote: quoteParam } = useLocalSearchParams<{ id: string; quote?: string }>();
   const messageId = String(id ?? '');
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -41,6 +88,12 @@ export default function ThreadScreen() {
   const [error, setError] = useState<string | null>(null);
   /** True when the service answered with nothing at all, rather than nothing yet. */
   const [unreachable, setUnreachable] = useState(false);
+  /**
+   * Which message the composer is answering. The POST by default — a comment
+   * box under a post that quoted nothing would be a box that does not know what
+   * it is for — and a specific comment once you tap Reply on one.
+   */
+  const [replyTo, setReplyTo] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const r = await communityApi.replies(messageId);
@@ -60,16 +113,41 @@ export default function ThreadScreen() {
     void load();
   }, [load]);
 
+  /** Arrived here from a Reply tap in the room: answer what was tapped. */
+  useEffect(() => {
+    if (quoteParam) setReplyTo(String(quoteParam));
+  }, [quoteParam]);
+
+  const { top, children } = useMemo(
+    () => layOut(parent?.id ?? messageId, replies),
+    [parent?.id, messageId, replies],
+  );
+
+  /** The message the composer is quoting, resolved to something real. */
+  const target = useMemo(() => {
+    if (!parent) return null;
+    if (!replyTo || replyTo === parent.id) return parent;
+    return replies.find((r) => r.id === replyTo && !r.deleted) ?? parent;
+  }, [parent, replies, replyTo]);
+
   const send = async (text: string) => {
     setError(null);
-    if (!parent) return;
+    if (!parent || !target) return;
     try {
       const posted = await communityApi.postMessage(
         parent.room_id ?? '',
-        { body: text, parent_id: parent.id, attachment_ids: media.readyIds },
+        {
+          body: text,
+          // ALWAYS the post. Answering a comment is still a comment on the
+          // post — the quote is what says which comment it answered.
+          parent_id: parent.id,
+          quote: quoteOf(target),
+          attachment_ids: media.readyIds,
+        },
         (plain) => setError(plain),
       );
       media.clear();
+      setReplyTo(null);
       setReplies((prev) => (prev.some((m) => m.id === posted.id) ? prev : [...prev, posted]));
       // The post's own comment count changed; re-reading is one small request
       // and is cheaper than keeping a second copy of the number in sync.
@@ -79,8 +157,8 @@ export default function ThreadScreen() {
     }
   };
 
-  const react = async (target: RoomMessage, kind: ReactionKind) => {
-    const before = target.reactions;
+  const react = async (target_: RoomMessage, kind: ReactionKind) => {
+    const before = target_.reactions;
     const on = before.mine.includes(kind);
     const optimistic: MessageReactions = {
       counts: { ...before.counts, [kind]: Math.max(0, (before.counts[kind] ?? 0) + (on ? -1 : 1)) },
@@ -89,21 +167,50 @@ export default function ThreadScreen() {
     if (optimistic.counts[kind] === 0) delete optimistic.counts[kind];
 
     const write = (r: MessageReactions) => {
-      if (parent && target.id === parent.id) setParent({ ...parent, reactions: r });
-      else setReplies((prev) => prev.map((m) => (m.id === target.id ? { ...m, reactions: r } : m)));
+      if (parent && target_.id === parent.id) setParent({ ...parent, reactions: r });
+      else setReplies((prev) => prev.map((m) => (m.id === target_.id ? { ...m, reactions: r } : m)));
     };
 
     write(optimistic);
     try {
-      write(await communityApi.react(target.id, kind));
+      write(await communityApi.react(target_.id, kind));
     } catch (e: any) {
       write(before);
       setError(e?.message ?? 'That reaction did not register.');
     }
   };
 
+  const openTicker = (symbol: string) => router.push(`/symbol/${encodeURIComponent(symbol)}` as never);
+
+  /** One comment, plus whatever was said back to it. */
+  const renderReply = (m: RoomMessage, indented: boolean) => (
+    <View
+      key={m.id}
+      style={
+        indented
+          ? { marginLeft: 14, paddingLeft: 12, borderLeftWidth: 0.5, borderLeftColor: alpha.ivory12 }
+          : undefined
+      }
+    >
+      <MessageRow
+        message={m}
+        onOpenAuthor={m.author.user_id ? () => router.push(`/contributor/${m.author.user_id}`) : undefined}
+        onReact={(k) => { void react(m, k); }}
+        onReply={m.deleted ? undefined : () => setReplyTo(m.id)}
+        onTicker={openTicker}
+        hideThreadLine
+      />
+      {(children.get(m.id) ?? []).length ? (
+        <View style={{ gap: 12, marginTop: 12 }}>
+          {(children.get(m.id) ?? []).map((c) => renderReply(c, true))}
+        </View>
+      ) : null}
+    </View>
+  );
+
   const count = replies.filter((r) => !r.deleted).length;
   const subtitle = count === 0 ? 'No comments yet' : count === 1 ? '1 comment' : `${count} comments`;
+  const answeringAComment = !!target && !!parent && target.id !== parent.id;
 
   return (
     <View style={{ flex: 1, backgroundColor: color.bg }} testID="screen-thread">
@@ -129,6 +236,8 @@ export default function ThreadScreen() {
             message={parent}
             onOpenAuthor={parent.author.user_id ? () => router.push(`/contributor/${parent.author.user_id}`) : undefined}
             onReact={(k) => { void react(parent, k); }}
+            onReply={() => setReplyTo(parent.id)}
+            onTicker={openTicker}
             hideThreadLine
           />
 
@@ -139,15 +248,7 @@ export default function ThreadScreen() {
           {replies.length === 0 ? (
             <T size={12.5} lh={18} c={color.muted} testID="thread-empty">{emptyCopy}</T>
           ) : (
-            replies.map((m) => (
-              <MessageRow
-                key={m.id}
-                message={m}
-                onOpenAuthor={m.author.user_id ? () => router.push(`/contributor/${m.author.user_id}`) : undefined}
-                onReact={(k) => { void react(m, k); }}
-                hideThreadLine
-              />
-            ))
+            top.map((m) => renderReply(m, false))
           )}
 
           {error ? (
@@ -168,12 +269,21 @@ export default function ThreadScreen() {
             ) : null}
             <RoomComposer
               roomLabel="this post"
-              placeholder="Add a comment…"
+              placeholder={answeringAComment ? 'Write your reply…' : 'Add a comment…'}
               onSend={send}
               // Kai and the structured composer belong to the room, not to a
               // comment. Both are one tap away on the post itself.
               onKai={() => router.back()}
               onStructured={() => router.back()}
+              quote={target ? quoteOf(target) : null}
+              quoteLabel={
+                answeringAComment
+                  ? `Replying to ${target!.author.handle ? `@${target!.author.handle}` : target!.author.display_name}`
+                  : `Replying to ${parent.author.display_name}'s post`
+              }
+              // Clearing goes back to answering the POST, which is what this
+              // screen is for. There is no "quote nothing" state to fall into.
+              onClearQuote={answeringAComment ? () => setReplyTo(null) : undefined}
               attachments={media.attachments}
               onAttach={() => { void media.pick(); }}
               onRemoveAttachment={media.remove}

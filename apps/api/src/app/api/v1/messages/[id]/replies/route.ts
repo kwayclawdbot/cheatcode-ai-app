@@ -26,6 +26,7 @@ import {
   authorsFor,
   loadMembership,
   objectsFor,
+  quotesFor,
   reactionsMineFor,
   requireMember,
   toMessageRow,
@@ -64,8 +65,13 @@ export const GET = authedParams<{ id: string }>(
     const all = [parentRow, ...replyRows];
     const ids = all.map((r) => String(r.id));
 
-    // Four batched lookups for the whole thread. Never one per row.
-    const [authors, objects, mine, media] = await Promise.all([
+    // Five batched lookups for the whole thread. Never one per row.
+    //
+    // `quotes` matters most HERE. A thread is one level deep, so a comment
+    // answering another comment says so by quoting it (migration 0035 §2) —
+    // this is the screen where nearly every quote in the app is read, and
+    // resolving them one at a time would be a query per comment.
+    const [authors, objects, mine, media, quotes] = await Promise.all([
       authorsFor(all.map((r) => String(r.user_id ?? ''))),
       objectsFor(
         all
@@ -74,9 +80,10 @@ export const GET = authedParams<{ id: string }>(
       ),
       reactionsMineFor(ids, ctx.user.id),
       attachmentsForMessages(all.filter((r) => Number(r.attachment_count ?? 0) > 0).map((r) => String(r.id))),
+      quotesFor(all.map((r) => r.quoted_message_id).filter((v): v is string => typeof v === 'string')),
     ]);
 
-    const extras = { mine, media };
+    const extras = { mine, media, quotes };
 
     return ok(
       RepliesResponse.parse({

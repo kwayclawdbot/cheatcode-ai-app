@@ -204,6 +204,13 @@ export type RoomMessage = {
   reply_count: number;
   /** The post this is a comment on, when it is one. */
   parent_id: string | null;
+  /**
+   * The post this one was written against, drawn as a quote block above the
+   * body. Usually the parent, but not always — a comment can quote a SIBLING
+   * comment, which is how "replying to @name" works without a second level of
+   * nesting existing anywhere.
+   */
+  quote: MessageQuote | null;
   /** Pictures attached to it, in the order they were picked. */
   media: MessageMedia[];
   /**
@@ -218,7 +225,14 @@ export type RoomMessage = {
 /* Reactions and media                                                  */
 /* ------------------------------------------------------------------ */
 
-export type ReactionKind = 'agree' | 'disagree' | 'watching' | 'useful';
+/**
+ * `watching` and `useful` are LEGACY. They were two of the original four and
+ * rows carrying them are still in `message_reactions`, so they stay in the type
+ * and stay renderable — but the picker no longer offers them (see REACTIONS).
+ */
+export type ReactionKind =
+  | 'agree' | 'disagree' | 'fire' | 'hundred' | 'chart_up' | 'chart_down'
+  | 'watching' | 'useful';
 
 export type MessageReactions = {
   /** {kind: count}. A kind nobody used is absent, not present at zero. */
@@ -227,31 +241,99 @@ export type MessageReactions = {
   mine: ReactionKind[];
 };
 
-/**
- * FOUR, AND `disagree` IS THE ONE THAT EARNS ITS PLACE. A room where the only
- * cheap gesture is approval reads as unanimous whether or not it is, and in a
- * room about money that is how a bad idea gets amplified.
- *
- * Tones follow the app's colour law and nothing else: volt is the USER, cyan is
- * the MARKET. A reaction is always the user's, so three of them are volt; the
- * market tone belongs to `watching`, the only one that says something about an
- * instrument rather than about the post. Violet is Kai's and appears nowhere
- * here, because Kai does not react to anybody.
- */
-export const REACTIONS: {
+export type ReactionDef = {
   id: ReactionKind;
+  /** What is actually drawn. One glyph, no image, no font to load. */
+  emoji: string;
+  /** The word a screen reader says, and the word the picker labels it with. */
   label: string;
   /** What tapping it means, used as the accessibility hint. */
   plain: string;
   tone: 'user' | 'market' | 'neutral';
-}[] = [
-  { id: 'agree',    label: 'Agree',    plain: 'You think this is right.',                        tone: 'user' },
-  { id: 'disagree', label: 'Disagree', plain: 'You think this is wrong.',                        tone: 'user' },
-  { id: 'watching', label: 'Watching', plain: 'You are keeping an eye on this one.',             tone: 'market' },
-  { id: 'useful',   label: 'Useful',   plain: 'This helped you, whatever you think of the call.', tone: 'neutral' },
+};
+
+/**
+ * SIX, PICKED BY THE OWNER, AND `disagree` STILL EARNS ITS PLACE. A room where
+ * the only cheap gesture is approval reads as unanimous whether or not it is,
+ * and in a room about money that is how a bad idea gets amplified. Thumbs down
+ * keeps dissent exactly as cheap as agreement.
+ *
+ * These are the SAME reactions the old four were — a row per person per kind in
+ * `message_reactions` — drawn as a glyph instead of a word. `agree` and
+ * `disagree` keep their stored names (👍 and 👎 are what those words always
+ * meant), so every reaction anybody has already given still counts.
+ *
+ * Tones follow the app's colour law and nothing else: volt is the USER, cyan is
+ * the MARKET. A reaction is the user's own act, so four of them are volt; the
+ * two chart ones say something about where an INSTRUMENT is going rather than
+ * about the post, which is the same reasoning that made `watching` cyan. Violet
+ * is Kai's and appears nowhere here — Kai does not react to anybody.
+ */
+export const REACTIONS: ReactionDef[] = [
+  { id: 'agree',      emoji: '👍', label: 'Agree',      plain: 'You think this is right.',              tone: 'user' },
+  { id: 'disagree',   emoji: '👎', label: 'Disagree',   plain: 'You think this is wrong.',              tone: 'user' },
+  { id: 'fire',       emoji: '🔥', label: 'Fire',       plain: 'This one stands out.',                  tone: 'user' },
+  { id: 'hundred',    emoji: '💯', label: 'Nailed it',  plain: 'Completely right, in your view.',       tone: 'user' },
+  { id: 'chart_up',   emoji: '📈', label: 'Going up',   plain: 'You read this as bullish.',             tone: 'market' },
+  { id: 'chart_down', emoji: '📉', label: 'Going down', plain: 'You read this as bearish.',             tone: 'market' },
 ];
 
+/**
+ * Kinds nobody can give any more, but which people already gave.
+ *
+ * A count that exists is drawn. Dropping them would silently delete other
+ * members' reactions from the screen while they stayed in the table, which is
+ * the kind of quiet lie this app does not tell.
+ */
+export const LEGACY_REACTIONS: ReactionDef[] = [
+  { id: 'watching', emoji: '👀', label: 'Watching', plain: 'Somebody put this on their list.',    tone: 'market' },
+  { id: 'useful',   emoji: '🙌', label: 'Useful',   plain: 'Somebody found this helpful.',        tone: 'neutral' },
+];
+
+export const ALL_REACTIONS: ReactionDef[] = [...REACTIONS, ...LEGACY_REACTIONS];
+
+export const reactionDef = (kind: ReactionKind): ReactionDef | null =>
+  ALL_REACTIONS.find((r) => r.id === kind) ?? null;
+
 export const EMPTY_REACTIONS: MessageReactions = { counts: {}, mine: [] };
+
+/* ------------------------------------------------------------------ */
+/* Quoting                                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The post a reply was written against, carried ON the reply.
+ *
+ * It is a SNAPSHOT of who and what, not a live join: the quote has to stay
+ * readable when the original is scrolled off, in another room, or removed. The
+ * `message_id` is the durable handle for tapping through; everything else is
+ * what to draw when you cannot reach it.
+ *
+ * `deleted` is the one state that matters most. A quote of a post a moderator
+ * took down must say so rather than keep repeating the words that were removed
+ * — otherwise deleting a post would leave copies of it all over the room.
+ */
+export type MessageQuote = {
+  message_id: string;
+  author_name: string;
+  handle: string | null;
+  /** Trimmed at the edge, with an ellipsis. Never the whole essay. */
+  text: string;
+  deleted: boolean;
+};
+
+/** How much of a quoted post is worth showing before it is just noise. */
+export const QUOTE_MAX_CHARS = 180;
+
+export function trimQuote(text: string | null | undefined, max = QUOTE_MAX_CHARS): string {
+  const flat = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (flat.length <= max) return flat;
+  // Cut at the last word boundary inside the budget so the tail is not a
+  // half-word — "the confirmati…" reads as a bug, "the…" reads as a trim.
+  const cut = flat.slice(0, max);
+  const at = cut.lastIndexOf(' ');
+  return `${(at > max * 0.6 ? cut.slice(0, at) : cut).trimEnd()}…`;
+}
 
 /**
  * A picture on a message.

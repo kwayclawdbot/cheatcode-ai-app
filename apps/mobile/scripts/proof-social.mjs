@@ -8,17 +8,30 @@
  * Shoots `proof/social-*.png` at 390x844 and asserts the things a screenshot
  * cannot show on its own:
  *
- *   · the reaction bar draws the FOUR named reactions and not a row of emoji,
- *     and "Disagree" is one of them — a room where the only cheap gesture is
+ *   · every post carries Like and Reply, and Like opens a popover holding
+ *     EXACTLY the six emoji the owner picked — 👍 👎 🔥 💯 📈 📉 — which is the
+ *     one thing about this feature that is a specification and not a taste
+ *     call, and the one thing most likely to drift;
+ *   · thumbs down is one of them. A room where the only cheap gesture is
  *     approval reads as unanimous whether or not it is;
- *   · tapping one changes the count in place, and nothing anywhere says
- *     "saved on this device only" any more, because it is not;
+ *   · tapping in the picker changes the count in place, and nothing anywhere
+ *     says "saved on this device only", because it is not;
+ *   · `$META` in a post is a token and not plain text, and it leads to the
+ *     ticker — the app's standing rule, checked rather than assumed;
  *   · a post says how many comments it has, and opening it lands on a screen
- *     with the post at the top, the comments under a rule, and NO way to reply
- *     to a reply — one level, enforced by the database;
+ *     with the post at the top, the comments under a rule, and NO comment-count
+ *     line on a comment — one level in the database, still;
+ *   · answering a COMMENT quotes it and draws the answer indented under it,
+ *     which is the whole of "reply to another user's comment";
  *   · a removed comment keeps its place and loses its words;
  *   · the composer has a way to add a picture, and the accessibility copy on
  *     it tells the truth about location data before anything is picked.
+ *
+ * WHAT CHANGED, and why the old assertions are gone: this file used to assert
+ * that the bar drew four WORDS and that "no emoji reactions are left in the
+ * feed". The owner reversed that on 2026-09-06 and named the six. The old
+ * assertions were not wrong when they were written; they are wrong now, and a
+ * proof script that asserts last month's decision is worse than none.
  *
  * WHAT THIS CANNOT PROVE, and is not claimed anywhere: the picker itself.
  * `expo-image-picker` opens the phone's own library and Expo Go carries its own
@@ -63,22 +76,68 @@ await go('/community');
 await shot('feed');
 
 const feed = await text();
-for (const label of ['Agree', 'Disagree', 'Watching', 'Useful']) {
-  note(feed.includes(label), `the feed offers "${label}"`);
-}
+note(feed.includes('Like'), 'every post offers Like');
+note(feed.includes('Reply'), 'every post offers Reply');
 note(!/saved on this device only/i.test(feed), 'nothing claims a reaction is device-local any more');
-note(!/🔥|💬/.test(feed), 'no emoji reactions are left in the feed');
 
-const agree = page.locator('[data-testid="react-agree"]').first();
-if (await agree.count()) {
-  const before = (await agree.innerText()).replace(/\s+/g, ' ');
-  await agree.click();
+/* -- 1a. the picker -------------------------------------------------- */
+const SIX = [
+  ['agree', '👍'], ['disagree', '👎'], ['fire', '🔥'],
+  ['hundred', '💯'], ['chart_up', '📈'], ['chart_down', '📉'],
+];
+
+const like = page.locator('[data-testid="react-open"]').first();
+note(await like.count() > 0, 'the Like button is on screen');
+if (await like.count()) {
+  await like.click();
+  await page.waitForTimeout(600);
+  note(await has('reaction-picker'), 'tapping Like opens the picker');
+  await shot('picker');
+
+  for (const [id, emoji] of SIX) {
+    const cell = page.locator(`[data-testid="react-pick-${id}"]`);
+    const there = await cell.count() > 0;
+    note(there, `the picker offers ${emoji}`);
+    if (there) {
+      note((await cell.innerText()).includes(emoji), `  ...drawn as ${emoji} and not as a word`);
+    }
+  }
+  const cells = await page.locator('[data-testid^="react-pick-"]').count();
+  note(cells === 6, `exactly six, no more (found ${cells})`);
+
+  // The one that earns its place: dissent as cheap as approval.
+  note(await page.locator('[data-testid="react-pick-disagree"]').count() > 0, 'thumbs down is one of the six');
+
+  // Tap-away closes it without giving a reaction.
+  await page.locator('[data-testid="reaction-picker-dismiss"]').click();
+  await page.waitForTimeout(500);
+  note(!(await has('reaction-picker')), 'tapping away closes it');
+}
+
+/* -- 1b. giving one ------------------------------------------------- */
+const firePill = () => page.locator('[data-testid="react-fire"]').first();
+const beforeFire = await firePill().count() ? (await firePill().innerText()).replace(/\s+/g, ' ') : '(none)';
+if (await like.count()) {
+  await like.click();
+  await page.waitForTimeout(500);
+  await page.locator('[data-testid="react-pick-fire"]').click();
   await page.waitForTimeout(900);
-  const after = (await agree.innerText()).replace(/\s+/g, ' ');
-  note(before !== after, `tapping Agree changes it in place ("${before}" -> "${after}")`);
+  const afterFire = await firePill().count() ? (await firePill().innerText()).replace(/\s+/g, ' ') : '(none)';
+  note(beforeFire !== afterFire, `picking 🔥 changes the count in place ("${beforeFire}" -> "${afterFire}")`);
+  note(afterFire.includes('🔥'), 'and the post shows the emoji, with its count');
   await shot('reacted');
-} else {
-  note(false, 'a reaction chip is on screen');
+}
+
+/* -- 1c. a cashtag is not plain text -------------------------------- */
+const cashtag = page.locator('[data-testid^="cashtag-"]').first();
+note(await cashtag.count() > 0, 'a $TICKER in a post is drawn as a token');
+if (await cashtag.count()) {
+  const label = (await cashtag.innerText()).replace(/\s+/g, '');
+  note(/^\$[A-Z]{1,5}$/.test(label), `and it is uppercase ("${label}")`);
+  await cashtag.click();
+  await page.waitForTimeout(2000);
+  note(/\/symbol\//.test(page.url()), `and it opens the ticker (${page.url().replace(BASE, '')})`);
+  await go('/community');
 }
 
 /* -- 1b. a picture on a post --------------------------------------- */
@@ -108,12 +167,49 @@ note(await has('screen-thread'), 'the thread screen opened');
 note(/comments/i.test(thread), 'it is headed as comments');
 note(/This message was removed/i.test(thread), 'a removed comment keeps its place and loses its words');
 
-// The rule that matters: no comment offers to be commented on.
+// The rule that has not changed: nothing offers to open a thread ON a comment.
 const nestedLines = await page.locator('[data-testid="screen-thread"] [data-testid^="thread-"]').count();
-note(nestedLines === 0, 'no comment offers a reply of its own — threads are one level deep');
+note(nestedLines === 0, 'no comment carries a comment-count line — threads are one level deep');
 
-const threadReact = await page.locator('[data-testid="screen-thread"] [data-testid="react-agree"]').count();
+const threadReact = await page.locator('[data-testid="screen-thread"] [data-testid="react-open"]').count();
 note(threadReact >= 2, 'the post AND its comments can be reacted to');
+
+/* -- 2b. answering a comment ---------------------------------------- */
+console.log('\nsocial / replying to a comment');
+const quoted = page.locator('[data-testid="screen-thread"] [data-testid^="quote-"]');
+note(await quoted.count() > 0, 'a comment that answers another comment quotes it');
+if (await quoted.count()) {
+  const q = (await quoted.first().innerText()).replace(/\s+/g, ' ');
+  note(q.length > 0, `and the quote carries who and what ("${q.slice(0, 60)}…")`);
+  // One level of indent, not two: the deepest quoted comment must still sit
+  // at the same left edge as the first one that was indented.
+  const boxes = [];
+  for (let i = 0; i < await quoted.count(); i++) boxes.push(await quoted.nth(i).boundingBox());
+  const lefts = [...new Set(boxes.filter(Boolean).map((b) => Math.round(b.x)))];
+  note(lefts.length <= 2, `never more than one level of indent (left edges: ${lefts.join(', ')})`);
+}
+
+const replyBtn = page.locator('[data-testid="screen-thread"] [data-testid="reply-open"]').nth(1);
+if (await replyBtn.count()) {
+  await replyBtn.click();
+  await page.waitForTimeout(700);
+  note(await has('composer-quote'), 'tapping Reply on a comment arms the composer with a quote');
+  const armed = (await page.locator('[data-testid="composer-quote"]').innerText()).replace(/\s+/g, ' ');
+  note(/replying to/i.test(armed), `and says who is being answered ("${armed.slice(0, 50)}…")`);
+  await shot('reply-armed');
+  // The quote is an OBJECT, not text pasted into the input the member has to
+  // delete before they can write.
+  // Scoped to the thread's own composer: the club board keeps its composer
+  // mounted behind this screen, so an unscoped testid matches two inputs.
+  const input = page.locator('[data-testid="screen-thread"] [data-testid="composer-input"]');
+  note((await input.inputValue()) === '', 'and the input is still empty — the quote is not pasted into it');
+  await page.locator('[data-testid="composer-quote-clear"]').click();
+  await page.waitForTimeout(500);
+  const stillQuoting = (await page.locator('[data-testid="composer-quote"]').innerText()).replace(/\s+/g, ' ');
+  note(/post/i.test(stillQuoting), 'cancelling goes back to answering the post, not to quoting nothing');
+} else {
+  note(false, 'a comment offers Reply');
+}
 
 /* -- 3. the composer ----------------------------------------------- */
 console.log('\nsocial / adding a picture');

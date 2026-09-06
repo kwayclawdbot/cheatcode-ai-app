@@ -16,43 +16,22 @@ import { GradeChip } from '../../portal/grade';
 import { KaiObjectView } from './KaiObjects';
 import { Avatar } from './Chrome';
 import type { MessageMedia, ReactionKind, RoomMessage } from '../types';
-import { MediaStrip, ReactionBar, ThreadLine } from './Social';
+import { MediaStrip, QuoteBlock, ReactionBar, ThreadLine } from './Social';
+import { PostBody } from './PostBody';
 
-/** `$META` → a cyan chip that opens the ticker page. */
+/**
+ * The feed's body.
+ *
+ * IT USED TO BE ITS OWN PARSER, and that is exactly the problem it caused: this
+ * one knew `$META` was a ticker and the room's did not, so the same post read
+ * as two different things on two screens. Both now call `PostBody`. This stays
+ * as a named export because the feed passes a slightly looser line height —
+ * 1.5 rather than the room's 1.45 — and that is the only difference left.
+ */
 export function ClubBody({
   text, size = 14, onTicker,
 }: { text: string; size?: number; onTicker?: (symbol: string) => void }) {
-  const parts = text.split(/(\$[A-Z]{1,5}\b|@Kai\b|\b\d{2,5}(?:\.\d{1,2})?\b)/g).filter((p) => p !== '');
-  return (
-    <T size={size} lh={Math.round(size * 1.5)}>
-      {parts.map((p, i) => {
-        if (/^\$[A-Z]{1,5}$/.test(p)) {
-          const sym = p.slice(1);
-          return (
-            <T
-              key={i}
-              size={size}
-              weight="semibold"
-              c={color.cyan}
-              testID={`ticker-chip-${sym}`}
-              accessibilityRole="link"
-              accessibilityLabel={`Open ${sym}`}
-              onPress={() => onTicker?.(sym)}
-            >
-              {p}
-            </T>
-          );
-        }
-        if (p === '@Kai') {
-          return <T key={i} size={size} weight="semibold" c={color.violetLight}>{p}</T>;
-        }
-        if (/^\d{2,5}(\.\d{1,2})?$/.test(p)) {
-          return <Num key={i} size={size - 1.5} weight="regular" c={color.cyan}>{p}</Num>;
-        }
-        return <T key={i} size={size} lh={Math.round(size * 1.5)}>{p}</T>;
-      })}
-    </T>
-  );
+  return <PostBody text={text} size={size} lineHeight={Math.round(size * 1.5)} onTicker={onTicker} />;
 }
 
 /**
@@ -104,11 +83,16 @@ export function SetupObjectCard({
 }
 
 export function ClubMessage({
-  message, onTicker, onReact, onOpenSetup, reactionNotice, onActions, onOpenThread, onOpenMedia,
+  message, onTicker, onReact, onReply, onOpenSetup, reactionNotice, onActions, onOpenThread,
+  onOpenMedia, onOpenQuote,
 }: {
   message: RoomMessage;
   onTicker: (symbol: string) => void;
   onReact?: (kind: ReactionKind) => void;
+  /** Answer this post, quoting it. */
+  onReply?: () => void;
+  /** The quoted post above the body was tapped. */
+  onOpenQuote?: (messageId: string) => void;
   onOpenSetup?: (symbol: string) => void;
   /** The server's sentence when a reaction did NOT land. Never our own words. */
   reactionNotice?: string | null;
@@ -175,11 +159,24 @@ export function ClubMessage({
           >
             <T size={12.5} lh={18} c={color.dim}>Removed by a moderator.</T>
           </View>
-        ) : message.body ? (
-          <View style={{ marginTop: 2 }}>
-            <ClubBody text={message.body} onTicker={onTicker} />
-          </View>
-        ) : null}
+        ) : (
+          <>
+            {message.quote ? (
+              <View style={{ marginTop: 4 }}>
+                <QuoteBlock
+                  quote={message.quote}
+                  onOpen={onOpenQuote ? () => onOpenQuote(message.quote!.message_id) : undefined}
+                  testID={`quote-${message.id}`}
+                />
+              </View>
+            ) : null}
+            {message.body ? (
+              <View style={{ marginTop: 2 }}>
+                <ClubBody text={message.body} onTicker={onTicker} />
+              </View>
+            ) : null}
+          </>
+        )}
 
         {idea && refSymbol ? (
           <SetupObjectCard
@@ -212,6 +209,7 @@ export function ClubMessage({
             <ReactionBar
               reactions={message.reactions}
               onToggle={onReact}
+              onReply={onReply}
               testID={`reactions-${message.id}`}
             />
             {onOpenThread ? (

@@ -28,6 +28,7 @@ import { rateLimit } from '@/lib/ratelimit';
 import { spamPrecheck } from '@/lib/spam';
 import { adviceCheck, flagAdviceShaped } from '@/lib/moderation';
 import { callRpc, noteFallback } from '@/lib/rpc';
+import { log } from '@/lib/log';
 import { attachToMessage, attachmentsForMessages } from '@/lib/media/store';
 import {
   loadRoom,
@@ -41,6 +42,7 @@ import {
   objectsFor,
   toMessageRow,
   reactionsMineFor,
+  quotesFor,
   unreadFor,
   catchUpPlain,
 } from '@/lib/rooms';
@@ -83,13 +85,15 @@ export const GET = authedParams<{ id: string }>(async (req: NextRequest, ctx: Ct
   const has_more = rows.length > q.limit;
   const page = has_more ? rows.slice(0, q.limit) : rows;
 
-  // FIVE BATCHED LOOKUPS FOR THE WHOLE PAGE, and never one per message. The
+  // SIX BATCHED LOOKUPS FOR THE WHOLE PAGE, and never one per message. The
   // reaction COUNTS are not among them — they are denormalised onto the message
   // row (migration 0033 §2b) and arrived with the select above, so they cost
-  // nothing. `mine` cannot be, because it is per-person, and `media` is only
-  // asked for the messages whose `attachment_count` says they have any, which
-  // on an ordinary page of text is no query at all.
-  const [authors, objects, stats, mine, media] = await Promise.all([
+  // nothing. `mine` cannot be, because it is per-person; `media` is only asked
+  // for the messages whose `attachment_count` says they have any, which on an
+  // ordinary page of text is no query at all; and `quotes` is only asked for
+  // the messages that actually quote something, so a page with no quotes on it
+  // makes no query either.
+  const [authors, objects, stats, mine, media, quotes] = await Promise.all([
     authorsFor(page.map((r) => String(r.user_id ?? ''))),
     objectsFor(
       page
@@ -99,9 +103,10 @@ export const GET = authedParams<{ id: string }>(async (req: NextRequest, ctx: Ct
     roomStats([ctx.params.id]),
     reactionsMineFor(page.map((r) => String(r.id)), ctx.user.id),
     attachmentsForMessages(page.filter((r) => Number(r.attachment_count ?? 0) > 0).map((r) => String(r.id))),
+    quotesFor(page.map((r) => r.quoted_message_id).filter((v): v is string => typeof v === 'string')),
   ]);
 
-  const messages = page.map((r) => toMessageRow(r, authors, objects, { mine, media }));
+  const messages = page.map((r) => toMessageRow(r, authors, objects, { mine, media, quotes }));
   const lastSeq = stats.get(ctx.params.id)?.last_seq ?? 0;
   const sinceSeq = membership.last_read_seq;
   // Counted BEFORE the read mark moves below, and never counting the caller's
@@ -214,6 +219,44 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
     );
   }
 
+  /**
+   * THE QUOTE IS CHECKED BEFORE ANYTHING IS WRITTEN.
+   *
+   * The database has the final say — migration 0035 refuses a quote pointing at
+   * another room on every write path there is — but a trigger's answer is a
+   * condition name, and a member should read a sentence. So the same three
+   * questions are asked here first, where there is a person to answer them:
+   * does that post exist, is it in THIS room, and is it still standing.
+   *
+   * The room check is the one that matters and it is not about tidiness. A
+   * quote is resolved and rendered for whoever reads the reply, so quoting
+   * across rooms would republish the words of a room a reader is not in. It is
+   * refused here for the sentence and refused in the table so it is refused.
+   *
+   * A REMOVED POST CANNOT BE QUOTED. Not because the words would leak — the
+   * reader only ever gets "This post was removed" — but because starting a new
+   * conversation off something a moderator has just taken down is the room
+   * arguing with the moderation, the same reasoning the reactions route uses.
+   */
+  if (body.quoted_message_id) {
+    const quoted = await db
+      .from('messages')
+      .select('id,room_id,deleted_at')
+      .eq('id', body.quoted_message_id)
+      .maybeSingle();
+    const quotedRow = (quoted.data as Record<string, unknown> | null) ?? null;
+    if (!quotedRow || String(quotedRow.room_id) !== ctx.params.id) {
+      throw new ApiError('VALIDATION_FAILED', 'That post is not in this room, so it cannot be quoted.', {
+        detail: { reason: 'quoted_not_in_room' },
+      });
+    }
+    if (quotedRow.deleted_at) {
+      throw new ApiError('VALIDATION_FAILED', 'That post has been removed, so it cannot be quoted.', {
+        detail: { reason: 'quoted_removed' },
+      });
+    }
+  }
+
   const rpcArgs = {
     p_user_id: ctx.user.id,
     p_room_id: ctx.params.id,
@@ -287,6 +330,58 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
     );
   }
 
+  /**
+   * THE QUOTE IS STAMPED ON AFTER THE ROW EXISTS, exactly the way attachments
+   * are, and for a reason that is about the RPC and not about media.
+   *
+   * `post_room_message` (0018) is a security-definer function that both write
+   * paths lean on, and PostgREST resolves an RPC by its argument names. Adding
+   * a parameter to it does not extend the function — it creates a SECOND
+   * function with a different arity, and every call that does not name the new
+   * argument becomes ambiguous. That is a schema-wide breakage in exchange for
+   * saving one narrow update on a row nobody else is writing to.
+   *
+   * So the post is written by the path that already exists, and the quote is a
+   * one-column update immediately after.
+   *
+   * IF THAT UPDATE IS REFUSED, THE POST STILL STANDS AND THIS DOES NOT THROW.
+   * That is deliberate and it is the opposite of what looks correct at first
+   * glance, so here is the reasoning before somebody "fixes" it back. By the
+   * time this runs the message row EXISTS — the member's writing is in the
+   * room. Throwing here would answer a landed post with a generic failure,
+   * which reads to the member as "that did not send" and invites them to write
+   * it again; the room ends up with two copies of the same post because a
+   * quote pointer did not save. The refusal can only come from the guard
+   * catching something the check above could not — the quoted post was removed
+   * or moved in the microseconds between — which is rare and is not worth a
+   * duplicate.
+   *
+   * The member is not left guessing either: the app compares the quote it
+   * asked for against the quote that comes back on the response, and tells them
+   * in a sentence that the post landed but the quote did not save. So the
+   * honest outcome is post kept plus a clear explanation, and a warning in the
+   * log for us. Same shape as a partial attachment in `attachToMessage`, logged
+   * the same way and for the same reason.
+   */
+  if (body.quoted_message_id) {
+    const stamped = await db
+      .from('messages')
+      .update({ quoted_message_id: body.quoted_message_id })
+      .eq('id', String(inserted.id))
+      .select('quoted_message_id')
+      .maybeSingle();
+    if (stamped.error || !stamped.data) {
+      log('warn', ctx.requestId, 'message.quote_not_saved', {
+        message_id: String(inserted.id),
+        quoted_message_id: body.quoted_message_id,
+        room_id: ctx.params.id,
+        detail: stamped.error?.message ?? 'no row updated',
+      });
+    } else {
+      inserted = { ...inserted, quoted_message_id: body.quoted_message_id };
+    }
+  }
+
   // ATTACHMENTS ARE CLAIMED AFTER THE POST LANDS, never before. An upload that
   // was already stamped with a message id belonging to a post that then failed
   // to insert is a file pointing at nothing, which no purge path can find. This
@@ -303,11 +398,18 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
 
   const authors = await authorsFor([ctx.user.id]);
   const mediaMap = attached.length ? await attachmentsForMessages([String(inserted.id)]) : new Map();
+  // Resolved here so the row handed back is the same shape the room will send
+  // on the next read — the phone should not have to re-fetch to see the quote
+  // it just wrote. Read off the ROW and not off the request: if the stamp above
+  // did not take, this is absent, the response carries `quote: null`, and the
+  // app says so rather than showing a quote that was never saved.
+  const quotedId = inserted.quoted_message_id;
+  const quotes = typeof quotedId === 'string' ? await quotesFor([quotedId]) : undefined;
   const message = toMessageRow(
     { ...inserted, attachment_count: attached.length },
     authors,
     new Map(),
-    { media: mediaMap }
+    { media: mediaMap, quotes }
   );
 
   await db
@@ -375,6 +477,19 @@ function postError(message: string): ApiError {
   // tries to comment on a comment.
   if (key.includes('parent_not_top_level')) {
     return new ApiError('VALIDATION_FAILED', 'You can comment on a post, but not on a comment. Reply to the post itself.');
+  }
+  // Quoting, guarded on the table by migration 0035 §2b for the same reason
+  // threads are: there is more than one way to write a message, so the rule
+  // lives under all of them. These three sentences are what a member reads if
+  // the guard catches something the route's own check could not.
+  if (key.includes('quote_is_self')) {
+    return new ApiError('VALIDATION_FAILED', 'A post cannot quote itself.');
+  }
+  if (key.includes('quoted_not_found')) {
+    return new ApiError('VALIDATION_FAILED', 'I could not find the post you were quoting. It may have just been removed.');
+  }
+  if (key.includes('quoted_not_in_room')) {
+    return new ApiError('VALIDATION_FAILED', 'That post is not in this room, so it cannot be quoted.');
   }
   return new ApiError('INTERNAL', 'We could not post that. Please try again.');
 }

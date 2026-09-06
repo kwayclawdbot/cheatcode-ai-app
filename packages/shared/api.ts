@@ -1535,25 +1535,53 @@ export type StructuredIdea = z.infer<typeof StructuredIdea>;
 /* ------------------------------------------------------------------ */
 
 /**
- * FOUR REACTIONS, AND `disagree` IS THE ONE THAT EARNS ITS PLACE.
+ * SIX REACTIONS THE APP OFFERS, AND TWO IT STILL ACCEPTS.
  *
- * A room where the only cheap gesture is approval reads as unanimous whether
- * or not it is, and in a room about money that is not a styling problem — it
- * is how a bad idea gets amplified. Making dissent exactly as cheap as
- * agreement is the whole reason this set is not a row of hearts and fires.
+ * `disagree` is the one that earns its place. A room where the only cheap
+ * gesture is approval reads as unanimous whether or not it is, and in a room
+ * about money that is not a styling problem — it is how a bad idea gets
+ * amplified. Making dissent exactly as cheap as agreement is the reason this
+ * set is not a row of hearts.
  *
- * `useful` and not "thanks", because `contributor_stats.usefulness_score`
- * (migration 0010) has been sitting there since the beginning with nothing
- * honest to compute it from. Nothing computes it yet; the input now exists.
+ * The other four say the things a trading room actually wants to say and the
+ * original four could not: a call is strong or weak BEFORE the fact (`fire`,
+ * `hundred`) and it ran or it rolled over AFTER it (`chart_up`, `chart_down`).
+ * That last pair is what makes a reaction row worth reading a week later.
+ *
+ * `agree` AND `disagree` ARE THE THUMBS. 👍 is `agree` and 👎 is `disagree` —
+ * the same kind under a picture instead of a word, deliberately not new kinds,
+ * so every reaction already given keeps counting towards the thing it plainly
+ * meant and the room never carries two tallies of one opinion.
+ *
+ * `watching` AND `useful` ARE LEGACY AND STILL PARSE. The picker no longer
+ * offers them, and migration 0035 keeps them in the database's check
+ * constraint. They stay in this enum for the same reason: an old build of the
+ * app still has those buttons on screen, and a tap from it should register
+ * rather than be rejected by a validator the member cannot see. Nothing new
+ * creates them.
  *
  * The tones are the app's colour law, not decoration: volt is the user, violet
  * is Kai, cyan is the market. A reaction is always the user's, so agree and
  * disagree are volt and the market tone is reserved for `watching` — the one
  * that says something about an instrument rather than about the post.
  */
-export const ReactionKind = z.enum(['agree', 'disagree', 'watching', 'useful']);
+export const ReactionKind = z.enum([
+  'agree',
+  'disagree',
+  'fire',
+  'hundred',
+  'chart_up',
+  'chart_down',
+  // Legacy, still accepted so an old client's tap is not rejected. See above.
+  'watching',
+  'useful',
+]);
 export type ReactionKind = z.infer<typeof ReactionKind>;
 
+// NOT THE LIST THE APP DRAWS FROM. The picker, its emoji and its labels live in
+// apps/mobile/src/features/community/types.ts, which is the one copy that is
+// kept current. This stays as it was so nothing that imports it breaks; the
+// enum above is the contract, and this is not it.
 export const REACTIONS: {
   id: ReactionKind;
   label: string;
@@ -1647,6 +1675,39 @@ export const MediaUploadResponse = z.object({
 });
 export type MediaUploadResponse = z.infer<typeof MediaUploadResponse>;
 
+/* ------------------------------------------------------------------ */
+/* Quotes                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE POST A COMMENT IS ANSWERING, carried on the comment.
+ *
+ * Threads are one level deep and stay that way (migration 0033 §1). A quote is
+ * how "replying to @name" exists without a second level of nesting: the comment
+ * keeps its place in the flat list and says what it is answering, which may be
+ * the post at the top or may be a sibling comment. It is also what makes a
+ * quote survive the original scrolling away.
+ *
+ * `text` IS RESOLVED ON EVERY READ AND IS NEVER STORED ON THE REPLY. The
+ * database holds an id (`messages.quoted_message_id`), not a copy of the words,
+ * because a moderator's removal has to actually remove them — copied text would
+ * leave verbatim copies of a removed post scattered through the thread.
+ *
+ * `deleted` true means the quoted post is gone, or was never readable, and
+ * `text` is empty. Render "This post was removed" from the flag; do not render
+ * a blank quote, and never expect words alongside it.
+ */
+export const MessageQuote = z.object({
+  message_id: z.string(),
+  /** The name to show above the quoted line. Never empty. */
+  author_name: z.string(),
+  handle: z.string().nullable(),
+  /** Trimmed to a couple of lines at a word boundary. Empty when deleted. */
+  text: z.string(),
+  deleted: z.boolean(),
+});
+export type MessageQuote = z.infer<typeof MessageQuote>;
+
 export const MessageRow = z.object({
   id: z.string(),
   room_id: z.string(),
@@ -1682,6 +1743,12 @@ export const MessageRow = z.object({
   reply_count: z.number().default(0),
   /** Pictures attached to this message, in the order they were picked. */
   media: z.array(MessageMedia).default([]),
+  /**
+   * The post or sibling comment this one is answering, already resolved. Null
+   * when it quotes nothing. Defaulted so a payload from before quoting existed
+   * still parses.
+   */
+  quote: MessageQuote.nullable().default(null),
 });
 export type MessageRow = z.infer<typeof MessageRow>;
 
@@ -1732,6 +1799,17 @@ export const PostMessageBody = z
      * paths and a rule that lives in one of them is not a rule.
      */
     parent_id: z.string().optional(),
+    /**
+     * The post, or the sibling comment, this one is answering. It has to be in
+     * the same room — the database refuses anything else, so a quote can never
+     * republish words out of a room the reader is not in — and it has to still
+     * be standing, which the posting route checks before it writes.
+     *
+     * Independent of `parent_id`. A comment usually quotes a sibling comment
+     * while its parent stays the post at the top of the thread; a top-level
+     * post may quote something too.
+     */
+    quoted_message_id: z.string().optional(),
     /**
      * Assets from `POST /media`, in the order they should appear. They are
      * claimed after the message lands, and only if they belong to the caller

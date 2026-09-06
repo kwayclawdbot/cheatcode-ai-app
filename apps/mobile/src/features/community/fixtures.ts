@@ -140,31 +140,33 @@ const FIXTURE_CHART: MessageMedia = {
 export const fixtureMessages: RoomMessage[] = [
   {
     id: 'm-1', room_id: 'room-meta', seq: 4, kind: 'text', created_at: '2026-08-26T13:40:00Z', time_label: 'Today at 9:40',
-    author: JORDAN, body: 'Reclaimed VWAP on strong volume. Watching 501 for the entry.',
+    author: JORDAN, body: '$META reclaimed VWAP on strong volume. Watching 501 for the entry.',
     refs: { symbol: 'META', levels: [501] }, structured_idea: null,
     position_disclosure: { holds: true, symbol: 'META', label: 'Holds META' },
     kai_object: null, deleted: false, is_claim: true,
-    reactions: { counts: { agree: 14, watching: 9 }, mine: ['agree'] }, reply_count: 2,
-    parent_id: null, media: [FIXTURE_CHART], author_deleted: false,
+    // `watching` is here on purpose: it is one of the two kinds nobody can give
+    // any more, and the bar has to keep drawing counts that already exist.
+    reactions: { counts: { agree: 14, fire: 6, watching: 9 }, mine: ['agree'] }, reply_count: 3,
+    parent_id: null, quote: null, media: [FIXTURE_CHART], author_deleted: false,
   },
   {
     id: 'm-2', room_id: 'room-meta', seq: 5, kind: 'text', created_at: '2026-08-26T13:41:00Z', time_label: 'Today at 9:41',
     author: SAM, body: 'Is that volume real or just the open? @Kai verify',
     refs: null, structured_idea: null, position_disclosure: null,
-    kai_object: null, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, media: [], author_deleted: false,
+    kai_object: null, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, quote: null, media: [], author_deleted: false,
   },
   {
     id: 'm-3', room_id: 'room-meta', seq: 6, kind: 'kai_object', created_at: '2026-08-26T13:41:30Z', time_label: 'Today at 9:41',
     author: KAI, body: null, refs: { symbol: 'META' }, structured_idea: null,
     position_disclosure: null, kai_object: VERIFICATION, deleted: false, is_claim: false,
     reactions: { counts: { useful: 21 }, mine: [] }, reply_count: 0,
-    parent_id: null, media: [], author_deleted: false,
+    parent_id: null, quote: null, media: [], author_deleted: false,
   },
   {
     id: 'm-4', room_id: 'room-meta', seq: 7, kind: 'text', created_at: '2026-08-26T13:44:00Z', time_label: 'Today at 9:44',
     author: MARCUS, body: 'Reminder: nothing here is advice, and no one posts fills without the plan that produced them.',
     refs: null, structured_idea: null, position_disclosure: null,
-    kai_object: null, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, media: [], author_deleted: false,
+    kai_object: null, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, quote: null, media: [], author_deleted: false,
   },
   {
     id: 'm-5', room_id: 'room-meta', seq: 8, kind: 'position_update', created_at: '2026-08-26T13:47:00Z', time_label: 'Today at 9:47',
@@ -172,27 +174,43 @@ export const fixtureMessages: RoomMessage[] = [
     body: 'Took the entry at 504.10 on the hold. Stop stays at 460 — risk $58.',
     refs: { symbol: 'META' }, structured_idea: null,
     position_disclosure: { holds: true, symbol: 'META', label: 'Holds META' },
-    kai_object: null, deleted: false, is_claim: true, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, media: [], author_deleted: false,
+    kai_object: null, deleted: false, is_claim: true, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, quote: null, media: [], author_deleted: false,
   },
   {
     id: 'm-6', room_id: 'room-meta', seq: 9, kind: 'kai_object', created_at: '2026-08-26T13:49:00Z', time_label: 'Today at 9:49',
     author: KAI, body: null, refs: { symbol: 'META' }, structured_idea: null,
-    position_disclosure: null, kai_object: SUMMARY, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, media: [], author_deleted: false,
+    position_disclosure: null, kai_object: SUMMARY, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, quote: null, media: [], author_deleted: false,
   },
 ];
 
 /**
  * A THREAD, so the comments screen can be proved in fixtures.
  *
- * Two comments, one of them removed, because the removed one is the case that
- * is easy to get wrong: it keeps its place and loses its words, and a comment
- * that answers something no longer there has to be readable as such.
+ * Four comments, and each one is here because it is a case that is easy to get
+ * wrong:
  *
- * `parent_id` is set on every one of them and `reply_count` is zero on every
- * one of them, which is the whole threading rule in two fields: a comment
- * belongs to a post and can never be the parent of anything.
+ *  · c1 answers the POST — the ordinary comment, quoting nothing.
+ *  · c2 was REMOVED. It keeps its place and loses its words, because a comment
+ *    that answers something no longer there reads as a non-sequitur unless you
+ *    can see that something was removed.
+ *  · c3 answers c1 — it quotes a SIBLING, so it draws indented under c1 while
+ *    still hanging off the post.
+ *  · c4 answers c3, which is already indented. It does NOT go a second level
+ *    right; it sits beside c3 under c1. One level of indent is the whole rule.
+ *
+ * `parent_id` is the POST on every one of them and `reply_count` is zero on
+ * every one of them, which is the threading rule in two fields: a comment
+ * belongs to a post and can never be the parent of anything. The shape of the
+ * conversation lives in `quote`, not in the tree.
  */
 export function fixtureThread(parentId: string): RoomMessage[] {
+  const quoteOfC1 = {
+    message_id: `${parentId}-c1`,
+    author_name: SAM.display_name,
+    handle: SAM.handle,
+    text: 'What is your invalidation on that? 501 is thin on the daily.',
+    deleted: false,
+  };
   return [
     {
       id: `${parentId}-c1`, room_id: 'room-meta', seq: 101, kind: 'text',
@@ -201,7 +219,7 @@ export function fixtureThread(parentId: string): RoomMessage[] {
       refs: null, structured_idea: null, position_disclosure: null, kai_object: null,
       deleted: false, is_claim: false,
       reactions: { counts: { agree: 3, useful: 1 }, mine: [] },
-      reply_count: 0, parent_id: parentId, media: [], author_deleted: false,
+      reply_count: 0, parent_id: parentId, quote: null, media: [], author_deleted: false,
     },
     {
       id: `${parentId}-c2`, room_id: 'room-meta', seq: 102, kind: 'text',
@@ -209,7 +227,7 @@ export function fixtureThread(parentId: string): RoomMessage[] {
       author: MARCUS, body: null,
       refs: null, structured_idea: null, position_disclosure: null, kai_object: null,
       deleted: true, is_claim: false,
-      reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: parentId,
+      reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: parentId, quote: null,
       media: [], author_deleted: false,
     },
     {
@@ -218,8 +236,25 @@ export function fixtureThread(parentId: string): RoomMessage[] {
       author: JORDAN, body: 'Below 495 the whole reason for being in it is gone. Stop is there, not at 501.',
       refs: { levels: [495, 501] }, structured_idea: null, position_disclosure: null, kai_object: null,
       deleted: false, is_claim: true,
-      reactions: { counts: { agree: 6, watching: 2 }, mine: ['agree'] },
-      reply_count: 0, parent_id: parentId, media: [], author_deleted: false,
+      reactions: { counts: { agree: 6, chart_up: 4, watching: 2 }, mine: ['agree'] },
+      reply_count: 0, parent_id: parentId, quote: quoteOfC1, media: [], author_deleted: false,
+    },
+    {
+      id: `${parentId}-c4`, room_id: 'room-meta', seq: 104, kind: 'text',
+      created_at: '2026-08-26T13:46:00Z', time_label: 'Today at 9:46',
+      author: SAM, body: 'That is clearer, thanks. Same read on $NVDA into the print?',
+      refs: null, structured_idea: null, position_disclosure: null, kai_object: null,
+      deleted: false, is_claim: false,
+      reactions: { counts: { hundred: 2 }, mine: [] },
+      reply_count: 0, parent_id: parentId,
+      quote: {
+        message_id: `${parentId}-c3`,
+        author_name: JORDAN.display_name,
+        handle: JORDAN.handle,
+        text: 'Below 495 the whole reason for being in it is gone. Stop is there, not at 501.',
+        deleted: false,
+      },
+      media: [], author_deleted: false,
     },
   ];
 }

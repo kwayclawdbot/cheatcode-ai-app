@@ -237,6 +237,54 @@ export function TickerMark({ symbol, size = 30, noLogo = false, style, testID }:
   );
 }
 
+/**
+ * THE INLINE CASE: a `$NVDA` written inside a sentence.
+ *
+ * `TickerMark` is a 30px square and cannot go in the middle of a paragraph
+ * without wrecking the line rhythm, so the standing rule's OTHER half applies
+ * here — no room for a logo means vibrantly styled, never plain text. This is
+ * that treatment, and it is a nested `<Text>` on purpose: only a real text node
+ * wraps with the sentence it belongs to. A `<View>` would break the line.
+ *
+ * Cyan for the same reason the letters mark is cyan: a ticker is market data,
+ * and the palette grammar (docs/14) makes that the only correct answer.
+ *
+ * The symbol is drawn UPPERCASE whatever was typed. `$nvda` and `$Nvda` are the
+ * same instrument, and a ticker in lower case reads as a typo.
+ */
+export function Cashtag({
+  symbol, size = 14, onPress, testID,
+}: {
+  symbol: string;
+  size?: number;
+  onPress?: (symbol: string) => void;
+  testID?: string;
+}) {
+  const sym = symbol.toUpperCase().trim();
+  return (
+    <T
+      testID={testID ?? `cashtag-${sym}`}
+      size={size}
+      weight="bold"
+      c={color.cyan}
+      accessibilityRole={onPress ? 'link' : undefined}
+      accessibilityLabel={onPress ? `${sym}, open the ticker` : sym}
+      onPress={onPress ? () => onPress(sym) : undefined}
+      style={{
+        backgroundColor: alpha.cyan14,
+        borderRadius: 4,
+      }}
+    >
+      {/* The pad below is a pair of THIN SPACES (U+2009), not ordinary ones. A
+          nested <Text> cannot take padding in React Native, so without them the
+          tint clamps straight onto the glyphs — and a full space leaves a
+          visible gap before the full stop in "…watching $NVDA." A thin space is
+          the width that reads as breathing room instead of as a typo. */}
+      {` $${sym} `}
+    </T>
+  );
+}
+
 export type TickerProps = {
   symbol: string;
   /** Tile edge. The symbol's type size is derived from it. */

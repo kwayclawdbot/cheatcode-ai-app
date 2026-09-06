@@ -1,45 +1,25 @@
 import React from 'react';
 import { View, Pressable } from 'react-native';
 import { alpha, color, radius } from '../../../ui/tokens';
-import { T, Num } from '../../../ui/Text';
+import { T } from '../../../ui/Text';
 import { Avatar, ClaimChip, DisclosureChip, RoleChip } from './Chrome';
 import { KaiObjectView } from './KaiObjects';
 import type { MessageMedia, ReactionKind, RoomMessage } from '../types';
-import { MediaStrip, ReactionBar, ThreadLine } from './Social';
+import { MediaStrip, QuoteBlock, ReactionBar, ThreadLine } from './Social';
+import { PostBody } from './PostBody';
 
 /**
  * One message in a room (V3-C1 / S81).
  * Member messages and Kai messages share the avatar + name + time rhythm; only
  * Kai's body is an object. A member's market claim carries an "Unverified" chip
  * until a verification_card in the room names it (08 §10).
+ *
+ * The body used to be parsed HERE, by a private `Body` that knew about `@Kai`
+ * and price levels but not about `$NVDA` — while the club feed's own parser
+ * knew about all three. The same sentence therefore read differently depending
+ * on which screen you opened it on. Both now call `PostBody`, which is the one
+ * parser, and this file no longer has an opinion about text.
  */
-
-/** Highlight the two things the artboard highlights: @Kai, and price levels. */
-function Body({ text, size = 13.5 }: { text: string; size?: number }) {
-  // A bare number is a price level (cyan = market data). A $ amount is money,
-  // not a level, so it stays plain — matched first so it is never split.
-  const parts = text.split(/(@Kai\b|\$\d[\d.,]*|\b\d{2,5}(?:\.\d{1,2})?\b)/g).filter((p) => p !== '');
-  return (
-    <T size={size} lh={Math.round(size * 1.45)}>
-      {parts.map((p, i) => {
-        if (p === '@Kai') {
-          return (
-            <T key={i} size={size} weight="semibold" c={color.violetLight} style={{ backgroundColor: alpha.violet20 }}>
-              {' '}@Kai{' '}
-            </T>
-          );
-        }
-        if (/^\$/.test(p)) {
-          return <T key={i} size={size} lh={Math.round(size * 1.45)}>{p}</T>;
-        }
-        if (/^\d{2,5}(\.\d{1,2})?$/.test(p)) {
-          return <Num key={i} size={size - 1.5} weight="regular" c={color.cyan}>{p}</Num>;
-        }
-        return <T key={i} size={size} lh={Math.round(size * 1.45)}>{p}</T>;
-      })}
-    </T>
-  );
-}
 
 const roleTone = (label: string): 'gold' | 'kai' | 'green' | 'neutral' => {
   const l = label.toLowerCase();
@@ -51,7 +31,7 @@ const roleTone = (label: string): 'gold' | 'kai' | 'green' | 'neutral' => {
 
 export function MessageRow({
   message, selected, onSelect, onOpenAuthor, onMore, showStructured = true,
-  onReact, onOpenThread, onOpenMedia, hideThreadLine,
+  onReact, onReply, onOpenThread, onOpenMedia, onTicker, onOpenQuote, hideThreadLine,
 }: {
   message: RoomMessage;
   selected?: boolean;
@@ -60,9 +40,18 @@ export function MessageRow({
   onMore?: () => void;
   showStructured?: boolean;
   onReact?: (kind: ReactionKind) => void;
+  /** Answer this one, quoting it. Absent = this surface does not reply. */
+  onReply?: () => void;
   onOpenThread?: () => void;
   onOpenMedia?: (m: MessageMedia) => void;
-  /** True inside a thread: a comment cannot itself be commented on. */
+  /** A `$NVDA` in the body was tapped. Absent = the token is not a link. */
+  onTicker?: (symbol: string) => void;
+  /** The quoted post above the body was tapped. */
+  onOpenQuote?: (messageId: string) => void;
+  /**
+   * True inside a thread, where the count line would be a lie — a comment
+   * cannot be commented on, only quoted.
+   */
   hideThreadLine?: boolean;
 }) {
   const m = message;
@@ -141,7 +130,19 @@ export function MessageRow({
             </View>
           ) : (
             <>
-              {m.body ? <Body text={m.body} /> : null}
+              {/* The post being answered goes ABOVE the answer, the way a
+                  quotation does on paper. Below it, the reply would read as an
+                  afterthought about something you had already finished. */}
+              {m.quote ? (
+                <View style={{ marginTop: 3 }}>
+                  <QuoteBlock
+                    quote={m.quote}
+                    onOpen={onOpenQuote ? () => onOpenQuote(m.quote!.message_id) : undefined}
+                    testID={`quote-${m.id}`}
+                  />
+                </View>
+              ) : null}
+              {m.body ? <PostBody text={m.body} onTicker={onTicker} /> : null}
               {m.structured_idea && showStructured ? <StructuredBlock idea={m.structured_idea} /> : null}
             </>
           )}
@@ -171,7 +172,7 @@ export function MessageRow({
             gap is an invitation to argue with the moderation. */}
         {!m.deleted ? (
           <>
-            <ReactionBar reactions={m.reactions} onToggle={onReact} testID={`reactions-${m.id}`} />
+            <ReactionBar reactions={m.reactions} onToggle={onReact} onReply={onReply} testID={`reactions-${m.id}`} />
             {!hideThreadLine && onOpenThread ? (
               <ThreadLine count={m.reply_count} onPress={onOpenThread} testID={`thread-${m.id}`} />
             ) : null}

@@ -282,7 +282,8 @@ export default function RoomScreen() {
           author: { user_id: 'kai', display_name: 'Kai', handle: null, avatar_url: null, initial: 'K', role_labels: ['AI'], is_kai: true, author_deleted: false },
           body: null, refs: null, structured_idea: null, position_disclosure: null,
           kai_object: object, deleted: false, is_claim: false,
-          reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, media: [], author_deleted: false,
+          reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, quote: null,
+          media: [], author_deleted: false,
         }]);
         requestAnimationFrame(() => scroller.current?.scrollToEnd({ animated: true }));
       } else {
@@ -386,6 +387,12 @@ export default function RoomScreen() {
                   onMore={() => { setSelected(m.id); setMoreSheet(true); }}
                   onReact={(k) => { void react(m.id, k); }}
                   onOpenThread={() => router.push(`/thread/${encodeURIComponent(m.id)}` as never)}
+                  // Reply lands on the same screen as the comment count, with
+                  // the post already quoted. Comments and replies are the same
+                  // conversation; giving them two destinations would split it.
+                  onReply={() => router.push(`/thread/${encodeURIComponent(m.id)}?quote=${encodeURIComponent(m.id)}` as never)}
+                  onTicker={(sym) => router.push(`/symbol/${encodeURIComponent(sym)}` as never)}
+                  onOpenQuote={(qid) => router.push(`/thread/${encodeURIComponent(qid)}` as never)}
                 />
               </View>
             ))

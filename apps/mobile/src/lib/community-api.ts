@@ -18,10 +18,10 @@ import { env, offlineMode } from './env';
 import { supabase } from './supabase';
 import { getAccessToken, recoverSession, SESSION_EXPIRED_COPY } from './auth-token';
 import type {
-  ContributorProfile, KaiCommand, KaiRoomObject, MessageMedia, MessageReactions,
+  ContributorProfile, KaiCommand, KaiRoomObject, MessageMedia, MessageQuote, MessageReactions,
   PositionDisclosure, ReactionKind, Room, RoomMessage, RoomSetup, StructuredIdea,
 } from '../features/community/types';
-import { EMPTY_REACTIONS } from '../features/community/types';
+import { EMPTY_REACTIONS, trimQuote } from '../features/community/types';
 import {
   fixtureAssist, fixtureContributor, fixtureMessages, fixtureRooms, fixtureThread,
 } from '../features/community/fixtures';
@@ -69,6 +69,15 @@ async function request<T>(path: string, init?: RequestInit, retried = false): Pr
 }
 
 const live = () => !offlineMode && env.hasApi;
+
+/**
+ * Reactions given while the app is running against fixtures.
+ *
+ * In memory, module level, and gone the moment the process is. It exists so
+ * the preview can be USED — tapped, untapped, tapped again — not so anything
+ * is remembered. With a reachable service it is never read or written.
+ */
+const fixtureReactions = new Map<string, MessageReactions>();
 
 /* ------------------------------------------------------------------ */
 /* Small formatters                                                     */
@@ -410,8 +419,46 @@ function mapMessage(raw: any, kaiObjects?: Record<string, any>): RoomMessage {
     reactions: mapReactions(raw.reactions),
     reply_count: asNum(raw.reply_count) ?? 0,
     parent_id: raw.parent_id ? String(raw.parent_id) : null,
+    // The server resolves the quote and sends it inline — a reply must be
+    // readable without the room fetching the post it answers, which may be a
+    // thousand messages back or in a thread this screen never loaded.
+    quote: mapQuote(raw.quote),
     media: mapMedia(raw.media),
     author_deleted: raw.author_deleted === true,
+  };
+}
+
+/**
+ * The post a reply was written against.
+ *
+ * `deleted` WINS OVER `text`. The server is supposed to send an empty body for
+ * a removed post, but if it ever sends the words anyway this drops them — a
+ * quote is a copy, and a copy of a post a moderator took down is the removal
+ * not having happened. The same is true of a quote the server could not resolve
+ * at all: "this post was removed" is the honest render, a blank is not.
+ */
+function mapQuote(raw: any): MessageQuote | null {
+  if (!raw || typeof raw !== 'object' || !raw.message_id) return null;
+  const gone = raw.deleted === true || raw.deleted_at != null;
+  return {
+    message_id: String(raw.message_id),
+    author_name: String(raw.author_name ?? raw.author?.display_name ?? 'Member'),
+    handle: raw.handle ?? raw.author?.handle ?? null,
+    text: gone ? '' : trimQuote(raw.text ?? raw.body),
+    deleted: gone,
+  };
+}
+
+/** Build the quote a reply will carry, from the post being answered. */
+export function quoteOf(message: RoomMessage): MessageQuote {
+  return {
+    message_id: message.id,
+    author_name: message.author.display_name,
+    handle: message.author.handle,
+    // A Kai object has no body. Quoting one still has to say what it was, so
+    // the object's own title stands in for the words it does not have.
+    text: message.deleted ? '' : trimQuote(message.body ?? message.kai_object?.title ?? ''),
+    deleted: message.deleted,
   };
 }
 
@@ -585,6 +632,21 @@ export const communityApi = {
       position_disclosure?: PositionDisclosure;
       /** The post this comments on. One level only — the server refuses more. */
       parent_id?: string;
+      /**
+       * The post being answered, quoted above this one.
+       *
+       * ONE FIELD, NOT TWO. The wire only needs the id — the server resolves
+       * the author and the words itself, and would be right to distrust ours —
+       * but the screen has to draw the reply the instant it is sent, before any
+       * answer comes back. So the caller hands over the whole quote, this sends
+       * the id, and the optimistic echo below uses the rest.
+       *
+       * Usually the same message as `parent_id`. NOT ALWAYS: answering somebody
+       * else's comment quotes that COMMENT while still hanging off the post,
+       * which is how "replying to @sam" works without a second level of
+       * nesting existing anywhere in the database.
+       */
+      quote?: MessageQuote;
       /** Ids from `uploadPhoto`, in the order they should appear. */
       attachment_ids?: string[];
     },
@@ -607,12 +669,27 @@ export const communityApi = {
               }
             : undefined,
           parent_id: payload.parent_id,
+          quoted_message_id: payload.quote?.message_id,
           attachment_ids: payload.attachment_ids?.length ? payload.attachment_ids : undefined,
         }),
       });
       const plain = typeof r?.plain === 'string' ? r.plain : '';
       if (plain && !/^posted[.!]?$/i.test(plain.trim())) onNotice?.(plain);
-      return mapMessage(r.message ?? r);
+      const posted = mapMessage(r.message ?? r);
+      /**
+       * THE QUOTE IS NOT PAINTED ON LOCALLY IF THE SERVER DID NOT KEEP IT.
+       *
+       * The obvious shortcut is `quote: posted.quote ?? payload.quote` — the
+       * reply then looks right immediately and loses its quote the next time
+       * anybody loads the room, because the column was never written. That is
+       * the exact failure this app refuses: a screen that shows something the
+       * database does not have. So the answer is the server's, and if the
+       * server dropped the quote the member is told, once, in a sentence.
+       */
+      if (payload.quote && !posted.quote) {
+        onNotice?.('Posted — but the quote did not save. The service has not been updated for quoting yet.');
+      }
+      return posted;
     }
     // Fixtures: echo locally so the composer has an honest result to show.
     const now = new Date().toISOString();
@@ -634,6 +711,7 @@ export const communityApi = {
       reactions: EMPTY_REACTIONS,
       reply_count: 0,
       parent_id: payload.parent_id ?? null,
+      quote: payload.quote ?? null,
       media: [],
       author_deleted: false,
     };
@@ -656,13 +734,27 @@ export const communityApi = {
       // banner, that the conversation is an example — so a toggle that only
       // exists in this process is not a claim about anything. This is NOT the
       // old device-local reaction store coming back: with a reachable service
-      // this branch never runs, and a failed call is reported, not swallowed.
-      const seed = fixtureMessages.find((m) => m.id === messageId)?.reactions ?? EMPTY_REACTIONS;
+      // this branch never runs, a failed call is reported rather than
+      // swallowed, and nothing here is written to disk.
+      //
+      // It reads the SESSION's state and not the fixture's, because seeding
+      // from the fixture every time meant a reaction could be given and never
+      // taken back: the second tap looked up the same untouched seed and
+      // turned it on again. Which made the one gesture this feature is about
+      // impossible to try in the preview.
+      const seed = fixtureReactions.get(messageId)
+        ?? fixtureMessages.find((m) => m.id === messageId)?.reactions
+        ?? EMPTY_REACTIONS;
       const on = seed.mine.includes(kind);
       const counts = { ...seed.counts };
       const next = (counts[kind] ?? 0) + (on ? -1 : 1);
       if (next > 0) counts[kind] = next; else delete counts[kind];
-      return { counts, mine: on ? seed.mine.filter((k) => k !== kind) : [...seed.mine, kind] };
+      const after: MessageReactions = {
+        counts,
+        mine: on ? seed.mine.filter((k) => k !== kind) : [...seed.mine, kind],
+      };
+      fixtureReactions.set(messageId, after);
+      return after;
     }
     const r = await request<any>(`/messages/${messageId}/reactions`, {
       method: 'POST',

@@ -432,6 +432,10 @@ export default function Community() {
                   onReact={(k) => { void react(m.id, k); }}
                   onOpenSetup={(s) => router.push(`/trade/${encodeURIComponent(s)}?ctx=alert` as never)}
                   onOpenThread={() => router.push(`/thread/${encodeURIComponent(m.id)}` as never)}
+                  // Reply goes where the comments are, with the post already
+                  // quoted. One conversation, one destination.
+                  onReply={() => router.push(`/thread/${encodeURIComponent(m.id)}?quote=${encodeURIComponent(m.id)}` as never)}
+                  onOpenQuote={(qid) => router.push(`/thread/${encodeURIComponent(qid)}` as never)}
                   reactionNotice={reactionNotice[m.id] ?? null}
                   onActions={() => openActions(m)}
                 />
