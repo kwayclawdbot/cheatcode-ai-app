@@ -10,7 +10,9 @@ import { KaiOrb } from '../../ui/KaiOrb';
 // one shared mark lives in the design system now (see src/ui/Ticker.tsx).
 import { TickerMark } from '../../ui/Ticker';
 import { GradeMedallion, GradeChip, Scorecard, gradeBand } from '../grade';
-import type { AlertCard as AlertCardModel, AlertCardState } from '../../lib/types';
+import type {
+  AlertCard as AlertCardModel, AlertCardState, AlertOptionContract, AlertScoreComponent,
+} from '../../lib/types';
 
 /**
  * The STANDARD actionable alert card — docs/10 §2/§3/§5.
@@ -42,6 +44,136 @@ function LevelCell({ label, value, c, bg, border }: { label: string; value: stri
   );
 }
 
+/**
+ * A grade bar — the same 0–100 scale and the same band colours as the
+ * medallion, so the bar reads as a GRADE and not as a progress meter. The
+ * readout on the right is the word or the number; colour only reinforces it.
+ *
+ * There is no empty state. A bar is drawn only where something was measured,
+ * because an empty track would read as a measurement of zero.
+ */
+function GradeBar({ label, pct, readout, mono, testID }: {
+  label: string; pct: number; readout: string; mono?: boolean; testID?: string;
+}) {
+  const tone = gradeBand(null, pct).ring;
+  const w = Math.max(3, Math.min(100, pct));
+  return (
+    <View
+      testID={testID}
+      accessibilityLabel={`${label}, ${readout}`}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}
+    >
+      {/* Wide enough for "Options activity" on one line — a wrapped label
+          pushes the three bars out of alignment and they stop reading as a set. */}
+      <T size={11} c={color.muted} numberOfLines={1} style={{ width: 99 }}>{label}</T>
+      <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: alpha.ivory08, overflow: 'hidden' }}>
+        <View style={{ width: `${w}%`, height: '100%', borderRadius: 3, backgroundColor: tone }} />
+      </View>
+      {mono
+        ? <Num size={11} c={tone} style={{ minWidth: 46, textAlign: 'right' }}>{readout}</Num>
+        : <T size={11} c={tone} style={{ minWidth: 46, textAlign: 'right' }}>{readout}</T>}
+    </View>
+  );
+}
+
+type Bar = { key: string; label: string; pct: number; readout: string; mono?: boolean };
+
+const pick = (components: AlertScoreComponent[], keys: string[]) =>
+  components.find((c) => keys.includes((c.key ?? '').toLowerCase())) ?? null;
+
+/** 5 segments → the 0–100 band scale the medallion already speaks. */
+const fromSegments = (strength: number) => Math.max(0, Math.min(100, Math.round((strength / 5) * 100)));
+
+/** "2.4:1" · "2.4 to 1" · "2.4" → 2.4. Anything else is not a number. */
+function rrRatio(rr?: string | null): number | null {
+  if (!rr) return null;
+  const m = rr.match(/(\d+(?:\.\d+)?)/);
+  const n = m ? Number(m[1]) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * The three bars, in the order a trader reads them. A bar appears only when
+ * there is something behind it: a score from the engine, or a component the
+ * scorer actually filled in. Nothing is invented to keep the row even.
+ */
+function tradeBars(alert: AlertCardModel): Bar[] {
+  const s = alert.scores ?? {};
+  const comps = alert.score_components ?? [];
+  const bars: Bar[] = [];
+
+  const trendC = pick(comps, ['trend']);
+  if (s.trend != null) bars.push({ key: 'trend', label: 'Trend strength', pct: s.trend, readout: String(Math.round(s.trend)), mono: true });
+  else if (trendC) bars.push({ key: 'trend', label: 'Trend strength', pct: fromSegments(trendC.strength), readout: trendC.status });
+
+  const rrC = pick(comps, ['risk_reward', 'rr']);
+  const ratio = rrRatio(alert.trade.rr);
+  // 3 to 1 fills the bar — past that the extra reward is not what decides it.
+  const rrPct = s.rr ?? (ratio != null ? Math.round(Math.min(ratio / 3, 1) * 100) : rrC ? fromSegments(rrC.strength) : null);
+  if (rrPct != null) {
+    bars.push({
+      key: 'rr',
+      label: 'Risk:Reward',
+      pct: rrPct,
+      readout: alert.trade.rr ?? (rrC ? rrC.status : String(Math.round(rrPct))),
+      mono: !!alert.trade.rr,
+    });
+  }
+
+  const optC = pick(comps, ['options_activity', 'options', 'options_flow']);
+  if (s.options_activity != null) {
+    bars.push({ key: 'options', label: 'Options activity', pct: s.options_activity, readout: String(Math.round(s.options_activity)), mono: true });
+  } else if (optC) {
+    bars.push({ key: 'options', label: 'Options activity', pct: fromSegments(optC.strength), readout: optC.status });
+  }
+
+  return bars;
+}
+
+const LIQUIDITY_WORD: Record<'good' | 'thin', string> = { good: 'Active', thin: 'Thin' };
+
+/**
+ * One contract as an object you can look at, not a row in a chain and not a
+ * sentence. Strike is the loud thing; call/put is a word, never colour alone.
+ */
+function ContractCard({ c, grow, testID }: { c: AlertOptionContract; grow?: boolean; testID?: string }) {
+  const put = c.type === 'put';
+  const tone = put ? color.red : color.green;
+  const tint = put ? color.redTint : color.greenTint;
+  const days = c.dte != null ? `${c.dte} day${c.dte === 1 ? '' : 's'}` : null;
+  return (
+    <View
+      testID={testID}
+      accessibilityLabel={[`${c.strike} ${put ? 'put' : 'call'}`, c.expiry, days, c.cost, c.liquidity ? LIQUIDITY_WORD[c.liquidity] : null]
+        .filter(Boolean).join(', ')}
+      style={{
+        // Two to a row. An odd third card keeps its half width rather than
+        // stretching the full width and reading as a different kind of object.
+        flexGrow: grow ? 1 : 0, flexBasis: '47%', minWidth: 128, gap: 5,
+        paddingVertical: 9, paddingHorizontal: 11, borderRadius: 11,
+        backgroundColor: alpha.ivory035, borderWidth: 0.5, borderColor: alpha.ivory10,
+      }}
+    >
+      {c.label ? <T size={8.5} weight="bold" c={color.dim} style={{ letterSpacing: 0.7 }}>{c.label.toUpperCase()}</T> : null}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Num size={15} weight="bold">{c.strike}</Num>
+        <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5, backgroundColor: tint, borderWidth: 0.5, borderColor: tone }}>
+          <T size={9.5} weight="semibold" c={tone}>{put ? 'Put' : 'Call'}</T>
+        </View>
+      </View>
+      <T size={10.5} c={color.muted}>{[c.expiry, days].filter(Boolean).join(' · ')}</T>
+      {c.cost || c.liquidity ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+          {c.cost ? <Num size={11} c={color.text}>{c.cost}</Num> : null}
+          {c.liquidity ? (
+            <T size={10} c={c.liquidity === 'thin' ? color.gold : color.muted}>{LIQUIDITY_WORD[c.liquidity]}</T>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 /** State label carries a dot + word — never colour alone. */
 function stateTone(state: AlertCardState): string {
   if (state === 'entry_reached' || state === 'ready' || state === 'position_active') return color.green;
@@ -54,10 +186,14 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [evidence, setEvidence] = useState(false);
+  const [story, setStory] = useState(false);
   const band = gradeBand(alert.grade, alert.score);
   const acting = ACTING.has(alert.state);
   const trade = alert.trade;
   const hasStrip = !!(trade.current || trade.entry || trade.stop || trade.target);
+  const bars = tradeBars(alert);
+  const contracts = alert.recommended_options ?? [];
+  const hasStory = !!(alert.company_summary || alert.kai_interpretation || alert.community);
 
   const openPortal = () =>
     router.push(`/trade/${encodeURIComponent(alert.symbol)}?alert=${encodeURIComponent(alert.alert_id ?? alert.id)}&ctx=alert`);
@@ -104,12 +240,11 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
 
       {open ? (
         <>
-          {alert.company_summary ? (
-            <View style={{ paddingVertical: 9, paddingHorizontal: 11, borderRadius: 11, backgroundColor: alpha.ivory035, borderWidth: 0.5, borderColor: alpha.ivory08 }}>
-              <T size={12} c={color.muted} lh={17}>{alert.company_summary}</T>
-            </View>
-          ) : null}
-
+          {/*
+            The trade, first and without a paragraph in front of it: the levels,
+            then the three bars that say how good each part of it is. The prose
+            that used to sit here now lives under "The story" below.
+          */}
           {hasStrip ? (
             <View style={{ flexDirection: 'row', gap: 6 }}>
               <LevelCell label="Current" value={trade.current ?? '—'} c={color.text} bg={alpha.ivory04} border={alpha.ivory10} />
@@ -119,17 +254,62 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
             </View>
           ) : null}
 
+          {/* Only where a level has no number yet — it explains the gap. */}
           {trade.note ? (
             <T size={11.5} c={color.muted} lh={17}>{trade.note}</T>
           ) : null}
 
-          {trade.rr || trade.hold || trade.expires ? (
+          {bars.length ? (
+            <View testID={`bars-${alert.symbol}`} style={{ gap: 7 }}>
+              {bars.map((b) => (
+                <GradeBar
+                  key={b.key}
+                  label={b.label}
+                  pct={b.pct}
+                  readout={b.readout}
+                  mono={b.mono}
+                  testID={`bar-${b.key}-${alert.symbol}`}
+                />
+              ))}
+            </View>
+          ) : null}
+
+          {trade.hold || trade.expires ? (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              {trade.rr ? (
-                <T size={11} c={color.muted}>R:R <Num size={11} c={color.text}>{trade.rr}</Num></T>
-              ) : <View />}
-              {trade.hold ? <T size={11} c={color.muted}>Hold: {trade.hold}</T> : null}
+              {trade.hold ? <T size={11} c={color.muted}>Hold: {trade.hold}</T> : <View />}
               {trade.expires ? <T size={11} c={color.muted}>Expires {trade.expires}</T> : null}
+            </View>
+          ) : null}
+
+          {/* What it costs YOU — a number, so it stays with the levels. */}
+          {alert.fit ? (
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <T size={11} c={color.muted}>
+                Your risk <Num size={11} c={color.gold}>{alert.fit.risk_amount ?? '—'}</Num>
+                {alert.fit.cap_line ? ` · ${alert.fit.cap_line}` : ''}
+              </T>
+              {alert.fit.conflicts ? <T size={11} c={color.muted}>{alert.fit.conflicts}</T> : null}
+            </View>
+          ) : null}
+
+          {/*
+            The contracts, as objects rather than a chain or a sentence. No
+            contract data → no section at all; an empty options row would read
+            as "there is nothing worth trading here", which is a different claim.
+          */}
+          {contracts.length ? (
+            <View testID={`contracts-${alert.symbol}`} style={{ gap: 7, paddingTop: 10, borderTopWidth: 0.5, borderTopColor: alpha.ivory10 }}>
+              <Eyebrow c={color.muted}>IF YOU TRADE THIS WITH OPTIONS</Eyebrow>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+                {contracts.map((c, i) => (
+                  <ContractCard
+                    key={`${c.strike}-${c.expiry}-${c.type}-${i}`}
+                    c={c}
+                    grow={contracts.length === 1}
+                    testID={`contract-${alert.symbol}-${i}`}
+                  />
+                ))}
+              </View>
             </View>
           ) : null}
 
@@ -143,9 +323,67 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
           ) : null}
 
           {/*
+            The words, one tap away. None of it is deleted — company, Kai's
+            read and what the room is saying are all still here, they just no
+            longer stand between the trader and the levels.
+          */}
+          {hasStory ? (
+            <View style={{ gap: 9, paddingTop: 10, borderTopWidth: 0.5, borderTopColor: alpha.ivory08 }}>
+              <Pressable
+                onPress={() => setStory((v) => !v)}
+                accessibilityRole="button"
+                accessibilityLabel={story ? 'Hide the story' : 'Read the story'}
+                testID={`alert-story-${alert.symbol}`}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              >
+                <T size={11} weight="semibold" c={color.violetLight}>{story ? 'Hide the story' : 'The story'}</T>
+                <Chevron open={story} />
+              </Pressable>
+
+              {story ? (
+                <>
+                  {alert.company_summary ? (
+                    <T size={12} c={color.muted} lh={17}>{alert.company_summary}</T>
+                  ) : null}
+
+                  {alert.kai_interpretation ? (
+                    <LinearGradient
+                      colors={[alpha.violet18, alpha.violet05]}
+                      start={gradientAngle.start}
+                      end={gradientAngle.end}
+                      style={{ flexDirection: 'row', gap: 9, alignItems: 'flex-start', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 13, borderWidth: 0.5, borderColor: alpha.violet45 }}
+                    >
+                      <KaiOrb size={18} glow={false} />
+                      <T size={12.5} lh={18} style={{ flex: 1 }}>
+                        {alert.kai_interpretation}{' '}
+                        <T size={12.5} c={color.muted}>Kai's assessment, not a guarantee.</T>
+                      </T>
+                    </LinearGradient>
+                  ) : null}
+
+                  {alert.community ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <T size={11} weight="semibold" c={color.violetLight}>Community</T>
+                      <T size={11} c={color.muted} style={{ flex: 1 }}>
+                        {[
+                          alert.community.bullish_pct != null ? `${alert.community.bullish_pct}% bullish` : null,
+                          alert.community.sample != null ? `${alert.community.sample} posts` : null,
+                          alert.community.verification ? `volume claim ${alert.community.verification}` : null,
+                        ].filter(Boolean).join(' · ')}
+                      </T>
+                    </View>
+                  ) : null}
+                </>
+              ) : null}
+            </View>
+          ) : null}
+
+          {/*
             SWING-1 §4 — the family's real record, deliberately BELOW the
             scorecard and outside the medallion's colour. The grade is a
             setup-quality mark; this is history, and it always carries its n.
+            It is NOT behind the story toggle: the honesty line is never a
+            thing you have to go looking for.
           */}
           {alert.family_performance ? (
             <View
@@ -168,43 +406,6 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
             </View>
           ) : null}
 
-          {alert.kai_interpretation ? (
-            <LinearGradient
-              colors={[alpha.violet18, alpha.violet05]}
-              start={gradientAngle.start}
-              end={gradientAngle.end}
-              style={{ flexDirection: 'row', gap: 9, alignItems: 'flex-start', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 13, borderWidth: 0.5, borderColor: alpha.violet45 }}
-            >
-              <KaiOrb size={18} glow={false} />
-              <T size={12.5} lh={18} style={{ flex: 1 }}>
-                {alert.kai_interpretation}{' '}
-                <T size={12.5} c={color.muted}>Kai's assessment, not a guarantee.</T>
-              </T>
-            </LinearGradient>
-          ) : null}
-
-          {alert.fit ? (
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <T size={11} c={color.muted}>
-                Your risk <Num size={11} c={color.gold}>{alert.fit.risk_amount ?? '—'}</Num>
-                {alert.fit.cap_line ? ` · ${alert.fit.cap_line}` : ''}
-              </T>
-              {alert.fit.conflicts ? <T size={11} c={color.muted}>{alert.fit.conflicts}</T> : null}
-            </View>
-          ) : null}
-
-          {alert.community ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <T size={11} weight="semibold" c={color.violetLight}>Community</T>
-              <T size={11} c={color.muted} style={{ flex: 1 }}>
-                {[
-                  alert.community.bullish_pct != null ? `${alert.community.bullish_pct}% bullish` : null,
-                  alert.community.sample != null ? `${alert.community.sample} posts` : null,
-                  alert.community.verification ? `volume claim ${alert.community.verification}` : null,
-                ].filter(Boolean).join(' · ')}
-              </T>
-            </View>
-          ) : null}
         </>
       ) : null}
 

@@ -1193,7 +1193,8 @@ export function adaptActionPreview(env: KaiObjectEnvelope | null): KaiActionPrev
 /* partially-deployed API still renders.                                 */
 /* ==================================================================== */
 import type {
-  AlertCard, AlertCardState, AlertFamilyPerformance, AlertScoreComponent, AlertsRound4,
+  AlertCard, AlertCardState, AlertFamilyPerformance, AlertOptionContract, AlertScoreComponent,
+  AlertScores, AlertsRound4,
   ConversationRow, ConversationsPayload, Experience, FocusKey, KaiProfile, RuleAdherence,
   TickerMeter, TickerPage,
 } from './types';
@@ -1311,6 +1312,53 @@ export function adaptFamilyPerformance(raw: unknown): AlertFamilyPerformance | n
   };
 }
 
+/**
+ * The bars on the trade card. 0–100 only, and only where the server actually
+ * measured something: a field that is missing stays missing, so the card draws
+ * no bar rather than an empty one. Percentages arriving as 0–1 are scaled.
+ */
+export function adaptAlertScores(raw: unknown): AlertScores | null {
+  const o = r4obj(raw);
+  const one = (v: unknown): number | null => {
+    const n = r4num(v);
+    if (n == null) return null;
+    const pct = n > 0 && n <= 1 ? n * 100 : n;
+    return Math.max(0, Math.min(100, Math.round(pct)));
+  };
+  const scores: AlertScores = {};
+  const trend = one(o.trend ?? o.trend_strength);
+  const rr = one(o.rr ?? o.risk_reward);
+  const options = one(o.options_activity ?? o.options ?? o.options_flow);
+  if (trend != null) scores.trend = trend;
+  if (rr != null) scores.rr = rr;
+  if (options != null) scores.options_activity = options;
+  return Object.keys(scores).length ? scores : null;
+}
+
+/**
+ * A contract the engine proposes. A row without a strike, an expiry and a
+ * side is not a contract — it is dropped rather than shown with dashes.
+ */
+export function adaptOptionContract(raw: unknown): AlertOptionContract | null {
+  const o = r4obj(raw);
+  const strike = r4nul(o.strike ?? o.strike_price);
+  const expiry = r4short(o.expiry ?? o.expiry_plain ?? o.expiration, 12);
+  const kind = r4str(o.type ?? o.kind ?? o.side).toLowerCase();
+  const type = kind.startsWith('p') ? 'put' : kind.startsWith('c') ? 'call' : null;
+  if (!strike || !expiry || !type) return null;
+  const liq = r4str(o.liquidity).toLowerCase();
+  const costNum = r4num(o.cost ?? o.ask ?? o.premium);
+  return {
+    label: r4short(o.label, 16),
+    type,
+    strike,
+    expiry,
+    dte: r4num(o.dte ?? o.days_to_expiry),
+    cost: costNum != null ? `$${costNum.toFixed(2)}` : r4nul(o.cost ?? o.ask ?? o.premium),
+    liquidity: liq === 'good' || liq === 'thin' ? liq : null,
+  };
+}
+
 export function adaptAlertCard(raw: unknown, i = 0): AlertCard {
   const o = r4obj(raw);
   const identity = r4obj(o.identity);
@@ -1362,6 +1410,13 @@ export function adaptAlertCard(raw: unknown, i = 0): AlertCard {
         r4price(plan.stop) == null ? r4nul(plan.invalidation_plain) : null,
       ].filter(Boolean).join(' ') || null,
     },
+    scores: adaptAlertScores(o.scores ?? o.bars),
+    recommended_options: (() => {
+      const list = r4arr(o.recommended_options ?? o.options ?? r4obj(o.trade_plan ?? o.trade).options)
+        .map(adaptOptionContract)
+        .filter((c): c is AlertOptionContract => c !== null);
+      return list.length ? list : null;
+    })(),
     score_components: r4arr(o.score_components).map(adaptScoreComponent),
     family_performance: adaptFamilyPerformance(o.family_performance),
     kai_interpretation: r4nul(o.kai_interpretation ?? o.interpretation),

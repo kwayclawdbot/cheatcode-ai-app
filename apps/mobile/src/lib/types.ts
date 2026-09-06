@@ -839,6 +839,35 @@ export type AlertFamilyPerformance = {
   plain?: string | null;
 };
 
+/**
+ * The three bars on the trade card. Each is 0–100 on the SAME scale the grade
+ * bands use, so a bar reads as a grade and not as progress.
+ *
+ * Every field is optional and a missing one means "not measured" — the bar is
+ * absent, never drawn empty. A blank bar would read as a measurement of zero.
+ */
+export type AlertScores = {
+  trend?: number | null;
+  rr?: number | null;
+  options_activity?: number | null;
+};
+
+/**
+ * One contract the engine would use to express this idea. Shown as a small
+ * card, never a sentence and never a chain table. The ticker is not repeated
+ * inside it — the card it sits in already carries the mark.
+ */
+export type AlertOptionContract = {
+  /** Optional role, e.g. "Kai's pick" · "Cheaper". NEVER the ticker. */
+  label?: string | null;
+  type: 'call' | 'put';
+  strike: string;                   // "510"
+  expiry: string;                   // "Sep 19"
+  dte?: number | null;              // 13
+  cost?: string | null;             // "$4.20"
+  liquidity?: 'good' | 'thin' | null;
+};
+
 export type AlertProgress = { pct: number; label: string } | null;
 
 /**
@@ -873,6 +902,10 @@ export type AlertCard = {
   what_changed: string;
   company_summary?: string | null;  // <= 2 sentences
   trade: AlertTradePlanStrip;
+  /** Bars on the trade card. Absent fields draw no bar (see AlertScores). */
+  scores?: AlertScores | null;
+  /** Contracts to express the idea. Absent → the whole section is absent. */
+  recommended_options?: AlertOptionContract[] | null;
   score_components: AlertScoreComponent[];
   /** Null unless the engine behind this alert has a graded live record. */
   family_performance?: AlertFamilyPerformance | null;

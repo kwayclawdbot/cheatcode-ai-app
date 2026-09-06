@@ -792,6 +792,18 @@ export const fixtureAlertCards: AlertCard[] = [
     what_changed: 'META reclaimed $504 with 1.6× volume across three five-minute candles.',
     company_summary: 'Meta Platforms owns Facebook, Instagram and WhatsApp. Shares are trading with elevated volume after buyers reclaimed a major intraday level.',
     trade: { direction: 'Long', current: '506.12', entry: '504–507', stop: '498', target: '520', rr: '2.4:1', hold: 'intraday', expires: '4:00 PM ET' },
+    /*
+      The one fixture carrying the full trade card: three bars and the
+      contracts. Every other fixture derives its bars from the scorecard and
+      shows no options row — which is what a real alert looks like until the
+      options feed exists.
+    */
+    scores: { trend: 88, rr: 80, options_activity: 74 },
+    recommended_options: [
+      { label: "Kai's pick", type: 'call', strike: '510', expiry: 'Sep 19', dte: 13, cost: '$4.20', liquidity: 'good' },
+      { label: 'Cheaper', type: 'call', strike: '520', expiry: 'Sep 19', dte: 13, cost: '$1.85', liquidity: 'good' },
+      { label: 'More time', type: 'call', strike: '510', expiry: 'Oct 17', dte: 41, cost: '$9.40', liquidity: 'thin' },
+    ],
     score_components: DAY_COMPONENTS,
     kai_interpretation: "Volume is the piece that was missing this morning. It fails if price closes back under 498 — that's your exit, not a suggestion.",
     fit: { risk_amount: '$58', cap_line: 'fits daily cap', conflicts: 'No conflicts' },
