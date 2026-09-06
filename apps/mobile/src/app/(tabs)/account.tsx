@@ -12,6 +12,8 @@ import { KaiOrb } from '../../ui/KaiOrb';
 import { ArrowRight, Plus, Gear, Bell, Lock, Bars, Calendar } from '../../ui/Icons';
 import { NotConnected, ScreenLoading } from '../../ui/Loading';
 import { alpha, color, gradient, gradientAngle, radius } from '../../ui/tokens';
+import { LegalLinks } from '../../features/legal/LegalLinks';
+import { NOT_ADVICE_LONG } from '../../features/legal/disclaimers';
 import { api } from '../../lib/api';
 import { env } from '../../lib/env';
 import { useSession } from '../../lib/session';
@@ -324,6 +326,14 @@ export default function Account() {
           </ObjectCard>
         ) : null}
 
+        {/* ── LEGAL ─────────────────────────────────────────────────
+            Privacy Policy and Terms, where App Review looks for them in a
+            signed-in app (guideline 5.1.1). They also appear on the welcome
+            screen, for the person — and the reviewer — who has not signed in
+            yet. Both draw nothing until the URLs are configured; see
+            `features/legal/urls.ts`, which is a submission blocker. */}
+        <LegalLinks style={{ marginTop: 6 }} testID="account-legal" />
+
         <Button
           testID="cta-sign-out"
           label="Sign out"
@@ -332,6 +342,33 @@ export default function Account() {
           onPress={async () => { await signOut(); router.replace('/welcome'); }}
           style={{ marginTop: 8 }}
         />
+
+        {/* ── DELETING THE ACCOUNT ──────────────────────────────────
+            Apple has required an in-app path to this since June 2022
+            (guideline 5.1.1(v)). It sits directly under Sign out because that
+            is where a person looks for it, and it is a plain ghost row rather
+            than a red button: the weight belongs on the confirmation screen,
+            where the consequences are actually spelled out, not on the door. */}
+        <Pressable
+          testID="cta-delete-account-entry"
+          accessibilityRole="button"
+          accessibilityLabel="Delete account"
+          onPress={() => router.push('/account/delete')}
+          style={({ pressed }) => ({
+            minHeight: 44, justifyContent: 'center', alignItems: 'center',
+            marginTop: 2, opacity: pressed ? 0.6 : 1,
+          })}
+        >
+          <T size={13} c={color.muted}>Delete account</T>
+        </Pressable>
+
+        {/* THE STANDING DISCLAIMER. This app has an AI that discusses entries
+            and stops, so the account board carries the full sentence. The
+            wording is a DRAFT and needs the owner's legal review — see
+            `features/legal/disclaimers.ts`. */}
+        <T size={10.5} lh={16} c={color.dim} style={{ marginTop: 10 }} testID="account-not-advice">
+          {NOT_ADVICE_LONG}
+        </T>
 
         {notAvailable ? <NotConnected what="Your account details" /> : null}
         {isFixture ? <T size={10} c={color.dim} align="center">Sample account — the account service is not connected here.</T> : null}

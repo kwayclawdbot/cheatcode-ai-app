@@ -32,7 +32,7 @@ export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
 
   const ent = await loadEntitlements(ctx.user.id);
   if (ent.tier !== 'premium') {
-    throw entitlementRequired('Asking Kai to pull up a ticker on the live show is part of Premium.');
+    throw entitlementRequired('Your plan does not include asking Kai to pull up a ticker during the live show.');
   }
 
   rateLimit({

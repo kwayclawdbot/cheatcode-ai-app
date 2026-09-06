@@ -10,6 +10,7 @@ import { Check } from '../../ui/Icons';
 import { color } from '../../ui/tokens';
 import { useSession } from '../../lib/session';
 import { env } from '../../lib/env';
+import { LegalFootnote } from '../../features/legal/LegalLinks';
 
 /**
  * Sign up — no artboard. Composed from the S0x header rhythm (27/700 title +
@@ -89,6 +90,9 @@ export default function SignUp() {
               <Pressable onPress={() => router.replace('/sign-in')} hitSlop={12} style={{ alignItems: 'center', minHeight: 44, justifyContent: 'center' }}>
                 <T size={13} c={color.muted}>Already have an account? <T size={13} weight="semibold" c={color.text}>Sign in</T></T>
               </Pressable>
+              {/* The documents a person is agreeing to, reachable at the moment
+                  they agree to them — not only afterwards in Account. */}
+              <LegalFootnote testID="sign-up-legal" />
             </View>
           </>
         )}

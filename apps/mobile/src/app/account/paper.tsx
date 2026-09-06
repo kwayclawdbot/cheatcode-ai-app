@@ -10,6 +10,7 @@ import { Sheet } from '../../ui/Sheet';
 import { alpha, color, radius } from '../../ui/tokens';
 import { api } from '../../lib/api';
 import { useMe } from '../../features/account/useAccount';
+import { NOT_ADVICE_PAPER } from '../../features/legal/disclaimers';
 
 const usd = (n: number | null | undefined) =>
   n == null ? '—' : `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -115,6 +116,14 @@ export default function Paper() {
             onPress={() => setConfirm(true)}
           />
         </ObjectCard>
+
+        {/* THE PAPER DISCLAIMER. It sits on the surface where a person is
+            closest to reading a practice result as a real one. Wording is a
+            DRAFT pending the owner's legal review — see
+            `features/legal/disclaimers.ts`. */}
+        <T size={10.5} lh={16} c={color.dim} style={{ marginTop: 4 }} testID="paper-not-advice">
+          {NOT_ADVICE_PAPER}
+        </T>
 
         {notAvailable ? <NotConnected what="Your paper account" /> : error ? <T size={11} c={color.muted} align="center">{error}</T> : null}
         {isFixture ? <T size={10} c={color.dim} align="center">Sample account — the service is not connected here.</T> : null}

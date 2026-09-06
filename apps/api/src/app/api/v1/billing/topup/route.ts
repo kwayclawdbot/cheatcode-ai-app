@@ -9,6 +9,14 @@
  * NOTHING IS GRANTED HERE. This opens a payment page and stops. The credits
  * arrive when Stripe says the money did, on the webhook, keyed on the Stripe
  * event id so a retried delivery grants once.
+ *
+ * ==========================================================================
+ * CLOSED TO THE APP, AND FAILS CLOSED TO EVERYONE ELSE.
+ * ==========================================================================
+ * Same rule and same guard as the subscription checkout next door: a purchase
+ * path reachable from the iOS app breaks App Store rule 3.1.3(b). Kept for the
+ * website; NOT_FOUND to anything that has not proved it is an allow-listed
+ * storefront client. See `lib/storefront.ts`.
  */
 import type { NextRequest } from 'next/server';
 import { authed, ok, type Ctx } from '@/lib/http';
@@ -16,10 +24,12 @@ import { serviceClient } from '@/lib/db';
 import { emitUserEvent } from '@/lib/events';
 import { TOPUP_PACK } from '@/lib/kai/plans';
 import { stripeConfigured, billingNotConfigured, createTopupSession } from '@/lib/stripe';
+import { isStorefrontClient, storefrontClosed } from '@/lib/storefront';
 
 export const dynamic = 'force-dynamic';
 
-export const POST = authed(async (_req: NextRequest, ctx: Ctx) => {
+export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
+  if (!isStorefrontClient(req)) throw storefrontClosed();
   if (!stripeConfigured()) throw billingNotConfigured();
 
   const db = serviceClient();

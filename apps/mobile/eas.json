@@ -1,0 +1,131 @@
+{
+  "//": [
+    "==================================================================",
+    "HOW THIS APP GETS BUILT. Read EAS-BUILD.md next to this file first.",
+    "==================================================================",
+    "",
+    "NOTHING HERE HAS EVER BEEN RUN. This app has only ever been opened in",
+    "Expo Go. No native binary of it exists, no credentials have been",
+    "generated, and no build has been paid for. This file is the",
+    "configuration for a first build, not a record of one.",
+    "",
+    "NO SECRETS IN THIS FILE, EVER. The repository is PUBLIC. Every value a",
+    "build needs that is not in here goes into EAS environment variables",
+    "(`eas env:create`), which is also the only way a cloud builder can see",
+    "them at all — it does not read the laptop's .env.",
+    "",
+    "THE `env` BLOCKS BELOW CARRY ONLY SWITCHES, never an address and never a",
+    "key. EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY,",
+    "EXPO_PUBLIC_API_BASE, EXPO_PUBLIC_VAPID_PUBLIC_KEY,",
+    "EXPO_PUBLIC_PRIVACY_URL and EXPO_PUBLIC_TERMS_URL are all set as EAS",
+    "environment variables per environment. The two legal URLs are a",
+    "SUBMISSION BLOCKER: without them the app draws no policy links and",
+    "App Review fails on guideline 5.1.1.",
+    "",
+    "`appVersionSource: remote` means EAS owns the build number and bumps it",
+    "itself. `version` in app.json stays the marketing version and is the",
+    "owner's to change; the build number underneath it is not something",
+    "anybody should be editing by hand between submissions."
+  ],
+
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "remote"
+  },
+
+  "build": {
+    "development": {
+      "//": [
+        "A DEV CLIENT ON A REAL DEVICE. This is the profile that replaces Expo",
+        "Go, and running it once is how the surprises listed in EAS-BUILD.md",
+        "get found before a store submission rather than after one.",
+        "It needs a registered device UDID (`eas device:create`)."
+      ],
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development",
+      "env": {
+        "EXPO_PUBLIC_DEV_TOOLS": "1"
+      },
+      "ios": {
+        "resourceClass": "medium"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+
+    "preview": {
+      "//": [
+        "THE RELEASE BUILD, WITHOUT THE STORE. Same code path as production —",
+        "a real Release binary, no dev client, no bundler — installed straight",
+        "onto registered devices via TestFlight or an internal link.",
+        "",
+        "THIS IS THE PROFILE TO BUILD FIRST. It is what proves push",
+        "notifications, permission prompts and deep links behave outside Expo",
+        "Go, and finding a problem here costs a rebuild instead of a rejected",
+        "submission and a week."
+      ],
+      "distribution": "internal",
+      "channel": "preview",
+      "ios": {
+        "resourceClass": "medium",
+        "buildConfiguration": "Release"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+
+    "production": {
+      "//": [
+        "WHAT GOES TO THE APP STORE. `autoIncrement` bumps the build number so",
+        "a resubmission after a rejection cannot collide with the one before",
+        "it — App Store Connect refuses a duplicate build number, and doing it",
+        "by hand is how that gets forgotten under pressure.",
+        "",
+        "EXPO_PUBLIC_DEV_TOOLS and EXPO_PUBLIC_FIXTURES are pinned OFF here",
+        "rather than merely left unset. Fixtures mode renders sample balances",
+        "and sample alerts that look exactly like real ones; shipping it on by",
+        "accident would put fabricated data in front of a reviewer, which is",
+        "the one thing this app is built never to do."
+      ],
+      "distribution": "store",
+      "channel": "production",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_DEV_TOOLS": "0",
+        "EXPO_PUBLIC_FIXTURES": "0"
+      },
+      "ios": {
+        "resourceClass": "medium",
+        "buildConfiguration": "Release"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  },
+
+  "submit": {
+    "production": {
+      "ios": {
+        "//": [
+          "DELIBERATELY EMPTY, AND IT MUST STAY THAT WAY IN THIS REPOSITORY.",
+          "",
+          "`eas submit` wants three values here: appleId (the Apple ID email),",
+          "ascAppId (the numeric App Store Connect app id, created when the",
+          "app record is made) and appleTeamId. NONE OF THEM EXIST YET — there",
+          "is no confirmed Apple Developer account, so there is no team id and",
+          "no app record.",
+          "",
+          "They are also not values to commit to a public repository. Set them",
+          "as EAS environment variables and reference them, or pass them on the",
+          "command line at submit time. `eas submit` will otherwise prompt for",
+          "each one interactively, which is a perfectly good answer for a first",
+          "submission."
+        ]
+      }
+    }
+  }
+}

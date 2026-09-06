@@ -14,12 +14,25 @@
  * of those used to end at a spinner or "I could not open that chart just now",
  * which is not what happened and reads as the app being broken.
  *
- * So the refusal says: what is closed, why, what they still have, and what it
- * costs to open it. The sentence is the SERVER'S OWN — it carries the price, so
- * a price change lands here without this file being touched.
+ * So the refusal says: what is closed, why, and what they still have. The
+ * sentence is the SERVER'S OWN, from `CREDIT_COPY.tradeLocked()`.
  *
- * Design: hairlines, no card. Volt for the way forward, because upgrading is
- * the person's own action.
+ * ===========================================================================
+ * IT NAMES NO PRICE AND OFFERS NO WAY TO BUY. IT USED TO DO BOTH.
+ * ===========================================================================
+ * The server's sentence used to carry "$59 a month" and this screen ended in a
+ * "See the plans" button leading to a price ladder with an Upgrade action on
+ * it. Inside the iOS app that is a purchase path, and App Store rule 3.1.3(b)
+ * — the rule that lets this app honour a subscription bought on the website
+ * without In-App Purchase — forbids it outright.
+ *
+ * THE HONESTY SURVIVED THE CUT, WHICH WAS THE POINT. The person still learns
+ * exactly what is closed, that it is their plan rather than a fault at our end,
+ * and precisely what is untouched. What they lost is a sales pitch. The one
+ * action left is the genuinely useful one: ask Kai about this ticker instead,
+ * which is something they CAN do right now.
+ *
+ * Design: hairlines, no card. Volt for the person's own action.
  */
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -61,19 +74,17 @@ export function TradeLocked({
         <Eyebrow c={color.gold}>Not on your plan</Eyebrow>
 
         <T size={22} weight="bold" c={color.text} style={{ marginTop: space.x10, lineHeight: 28 }}>
-          The Trade section is on the paid plans
+          The Trade section is not on your plan
         </T>
 
         {/*
-          THE SERVER'S OWN WORDS. It names the price, so this screen cannot go
-          out of date when the price changes. The fallback is only for the case
-          where we got here without a server answer at all — a hidden tab, a
-          restored route — and it deliberately does not quote a figure it has
-          not been told.
+          THE SERVER'S OWN WORDS, so this screen cannot drift from what the gate
+          actually said. The fallback is only for the case where we got here
+          without a server answer at all — a hidden tab, a restored route.
         */}
         <T size={14} lh={21} c={color.muted} style={{ marginTop: space.x12 }}>
           {plain
-            ?? 'Your free account keeps Kai and the community. The Trade section — the chart Kai marks up, the grade, and the order tickets — opens on a paid plan.'}
+            ?? 'Your plan does not include the Trade section — the chart Kai marks up, the grade, and the order tickets. That is the plan, not a fault at our end.'}
         </T>
 
         <View style={{
@@ -87,19 +98,15 @@ export function TradeLocked({
           </T>
         </View>
 
-        <Button
-          testID="trade-locked-upgrade"
-          label="See the plans"
-          kind="volt"
-          height={52}
-          onPress={() => router.push('/account/subscription')}
-          style={{ marginTop: space.x22 }}
-        />
+        {/* NO "SEE THE PLANS" BUTTON HERE, AND NOTHING MAY REPLACE IT. A
+            button from a refusal to a price list is the textbook shape of the
+            thing 3.1.3(b) rejects. What is offered instead is the thing the
+            person can actually do. */}
         <Button
           testID="trade-locked-ask"
           label="Ask Kai about it instead"
-          kind="outline"
-          height={48}
+          kind="volt"
+          height={52}
           onPress={() =>
             router.push(
               symbol
@@ -107,7 +114,7 @@ export function TradeLocked({
                 : '/home',
             )
           }
-          style={{ marginTop: space.x10 }}
+          style={{ marginTop: space.x22 }}
         />
       </View>
     </Screen>

@@ -9,10 +9,26 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0B0B0E",
     "ios": {
+      "//bundleIdentifier": [
+        "PROPOSED, NOT CONFIRMED — the owner must approve this string before",
+        "any build is run. A bundle identifier is PERMANENT once published:",
+        "changing it later means a new app record, a new listing, no reviews,",
+        "and every existing install orphaned. The reasoning, the alternative",
+        "that was considered, and the two things the owner has to verify",
+        "first are written out in EAS-BUILD.md next to this file."
+      ],
+      "bundleIdentifier": "com.cheatcode.ai",
       "icon": "./assets/expo.icon",
       "supportsTablet": false
     },
     "android": {
+      "//package": [
+        "The same string as the iOS bundle identifier, deliberately: one",
+        "identity for one product. Equally permanent — Google Play will not",
+        "let an application id change after the first release. Same approval",
+        "still pending. See EAS-BUILD.md."
+      ],
+      "package": "com.cheatcode.ai",
       "adaptiveIcon": {
         "backgroundColor": "#0B0B0E",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -45,7 +61,30 @@
           "imageWidth": 76
         }
       ],
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "//": [
+            "THE APP PLAYS AUDIO AND HAS NEVER RECORDED ANY.",
+            "`features/chart/answer-audio.ts` calls `createAudioPlayer` and",
+            "nothing anywhere calls a recorder. Left bare, this plugin adds",
+            "NSMicrophoneUsageDescription to the iOS Info.plist and",
+            "RECORD_AUDIO to the Android manifest — a microphone permission",
+            "for a microphone that is never opened. Apple asks about a",
+            "declared capability the app does not use, Google Play's data",
+            "form asks the same, and both are avoidable by saying no here.",
+            "This was invisible in Expo Go, which has its own Info.plist.",
+            "",
+            "STILL AN OPEN DECISION: `enableBackgroundPlayback` defaults to",
+            "true and adds UIBackgroundModes: audio. It is left ON because",
+            "Kai Live may legitimately keep talking while the phone is",
+            "locked. If it does not, turn it off — a declared background",
+            "audio mode the app never uses is a documented rejection reason."
+          ],
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
       "expo-image",
       "expo-web-browser",
       "expo-status-bar",

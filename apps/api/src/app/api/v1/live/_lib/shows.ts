@@ -82,7 +82,7 @@ export async function assertMayWatch(userId: string, mode: LiveMode): Promise<vo
   const ent = await loadEntitlements(userId);
   if (ent.tier !== 'premium') {
     throw entitlementRequired(
-      'The live show during market hours is part of Premium. The after-hours review is free — it goes up on YouTube every evening.'
+      'Your plan does not include the live show during market hours. The after-hours review is not gated — it goes up on YouTube every evening.'
     );
   }
 }

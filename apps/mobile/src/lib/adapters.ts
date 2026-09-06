@@ -856,7 +856,10 @@ function adaptCreditPlan(v: unknown): CreditPlan | null {
   return {
     key,
     name: str(p.name, key),
-    price_usd: nNum(p.price_usd) ?? 0,
+    // ALWAYS NULL. The app never displays a price and never receives one; a
+    // stray figure from an older API build is dropped here rather than trusted.
+    // See `apps/api/src/lib/storefront.ts` for why that is not optional.
+    price_usd: null,
     daily_credits: nNum(p.daily_credits) ?? 0,
     typical_runs_per_day: nNum(p.typical_runs_per_day) ?? 0,
     trade_panel: bool(p.trade_panel),
@@ -870,19 +873,20 @@ export function adaptCreditsPayload(v: unknown): CreditsPayload | null {
   const r = obj(v);
   const credits = adaptCredits(r.credits);
   if (!credits) return null;
-  const t = obj(r.topup);
-  const topupCredits = nNum(t.credits);
   return {
     credits,
     plans: arr(r.plans).map(adaptCreditPlan).filter((p): p is CreditPlan => p !== null),
-    // A pack with no credit count is not a pack. Hidden rather than sold blank.
-    topup: topupCredits === null ? null : {
-      key: str(t.key, 'topup'),
-      name: str(t.name, 'Top-up'),
-      credits: topupCredits,
-      price_usd: nNum(t.price_usd) ?? 0,
-      blurb: str(t.blurb),
-    },
+    /*
+     * ALWAYS NULL, WHATEVER THE SERVER SENDS.
+     *
+     * The server already withholds the top-up pack from this client, and this
+     * is the second lock on the same door: even an API build that predates the
+     * storefront split, or one misconfigured to treat the app as a shop, cannot
+     * put a purchasable pack in front of an App Store reviewer. A way to buy
+     * something from inside the app breaks rule 3.1.3(b), which is the rule
+     * that lets this app honour a subscription bought on the website at all.
+     */
+    topup: null,
   };
 }
 

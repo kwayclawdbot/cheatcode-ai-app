@@ -1,9 +1,23 @@
 /**
- * POST /api/v1/billing/checkout
+ * POST /api/v1/billing/checkout — THE WEBSITE'S CHECKOUT. NOT THE APP'S.
  *
- * Creates a Stripe Checkout session in subscription mode with deep links back
- * into the app. With no keys configured it answers `BILLING_NOT_CONFIGURED`
- * ("Upgrades open soon.") — never a placeholder URL, never a fake price.
+ * Creates a Stripe Checkout session in subscription mode. With no keys
+ * configured it answers `BILLING_NOT_CONFIGURED` — never a placeholder URL,
+ * never a fake price.
+ *
+ * ==========================================================================
+ * IT IS CLOSED TO THE APP AND FAILS CLOSED TO EVERYONE ELSE.
+ * ==========================================================================
+ * A purchase path reachable from the iOS app breaks App Store rule 3.1.3(b),
+ * which is the rule that lets this app honour a web subscription without In-App
+ * Purchase at all. The route is kept because the website needs it — that is the
+ * business — but it now answers NOT_FOUND to any caller that has not proved it
+ * is an allow-listed storefront client. With no `STOREFRONT_CLIENTS` set, that
+ * is everybody, which is the correct state for an App Store submission and
+ * costs nothing today: the app was the only caller and no longer calls it.
+ *
+ * The whole rule, and how the owner opens this for the website, is written out
+ * in `lib/storefront.ts`.
  */
 import type { NextRequest } from 'next/server';
 import { BillingCheckoutResponse } from '@shared/api';
@@ -13,10 +27,15 @@ import { emitUserEvent } from '@/lib/events';
 import { loadEntitlements, PREMIUM_PRICE_PLAIN } from '@/lib/entitlements';
 import { ApiError } from '@/lib/errors';
 import { stripeConfigured, billingNotConfigured, createCheckoutSession } from '@/lib/stripe';
+import { isStorefrontClient, storefrontClosed } from '@/lib/storefront';
 
 export const dynamic = 'force-dynamic';
 
-export const POST = authed(async (_req: NextRequest, ctx: Ctx) => {
+export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
+  // THE FIRST LINE, BEFORE ANYTHING ELSE HAPPENS. Not after the Stripe check:
+  // "billing is not configured" is itself an answer that tells the caller a
+  // purchase path lives here.
+  if (!isStorefrontClient(req)) throw storefrontClosed();
   if (!stripeConfigured()) throw billingNotConfigured();
 
   const ent = await loadEntitlements(ctx.user.id);

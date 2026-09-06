@@ -14,6 +14,7 @@ import { api, ApiError } from '../../lib/api';
 import { useSession } from '../../lib/session';
 import { useKaiThread } from '../../lib/useKai';
 import type { GoalMode, KaiActionPreview } from '../../lib/types';
+import { NOT_ADVICE_SHORT } from '../legal/disclaimers';
 import {
   closeKaiSheet, getKaiSheetState, kaiSheetPlaceholder, kaiSheetTitle,
   subscribeKaiSheet, type KaiContext,
@@ -259,6 +260,19 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
                 onSend={send}
                 disabled={streaming}
               />
+              {/*
+                "KAI IS NOT AN ADVISER", WHERE HE IS ACTUALLY TALKING.
+                This is the surface where he discusses entries, stops and
+                sizing, so it is the surface that has to carry the line — a
+                disclaimer only on a settings screen is a disclaimer nobody
+                reads at the moment it matters. Small and quiet on purpose: it
+                must be legible without competing with the conversation.
+                Wording is a DRAFT pending the owner's legal review; see
+                `features/legal/disclaimers.ts`.
+              */}
+              <T size={9.5} lh={14} c={color.dim} align="center" style={{ marginTop: 8 }} testID="kai-not-advice">
+                {NOT_ADVICE_SHORT}
+              </T>
             </View>
           </LinearGradient>
         </KeyboardAvoidingView>

@@ -13,6 +13,7 @@ import { family } from '../../ui/fonts';
 import { alpha, color, gradient, gradientAngle, radius } from '../../ui/tokens';
 import { useAlertActions, useAlertBuilder } from '../../features/alerts/useAlerts';
 import { PushPrimingBlock, usePrimingGate } from '../../features/notifications';
+import { NOT_ADVICE_ALERTS } from '../../features/legal/disclaimers';
 
 const EXAMPLES = [
   'Watch META for a break above 504',
@@ -178,6 +179,16 @@ export default function NewAlert() {
             })}
           />
         )}
+
+        {/*
+          AN ALERT IS THE THING MOST EASILY MISTAKEN FOR A CALL, so the line
+          goes on the screen where one is created as well as on the board where
+          they are read. Wording is a DRAFT pending the owner's legal review;
+          see `features/legal/disclaimers.ts`.
+        */}
+        <T size={10} lh={15} c={color.dim} style={{ marginTop: 4 }} testID="alert-new-not-advice">
+          {NOT_ADVICE_ALERTS}
+        </T>
       </ScrollView>
 
       <Sheet visible={done} onClose={() => { setDone(false); router.replace('/alerts'); }} title="Kai is watching it" testID="sheet-activated">
@@ -192,9 +203,20 @@ export default function NewAlert() {
         )}
       </Sheet>
 
-      <Sheet visible={!!actions.upgradeNeeded} onClose={actions.dismissUpgrade} title="That needs the premium plan">
+      {/* NOT ON YOUR PLAN — SAID, NOT SOLD.
+          The title used to read "That needs the premium plan" and the action
+          was "See what premium adds", which opened a price ladder. Inside the
+          iOS app that is a route to a purchase, and App Store rule 3.1.3(b)
+          forbids it in an app that honours a subscription bought on the web.
+          The server's own sentence still explains exactly what happened. */}
+      <Sheet
+        visible={!!actions.upgradeNeeded}
+        onClose={actions.dismissUpgrade}
+        title="Not on your plan"
+        testID="sheet-entitlement"
+      >
         <T size={13} lh={20} c={color.muted}>{actions.upgradeNeeded}</T>
-        <Button label="See what premium adds" kind="volt" height={48} onPress={() => { actions.dismissUpgrade(); router.push('/account/subscription'); }} />
+        <Button label="Got it" kind="volt" height={48} onPress={actions.dismissUpgrade} />
       </Sheet>
     </Screen>
   );

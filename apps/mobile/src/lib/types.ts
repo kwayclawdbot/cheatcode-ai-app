@@ -399,18 +399,32 @@ export type Credits = {
   trade_panel: boolean;
 };
 
-/** One rung of the ladder, as the server describes it. Never a marketing list
- *  typed into the app: a price change has to land in one place. */
+/**
+ * A plan, as the server describes it. Never a marketing list typed into the
+ * app.
+ *
+ * `price_usd` IS ALWAYS NULL IN THIS APP, and the type says so rather than
+ * pretending. `GET /credits` sends a price only to an allow-listed storefront
+ * client, which this app is not and may not become: App Store rule 3.1.3(b)
+ * permits honouring a web subscription only in an app that carries no price and
+ * no purchase path. The field is kept, nullable, so the shape is stable and the
+ * null is a stated fact rather than a missing key.
+ */
 export type CreditPlan = {
   key: string;
   name: string;
-  price_usd: number;
+  price_usd: number | null;
   daily_credits: number;
   typical_runs_per_day: number;
   trade_panel: boolean;
   blurb: string;
 };
 
+/**
+ * ALWAYS NULL IN THIS APP. Kept so the payload shape does not change and so
+ * this comment has somewhere to live: there is no way to buy credits from
+ * inside the app, by rule. See `apps/api/src/lib/storefront.ts`.
+ */
 export type TopupPack = {
   key: string;
   name: string;

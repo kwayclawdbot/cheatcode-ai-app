@@ -4811,10 +4811,19 @@ export const MeStaffBlock = z.object({
 });
 export type MeStaffBlock = z.infer<typeof MeStaffBlock>;
 
+/**
+ * `price_usd` IS NULLABLE, AND THAT NULL IS THE APP STORE RULE IN THE SCHEMA.
+ *
+ * `GET /credits` sends a price only to an allow-listed storefront client. The
+ * iOS app is never one, so it receives null here and the top-up block below is
+ * absent entirely. A price or a purchase path inside the app breaks App Store
+ * rule 3.1.3(b), which is what lets the app honour a subscription bought on the
+ * website without In-App Purchase. See `apps/api/src/lib/storefront.ts`.
+ */
 export const CreditPlanRow = z.object({
   key: z.string(),
   name: z.string(),
-  price_usd: z.number(),
+  price_usd: z.number().nullable().default(null),
   daily_credits: z.number(),
   typical_runs_per_day: z.number(),
   trade_panel: z.boolean(),
@@ -4824,14 +4833,19 @@ export type CreditPlanRow = z.infer<typeof CreditPlanRow>;
 
 export const CreditsResponse = z.object({
   credits: CreditsBlock,
+  /** One row — the caller's own plan — for any client that is not a storefront. */
   plans: z.array(CreditPlanRow),
-  topup: z.object({
-    key: z.string(),
-    name: z.string(),
-    credits: z.number(),
-    price_usd: z.number(),
-    blurb: z.string(),
-  }),
+  /** Null for the app. There is no way to buy anything from inside it. */
+  topup: z
+    .object({
+      key: z.string(),
+      name: z.string(),
+      credits: z.number(),
+      price_usd: z.number(),
+      blurb: z.string(),
+    })
+    .nullable()
+    .default(null),
 });
 export type CreditsResponse = z.infer<typeof CreditsResponse>;
 

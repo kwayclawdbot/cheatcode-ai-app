@@ -7,7 +7,7 @@
  */
 import { serviceClient } from './db';
 import { ApiError } from './errors';
-import { CREDIT_COPY, PLANS } from './kai/plans';
+import { CREDIT_COPY } from './kai/plans';
 
 export type Tier = 'free' | 'premium';
 
@@ -65,23 +65,37 @@ export function numericFlag(flags: Record<string, unknown>, key: string): number
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * The subscription price, in words, for SERVER-SIDE use only — the Stripe
+ * checkout's own confirmation sentence, and nothing else. It must never travel
+ * to the app; see the note on `entitlementRequired` below.
+ */
 export const PREMIUM_PRICE_PLAIN = '$99 a month';
 
 /**
- * 02 §11: ENTITLEMENT_REQUIRED carries the tier, price and upgrade route.
+ * 02 §11: ENTITLEMENT_REQUIRED says the plan does not cover this.
  *
- * `pricePlain` exists because there are two paid plans now. The default is
- * still the $99 one — every existing caller keeps the answer it always gave —
- * but a gate whose sentence names Pro must not hand the app VIP's price in the
- * detail, or the screen and the message contradict each other.
+ * ===========================================================================
+ * IT USED TO CARRY A PRICE AND AN UPGRADE ROUTE. BOTH ARE GONE, ON PURPOSE.
+ * ===========================================================================
+ * The detail block was `{ tier, price: '$99 a month', upgrade_link:
+ * '/account/subscription' }` and it was delivered straight into the iOS app on
+ * every gated route. That is a price and a route to buy, inside the app, which
+ * is precisely what App Store rule 3.1.3(b) forbids in an app that honours a
+ * subscription sold on the web. See `lib/storefront.ts` for the whole rule.
+ *
+ * WHAT THE APP STILL GETS IS THE PART THAT WAS ACTUALLY USEFUL: the code
+ * `ENTITLEMENT_REQUIRED`, which tells it this is a fact about the account and
+ * not a fault on our side, and a plain sentence saying what is closed and what
+ * is not. Nothing that depended on `price` or `upgrade_link` remains — the app
+ * never read either field.
+ *
+ * THE GATE ITSELF IS UNCHANGED AND JUST AS STRICT. This function only decides
+ * what the refusal SAYS.
  */
-export function entitlementRequired(
-  messagePlain: string,
-  upgradeLink = '/account/subscription',
-  pricePlain = PREMIUM_PRICE_PLAIN
-): ApiError {
+export function entitlementRequired(messagePlain: string): ApiError {
   return new ApiError('ENTITLEMENT_REQUIRED', messagePlain, {
-    detail: { tier: 'premium', price: pricePlain, upgrade_link: upgradeLink },
+    detail: { tier: 'premium' },
   });
 }
 
@@ -112,11 +126,8 @@ export function hasTradePanel(flags: Record<string, unknown>): boolean {
 export async function requireTradePanel(userId: string): Promise<void> {
   const ent = await loadEntitlements(userId);
   if (hasTradePanel(ent.flags)) return;
-  // The sentence and the price both come from plans.ts. A second copy of "$59"
-  // living here is exactly how a price change ends up half-applied.
-  throw entitlementRequired(
-    CREDIT_COPY.tradeLocked(),
-    '/account/subscription',
-    `$${PLANS.pro.price_usd} a month`
-  );
+  // The sentence comes from plans.ts, which is the one file allowed to hold
+  // plan copy — and which is now under a standing rule that none of that copy
+  // may name a price or a way to buy. Nothing here restates it.
+  throw entitlementRequired(CREDIT_COPY.tradeLocked());
 }

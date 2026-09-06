@@ -1,13 +1,12 @@
 /**
- * The allowance, and buying more of it.
+ * The allowance.
  *
- * `GET /credits` is the one read. It carries the balance, the plan ladder and
- * the top-up pack together, so the credits screen never has to assemble a
- * price list of its own — a marketing list typed into the app is how a price
- * change ends up shipped in one half of a product.
+ * `GET /credits` is the one read. To this client it answers with the balance
+ * and ONE plan — the person's own — carrying no price and no top-up pack. The
+ * server decides that, not this file: see `apps/api/src/lib/storefront.ts`.
  */
-import { useCallback, useState } from 'react';
-import { api, ApiError } from '../../lib/api';
+import { useCallback } from 'react';
+import { api } from '../../lib/api';
 import { useResource } from '../../lib/useResource';
 import {
   fixtureCreditsPayload, fixtureCreditsCeiling, fixtureCreditsOut,
@@ -31,32 +30,12 @@ export function useCredits(fixture: CreditFixture = 'default') {
   return useResource<CreditsPayload | null>(load, FIXTURE[fixture], [fixture]);
 }
 
-/**
- * `POST /billing/topup`. The honest "not configured yet" path is a first-class
- * result, exactly as it is for the subscription checkout: no keys means a plain
- * sentence and nothing charged, never a dead checkout url.
+/*
+ * `useTopup` IS GONE AND MUST NOT COME BACK.
+ *
+ * It called `POST /billing/topup` and opened a Stripe payment page. A way to
+ * buy anything from inside the app breaks App Store rule 3.1.3(b), which is
+ * what allows this app to honour a subscription bought on the website without
+ * shipping In-App Purchase. The route still serves the website; it answers
+ * NOT_FOUND to this client. See `apps/api/src/lib/storefront.ts`.
  */
-export function useTopup() {
-  const [state, setState] = useState<{ url: string | null; message: string | null; busy: boolean }>({
-    url: null, message: null, busy: false,
-  });
-
-  const start = useCallback(async () => {
-    if (!api.available()) {
-      setState({ url: null, message: 'Top-ups open soon.', busy: false });
-      return;
-    }
-    setState({ url: null, message: null, busy: true });
-    try {
-      const r = await api.billingTopup();
-      setState({ url: r?.url ?? null, message: r?.url ? null : 'Top-ups open soon.', busy: false });
-    } catch (e) {
-      const msg = e instanceof ApiError && e.code === 'BILLING_NOT_CONFIGURED'
-        ? e.message || 'Top-ups open soon.'
-        : e instanceof Error ? e.message : 'Top-ups open soon.';
-      setState({ url: null, message: msg, busy: false });
-    }
-  }, []);
-
-  return { ...state, start, dismiss: () => setState({ url: null, message: null, busy: false }) };
-}

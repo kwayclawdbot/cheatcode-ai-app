@@ -8,6 +8,7 @@ import { Bell } from '../../ui/Icons';
 import { alpha, color, radius } from '../../ui/tokens';
 import { openKaiSheet } from '../kai-sheet';
 import type { PositionModule, SetupModule as SetupModuleType } from '../../lib/types';
+import { NOT_ADVICE_SETUP } from '../legal/disclaimers';
 
 function Level({ label, value, c, bg, border, testID }: {
   label: string; value: string; c: string; bg: string; border: string; testID?: string;
@@ -105,6 +106,16 @@ export function SetupModuleCard({
       </View>
 
       {module.note ? <T size={11} lh={16} c={color.muted}>{module.note}</T> : null}
+
+      {/*
+        THE MOST ADVICE-SHAPED SURFACE IN THE APP GETS ITS OWN LINE.
+        A letter grade sitting beside an entry, a target and an invalidation
+        reads as a recommendation whether or not it is one. `legal/DISCLAIMERS.md`
+        named this card as the gap in the original set; this closes it. The
+        wording is a DRAFT pending the owner's legal review — see
+        `features/legal/disclaimers.ts`.
+      */}
+      <T size={9.5} lh={14} c={color.dim} testID="setup-not-advice">{NOT_ADVICE_SETUP}</T>
     </ObjectCard>
   );
 }

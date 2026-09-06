@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError } from '../../lib/api';
+import { api } from '../../lib/api';
 import { useResource } from '../../lib/useResource';
 import { fixtureKaiProfile, fixtureMe, fixtureMemory, fixtureNotifications, fixtureRuleAdherence } from '../../lib/fixtures';
 import {
@@ -47,31 +47,15 @@ export function useSettingsWriter(onSaved?: () => void) {
   return { save, saving, error };
 }
 
-/** POST /billing/checkout — the honest "not configured yet" path is a first-class result. */
-export function useCheckout() {
-  const [state, setState] = useState<{ url: string | null; message: string | null; busy: boolean }>({
-    url: null, message: null, busy: false,
-  });
-
-  const start = useCallback(async () => {
-    if (!api.available()) {
-      setState({ url: null, message: 'Upgrades open soon.', busy: false });
-      return;
-    }
-    setState({ url: null, message: null, busy: true });
-    try {
-      const r = await api.billingCheckout();
-      setState({ url: r?.url ?? null, message: r?.url ? null : 'Upgrades open soon.', busy: false });
-    } catch (e) {
-      const msg = e instanceof ApiError && e.code === 'BILLING_NOT_CONFIGURED'
-        ? e.message || 'Upgrades open soon.'
-        : e instanceof Error ? e.message : 'Upgrades open soon.';
-      setState({ url: null, message: msg, busy: false });
-    }
-  }, []);
-
-  return { ...state, start, dismiss: () => setState({ url: null, message: null, busy: false }) };
-}
+/*
+ * `useCheckout` IS GONE AND MUST NOT COME BACK.
+ *
+ * It called `POST /billing/checkout` and opened Stripe in a browser sheet. That
+ * is a purchase path inside the app, which breaks App Store rule 3.1.3(b) —
+ * the rule that lets this app honour a subscription bought on the website
+ * without In-App Purchase. Plans are changed on the website; the app honours
+ * whatever plan the account already has. See `apps/api/src/lib/storefront.ts`.
+ */
 
 /* ==================================================================== */
 /* Round 4 — YOUR KAI PROFILE (prototype "Account" board)               */

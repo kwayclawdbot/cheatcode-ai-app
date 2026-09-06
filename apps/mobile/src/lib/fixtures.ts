@@ -421,7 +421,21 @@ export const fixtureCreditsWarning: Credits = {
   warning_plain: 'You have 2 credits left today — ten more tomorrow morning.',
 };
 
-/** Spent. Kai's own words, and an offer rather than an error. */
+/**
+ * Spent. Kai's own words — an explanation rather than an error, and no longer
+ * an offer.
+ *
+ * IT USED TO END "Pro is $59 a month and opens the Trade section too". That
+ * sentence was a price and a pitch, delivered by Kai, inside the app. App Store
+ * rule 3.1.3(b) is what lets this app honour a subscription bought on the
+ * website without In-App Purchase, and its condition is that the app carries
+ * neither. The server's copy changed with it — this string is a mirror of
+ * `CREDIT_COPY.outOfCredits` in `apps/api/src/lib/kai/plans.ts` and the two are
+ * edited together.
+ *
+ * NOTHING TRUE WAS REMOVED. It still says what happened, how much it was, when
+ * it comes back, and that nothing is lost.
+ */
 export const fixtureCreditsOut: Credits = {
   ...fixtureCredits,
   used: 10,
@@ -432,7 +446,7 @@ export const fixtureCreditsOut: Credits = {
   blocked: true,
   blocked_reason: 'out_of_credits',
   blocked_plain:
-    'I have to stop there — that is your ten free credits for today. You get ten more tomorrow morning. If you would rather not wait, Pro is $59 a month and opens the Trade section too. Nothing you have asked me is lost; it is all still here.',
+    'I have to stop there — that is 10 credits, which is everything today\'s plan gives you. You get 10 more tomorrow morning. Nothing you have asked me is lost; it is all still here, and we can pick it straight back up.',
 };
 
 /**
@@ -482,37 +496,34 @@ export const fixtureCreditsTopup: Credits = {
   trade_panel: true,
 };
 
-/** The ladder, as `GET /credits` sends it. */
+/**
+ * THE PLAN, AS `GET /credits` SENDS IT TO THIS CLIENT — one row, no price.
+ *
+ * It used to be a three-rung ladder carrying $0 / $59 / $99 and a top-up pack
+ * at $9. The server no longer sends any of that to the app (see
+ * `apps/api/src/app/api/v1/credits/route.ts`), and a fixture that shows what
+ * the live app cannot show is worse than useless — it is a screen the owner
+ * signs off on and Apple then never sees, or worse, does.
+ *
+ * The prices are gone from here for the same reason they are gone from every
+ * screen: App Store rule 3.1.3(b) allows this app to honour a subscription
+ * bought on the website only if the app itself carries no price and no way to
+ * buy. Fixtures are rendered by `EXPO_PUBLIC_FIXTURES=1` inside the real app
+ * bundle, so a price here is a price in the app.
+ */
 export const fixtureCreditPlans: CreditPlan[] = [
   {
-    key: 'free', name: 'Free', price_usd: 0, daily_credits: 10, typical_runs_per_day: 6,
+    key: 'free', name: 'Free', price_usd: null, daily_credits: 10, typical_runs_per_day: 6,
     trade_panel: false,
-    blurb: 'Ten credits a day with Kai, and the community. The Trade section is on the paid plans.',
-  },
-  {
-    key: 'pro', name: 'Pro', price_usd: 59, daily_credits: 40, typical_runs_per_day: 25,
-    trade_panel: true,
-    blurb: 'About 25 questions a day with Kai, and the Trade section open.',
-  },
-  {
-    key: 'vip', name: 'VIP', price_usd: 99, daily_credits: 75, typical_runs_per_day: 50,
-    trade_panel: true,
-    blurb: 'About 50 questions a day, for when you do not want to count.',
+    blurb: 'About 6 questions a day with Kai, and the community. The Trade section is not part of this plan.',
   },
 ];
-
-export const fixtureTopupPack: TopupPack = {
-  key: 'topup_100',
-  name: 'Top-up',
-  credits: 100,
-  price_usd: 9,
-  blurb: 'Extra credits that stay with you — they do not reset with the day.',
-};
 
 export const fixtureCreditsPayload: CreditsPayload = {
   credits: fixtureCredits,
   plans: fixtureCreditPlans,
-  topup: fixtureTopupPack,
+  // Null, exactly as the server answers this client. There is nothing to buy.
+  topup: null,
 };
 
 export const fixtureMe: Me = {

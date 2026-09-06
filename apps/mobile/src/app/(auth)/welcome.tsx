@@ -8,11 +8,18 @@ import { T } from '../../ui/Text';
 import { KaiOrb } from '../../ui/KaiOrb';
 import { Button } from '../../ui/Button';
 import { alpha, color, gradientAngle, radius } from '../../ui/tokens';
+import { LegalFootnote } from '../../features/legal/LegalLinks';
 
 /**
  * Welcome — prototype board "Welcome".
  * Mark, name, one promise, one line from Kai, and the two ways in. Nothing
  * else: the first screen's job is to say what this is and let the person move.
+ *
+ * PLUS THE TWO LEGAL LINKS, AND THEY BELONG ON THIS SCREEN SPECIFICALLY.
+ * App Review guideline 5.1.1 wants the privacy policy reachable inside the app,
+ * and "reachable" has to include the person who has not signed in yet — this is
+ * the only screen they see before deciding to. They draw nothing until the URLs
+ * are configured; see `features/legal/urls.ts`.
  */
 export default function Welcome() {
   const router = useRouter();
@@ -56,6 +63,7 @@ export default function Welcome() {
       <View style={{ gap: 10 }}>
         <Button testID="cta-get-started" label="Create account" height={52} arrow onPress={() => router.push('/sign-up')} />
         <Button testID="cta-sign-in" label="Log in" kind="outline" height={46} onPress={() => router.push('/sign-in')} />
+        <LegalFootnote style={{ marginTop: 6 }} testID="welcome-legal" />
       </View>
     </Screen>
   );

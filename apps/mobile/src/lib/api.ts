@@ -46,10 +46,27 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * THE APP SAYS WHO IT IS, ON EVERY SINGLE REQUEST.
+ *
+ * The server uses this to decide whether the caller may be shown a price or
+ * reach a purchase page — see `apps/api/src/lib/storefront.ts`. The app is
+ * never allowed to be one, which is the condition App Store rule 3.1.3(b)
+ * attaches to honouring a subscription that was bought on the website.
+ *
+ * THE HEADER IS NOT THE PROTECTION. The server fails closed: a caller sees
+ * money only if it proves it is an allow-listed storefront, and this value is
+ * refused even if somebody adds it to the allow-list. So an old app build that
+ * predates this header, or a proxy that strips it, still sees no prices. This
+ * is the positive signal on top of that, and it is what makes the app's traffic
+ * identifiable in the logs.
+ */
+const CLIENT_HEADER = { 'X-CheatCode-Client': 'app' } as const;
+
 async function authHeaders(token?: string | null): Promise<Record<string, string>> {
-  if (!supabase) return {};
+  if (!supabase) return { ...CLIENT_HEADER };
   const t = token ?? (await getAccessToken());
-  return t ? { Authorization: `Bearer ${t}` } : {};
+  return t ? { ...CLIENT_HEADER, Authorization: `Bearer ${t}` } : { ...CLIENT_HEADER };
 }
 
 async function request<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
@@ -210,15 +227,29 @@ export const api = {
 
   resetPaper: () => request<unknown>('/paper/reset', { method: 'POST', body: '{}' }),
 
+  /**
+   * `DELETE /account/delete` — the person removes their own account.
+   *
+   * IT TAKES NO ARGUMENT AND CANNOT. The server derives whose account this is
+   * from the bearer token; there is no way, from here, to name a different one.
+   *
+   * WHAT COMES BACK IS THE SERVER'S OWN SENTENCE about what it just did, and
+   * the delete screen shows that rather than one of its own. The two must not
+   * be able to disagree — a screen claiming a deletion the server did not
+   * perform is the exact failure the whole feature exists to avoid. What is
+   * deleted, anonymised and retained is written out in
+   * `supabase/migrations/0032_account_deletion.sql`.
+   */
+  deleteAccount: () =>
+    request<{ deleted?: boolean; plain?: string; messages_anonymised?: number }>(
+      '/account/delete', { method: 'DELETE' },
+    ),
+
   notifications: async (group?: string): Promise<NotificationRow[]> =>
     adaptNotifications(await request<unknown>(`/notifications${group ? `?group=${group}` : ''}`)),
 
   markNotificationRead: (id: string) =>
     request<unknown>(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST', body: '{}' }),
-
-  /** Returns a Stripe Checkout url, or throws ApiError('BILLING_NOT_CONFIGURED'). */
-  billingCheckout: () =>
-    request<{ url?: string }>('/billing/checkout', { method: 'POST', body: '{}' }),
 
   /* ---------------- credits (migration 0030) ---------------- */
 
@@ -231,12 +262,20 @@ export const api = {
   credits: async (): Promise<CreditsPayload | null> =>
     adaptCreditsPayload(await request<unknown>('/credits')),
 
-  /** A one-off credit pack. Same honest shape as `billingCheckout`: no keys
-   *  configured throws ApiError('BILLING_NOT_CONFIGURED'), never a dead url. */
-  billingTopup: () =>
-    request<{ url?: string; credits?: number; price_usd?: number; plain?: string }>(
-      '/billing/topup', { method: 'POST', body: '{}' },
-    ),
+  /*
+   * THERE IS NO `billingCheckout` AND NO `billingTopup` HERE ANY MORE, AND
+   * NOTHING LIKE THEM MAY BE ADDED.
+   *
+   * Both used to open a Stripe Checkout page in a browser sheet — a purchase
+   * path, inside the app. That breaks App Store rule 3.1.3(b), which is the
+   * only reason this app is allowed to honour a subscription bought on the
+   * website without shipping In-App Purchase at all. The routes still exist on
+   * the server for the website to call; they answer NOT_FOUND to this client.
+   *
+   * If a plan needs to change, that happens on the website. The app's job is to
+   * honour whatever plan the person already has, and to say plainly what that
+   * plan does and does not cover.
+   */
 
   /* ---------------- Round 3 · V5 consolidation ---------------- */
 

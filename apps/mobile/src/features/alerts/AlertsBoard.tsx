@@ -16,6 +16,7 @@ import { useAlertActions, useAlertBuilder, useAlertsRound4 } from './useAlerts';
 import { ModeControl } from '../home/ModeSheet';
 import { secondTab } from '../nav/second-tab';
 import type { AlertTab, GoalMode } from '../../lib/types';
+import { NOT_ADVICE_ALERTS } from '../legal/disclaimers';
 
 /**
  * Alerts — prototype board "Alerts" + docs/10 §1–§5.
@@ -212,16 +213,30 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
 
       <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
         <AlertComposer onBuild={(t) => { void builder.build(t); }} pending={builder.pending} />
+        {/*
+          AN ALERT IS THE THING MOST EASILY MISTAKEN FOR A CALL, so the line
+          goes here rather than only in Account. Wording is a DRAFT pending the
+          owner's legal review; see `features/legal/disclaimers.ts`.
+        */}
+        <T size={9.5} lh={14} c={color.dim} align="center" style={{ marginTop: 8 }} testID="alerts-not-advice">
+          {NOT_ADVICE_ALERTS}
+        </T>
       </View>
 
+      {/* NOT ON YOUR PLAN — SAID, NOT SOLD.
+          The title used to read "That needs the premium plan" and the action
+          was "See what premium adds", which opened a price ladder. Inside the
+          iOS app that is a route to a purchase, and App Store rule 3.1.3(b)
+          forbids it in an app that honours a subscription bought on the web.
+          The server's own sentence still explains exactly what happened. */}
       <Sheet
         visible={!!actions.upgradeNeeded}
         onClose={actions.dismissUpgrade}
-        title="That needs the premium plan"
+        title="Not on your plan"
         testID="sheet-entitlement"
       >
         <T size={13} lh={20} c={color.muted}>{actions.upgradeNeeded}</T>
-        <Button label="See what premium adds" kind="volt" height={48} onPress={() => { actions.dismissUpgrade(); router.push('/account/subscription'); }} />
+        <Button label="Got it" kind="volt" height={48} onPress={actions.dismissUpgrade} />
       </Sheet>
     </Screen>
   );

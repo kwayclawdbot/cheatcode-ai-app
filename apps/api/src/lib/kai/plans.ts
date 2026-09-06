@@ -398,6 +398,22 @@ export function ceilingOutlook(plan: Plan, usdPerCredit: number) {
  * whole product runs on is that the honest thing gets said rather than a
  * silence. These are his words, in his register, and they live here next to the
  * numbers they describe so the two can never disagree.
+ *
+ * ===========================================================================
+ * NOT ONE OF THESE SENTENCES MAY CONTAIN A PRICE OR A WAY TO BUY ANYTHING.
+ * ===========================================================================
+ * Every string in this object is delivered inside the iOS app — in Kai's own
+ * replies, on the credits screen, and in the refusal a gated route sends back.
+ * App Store rule 3.1.3(b) is what allows this app to honour a subscription
+ * bought on the website without In-App Purchase, and its condition is that the
+ * app carries no price and no route to a purchase. A `$59` in any of these
+ * strings is an App Store rejection. See `lib/storefront.ts`.
+ *
+ * THE HONESTY IS NOT WHAT WAS REMOVED. Each sentence still says exactly what
+ * happened, that it is the plan rather than a fault, and what is unaffected.
+ * What went is the selling, not the explaining. `price_usd` below is still the
+ * truth and is still what Stripe and the admin board read; it simply never
+ * leaves the server towards the app.
  */
 export const CREDIT_COPY = {
   /** The unit, explained once, wherever the balance is shown. */
@@ -405,9 +421,7 @@ export const CREDIT_COPY = {
     'Most questions cost one credit. A complicated one where I go and look several things up costs two or three.',
 
   outOfCredits(plan: Plan, resetsOn: string): string {
-    return plan.key === 'free'
-      ? `I have to stop there — that is your ten free credits for today. You get ten more ${resetsOn}. If you would rather not wait, Pro is $${PLANS.pro.price_usd} a month and opens the Trade section too. Nothing you have asked me is lost; it is all still here.`
-      : `I have to stop there — that is your credits for this month used up. They reset ${resetsOn}. You can buy a top-up if you would rather not wait; the credits you buy stay with you and do not reset. Everything we have talked about is still here either way.`;
+    return `I have to stop there — that is ${plan.daily_credits} credits, which is everything today's plan gives you. You get ${plan.daily_credits} more ${resetsOn}. Nothing you have asked me is lost; it is all still here, and we can pick it straight back up.`;
   },
 
   dailyCapHit(cap: number, resetsOn: string): string {
@@ -425,9 +439,21 @@ export const CREDIT_COPY = {
       : `You have ${left} this month — they reset ${resetsOn}.`;
   },
 
-  /** The Trade section, refused honestly, with the reason and the way out. */
+  /**
+   * The Trade section, refused honestly.
+   *
+   * IT NAMES NO PRICE AND OFFERS NO WAY TO BUY, and that is not squeamishness:
+   * this sentence is delivered inside the iOS app, where a price or a purchase
+   * route breaks App Store rule 3.1.3(b) and gets the whole app rejected. See
+   * `lib/storefront.ts`.
+   *
+   * It stays completely honest about what happened, which is the harder and
+   * more important half. The person learns exactly what is closed, that it is
+   * their plan and not a fault, and precisely what they still have. What they
+   * do not get is a sales pitch.
+   */
   tradeLocked(): string {
-    return `The Trade section is on the paid plans. Your free account keeps Kai and the community — Pro is $${PLANS.pro.price_usd} a month and opens Trade, the chart markup and the order tickets.`;
+    return `Your plan does not include the Trade section, so I cannot open it — that is the plan, not a fault at my end. Everything else is untouched: me, on any question you want to ask, the research desk, your alerts and the community.`;
   },
 } as const;
 

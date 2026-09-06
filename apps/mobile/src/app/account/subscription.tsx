@@ -1,63 +1,67 @@
 /**
- * Plan.
+ * Plan — what this account is on, and what that covers.
  *
- * WHAT CHANGED AND WHY. This screen used to describe ONE paid tier by listing
- * `entitlement_flags` — which was right when there was one. There are three
- * rungs now (Free · Pro · VIP) and what actually separates them is how much of
- * Kai you get a day, which is not an entitlement flag and never will be. So the
- * ladder is read from `GET /credits`, the one place the server keeps prices,
- * allowances and the Trade gate together.
+ * ===========================================================================
+ * THIS SCREEN USED TO BE A STOREFRONT. IT IS NOT ONE ANY MORE.
+ * ===========================================================================
+ * It carried a ladder of the paid plans with `$59/mo` and `$99/mo` on the
+ * rungs, an "Upgrade" button that opened Stripe Checkout in a browser sheet,
+ * and a line about prices being shown before anything is charged.
  *
- * The capability list is KEPT, below the ladder, still read from the server's
- * flags rather than from a marketing list typed in here. It answers the second
- * question — "what else do I get" — after the ladder has answered the first.
+ * All of that is gone, and none of it may come back. People buy on the website
+ * and sign in here. App Store rule 3.1.3(b) is what allows an app to work that
+ * way without shipping In-App Purchase, and its condition is absolute: the app
+ * contains NO price and NO route to buy anything. Not a figure, not a button,
+ * not a link, not a "see what Pro adds". Apple rejects on exactly this.
  *
- * THE QUESTION COUNTS SAY "ABOUT" AND ALWAYS WILL. A credit is proportional to
- * the work a question causes, so a plan sized for twenty-five a day buys more
- * on a day of simple questions and fewer on a day of heavy chart lookups. A
- * hard number here would be a promise the system does not keep.
+ * THE SERVER DOES NOT TRUST THIS FILE. `GET /credits` sends this client one
+ * plan — the person's own — with `price_usd: null` and no top-up pack, and the
+ * two Stripe routes answer NOT_FOUND to it. So a future edit that puts a price
+ * back on this screen has nothing to put there. The rule and how the website
+ * opens the other branch are written out in `apps/api/src/lib/storefront.ts`.
  *
- * Design: ruled strips and hairlines. The plan rungs are not cards.
+ * ---------------------------------------------------------------------------
+ * WHAT IS LEFT IS THE PART THAT WAS ACTUALLY USEFUL, AND IT IS STILL HONEST.
+ * ---------------------------------------------------------------------------
+ * Which plan this is. How much of Kai it gives a day, and how much is left.
+ * What it opens and what it does not. A person who taps "Plan" wanting to know
+ * where they stand gets a complete answer. A person who wanted to be sold to
+ * gets nothing, which is the correct outcome.
+ *
+ * The locked list is kept and is deliberately not softened: knowing that the
+ * Trade section is not on your plan is a fact you need in order to understand
+ * the app. It is stated, with no invitation attached.
+ *
+ * Design: ruled strips and hairlines. Nothing here is a card.
  */
 import React from 'react';
 import { StyleSheet, View, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import { Screen } from '../../ui/Screen';
 import { NotConnected, ScreenLoading } from '../../ui/Loading';
 import { StackHeader } from '../../ui/StackHeader';
-import { T, Num, Eyebrow } from '../../ui/Text';
-import { Button } from '../../ui/Button';
-import { Sheet } from '../../ui/Sheet';
+import { T, Eyebrow } from '../../ui/Text';
 import { Check, Lock } from '../../ui/Icons';
 import { alpha, color, space } from '../../ui/tokens';
-import { useCheckout, useMe } from '../../features/account/useAccount';
+import { useMe } from '../../features/account/useAccount';
 import { useCredits } from '../../features/account/useCredits';
 import { Bay, Strip } from '../../features/account/credit-instruments';
-import type { CreditPlan } from '../../lib/types';
+import { LegalLinks } from '../../features/legal/LegalLinks';
+import { NOT_ADVICE_LONG } from '../../features/legal/disclaimers';
 
 export default function Subscription() {
   const router = useRouter();
   const { data, loading, error, isFixture, notAvailable } = useMe();
   const credits = useCredits();
-  const checkout = useCheckout();
 
   const balance = credits.data?.credits ?? data?.credits ?? null;
   const plans = credits.data?.plans ?? [];
   const currentKey = balance?.plan ?? (data?.subscription.tier === 'premium' ? 'vip' : 'free');
-  const paid = plans.filter((p) => p.price_usd > 0);
+  const current = plans.find((p) => p.key === currentKey) ?? null;
   const onFree = currentKey === 'free';
 
   const premiumOnly = (data?.entitlements ?? []).filter((f) => !f.included);
   const included = (data?.entitlements ?? []).filter((f) => f.included);
-
-  React.useEffect(() => {
-    if (checkout.url) {
-      void WebBrowser.openBrowserAsync(checkout.url);
-      checkout.dismiss();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkout.url]);
 
   if (!data && loading) {
     return (
@@ -79,7 +83,7 @@ export default function Subscription() {
         <View testID="plan-current">
           <Eyebrow c={onFree ? color.muted : color.gold}>Your plan</Eyebrow>
           <T size={26} weight="bold" c={color.text} style={{ marginTop: space.x8 }}>
-            {balance?.plan_name ?? (onFree ? 'Free' : 'Premium')}
+            {balance?.plan_name ?? current?.name ?? (onFree ? 'Free' : 'Premium')}
           </T>
           {/*
             THE BALANCE IS THE HEADLINE FACT ABOUT A PLAN, so it is said here
@@ -104,26 +108,14 @@ export default function Subscription() {
               {data?.subscription.plain ?? 'Everything Kai explains is yours.'}
             </T>
           )}
+          {current?.blurb ? (
+            <T size={13} lh={20} c={color.muted} style={{ marginTop: space.x10 }} testID="plan-blurb">
+              {current.blurb}
+            </T>
+          ) : null}
         </View>
 
-        {/* ── the ladder ─────────────────────────────────────────── */}
-        {paid.length ? (
-          <View style={{ marginTop: space.x24 }}>
-            <Eyebrow c={color.dim}>{onFree ? 'What you can move up to' : 'The plans'}</Eyebrow>
-            <Strip style={{ marginTop: space.x10 }} testID="plan-ladder">
-              {paid.map((p, i) => (
-                <PlanRung key={p.key} plan={p} first={i === 0} current={p.key === currentKey} />
-              ))}
-            </Strip>
-          </View>
-        ) : null}
-
-        {/* ── the capability list, unchanged in spirit ───────────── */}
-        {/*
-          THE CAPABILITY LISTS ARE RULED, NOT BOXED. They used to be two
-          rounded panels, which put three different container shapes on one
-          screen — a ruled ladder, a boxed list, a boxed list. One register.
-        */}
+        {/* ── what it covers ─────────────────────────────────────── */}
         {included.length ? (
           <View style={{ marginTop: space.x24 }}>
             <Eyebrow c={color.green}>What your plan allows</Eyebrow>
@@ -141,9 +133,15 @@ export default function Subscription() {
           </View>
         ) : null}
 
+        {/*
+          WHAT IS NOT ON IT. Stated, never sold. The eyebrow used to read "What
+          a paid plan adds", which is a sales line — it points at a purchase.
+          "Not on your plan" is the same fact with the pitch removed, and it is
+          what the person actually needs to know when a screen refuses them.
+        */}
         {premiumOnly.length ? (
           <View style={{ marginTop: space.x20 }}>
-            <Eyebrow c={color.gold}>What a paid plan adds</Eyebrow>
+            <Eyebrow c={color.gold}>{onFree ? 'Not on your plan' : 'Also open to you'}</Eyebrow>
             <Strip style={{ marginTop: space.x10 }} testID="plan-premium-only">
               {premiumOnly.map((f, i) => (
                 <Bay key={f.key} first={i === 0} style={{ paddingVertical: space.x11 }}>
@@ -158,35 +156,27 @@ export default function Subscription() {
           </View>
         ) : null}
 
-        {onFree ? (
-          <>
-            <Button
-              testID="cta-upgrade"
-              label="Upgrade"
-              kind="volt"
-              height={52}
-              loading={checkout.busy}
-              onPress={() => { void checkout.start(); }}
-              style={{ marginTop: space.x22 }}
-            />
-            <T size={11} c={color.dim} align="center" lh={17} style={{ marginTop: space.x8 }}>
-              Prices are shown before anything is charged. You can cancel from
-              here at any time.
-            </T>
-          </>
-        ) : null}
+        {/*
+          NO UPGRADE BUTTON, AND NO SENTENCE POINTING AT ONE.
+
+          This is the exact spot where the "Upgrade" action used to sit. It is
+          left empty on purpose, and the reason is written here so that nobody
+          fills it back in by accident: a call to action leading to a purchase
+          — a button, a link, or a line of copy telling the person where to buy
+          — is what App Store rule 3.1.3(b) forbids. Whether a plan changes is
+          settled on the website, and this app does not discuss it.
+        */}
 
         <View style={{
           marginTop: space.x22, paddingTop: space.x12,
           borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: alpha.ivory10,
         }}>
-          <T size={11} lh={17} c={color.dim}>
-            Cheat Code AI is education and preparation. Kai never places a trade
-            and never promises an outcome.
-          </T>
+          <T size={11} lh={17} c={color.dim}>{NOT_ADVICE_LONG}</T>
         </View>
 
-        {notAvailable ? <NotConnected what="Plans and billing" /> : error ? (
+        <LegalLinks style={{ marginTop: space.x18 }} testID="plan-legal" />
+
+        {notAvailable ? <NotConnected what="Your plan" /> : error ? (
           <T size={11} c={color.muted} align="center" style={{ marginTop: space.x10 }}>{error}</T>
         ) : null}
         {isFixture ? (
@@ -195,49 +185,6 @@ export default function Subscription() {
           </T>
         ) : null}
       </ScrollView>
-
-      <Sheet
-        visible={!!checkout.message}
-        onClose={checkout.dismiss}
-        title="Upgrades open soon"
-        testID="sheet-billing"
-      >
-        {/* The server's message is often the same sentence as the title —
-            saying it twice reads like a stutter, so only add what is new. */}
-        {checkout.message && checkout.message.replace(/\.$/, '') !== 'Upgrades open soon' ? (
-          <T size={13} lh={20} c={color.muted}>{checkout.message}</T>
-        ) : null}
-        <T size={13} lh={20} c={color.muted}>
-          Everything you can do today keeps working. Nothing has been charged.
-        </T>
-        <Button label="Got it" kind="volt" height={48} onPress={checkout.dismiss} />
-      </Sheet>
     </Screen>
-  );
-}
-
-/**
- * One rung. Credits a day is the number that is actually enforced; the question
- * count beside it is what that is sized for, and it says "about" because it is.
- */
-function PlanRung({ plan, first, current }: { plan: CreditPlan; first: boolean; current: boolean }) {
-  return (
-    <Bay first={first} testID={`plan-rung-${plan.key}`}>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x10 }}>
-        <T size={16} weight="bold" c={current ? color.gold : color.text}>{plan.name}</T>
-        {current ? <T size={11} weight="semibold" c={color.gold}>· yours</T> : null}
-        <View style={{ flex: 1 }} />
-        <Num size={17} weight="bold" c={color.text}>${plan.price_usd}</Num>
-        <T size={11} c={color.dim}>/mo</T>
-      </View>
-      {/* The credits a day is the number that is actually enforced, so it is
-          the one given weight. The blurb below already hedges the question
-          count — saying "about 25 questions" twice reads like a stutter. */}
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x8, marginTop: space.x8 }}>
-        <Num size={15} weight="bold" c={color.volt}>{plan.daily_credits}</Num>
-        <T size={13} c={color.muted}>credits a day</T>
-      </View>
-      <T size={13} lh={19} c={color.muted} style={{ marginTop: space.x6 }}>{plan.blurb}</T>
-    </Bay>
   );
 }
