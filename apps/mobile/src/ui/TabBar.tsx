@@ -5,7 +5,7 @@ import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { alpha, chrome, color } from './tokens';
 import { T } from './Text';
 import { HomeGlyph, Bell, Users, TradeGlyph, AccountGlyph, DeskGlyph, Lock } from './Icons';
-import { secondTab } from '../features/nav/second-tab';
+import { DEFAULT_MODE, secondTab } from '../features/nav/second-tab';
 import type { GoalMode } from '../lib/types';
 
 type Item = { name: string; label: string; Icon: React.ComponentType<{ size?: number; color?: string }> };
@@ -29,7 +29,7 @@ function items(mode: GoalMode): Item[] {
   ];
 }
 
-export function TabBar({ state, navigation, badges, locked, mode = 'day_trade' }: BottomTabBarProps & {
+export function TabBar({ state, navigation, badges, locked, mode = DEFAULT_MODE }: BottomTabBarProps & {
   badges?: Record<string, boolean>;
   /**
    * Tabs this plan does not include. FIVE STAYS FIVE — a locked tab is drawn,

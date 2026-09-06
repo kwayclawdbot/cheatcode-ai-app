@@ -47,7 +47,7 @@ export default function KaiPlan() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const mode = draft.goal_mode ?? 'day_trade';
+  const mode = draft.goal_mode ?? 'swing';
   const cap = capFor(draft.risk_answer, draft.starting_balance);
   const focusShort = focusList(draft.focus);
 

@@ -6,7 +6,7 @@ import { api } from '../../lib/api';
 import { fixtureAlertsSimple } from '../../lib/fixtures';
 import { useMe } from '../../features/account/useAccount';
 import { useSession } from '../../lib/session';
-import { secondTab } from '../../features/nav/second-tab';
+import { DEFAULT_MODE, secondTab } from '../../features/nav/second-tab';
 import type { GoalMode } from '../../lib/types';
 
 /**
@@ -19,7 +19,7 @@ import type { GoalMode } from '../../lib/types';
  */
 export default function TabsLayout() {
   const { profile } = useSession();
-  const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? 'day_trade';
+  const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? DEFAULT_MODE;
   const second = secondTab(mode);
 
   /**
@@ -57,7 +57,7 @@ export default function TabsLayout() {
         <TabBar
           {...props}
           mode={mode}
-          badges={{ alerts: !second.desk && needsAttention }}
+          badges={{ alerts: !second.desk && !second.comingSoon && needsAttention }}
           locked={{ trade: tradeLocked }}
         />
       )}

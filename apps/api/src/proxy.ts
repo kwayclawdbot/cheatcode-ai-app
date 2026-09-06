@@ -31,7 +31,18 @@ const LOCAL_ORIGIN_PATTERNS = [
 ];
 
 const CORS_HEADERS: Record<string, string> = {
-  'Access-Control-Allow-Headers': 'authorization, content-type',
+  // `x-cheatcode-client` is the storefront lane's client identifier (see
+  // `lib/storefront.ts`). It was added to every request the app makes without
+  // being added here, and a request header that is not on this list is not a
+  // 403 — the browser refuses to send the request at all, so on Expo web EVERY
+  // /api/v1 call failed with a bare "Load failed". Native is unaffected, which
+  // is exactly why it could sit here unnoticed.
+  //
+  // Written as a literal rather than imported from `lib/storefront.ts`: CORS
+  // must keep working whether or not that module is present, and a build-time
+  // import would tie this file's fate to a lane that is still in flight. If
+  // the name ever changes, both places change together.
+  'Access-Control-Allow-Headers': 'authorization, content-type, x-cheatcode-client',
   'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
   'Access-Control-Max-Age': '86400',
 };

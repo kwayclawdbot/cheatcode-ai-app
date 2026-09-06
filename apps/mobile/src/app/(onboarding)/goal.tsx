@@ -9,6 +9,8 @@ import { ProgressBars } from '../../ui/Progress';
 import { Bolt, Calendar, Bars, Check } from '../../ui/Icons';
 import { alpha, color, radius } from '../../ui/tokens';
 import { useOnboardingDraft } from '../../lib/session';
+import { modeBadge, modeIsLive } from '../../features/nav/second-tab';
+import { ComingSoonPill } from '../../features/home/ModeSheet';
 import type { GoalMode } from '../../lib/types';
 
 /**
@@ -16,9 +18,17 @@ import type { GoalMode } from '../../lib/types';
  * Invest is a real mode now: it sets mode=invest, and the second tab becomes
  * the research desk rather than today's alerts. What is still a later release
  * is Kai placing the trades — Home says so, and it never dead-ends.
+ *
+ * DAY TRADE IS MARKED, AND IS NO LONGER THE DEFAULT. The same-day picker is
+ * not publishing, so this screen used to put a brand-new account into the one
+ * mode with nothing in it before they had touched anything. It is still
+ * offered and still selectable — somebody who wants it should be allowed to
+ * say so, and the tab then tells them where it stands — but the pre-selection
+ * moved to Swing, which is live. Both facts come from `nav/second-tab.ts`, so
+ * this screen cannot disagree with the tab about what is running.
  */
 const GOALS: { key: GoalMode; title: string; sub: string; Icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
-  { key: 'day_trade', title: 'Trade Today', sub: 'Enter and exit opportunities in one day.', Icon: Bolt },
+  { key: 'day_trade', title: 'Trade Today', sub: 'Enter and exit in one day. Kai is not calling these yet.', Icon: Bolt },
   { key: 'swing', title: 'Trade Over Time', sub: 'Hold opportunities for days or weeks.', Icon: Calendar },
   { key: 'invest', title: 'Build My Portfolio', sub: 'Grow long-term wealth with less involvement.', Icon: Bars },
 ];
@@ -26,7 +36,9 @@ const GOALS: { key: GoalMode; title: string; sub: string; Icon: React.ComponentT
 export default function Goal() {
   const router = useRouter();
   const { draft, set } = useOnboardingDraft();
-  const selected = draft.goal_mode ?? 'day_trade';
+  // Was `day_trade`. A person who taps Continue without choosing lands in the
+  // mode that is actually running, not in the one that says "not live yet".
+  const selected = draft.goal_mode ?? 'swing';
 
   return (
     <Screen variant="corner" layout="stack" testID="screen-goal">
@@ -51,7 +63,12 @@ export default function Goal() {
                   <Icon size={20} color={on ? color.volt : color.muted} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <T size={17} weight="bold">{title}</T>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <T size={17} weight="bold" c={modeIsLive(key) ? color.text : color.muted}>{title}</T>
+                    {modeBadge(key) ? (
+                      <ComingSoonPill label={modeBadge(key) as string} testID={`goal-soon-${key}`} />
+                    ) : null}
+                  </View>
                   <T size={13} c={color.muted} style={{ marginTop: 2 }}>{sub}</T>
                 </View>
                 {on ? <Check size={18} color={color.volt} strokeWidth={2.6} /> : null}

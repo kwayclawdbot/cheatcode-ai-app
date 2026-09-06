@@ -7,6 +7,7 @@ import { Bolt, ChevronDown, Check } from '../../ui/Icons';
 import { alpha, color, gradient, gradientAngle, radius } from '../../ui/tokens';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/session';
+import { modeBadge, modeIsLive } from '../nav/second-tab';
 import type { GoalMode } from '../../lib/types';
 
 export const MODE_LABEL: Record<GoalMode, string> = {
@@ -24,7 +25,11 @@ export const MODE_LABEL: Record<GoalMode, string> = {
  * alerts and becomes the desk.
  */
 const MODE_EFFECT: Record<GoalMode, string> = {
-  day_trade: 'Same-day ideas · 5-minute charts · #market-open · risk measured per trade',
+  // Day Trade is archived as coming soon (see nav/second-tab.ts). The line has
+  // to describe what picking it ACTUALLY does today, which is not "same-day
+  // ideas" — there are none — but a tab that says so. When DAY_TRADE_LIVE
+  // flips, `MODE_EFFECT_DAY_TRADE_LIVE` below is what it goes back to saying.
+  day_trade: 'Not live yet · the tab says so and nothing is deleted · Swing is running today',
   swing: 'Multi-day ideas · daily charts · #swing-ideas · risk measured per position',
   // Invest also changes what the second tab IS — it becomes the research desk
   // instead of today's alerts. That is the one effect a person can see from
@@ -32,7 +37,32 @@ const MODE_EFFECT: Record<GoalMode, string> = {
   invest: 'Long-horizon ideas · weekly charts · the research desk on your second tab · risk measured per portfolio',
 };
 
+/** What Day Trade says again the moment the same-day picker is publishing. */
+export const MODE_EFFECT_DAY_TRADE_LIVE =
+  'Same-day ideas · 5-minute charts · #market-open · risk measured per trade';
+
 const MODES: GoalMode[] = ['day_trade', 'swing', 'invest'];
+
+/**
+ * The marker on a mode that is not live. A pill, hairline only — it is a label
+ * on a choice, not a call to action, so it never carries volt.
+ *
+ * Exported because onboarding draws the same marker on the same modes, and two
+ * copies of it is two things to keep in step.
+ */
+export function ComingSoonPill({ label, testID }: { label: string; testID?: string }) {
+  return (
+    <View
+      testID={testID}
+      style={{
+        paddingHorizontal: 7, paddingVertical: 2,
+        borderRadius: radius.pill, borderWidth: 0.5, borderColor: alpha.ivory14,
+      }}
+    >
+      <T size={9} weight="bold" c={color.dim} ls={0.6}>{label}</T>
+    </View>
+  );
+}
 
 /**
  * The global mode chip. Tapping it opens the mode sheet.
@@ -128,7 +158,8 @@ export function ModeSheet({
               })}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <T size={15} weight="bold" c={active ? color.volt : color.text}>{MODE_LABEL[m]}</T>
+                <T size={15} weight="bold" c={active ? color.volt : modeIsLive(m) ? color.text : color.muted}>{MODE_LABEL[m]}</T>
+                {modeBadge(m) ? <ComingSoonPill label={modeBadge(m) as string} testID={`mode-soon-${m}`} /> : null}
                 {active ? <Check size={14} color={color.volt} strokeWidth={2.6} /> : null}
               </View>
               <T size={12} lh={17} c={color.muted}>{MODE_EFFECT[m]}</T>
@@ -138,6 +169,13 @@ export function ModeSheet({
       </View>
 
       {error ? <T size={11} c={color.red}>{error}</T> : null}
+      {!modeIsLive('day_trade') ? (
+        <T size={11} lh={16} c={color.dim} testID="mode-sheet-day-trade-note">
+          Day Trade is still here and so is everything it has ever sent — the same-day picker is
+          being reworked, so Kai is not calling intraday trades while that is in hand. Picking it
+          shows you that, and nothing else changes.
+        </T>
+      ) : null}
       {mode === 'invest' ? (
         <T size={11} lh={16} c={color.dim}>
           Your second tab becomes the research desk — every name the desk argued for, and why.

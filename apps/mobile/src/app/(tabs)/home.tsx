@@ -16,6 +16,7 @@ import {
   AlsoWatching, ConversationsDrawer, Wakeup, useConversations, useHomeV5, useWakeup,
 } from '../../features/home';
 import type { HomeFixture, WakeDirection } from '../../features/home';
+import { DEFAULT_MODE } from '../../features/nav/second-tab';
 import { useSession } from '../../lib/session';
 import { useKaiWall } from '../../lib/useKai';
 import { env } from '../../lib/env';
@@ -78,7 +79,7 @@ export default function Home() {
   const { profile, session } = useSession();
   const router = useRouter();
   /** Mode is set in onboarding and changed on the Account board (Kai profile). */
-  const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? 'day_trade';
+  const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? DEFAULT_MODE;
 
   /** Fixtures preview only — lets the owner and Playwright see the quiet day. */
   const params = useLocalSearchParams<{ fixture?: string; credits?: string }>();
