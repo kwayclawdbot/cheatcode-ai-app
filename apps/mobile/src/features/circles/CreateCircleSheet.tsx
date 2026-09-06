@@ -1,9 +1,14 @@
 /**
- * "Create a circle" — gated behind the `circles_create` entitlement.
+ * "Open a circle" — STAFF ONLY.
  *
- * The sheet is REAL: it takes a symbol and a life span and opens the room. On a
- * plan without the entitlement it says what the feature is and what it needs,
- * and the primary action is disabled — never a silently dead button.
+ * Owner instruction 2026-09-05: "Circles should be admin created based". So
+ * this is no longer a thing a premium member buys; it is a thing the team does,
+ * checked on the server against `staff_role()` at `admin` and above.
+ *
+ * The sheet is REAL: it takes a symbol and a life span and opens the room. To a
+ * member it explains, in the SERVER's own sentence, who opens circles and what
+ * they can do instead — never a silently dead button, and never the app's own
+ * paraphrase of a refusal the server is the authority on.
  */
 import React, { useState } from 'react';
 import { TextInput, View } from 'react-native';
@@ -16,13 +21,15 @@ import { Segmented } from '../../ui/Segmented';
 import { TTL_OPTIONS, type CircleTtl } from './types';
 
 export function CreateCircleSheet({
-  visible, onClose, canCreate, onCreate, defaultSymbol = '',
+  visible, onClose, canCreate, onCreate, defaultSymbol = '', hint = null,
 }: {
   visible: boolean;
   onClose: () => void;
   canCreate: boolean;
   onCreate: (symbol: string, ttl: CircleTtl) => Promise<void>;
   defaultSymbol?: string;
+  /** `create_hint` from GET /circles — the server's own words about why not. */
+  hint?: string | null;
 }) {
   const [symbol, setSymbol] = useState(defaultSymbol);
   const [ttl, setTtl] = useState<CircleTtl>('3d');
@@ -84,8 +91,8 @@ export function CreateCircleSheet({
 
       {!canCreate ? (
         <T size={12} lh={18} c={color.gold} testID="create-circle-gated">
-          Opening your own circle is part of the premium plan. You can join every circle on the club
-          today — this only controls who can start one.
+          {hint ??
+            'Circles are opened by the Cheat Code team, not by members. You can join and post in every circle that is open, and in all three club rooms.'}
         </T>
       ) : null}
       {error ? <T size={12} c={color.red}>{error}</T> : null}

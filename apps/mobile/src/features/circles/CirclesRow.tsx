@@ -1,8 +1,14 @@
 /**
  * The circles row (Community.html) — a ring per circle, the ring being its
- * clock. "+ Create" is present but gated: without the `circles_create`
- * entitlement it says so plainly rather than disappearing, because a feature
- * you cannot see is not a feature you can decide to buy.
+ * clock.
+ *
+ * The "+" is STAFF ONLY (owner instruction 2026-09-05), and to a member it is
+ * simply not drawn. That is the opposite of the old behaviour, and deliberately
+ * so: when creating a circle was a premium feature, showing the locked "+" was
+ * how somebody learned there was something to buy. Now there is nothing to buy
+ * — no tier opens a circle — so a permanently locked button would only be a
+ * dead end. Anyone who reaches the sheet another way still gets the server's
+ * own sentence about who opens circles.
  */
 import React from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
@@ -95,26 +101,28 @@ export function CirclesRow({
         </Pressable>
       ))}
 
-      <Pressable
-        testID="circle-create"
-        accessibilityRole="button"
-        accessibilityLabel={canCreate ? 'Create a circle' : 'Creating a circle is a premium feature'}
-        onPress={onCreate}
-        style={{ width: 66, alignItems: 'center', gap: 6 }}
-      >
-        <View
-          style={{
-            width: 64, height: 64, borderRadius: 32, borderWidth: 1.5, borderStyle: 'dashed',
-            borderColor: alpha.ivory20, alignItems: 'center', justifyContent: 'center',
-          }}
+      {canCreate ? (
+        <Pressable
+          testID="circle-create"
+          accessibilityRole="button"
+          accessibilityLabel="Open a circle"
+          onPress={onCreate}
+          style={{ width: 66, alignItems: 'center', gap: 6 }}
         >
-          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={color.dim} strokeWidth={2}>
-            <Path d="M12 5v14M5 12h14" />
-          </Svg>
-        </View>
-        <T size={10.5} align="center" c={color.dim}>Create</T>
-        {!canCreate ? <T size={9} align="center" c={color.dim} style={{ marginTop: -4 }}>Premium</T> : null}
-      </Pressable>
+          <View
+            style={{
+              width: 64, height: 64, borderRadius: 32, borderWidth: 1.5, borderStyle: 'dashed',
+              borderColor: alpha.volt40, alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={color.volt} strokeWidth={2}>
+              <Path d="M12 5v14M5 12h14" />
+            </Svg>
+          </View>
+          <T size={10.5} align="center" c={color.volt}>Open</T>
+          <T size={9} align="center" c={color.dim} style={{ marginTop: -4 }}>staff</T>
+        </Pressable>
+      ) : null}
     </ScrollView>
   );
 }

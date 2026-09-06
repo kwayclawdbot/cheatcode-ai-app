@@ -1,13 +1,47 @@
 /**
- * Room live updates (lane MOBILE-B).
+ * Room live updates.
  *
- * Supabase Realtime `postgres_changes` on `messages` filtered by room_id is the
- * fast path. It only works if the publication includes `messages` AND the
- * member's RLS select policy lets them read the row — neither is guaranteed by
- * the v1 migrations, so this module never assumes it worked: if the channel
- * does not reach SUBSCRIBED inside SUBSCRIBE_TIMEOUT_MS, or it errors, closes,
- * or the client is missing entirely, it silently degrades to a 5s poll and
- * reports `mode:'poll'` so the room header can say so honestly.
+ * =====================================================================
+ * WHAT THIS RUNS ON TODAY: A FIVE-SECOND POLL. AND IT SAYS SO.
+ * =====================================================================
+ * Supabase Realtime `postgres_changes` on `messages` was written here as the
+ * fast path, degrading to a poll if the channel never reached SUBSCRIBED.
+ *
+ * MEASURED 2026-09-06, SIGNED IN AGAINST HOSTED: the channel reaches
+ * SUBSCRIBED and NOTHING EVER ARRIVES. `messages` is not in the
+ * `supabase_realtime` publication on either database — only `live_frames` is —
+ * and Supabase accepts a subscription to an unpublished table without
+ * complaint. So SUBSCRIBED means "the socket is open", not "changes will
+ * arrive", and the old code treated the two as the same thing. The room said
+ * "Live", stopped polling, and then never updated again. That is worse than no
+ * realtime at all: a poll that works beats a socket that lies.
+ *
+ * So the realtime attempt is OFF, by the constant below, and the room polls.
+ * The header says "Refreshing every 5s", which is exactly what is happening.
+ *
+ * THE POLL IS CHEAP BY CONSTRUCTION. The caller fetches with `after_seq`, a
+ * cursor, so a quiet room costs one request that returns an empty array. For a
+ * club of this size that is the right amount of machinery, and it behaves the
+ * same in fixtures, on a laptop and on hosted.
+ *
+ * TO TURN REALTIME ON, both of these have to be true, and both are checkable:
+ *
+ *   1. `messages` is in the publication:
+ *        alter publication supabase_realtime add table messages;
+ *      (verify: select * from pg_publication_tables where pubname =
+ *       'supabase_realtime';)
+ *
+ *   2. the subscriber can SELECT the rows. Realtime applies RLS as the
+ *      subscribing user, and migration 0031 deliberately REVOKED `select on
+ *      messages` from `authenticated` — because that grant was also handing
+ *      every member the body of every message a moderator had removed. A
+ *      publication alone would therefore deliver nothing. Re-granting the whole
+ *      table is not the answer; a purpose-built policy or a published,
+ *      body-nulled surface is.
+ *
+ * Until both are done, this constant stays false. It is a boolean rather than a
+ * deleted branch so the flip is one line and the code that would run is still
+ * in front of whoever does it.
  *
  * No new dependency: @supabase/supabase-js ships the Realtime client.
  */
@@ -18,6 +52,9 @@ export type RealtimeMode = 'realtime' | 'poll' | 'off';
 
 export const POLL_INTERVAL_MS = 5_000;
 const SUBSCRIBE_TIMEOUT_MS = 4_000;
+
+/** See the header. Both conditions above must hold before this becomes true. */
+export const REALTIME_ENABLED = false;
 
 export type RoomChannel = {
   /** What is actually keeping the room fresh right now. */
@@ -64,6 +101,22 @@ export function subscribeRoom(
   if (offlineMode || !supabase) {
     setMode('off');
     return { mode: () => mode, unsubscribe: () => { disposed = true; } };
+  }
+
+  // The honest path today. Straight to the poll, without opening a socket that
+  // would report SUBSCRIBED and then deliver nothing.
+  if (!REALTIME_ENABLED) {
+    // No immediate onChange: the caller has just loaded the room itself, and a
+    // second fetch in the same breath is a request that can only return what
+    // the screen already has.
+    startPolling();
+    return {
+      mode: () => mode,
+      unsubscribe: () => {
+        disposed = true;
+        if (timer) clearInterval(timer);
+      },
+    };
   }
 
   try {

@@ -120,7 +120,7 @@ export function SetupObjectCard({
 }
 
 export function ClubMessage({
-  message, onTicker, onReact, onOpenSetup, reactionsLocal,
+  message, onTicker, onReact, onOpenSetup, reactionsLocal, onActions,
 }: {
   message: RoomMessage;
   onTicker: (symbol: string) => void;
@@ -128,13 +128,30 @@ export function ClubMessage({
   onOpenSetup?: (symbol: string) => void;
   /** true when reactions are held on this device only */
   reactionsLocal?: boolean;
+  /**
+   * Press and hold: report it, or — if you are staff — remove it, mute the
+   * person, or close the reports and leave it up. Kai's own posts have no
+   * actions; there is nobody to report and nobody to mute.
+   */
+  onActions?: () => void;
 }) {
   const kai = message.author.is_kai;
   const idea = message.structured_idea;
   const refSymbol = typeof message.refs?.symbol === 'string' ? (message.refs.symbol as string) : null;
 
   return (
-    <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }} testID={`club-message-${message.id}`}>
+    // NOT `accessibilityRole="button"`. A message already contains buttons — the
+    // $TICKER chips and the reaction pills — and on web react-native renders a
+    // role of "button" as a real <button>, which cannot legally contain another
+    // one. The label and the hint still announce what press-and-hold does.
+    <Pressable
+      onLongPress={kai ? undefined : onActions}
+      delayLongPress={350}
+      accessibilityLabel={kai || !onActions ? undefined : `Post by ${message.author.display_name}`}
+      accessibilityHint={kai || !onActions ? undefined : 'Press and hold to report it, or to moderate it.'}
+      style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}
+      testID={`club-message-${message.id}`}
+    >
       {kai ? <KaiOrb size={32} /> : (
         <View
           style={{
@@ -164,7 +181,17 @@ export function ClubMessage({
           <T size={10} c={color.dim}>{message.time_label}</T>
         </View>
 
-        {message.body ? (
+        {message.deleted ? (
+          // The row keeps its place and loses its words (01 §14). Saying so is
+          // the point: a gap with no explanation reads as a bug, and a silent
+          // disappearance reads as nothing happening at all.
+          <View
+            testID={`club-message-removed-${message.id}`}
+            style={{ marginTop: 4, borderLeftWidth: 2, borderLeftColor: alpha.ivory12, paddingLeft: 10 }}
+          >
+            <T size={12.5} lh={18} c={color.dim}>Removed by a moderator.</T>
+          </View>
+        ) : message.body ? (
           <View style={{ marginTop: 2 }}>
             <ClubBody text={message.body} onTicker={onTicker} />
           </View>
@@ -192,7 +219,7 @@ export function ClubMessage({
           </View>
         ) : null}
 
-        {!kai ? (
+        {!kai && !message.deleted ? (
           <>
             <Reactions
               reactions={message.reactions.map((r) => ({
@@ -211,6 +238,6 @@ export function ClubMessage({
           </>
         ) : null}
       </View>
-    </View>
+    </Pressable>
   );
 }

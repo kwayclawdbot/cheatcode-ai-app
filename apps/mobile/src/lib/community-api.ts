@@ -155,7 +155,16 @@ function mapRoom(raw: any): Room {
     mode: raw.mode ?? null,
     type: raw.type === 'setup' || raw.type === 'announcement' ? raw.type : 'core',
     member_count: asNum(raw.member_count ?? raw.members),
-    discussing_count: asNum(raw.discussing_count ?? raw.active_count ?? raw.message_count),
+    /**
+     * HOW MANY PEOPLE ARE IN THIS ROOM RIGHT NOW — and null when nobody knows.
+     *
+     * This used to fall back to `message_count`, so the club header read
+     * "9 online" off nine posts written over two days. Nobody was online. No
+     * endpoint on this stack reports presence, so the honest answer is null and
+     * the header then says how many MEMBERS there are, which is a number the
+     * server really sent.
+     */
+    discussing_count: asNum(raw.discussing_count ?? raw.active_count),
     setup_id: raw.setup_id ?? raw.setup?.id ?? null,
     unread: asNum(raw.unread) ?? 0,
     last_read_seq: asNum(raw.last_read_seq) ?? 0,
@@ -500,9 +509,17 @@ export const communityApi = {
     }
   },
 
+  /**
+   * @param onNotice  called with the API's own `plain` sentence for this post,
+   *   when it says something other than "Posted." — today that is the advice
+   *   nudge (the server flags a post that reads as telling somebody what to do
+   *   with their money and puts it in front of a moderator). The screen shows
+   *   the server's words; it never writes its own version of them.
+   */
   async postMessage(
     roomId: string,
     payload: { kind?: 'text' | 'chart' | 'position_update'; body: string; refs?: Record<string, unknown>; structured_idea?: StructuredIdea; position_disclosure?: PositionDisclosure },
+    onNotice?: (plain: string) => void,
   ): Promise<RoomMessage> {
     if (live()) {
       const symbol = (payload.refs?.symbol as string | undefined) ?? payload.position_disclosure?.symbol ?? null;
@@ -522,6 +539,8 @@ export const communityApi = {
             : undefined,
         }),
       });
+      const plain = typeof r?.plain === 'string' ? r.plain : '';
+      if (plain && !/^posted[.!]?$/i.test(plain.trim())) onNotice?.(plain);
       return mapMessage(r.message ?? r);
     }
     // Fixtures: echo locally so the composer has an honest result to show.
@@ -889,26 +908,37 @@ function mapCircleMessage(raw: any): CircleMessage {
 export const circlesApi = {
   available: live,
 
-  /** Whether this member may open a circle — entitlement `circles_create`. */
+  /**
+   * Whether this account may OPEN a circle.
+   *
+   * Owner instruction 2026-09-05: circles are created by the team, not bought
+   * by a member. So this is a STAFF question (`admin` and above), not an
+   * entitlement one, and the real answer is the API's — `/circles.can_create`,
+   * decided against `staff_role()` on the server for that request.
+   *
+   * IT CONTROLS NOTHING. It decides whether the "+" is drawn. The POST asks the
+   * database again on its own and refuses in words whatever this said.
+   */
   async canCreate(): Promise<boolean> {
     if (!live()) return true;
     try {
       const r = await request<any>('/circles');
       if (typeof r?.can_create === 'boolean') return r.can_create;
     } catch {
-      /* fall through to the entitlement flag */
+      /* fall through to /me */
     }
+    // A stack that predates the staff gate. `/me.staff` is re-derived from
+    // `staff_members` on every call, so it is the same fact one hop later.
     try {
       const me = await request<any>('/me');
-      const flags = me?.entitlements ?? me?.entitlement_flags ?? [];
-      const flag = (Array.isArray(flags) ? flags : []).find((f: any) => String(f?.key) === 'circles_create');
-      return Boolean(flag?.included);
+      const role = me?.staff?.role;
+      return me?.staff?.is_staff === true && (role === 'admin' || role === 'owner');
     } catch {
       return false;
     }
   },
 
-  async list(): Promise<{ circles: Circle[]; can_create: boolean | null; source: Source }> {
+  async list(): Promise<{ circles: Circle[]; can_create: boolean | null; create_hint: string | null; source: Source }> {
     if (live()) {
       try {
         const r = await request<any>('/circles');
@@ -916,6 +946,9 @@ export const circlesApi = {
         return {
           circles: list.map((c: any) => mapCircle(c)),
           can_create: typeof r?.can_create === 'boolean' ? r.can_create : null,
+          // The server's own sentence about why, kept verbatim. The app never
+          // writes its own version of a refusal.
+          create_hint: typeof r?.create_hint === 'string' ? r.create_hint : null,
           source: 'api',
         };
       } catch {
@@ -925,15 +958,15 @@ export const circlesApi = {
         const r = await request<any>('/rooms');
         const list = Array.isArray(r) ? r : [...(r.setup_rooms ?? []), ...(r.rooms ?? [])];
         const setups = list.filter((x: any) => String(x?.type) === 'setup');
-        return { circles: setups.map((c: any) => mapCircle(c)), can_create: null, source: 'api' };
+        return { circles: setups.map((c: any) => mapCircle(c)), can_create: null, create_hint: null, source: 'api' };
       } catch {
-        return { circles: [], can_create: null, source: 'api' };
+        return { circles: [], can_create: null, create_hint: null, source: 'api' };
       }
     }
-    return { circles: fixtureCircles, can_create: true, source: 'fixtures' };
+    return { circles: fixtureCircles, can_create: true, create_hint: null, source: 'fixtures' };
   },
 
-  /** Premium: opens a circle for a symbol. The API enforces the entitlement. */
+  /** Staff only. The API enforces it against `staff_role()`; this just asks. */
   async create(symbol: string, ttl: CircleTtl): Promise<Circle> {
     if (!live()) {
       const now = Date.now();
@@ -1025,12 +1058,14 @@ export const circlesApi = {
     };
   },
 
-  async post(circleId: string, body: string): Promise<CircleMessage | null> {
+  async post(circleId: string, body: string, onNotice?: (plain: string) => void): Promise<CircleMessage | null> {
     if (!live()) return null;
     const r = await request<any>(`/rooms/${circleId}/messages`, {
       method: 'POST',
       body: JSON.stringify({ kind: 'text', body }),
     });
+    const plain = typeof r?.plain === 'string' ? r.plain : '';
+    if (plain && !/^posted[.!]?$/i.test(plain.trim())) onNotice?.(plain);
     return mapCircleMessage(r?.message ?? r);
   },
 
@@ -1047,5 +1082,100 @@ export const circlesApi = {
     } catch {
       return 'local';
     }
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* Moderation                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The staff half of the community.
+ *
+ * NONE OF THIS IS A PERMISSION CHECK. Every call here is a `staffed()` route,
+ * and a non-staff caller gets the app's ordinary NOT_FOUND from the server —
+ * the same bytes as a path this app does not serve. Hiding the buttons is a
+ * courtesy so a member is not shown an action that will be refused; it is not
+ * what stops them, and this file must never be read as if it were.
+ *
+ * The screens decide what to draw from `/me.staff`, which is re-derived from
+ * `staff_members` on every call, so a revoked role is gone from the next screen
+ * the person opens.
+ */
+export type ModerationQueueRow = {
+  report_id: string;
+  message_id: string | null;
+  room_id: string | null;
+  room_name: string | null;
+  body: string | null;
+  author_name: string | null;
+  author_user_id: string | null;
+  reason: string;
+  /** null = the system flagged it, not a member. */
+  reporter_name: string | null;
+  already_removed: boolean;
+  age_plain: string;
+};
+
+export const moderationApi = {
+  available: live,
+
+  /** Take a post down. Returns the API's own sentence about what happened. */
+  async removeMessage(messageId: string, reason: string): Promise<string> {
+    const r = await request<any>(`/messages/${messageId}/remove`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    return String(r?.plain ?? 'Removed.');
+  },
+
+  /** Read the reports and decide it stays. The other half, and the one usually missing. */
+  async keepMessage(messageId: string, reason: string): Promise<string> {
+    const r = await request<any>(`/messages/${messageId}/keep`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    return String(r?.plain ?? 'Left up.');
+  },
+
+  /**
+   * Silence somebody in one room for a while. NOT `/rooms/:id/mute` — that one
+   * mutes the CALLER's own notifications and cannot be used on anybody else.
+   */
+  async muteMember(roomId: string, userId: string, reason: string, minutes?: number): Promise<string> {
+    const r = await request<any>(`/rooms/${roomId}/moderate`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, action: 'mute', reason, ...(minutes ? { minutes } : {}) }),
+    });
+    return String(r?.plain ?? 'Muted.');
+  },
+
+  async unmuteMember(roomId: string, userId: string, reason: string): Promise<string> {
+    const r = await request<any>(`/rooms/${roomId}/moderate`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, action: 'unmute', reason }),
+    });
+    return String(r?.plain ?? 'Unmuted.');
+  },
+
+  /** Everything a member reported, plus everything the advice check tripped. */
+  async queue(): Promise<{ items: ModerationQueueRow[]; empty_copy: string }> {
+    const r = await request<any>('/moderation/queue');
+    return {
+      items: (r?.items ?? []).map((i: any) => ({
+        report_id: String(i.report_id),
+        message_id: i.message_id ?? null,
+        room_id: i.room_id ?? null,
+        room_name: i.room_name ?? null,
+        body: i.body ?? null,
+        author_name: i.author_name ?? null,
+        author_user_id: i.author_user_id ?? null,
+        reason: String(i.reason ?? ''),
+        reporter_name: i.reporter_name ?? null,
+        already_removed: i.already_removed === true,
+        age_plain: String(i.age_plain ?? ''),
+      })),
+      empty_copy: String(r?.empty_copy ?? 'Nothing is waiting.'),
+    };
   },
 };

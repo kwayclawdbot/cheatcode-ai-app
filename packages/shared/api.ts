@@ -3983,8 +3983,128 @@ export type CreateCircleResponse = z.infer<typeof CreateCircleResponse>;
 
 export const CIRCLE_TTL_HOURS: Record<'24h' | '3d' | '7d', number> = { '24h': 24, '3d': 72, '7d': 168 };
 
-/** The entitlement flag that gates circle creation. Missing = false. */
+/**
+ * @deprecated Nothing reads this any more.
+ *
+ * Circles used to be a premium feature gated on `entitlement_flags`. Owner
+ * instruction 2026-09-05 — "Circles should be admin created based" — moved the
+ * gate to staff, so the flag is dead config (migration 0031 sets it false on
+ * both tiers and says why). The constant is kept only so a client compiled
+ * against an older build of this package still links.
+ */
 export const CIRCLES_CREATE_FLAG = 'circles_create';
+
+/**
+ * WHO OPENS A CIRCLE.
+ *
+ * `admin` and above. Not `support`, and the reason is the ladder 0025 set out:
+ * the roles are ordered by BLAST RADIUS, not seniority. Support reads and
+ * annotates; opening a Circle creates a public room with the club's name on it
+ * that every member sees on the Community board, which is a publishing act.
+ * Moderating inside a room support is already trusted to read is a different
+ * shape of power, and that one stays at `support` — see MODERATION_MIN_ROLE.
+ */
+export const CIRCLE_CREATE_MIN_ROLE: StaffRole = 'admin';
+
+/**
+ * WHO REMOVES A POST OR MUTES A MEMBER. `support` and above.
+ *
+ * This is the job support exists to do, both actions are reversible and both
+ * are logged with the actor. Requiring an admin for it would mean nobody is on
+ * duty most of the time, which is how a room ends up moderated by nobody.
+ */
+export const MODERATION_MIN_ROLE: StaffRole = 'support';
+
+/* ------------------------------------------------------------------ */
+/* Moderation — removing a post, muting a member, the report queue      */
+/* ------------------------------------------------------------------ */
+
+export const RemoveMessageRequest = z.object({
+  /** Why, in the moderator's own words. Stored, never shown to the room. */
+  reason: z.string().min(3).max(500),
+});
+export type RemoveMessageRequest = z.infer<typeof RemoveMessageRequest>;
+
+export const RemoveMessageResponse = z.object({
+  message_id: z.string(),
+  removed: z.boolean(),
+  /** How many open reports on that message this closed. */
+  reports_closed: z.number(),
+  plain: z.string(),
+});
+export type RemoveMessageResponse = z.infer<typeof RemoveMessageResponse>;
+
+export const KeepMessageRequest = z.object({
+  reason: z.string().min(3).max(500),
+});
+export type KeepMessageRequest = z.infer<typeof KeepMessageRequest>;
+
+export const KeepMessageResponse = z.object({
+  message_id: z.string(),
+  reports_closed: z.number(),
+  plain: z.string(),
+});
+export type KeepMessageResponse = z.infer<typeof KeepMessageResponse>;
+
+export const ModerateMemberRequest = z.object({
+  user_id: z.string().uuid(),
+  action: z.enum(['mute', 'unmute']),
+  /** Minutes. Omitted on a mute = 24 hours. Ignored on an unmute. */
+  minutes: z.number().int().min(1).max(60 * 24 * 30).optional(),
+  reason: z.string().min(3).max(500),
+});
+export type ModerateMemberRequest = z.infer<typeof ModerateMemberRequest>;
+
+export const ModerateMemberResponse = z.object({
+  room_id: z.string(),
+  user_id: z.string(),
+  muted_until: z.string().nullable(),
+  plain: z.string(),
+});
+export type ModerateMemberResponse = z.infer<typeof ModerateMemberResponse>;
+
+export const ModerationQueueItem = z.object({
+  report_id: z.string(),
+  message_id: z.string().nullable(),
+  room_id: z.string().nullable(),
+  room_name: z.string().nullable(),
+  /** The retained original, from `messages_moderation`. Null if it is gone. */
+  body: z.string().nullable(),
+  author_user_id: z.string().nullable(),
+  author_name: z.string().nullable(),
+  reason: z.string(),
+  /** null when the SYSTEM filed it rather than a member. */
+  reporter_user_id: z.string().nullable(),
+  reporter_name: z.string().nullable(),
+  already_removed: z.boolean(),
+  created_at: z.string(),
+  age_plain: z.string(),
+});
+export type ModerationQueueItem = z.infer<typeof ModerationQueueItem>;
+
+export const ModerationQueueResponse = z.object({
+  items: z.array(ModerationQueueItem),
+  open_count: z.number(),
+  empty_copy: z.string(),
+});
+export type ModerationQueueResponse = z.infer<typeof ModerationQueueResponse>;
+
+/**
+ * WHAT THE APP DOES ABOUT A POST THAT READS AS ADVICE.
+ *
+ * It does not delete it, and it does not decide what it meant. A deterministic
+ * word check (no model call — see `apps/api/src/lib/moderation.ts`) marks the
+ * message, files a system report so a human looks at it, and returns this
+ * sentence to the person who wrote it. Everything after that is a human
+ * decision. The check is a tripwire, never a verdict.
+ */
+export const ADVICE_NUDGE_PLAIN =
+  'Posted. One thing: that reads as telling somebody what to do with their money. ' +
+  'This club is people showing their work, not advice — say what you are doing and why, ' +
+  'and let the next person decide. A moderator will read it.';
+
+/** The reason a system-filed report carries. Grouped on in the queue. */
+export const ADVICE_REPORT_REASON = 'Reads as advice (flagged automatically, not by a member).';
 
 /* ------------------------------------------------------------------ */
 /* Round-4 copy constants                                               */

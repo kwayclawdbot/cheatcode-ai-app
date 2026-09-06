@@ -292,7 +292,19 @@ export async function openSetupCircle(opts: {
   return { id, created: true };
 }
 
-/** A member-created circle: named for the symbol, no setup behind it. */
+/**
+ * A STAFF-created circle: named for the symbol, no setup behind it.
+ *
+ * Was "member-created" until 2026-09-05, when the owner ruled that Circles are
+ * opened by the team. The gate is in the route (`/api/v1/circles`), against
+ * `staff_role()`, and it is NOT repeated here — this function does the work and
+ * the route decides who may ask for it. Anything that calls this without
+ * checking first is the bug.
+ *
+ * `created_by` is written twice on purpose: the real column (0031) is the fact,
+ * and `config.created_by` stays for the rows that already carry it and for any
+ * deployment where 0031 has not landed yet.
+ */
 export async function createCircle(opts: {
   userId: string;
   symbol: string;
@@ -321,10 +333,17 @@ export async function createCircle(opts: {
     name: `${opts.symbol.toUpperCase()} Circle`,
     description: `A time-boxed room for ${opts.symbol.toUpperCase()}. It closes on its own.`,
     config: { intel_eligible: false, expires_at: expiresAt, circle: true, created_by: opts.userId },
+    created_by: opts.userId,
   };
   if (await hasRoomExpiry()) insert.expires_at = expiresAt;
 
-  const { data, error } = await db.from('rooms').insert(insert).select('id').single();
+  let { data, error } = await db.from('rooms').insert(insert).select('id').single();
+  if (error && /created_by/i.test(error.message ?? '')) {
+    // 0031 has not been applied here yet. The room still gets opened and its
+    // author still survives, in config, exactly as it did before.
+    delete insert.created_by;
+    ({ data, error } = await db.from('rooms').insert(insert).select('id').single());
+  }
   if (error || !data) {
     log('warn', '-', 'circles.create_failed', { symbol: opts.symbol, message: error?.message });
     return null;

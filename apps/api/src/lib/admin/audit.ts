@@ -60,7 +60,16 @@ export type AuditAction =
   | 'entitlement.revoke'
   | 'admin.audit.read'
   | 'crm.sync.read'
-  | 'crm.sync.run';
+  | 'crm.sync.run'
+  // community moderation (0031). `moderation_log` is the record of what
+  // happened IN THE ROOM; these rows are the record of what a member of STAFF
+  // did, which is a different question and is asked of a different table.
+  | 'community.circle.create'
+  | 'community.message.remove'
+  | 'community.message.keep'
+  | 'community.member.mute'
+  | 'community.member.unmute'
+  | 'community.queue.read';
 
 export type AuditInput = {
   actorUserId: string | null;

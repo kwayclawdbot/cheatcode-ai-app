@@ -20,7 +20,10 @@ import { Check } from '../../ui/Icons';
 import { ScreenLoading } from '../../ui/Loading';
 import { FreshnessMark } from '../../ui/FreshnessMark';
 import { alpha, color, radius } from '../../ui/tokens';
-import { circlesApi } from '../../lib/community-api';
+import { circlesApi, communityApi, moderationApi } from '../../lib/community-api';
+import { subscribeRoom, transportLabel, type RealtimeMode } from '../../lib/realtime';
+import { useMe } from '../../features/account/useAccount';
+import { MessageActionsSheet, type MessageActionsTarget } from '../../features/community/ui/MessageActionsSheet';
 import { portalApi } from '../../lib/trade-api';
 import { ClubBody } from '../../features/community/ui/ClubFeed';
 import type { CircleDetail, CircleMessage } from '../../features/circles/types';
@@ -119,9 +122,18 @@ function CircleChart({ candles, levels }: { candles: Candle[]; levels: CircleDet
   );
 }
 
-function Message({ m }: { m: CircleMessage }) {
+function Message({ m, onActions }: { m: CircleMessage; onActions?: () => void }) {
   return (
-    <View style={{ flexDirection: 'row', gap: 10 }} testID={`circle-message-${m.id}`}>
+    // No `accessibilityRole="button"` — see the note in ClubFeed: a message row
+    // contains buttons of its own, and a <button> cannot nest one.
+    <Pressable
+      onLongPress={m.is_kai ? undefined : onActions}
+      delayLongPress={350}
+      accessibilityLabel={m.is_kai || !onActions ? undefined : `Post by ${m.author}`}
+      accessibilityHint={m.is_kai || !onActions ? undefined : 'Press and hold to report it, or to moderate it.'}
+      style={{ flexDirection: 'row', gap: 10 }}
+      testID={`circle-message-${m.id}`}
+    >
       {m.is_kai ? <KaiOrb size={34} /> : (
         <View
           style={{
@@ -186,7 +198,7 @@ function Message({ m }: { m: CircleMessage }) {
           </View>
         ) : null}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -195,9 +207,15 @@ export default function CircleRoom() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const circleId = String(id ?? '');
 
+  const me = useMe();
+  const isStaff = me.data?.staff?.is_staff === true;
+
   const [detail, setDetail] = useState<CircleDetail | null>(null);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [freshness, setFreshness] = useState<RealtimeMode>('off');
+  const [postNotice, setPostNotice] = useState<string | null>(null);
+  const [actionTarget, setActionTarget] = useState<MessageActionsTarget | null>(null);
 
   const load = useCallback(async () => {
     if (!circleId) return;
@@ -215,6 +233,22 @@ export default function CircleRoom() {
   }, [circleId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  /**
+   * Keeping the circle fresh. Same transport as the club feed: realtime if the
+   * channel opens, otherwise a 5-second poll, and the header says which one it
+   * actually is. See the note in the Community tab for why it is the poll today.
+   */
+  useEffect(() => {
+    if (!circleId) return;
+    let alive = true;
+    const channel = subscribeRoom(
+      circleId,
+      () => { if (alive) void load(); },
+      (m) => { if (alive) setFreshness(m); },
+    );
+    return () => { alive = false; channel.unsubscribe(); setFreshness('off'); };
+  }, [circleId, load]);
 
   if (!detail && !error) {
     return (
@@ -266,7 +300,9 @@ export default function CircleRoom() {
         <HeaderRing progress={c.progress} initial={(c.symbol[0] ?? 'C').toUpperCase()} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <T size={15} weight="bold" numberOfLines={1} testID="circle-name">{c.name}</T>
-          <T size={10} c={color.dim} testID="circle-meta">{daysLine}</T>
+          <T size={10} c={color.dim} testID="circle-meta">
+            {transportLabel(freshness) ? `${daysLine} · ${transportLabel(freshness)}` : daysLine}
+          </T>
         </View>
         {c.symbol ? (
           <Pressable
@@ -315,7 +351,26 @@ export default function CircleRoom() {
           </View>
         ) : null}
 
-        {detail.messages.map((m) => <Message key={m.id} m={m} />)}
+        {detail.messages.map((m) => (
+          <Message
+            key={m.id}
+            m={m}
+            onActions={() =>
+              setActionTarget({
+                messageId: m.id,
+                roomId: circleId,
+                // CircleMessage carries the author's NAME, not their id — so
+                // muting is only offered where the id is actually known. A
+                // button that guesses whose account to silence is worse than
+                // no button.
+                authorUserId: null,
+                authorName: m.author,
+                excerpt: m.body,
+                mine: false,
+              })
+            }
+          />
+        ))}
 
         {detail.locked ? (
           <ObjectCard r={radius.xl} style={{ padding: 15, gap: 6 }} testID="circle-locked">
@@ -335,18 +390,58 @@ export default function CircleRoom() {
         ) : null}
       </ScrollView>
 
-      <View style={{ paddingHorizontal: 16, paddingBottom: 10, paddingTop: 4 }}>
+      <View style={{ paddingHorizontal: 16, paddingBottom: 10, paddingTop: 4, gap: 8 }}>
+        {postNotice ? (
+          <Pressable
+            testID="circle-post-notice"
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss"
+            onPress={() => setPostNotice(null)}
+            style={{ borderLeftWidth: 2, borderLeftColor: color.gold, paddingLeft: 11, paddingVertical: 2 }}
+          >
+            <T size={12} lh={17} c={color.gold}>{postNotice}</T>
+          </Pressable>
+        ) : null}
         <Composer
           testID="circle-composer"
-          placeholder={detail.locked ? 'Open the setup to join this circle' : '@Kai · Message the room…'}
+          placeholder={detail.locked ? 'Join this circle from the club board' : '@Kai · Message the room…'}
           disabled={c.closed || !!detail.locked}
           onSend={(text) => {
-            void circlesApi.post(circleId, text).then((m) => {
-              if (m) setDetail((d) => (d ? { ...d, messages: [...d.messages, m] } : d));
-            }).catch(() => { /* the composer keeps the text; nothing is faked */ });
+            setPostNotice(null);
+            void circlesApi
+              .post(circleId, text, (plain) => setPostNotice(plain))
+              .then((m) => {
+                if (m) setDetail((d) => (d ? { ...d, messages: [...d.messages, m] } : d));
+              })
+              .catch((e: unknown) => {
+                // Nothing is faked. The refusal is the server's own sentence.
+                setPostNotice(e instanceof Error ? e.message : 'That did not post. Nothing was sent.');
+              });
           }}
         />
       </View>
+
+      <MessageActionsSheet
+        visible={!!actionTarget}
+        target={actionTarget}
+        staff={isStaff}
+        onClose={() => setActionTarget(null)}
+        onReport={async (t, reason) => {
+          await communityApi.report(t.messageId, reason);
+          return 'Reported. A moderator will read it. The post stays up until they decide.';
+        }}
+        onRemove={async (t, reason) => {
+          const plain = await moderationApi.removeMessage(t.messageId, reason);
+          await load();
+          return plain;
+        }}
+        onMute={async (t, reason) => moderationApi.muteMember(t.roomId, t.authorUserId ?? '', reason)}
+        onKeep={async (t, reason) => {
+          const plain = await moderationApi.keepMessage(t.messageId, reason);
+          await load();
+          return plain;
+        }}
+      />
     </Screen>
   );
 }

@@ -13,13 +13,20 @@
  * the person telling me this own it?" is the first question any reader has.
  */
 import type { NextRequest } from 'next/server';
-import { MessagesQuery, MessagesResponse, PostMessageBody, PostMessageResponse } from '@shared/api';
+import {
+  ADVICE_NUDGE_PLAIN,
+  MessagesQuery,
+  MessagesResponse,
+  PostMessageBody,
+  PostMessageResponse,
+} from '@shared/api';
 import { authedParams, ok, parseBody, parseQuery, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
 import { serviceClient } from '@/lib/db';
 import { emitUserEvent } from '@/lib/events';
 import { rateLimit } from '@/lib/ratelimit';
 import { spamPrecheck } from '@/lib/spam';
+import { adviceCheck, flagAdviceShaped } from '@/lib/moderation';
 import { callRpc, noteFallback } from '@/lib/rpc';
 import {
   loadRoom,
@@ -243,12 +250,37 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
     .eq('room_id', ctx.params.id)
     .eq('user_id', ctx.user.id);
 
+  /**
+   * DOES THIS READ AS ADVICE?
+   *
+   * Runs AFTER the insert, deliberately. The post is not blocked and never has
+   * been: a filter that eats posts about money would be wrong often and would
+   * teach people to write around it. What it does is stamp the row, put it in
+   * front of a human in the moderation queue, and tell the person who wrote it
+   * what this room is for. See `adviceCheck` in lib/moderation.ts for why it is
+   * a word check and not a model call — a classifier in the posting path makes
+   * every post wait on Kai, and Kai is out of credit today.
+   *
+   * It is a tripwire, not a verdict, and it decides nothing.
+   */
+  const advice = adviceCheck(body.body);
+  if (advice.flagged) {
+    await flagAdviceShaped({
+      messageId: message.id,
+      roomId: ctx.params.id,
+      notes: advice.notes,
+      requestId: ctx.requestId,
+    });
+  }
+
   return ok(
     PostMessageResponse.parse({
       message,
-      plain: body.structured_idea
-        ? 'Posted, with your disclosure attached.'
-        : 'Posted.',
+      plain: advice.flagged
+        ? ADVICE_NUDGE_PLAIN
+        : body.structured_idea
+          ? 'Posted, with your disclosure attached.'
+          : 'Posted.',
     }),
     { status: 201 }
   );

@@ -172,7 +172,7 @@ Sequence assignment for `setup_events.seq`, `plan_events.seq` and
 | View | Security | Grants |
 |---|---|---|
 | `profiles_public(user_id, handle, display_name, avatar_url, role_labels)` | definer (default) — so owner-only `profiles` RLS does not hide other members' display identity | `authenticated` |
-| `messages_public` | `security_invoker = true` — room-membership RLS on `messages` still applies; `body` is `null` for deleted rows and a `deleted` boolean is exposed | `authenticated` |
+| `messages_public` | **CHANGED BY 0031** — now `security_invoker = false` and the view carries its own `is_room_member` test, with a `current_user = 'service_role'` arm for this API. `body` is still `null` for deleted rows and a `deleted` boolean is still exposed. | `authenticated`, **SELECT only** |
 | `messages_moderation` | definer — retains original bodies for market-claim audit (§14) | `service_role` only; explicitly revoked from `anon`/`authenticated` |
 
 `profiles_public` includes `user_id` (01 lists only the four display fields) —
@@ -455,10 +455,43 @@ must end with an explicit
 `revoke all on function <sig> from public, anon, authenticated;` and grant only
 what the client genuinely needs.
 
-### 2.8 `moderation_muted_until` has no writer
-1.22 splits the column, but there is no moderation surface in v1 — no staff role
-(gap 1.11), no admin endpoint. The column exists and `post_room_message` honours
-it; nothing sets it yet.
+### 2.8 `moderation_muted_until` has no writer — CLOSED 2026-09-06 (0031)
+1.22 split the column and nothing set it. It now has exactly one writer:
+`POST /api/v1/rooms/:id/moderate`, a `staffed()` route at `min: 'support'`, via
+`moderateMember` in `apps/api/src/lib/moderation.ts`. A mute is time-boxed (24h
+by default) and writes `moderation_muted_by` / `moderation_muted_reason`
+alongside it, so it can be explained later. `post_room_message` already honoured
+the column and was not changed.
+
+Note the pairing that must not be broken: `muted_until` is the MEMBER's own
+notification mute and `moderation_muted_until` is the moderator's. Two columns,
+two routes (`/rooms/:id/mute` vs `/rooms/:id/moderate`), and un-muting yourself
+must never lift a moderator's decision.
+
+### 2.8b Views were writable by every client — CLOSED 2026-09-06 (0031 §8)
+Found while proving a message removal, and MEASURED: any signed-in member could
+`delete` any message in a room they belonged to, straight through
+`messages_public`.
+
+0014 opened with a blanket `revoke all on all tables in schema public from anon,
+authenticated`. 0015 then CREATED the views, which were born with Supabase's
+default `grant all on tables to anon, authenticated`; 0015's `grant select` only
+added to a set that already contained DELETE. A blanket revoke protects what
+exists, never what comes next.
+
+A table would have survived this — they all carry RLS. A VIEW does not: it has
+no RLS of its own, and an auto-updatable view performs the write with the VIEW
+OWNER's rights. `messages_public` is auto-updatable; `profiles_public` refused
+only because its join makes it non-updatable, which is luck rather than a lock.
+
+0031 §8 revokes every non-SELECT verb on all four views (`messages_public`,
+`profiles_public`, `daily_risk_v`, `rule_adherence_v`), and disarms the trap for
+anything created later with
+`alter default privileges in schema public revoke all on tables from anon,
+authenticated;`. It also asserts, at migration time, that the only client write
+grants left in the schema are the eight owner-scoped tables that have earned
+one. **Any future migration that creates a view must still state its grants
+explicitly.**
 
 ### 2.9 Simulated trades outlive their user
 `positions.user_id` and `debriefs.user_id` are bare `uuid` columns in 01 §7 with
@@ -473,6 +506,12 @@ is still not in the v1 surface.
 alongside `config.intel_eligible` (gap 2.3). Three behavioural switches, no
 column, no default, no type check: a typo silently reads as "off". They should
 become real columns when the moderation surface lands.
+
+STILL OPEN after 0031. The moderation surface has landed and these three did not
+move — deliberately, because changing what `post_room_message` reads is a change
+to the posting pipeline and belongs in its own migration. 0031 did take
+`config.created_by` out of jsonb and give `rooms.created_by` a real column, so
+"who opened this Circle" is now a fact rather than a preference.
 
 ### 2.11 `watchlists.position` is not enforced unique or contiguous
 The brief's `position int` orders a user's lists. Nothing stops two lists sharing
