@@ -43,6 +43,7 @@ import {
 } from './engine';
 import { toOrderEventRows, toOrderRow } from './shape';
 import { ExecutionRpcError, plainForRpcError, rpcSubmitPaperOrder, type PaperFill } from './adapter';
+import { resolveShareOnClose, shareOnFill } from '../social/shares';
 
 export async function submitOrder(opts: {
   userId: string;
@@ -170,6 +171,17 @@ export async function submitOrder(opts: {
     if (viaRpc.used) {
       const bookedOrder = viaRpc.data.order;
       const positionId = viaRpc.data.position ? String(viaRpc.data.position.id ?? '') || null : null;
+      if (!viaRpc.data.deduplicated) {
+        await mirrorToSocial({
+          userId: opts.userId,
+          orderId: opts.previewId,
+          side: String(order.side),
+          positionId,
+          closeOfPositionId: opts.closeOfPositionId ?? null,
+          exitPrice: decision.price ?? quote.price,
+          requestId: opts.requestId,
+        });
+      }
       return shapeSubmit(
         opts.userId,
         bookedOrder,
@@ -228,6 +240,7 @@ async function submitWithoutRpc(opts: {
   decision: ReturnType<typeof evaluateFill>;
   preview: Record<string, unknown>;
   bracket: PaperFill['bracket'];
+  closeOfPositionId?: string | null;
 }): Promise<OrderSubmitResponse> {
   const db = serviceClient();
   const now = new Date();
@@ -310,6 +323,16 @@ async function submitWithoutRpc(opts: {
     }
   }
 
+  await mirrorToSocial({
+    userId: opts.userId,
+    orderId: opts.previewId,
+    side: String(live.side),
+    positionId,
+    closeOfPositionId: opts.closeOfPositionId ?? null,
+    exitPrice: decision.price ?? Number(opts.quote.price ?? 0),
+    requestId: opts.requestId,
+  });
+
   const finalRow = await db.from('orders').select(ORDER_COLUMNS).eq('id', opts.previewId).maybeSingle();
   return shapeSubmit(
     opts.userId,
@@ -320,6 +343,70 @@ async function submitWithoutRpc(opts: {
       : 'Order sent and accepted. It is waiting for its price — accepted is not filled.',
     positionId
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Sharing (0038)                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The one place a booked order touches the social lane.
+ *
+ * OPENING SIDE  → mirror the fill into `trade_shares` if the member chose to
+ *                 show it (`orders.share_trade`, else `profiles.share_trades`),
+ *                 and tell their followers. Levels only; the quantity never
+ *                 leaves this file's world.
+ * CLOSING SIDE  → stamp the outcome on the share, if there is one, and score it
+ *                 when the trade came from one of Kai's alerts.
+ *
+ * A SHARE OR A POINT MUST NEVER BE ABLE TO FAIL A FILL. Both helpers swallow
+ * everything internally and this wrapper catches anyway, exactly the way
+ * `notify()` is wrapped from the middle of an order path — see the header of
+ * `lib/notify.ts`. The worst a broken social lane may do to somebody's trade is
+ * leave a row unwritten.
+ *
+ * `resolveShareOnClose` checks for itself that the position is really closed,
+ * so a partial exit passes through here and does nothing.
+ */
+async function mirrorToSocial(opts: {
+  userId: string;
+  orderId: string;
+  side: string;
+  positionId: string | null;
+  closeOfPositionId: string | null;
+  exitPrice: number | null;
+  requestId: string;
+}): Promise<void> {
+  try {
+    if (opensPosition(opts.side as never)) {
+      if (!opts.positionId) return;
+      await shareOnFill({
+        userId: opts.userId,
+        orderId: opts.orderId,
+        positionId: opts.positionId,
+        requestId: opts.requestId,
+      });
+      return;
+    }
+    // The close route hands us the position it is closing; a bare closing order
+    // submitted on its own leaves us the position the booking landed on.
+    const positionId = opts.closeOfPositionId ?? opts.positionId;
+    if (!positionId || opts.exitPrice === null || !Number.isFinite(opts.exitPrice)) return;
+    await resolveShareOnClose({
+      userId: opts.userId,
+      positionId,
+      // No bracket leg fired: the member decided. The percent decides whether
+      // that was a win, and flat is not one.
+      leg: null,
+      exitPrice: opts.exitPrice,
+      requestId: opts.requestId,
+    });
+  } catch (e) {
+    log('warn', opts.requestId, 'social.mirror_threw', {
+      order_id: opts.orderId,
+      message: e instanceof Error ? e.message : String(e),
+    });
+  }
 }
 
 /* ------------------------------------------------------------------ */

@@ -102,6 +102,16 @@ export const KIND_CATEGORY: Record<NotifyKind, NotificationCategory> = {
   kai_room_reply: 'community',
   debrief_ready: 'coaching',
   paper_reset: 'system',
+  /**
+   * The social lane gets its OWN switch, not `community`. `community` is Kai
+   * replying to you, which you asked for by writing to him; these three are a
+   * person you chose to follow acting on their own schedule, plus your own
+   * belt. A user who wants one and not the other must be able to say so, and
+   * with one shared category they could not.
+   */
+  community_call: 'social',
+  trade_shared: 'social',
+  belt_earned: 'social',
   system: 'system',
 };
 
@@ -113,7 +123,21 @@ export const KIND_CATEGORY: Record<NotifyKind, NotificationCategory> = {
  *   setup_published  the morning scan published a setup. Same shape: the user
  *                    did not ask for THIS symbol, so it spends the daily budget
  *                    and it waits out quiet hours.
+ *   community_call   somebody they follow published a call.
+ *   trade_shared     somebody they follow shared a fill.
  *   system           an announcement. Nobody asked.
+ *
+ * WHY THE TWO SOCIAL ONES ARE PROACTIVE, AND WHY THAT IS THE ANTI-SPAM DESIGN.
+ * Following a person is consent to hear from them; it is NOT a request for this
+ * particular trade at this particular minute. So a follow costs the follower's
+ * daily budget and waits out their quiet hours, which means one member on a
+ * busy morning cannot empty every follower's battery, and a member who follows
+ * twenty people gets the first few and then an inbox — never twenty buzzes.
+ * Exempting them, on the grounds that "they chose to follow", is exactly how a
+ * social feed becomes the reason somebody turns notifications off entirely.
+ *
+ * `belt_earned` is NOT here: it is the user's own resolution paying out, which
+ * is an act of theirs, and it can happen at most a handful of times ever.
  *
  * Everything else follows directly from an act of the user's — their own alert
  * triggering, their own @Kai getting a reply, their own trade producing a
@@ -124,6 +148,8 @@ export const KIND_CATEGORY: Record<NotifyKind, NotificationCategory> = {
 export const PROACTIVE_KINDS: ReadonlySet<NotifyKind> = new Set<NotifyKind>([
   'alert_activated',
   'setup_published',
+  'community_call',
+  'trade_shared',
   'system',
 ]);
 

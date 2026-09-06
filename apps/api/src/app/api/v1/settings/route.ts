@@ -7,6 +7,7 @@
  * this one.
  */
 import type { NextRequest } from 'next/server';
+import { z } from 'zod';
 import { EXPERIENCE_TO_LEVEL, SettingsRound4Request, SettingsResponse } from '@shared/api';
 import { authed, ok, parseBody, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
@@ -20,8 +21,27 @@ import { avatarForStorage } from '@/lib/avatars';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * THE SHARING SWITCH (0038 §2), added on top of the shared request shape rather
+ * than inside it.
+ *
+ * `SettingsRound4Request` lives in `packages/shared/api.ts`, which this lane
+ * does not own. Extending it here keeps the field validated exactly like every
+ * other one — a non-boolean is refused before anything is written — and the day
+ * the shared contract carries `share_trades` itself this local extension can be
+ * deleted with no other change.
+ *
+ * IT IS ONLY EVER WRITTEN WHEN IT IS SENT. `undefined` leaves the setting
+ * alone, which is what a PATCH means and what every other field here does;
+ * writing `false` for an absent key would switch sharing off for anybody who
+ * saved an unrelated preference.
+ */
+const SettingsSocialRequest = SettingsRound4Request.extend({
+  share_trades: z.boolean().optional(),
+});
+
 export const PUT = authed(async (req: NextRequest, ctx: Ctx) => {
-  const body = await parseBody(req, SettingsRound4Request);
+  const body = await parseBody(req, SettingsSocialRequest);
   const db = serviceClient();
   const profile = await loadProfile(ctx.user.id);
 
@@ -72,6 +92,16 @@ export const PUT = authed(async (req: NextRequest, ctx: Ctx) => {
     }
   }
   if (onboarding !== profile.onboarding) profilePatch.onboarding = onboarding;
+
+  /**
+   * SHARING IS RETROACTIVE AND THAT IS THE POINT. Switching this off does not
+   * merely stop new trades being shown — every existing `trade_shares` row
+   * stops being readable, because the one read path in this app joins this
+   * column (see the header of `lib/social/shares.ts`). The rows are kept rather
+   * than deleted so switching it back on restores the record instead of
+   * starting a suspiciously clean new one.
+   */
+  if (body.share_trades !== undefined) profilePatch.share_trades = body.share_trades;
   // Mode is the one financial-adjacent field this endpoint may touch: it
   // changes what Kai scans, not what the user is allowed to risk.
   if (body.mode) profilePatch.primary_mode = body.mode;
@@ -133,32 +163,46 @@ export const PUT = authed(async (req: NextRequest, ctx: Ctx) => {
     .maybeSingle();
   const row = (np.data as Record<string, unknown> | null) ?? null;
 
-  return ok(
-    SettingsResponse.parse({
-      profile: {
-        user_id: updated.user_id,
-        handle: updated.handle,
-        avatar_url: updated.avatar_url,
-        display_name: updated.display_name,
-        primary_mode: updated.primary_mode,
-        experience: updated.experience,
-        involvement: updated.involvement,
-        explanation_level: updated.explanation_level,
-        memory_enabled: updated.memory_enabled,
-        timezone: updated.timezone,
-        onboarding: updated.onboarding,
-      },
-      prefs: {
-        explanation_level: updated.explanation_level,
-        quiet_hours: (row?.quiet_hours as never) ?? null,
-        notifications: { per_mode: (row?.per_mode as Record<string, unknown>) ?? {} },
-        accessibility: readPrefs(updated.onboarding).accessibility,
-        // No row yet means the user has never said no: 0024's column default is
-        // `true` and the absence of a row means the same thing.
-        push_enabled: row ? row.push_enabled !== false : true,
-        notification_categories: (row?.categories as Record<string, boolean>) ?? {},
-      },
-      plain: 'Saved.',
-    })
-  );
+  // Read back separately because `loadProfile` does not select it: this column
+  // arrived with 0038 and `ProfileRow` belongs to the Kai context lane.
+  const sharing = await db.from('profiles').select('share_trades').eq('user_id', ctx.user.id).maybeSingle();
+
+  /**
+   * `SettingsResponse` is the shared contract and it does not carry
+   * `share_trades` yet, so it is added to the object AFTER the parse rather
+   * than smuggled through it — a `.parse()` strips unknown keys, and a switch
+   * that silently never comes back is a switch that looks broken in the UI. The
+   * parse still validates everything it does own.
+   */
+  const settings = SettingsResponse.parse({
+    profile: {
+      user_id: updated.user_id,
+      handle: updated.handle,
+      avatar_url: updated.avatar_url,
+      display_name: updated.display_name,
+      primary_mode: updated.primary_mode,
+      experience: updated.experience,
+      involvement: updated.involvement,
+      explanation_level: updated.explanation_level,
+      memory_enabled: updated.memory_enabled,
+      timezone: updated.timezone,
+      onboarding: updated.onboarding,
+    },
+    prefs: {
+      explanation_level: updated.explanation_level,
+      quiet_hours: (row?.quiet_hours as never) ?? null,
+      notifications: { per_mode: (row?.per_mode as Record<string, unknown>) ?? {} },
+      accessibility: readPrefs(updated.onboarding).accessibility,
+      // No row yet means the user has never said no: 0024's column default is
+      // `true` and the absence of a row means the same thing.
+      push_enabled: row ? row.push_enabled !== false : true,
+      notification_categories: (row?.categories as Record<string, boolean>) ?? {},
+    },
+    plain: 'Saved.',
+  });
+
+  return ok({
+    ...settings,
+    share_trades: (sharing.data as Record<string, unknown> | null)?.share_trades === true,
+  });
 });

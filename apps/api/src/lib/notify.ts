@@ -63,6 +63,13 @@ export type NotifyKind =
   | 'kai_room_reply'
   | 'debrief_ready'
   | 'paper_reset'
+  // The social lane (0038 + 0039). `community_call` and `trade_shared` are a
+  // person you chose to hear from doing something on their own schedule;
+  // `belt_earned` is the one social notification about you rather than about
+  // somebody else.
+  | 'community_call'
+  | 'trade_shared'
+  | 'belt_earned'
   | 'system';
 
 /** Inbox grouping (S72): what needs you · what changed · for information. */
@@ -74,7 +81,15 @@ export const NOTIF_GROUP: Record<NotifyKind, NotificationGroup> = {
   // — nobody asked for this one specifically — so it groups and caps the same.
   setup_published: 'changes',
   kai_room_reply: 'changes',
+  // Somebody you follow did something. It is 'changes' and NOT
+  // 'action_required': a call another member published is theirs, not an
+  // instruction, and putting it in the pile marked "what needs you" would be
+  // this app telling a beginner that a stranger's trade is a task.
+  community_call: 'changes',
+  trade_shared: 'changes',
   paper_reset: 'fyi',
+  // A belt is a thing that happened, not a thing to do.
+  belt_earned: 'fyi',
   system: 'fyi',
 };
 

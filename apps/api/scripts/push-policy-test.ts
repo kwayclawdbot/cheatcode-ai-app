@@ -233,10 +233,48 @@ ok(
   resolve({ kind: 'kai_room_reply', prefs: prefs({ categories: { community: true } }) }).send.length === 1
 );
 
+const ALL_KINDS: NotifyKind[] = [
+  'alert_trigger',
+  'alert_activated',
+  'setup_published',
+  'kai_room_reply',
+  'debrief_ready',
+  'paper_reset',
+  'community_call',
+  'trade_shared',
+  'belt_earned',
+  'system',
+];
+
 ok(
   'every NotifyKind maps to exactly one category',
-  (['alert_trigger', 'alert_activated', 'setup_published', 'kai_room_reply', 'debrief_ready', 'paper_reset', 'system'] as NotifyKind[])
-    .every((k) => typeof KIND_CATEGORY[k] === 'string')
+  ALL_KINDS.every((k) => typeof KIND_CATEGORY[k] === 'string')
+);
+
+section('The social lane has its OWN switch, not the community one');
+
+// A follow is consent to hear from a person. `community` is Kai replying to
+// something you wrote. Somebody who wants Kai and not the feed — or the feed
+// and not Kai — has to be able to say so, and one shared category cannot carry
+// that. These three assertions are the only thing stopping a future edit from
+// quietly folding them together again.
+ok('a followed member’s call is social', KIND_CATEGORY.community_call === 'social');
+ok('a followed member’s shared trade is social', KIND_CATEGORY.trade_shared === 'social');
+ok('a belt is social too', KIND_CATEGORY.belt_earned === 'social');
+ok('and Kai’s room reply is still community, not social', KIND_CATEGORY.kai_room_reply === 'community');
+
+ok(
+  'switching social off suppresses a followed member’s call',
+  reasons(resolve({ kind: 'community_call', prefs: prefs({ categories: { social: false } }) })).join() ===
+    'category_off'
+);
+ok(
+  'and leaves Kai’s replies alone',
+  resolve({ kind: 'kai_room_reply', prefs: prefs({ categories: { social: false } }) }).send.length === 1
+);
+ok(
+  'switching community off leaves the social lane alone',
+  resolve({ kind: 'trade_shared', prefs: prefs({ categories: { community: false } }) }).send.length === 1
 );
 
 section('The daily budget — proactive kinds ONLY (§4.2)');
@@ -250,7 +288,18 @@ ok('alert_trigger is NOT — the user asked for exactly this one', !isProactive(
 ok('kai_room_reply is NOT — they @-mentioned Kai themselves', !isProactive('kai_room_reply'));
 ok('debrief_ready is NOT — it follows a trade they closed', !isProactive('debrief_ready'));
 ok('paper_reset is NOT — they pressed the button', !isProactive('paper_reset'));
-ok('the proactive set is those three and no more', PROACTIVE_KINDS.size === 3);
+
+// THE SOCIAL FAN-OUT IS PROACTIVE, AND THAT IS THE ANTI-SPAM DESIGN. Following
+// somebody is consent to hear from them; it is not a request for THIS trade at
+// THIS minute. So it spends the follower's daily budget and waits out their
+// quiet hours, which is what stops one busy member emptying twenty phones.
+ok('a followed member’s call is proactive', isProactive('community_call'));
+ok('a followed member’s shared trade is proactive', isProactive('trade_shared'));
+ok(
+  'belt_earned is NOT — it is the user’s own resolution paying out',
+  !isProactive('belt_earned')
+);
+ok('the proactive set is those five and no more', PROACTIVE_KINDS.size === 5);
 
 const spent = { prefs: prefs({ max_per_day: 5 }), sentToday: 5 };
 ok(
@@ -267,6 +316,11 @@ ok(
 );
 ok('nor is a debrief', resolve({ kind: 'debrief_ready', ...spent }).send.length === 1);
 ok('nor is a room reply', resolve({ kind: 'kai_room_reply', ...spent }).send.length === 1);
+ok(
+  'a followed member’s trade over the cap IS capped — twenty follows is not twenty buzzes',
+  reasons(resolve({ kind: 'trade_shared', ...spent })).join() === 'budget'
+);
+ok('but the belt they just earned still reaches them', resolve({ kind: 'belt_earned', ...spent }).send.length === 1);
 ok(
   'one under the cap still goes',
   resolve({ kind: 'alert_activated', prefs: prefs({ max_per_day: 5 }), sentToday: 4 }).send.length === 1

@@ -45,6 +45,7 @@ import { ORDER_COLUMNS, applyFill, cancelSiblings, revalueAccount } from './engi
 import { rpcApplyPaperTick, type TickAttention } from './adapter';
 import { armedAlertSymbols, evaluateArmedAlerts } from '../round4/alert-tick';
 import { sweepCircles } from '../round4/circles';
+import { resolveShareOnClose } from '../social/shares';
 
 const RESTING: string[] = ['accepted', 'submitted', 'partially_filled'];
 
@@ -175,15 +176,23 @@ export async function runPaperTick(opts: {
 
       // Every `auto` leg that executed gets its notification here.
       for (const fired of viaRpc.data.fired) {
+        const leg = fired.leg === 'stop' ? 'stop' : 'target';
         await notifyLegFilled({
           userId,
           symbol,
           orderId: fired.order_id,
-          leg: fired.leg === 'stop' ? 'stop' : 'target',
+          leg,
           price: Number(fired.price),
           positionId: fired.position_id,
           requestId: opts.requestId,
         });
+        // A fired bracket is the one exit that KNOWS how it ended, which is why
+        // the outcome is passed in rather than inferred from the percent. If
+        // this position was shared, the share is stamped `target` or `stop`
+        // here, and a Kai-originated trade is scored. It cannot fail the tick:
+        // `resolveShareOnClose` swallows everything and does nothing at all
+        // when the position turns out not to be fully closed.
+        await closeShareForLeg(userId, fired.position_id, leg, Number(fired.price), opts.requestId);
       }
 
       // `alert_assisted` legs did NOT execute. They become Attention.
@@ -279,6 +288,7 @@ export async function runPaperTick(opts: {
           positionId: result.positionId,
           requestId: opts.requestId,
         });
+        await closeShareForLeg(userId, result.positionId, role, decision.price, opts.requestId);
       }
     }
   }
@@ -341,6 +351,36 @@ async function writeMark(positionId: string, mark: Mark): Promise<boolean> {
   }
   markColumnsPresent = true;
   return true;
+}
+
+/**
+ * A bracket leg fired, so the trade behind it is over. If the member chose to
+ * show that trade, stamp its outcome on the share; if it came from one of Kai's
+ * alerts, score it (0038 + 0039).
+ *
+ * WRAPPED, LIKE `notify()`. This runs inside the tick, which moves real
+ * positions on a schedule; a broken social lane must be able to do nothing
+ * worse than leave a share saying `open`. `resolveShareOnClose` already
+ * swallows its own failures — this catch is the second belt, because the tick
+ * is the one loop in this app where one thrown row would stop every remaining
+ * user's positions from being marked.
+ */
+async function closeShareForLeg(
+  userId: string,
+  positionId: string | null,
+  leg: 'stop' | 'target',
+  price: number,
+  requestId: string
+): Promise<void> {
+  if (!positionId) return;
+  try {
+    await resolveShareOnClose({ userId, positionId, leg, exitPrice: price, requestId });
+  } catch (e) {
+    log('warn', requestId, 'social.tick_share_close_threw', {
+      position_id: positionId,
+      message: e instanceof Error ? e.message : String(e),
+    });
+  }
 }
 
 async function notifyLegFilled(opts: {

@@ -11,6 +11,16 @@
  * Closing cancels the bracket legs on the way out: an exit that fires after the
  * position is already flat would open a NEW position in the opposite direction,
  * which is the classic paper-trading bug and a genuinely expensive real one.
+ *
+ * A SHARED TRADE IS CLOSED BY `submitOrder`, NOT HERE. The `closeOfPositionId`
+ * handed to the submit below is what `mirrorToSocial` in
+ * `lib/execution/submit.ts` uses to stamp the outcome on the member's
+ * `trade_shares` row and to score a Kai-originated trade. Doing it a second
+ * time in this route would be a second write path for one fact, and this
+ * codebase has said before what it thinks of those (0033 §1: "there are two
+ * write paths and a rule that lives in one of them is not a rule"). A close
+ * that fires a bracket instead of going through this route is stamped by the
+ * paper tick, which knows which leg it was.
  */
 import type { NextRequest } from 'next/server';
 import { PositionCloseRequest, PositionCloseResponse } from '@shared/api';
