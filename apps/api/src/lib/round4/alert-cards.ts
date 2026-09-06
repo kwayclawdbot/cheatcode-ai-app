@@ -40,6 +40,10 @@ import {
   ALERT_STATE_TAB,
   COMMUNITY_LABEL_PLAIN,
   NOT_A_GUARANTEE_PLAIN,
+  // A value, not just a type: the row's contracts are validated with it before
+  // they reach a card, so a malformed one is dropped rather than drawn.
+  AlertOptionContract,
+  type AlertScores,
   type AlertCard,
   type AlertCardState,
   type AlertCardOutcome,
@@ -741,11 +745,72 @@ export function outcomeOf(
  */
 function ungradedReason(setup: SetupRow): string | null {
   const components = (setup.score_components ?? {}) as Record<string, unknown>;
+
+  // The unusual-options-activity family is ungraded for a different reason to
+  // the scanner families below it, and the difference matters. Those are
+  // ungraded because the grader was never calibrated on them. This one is
+  // ungraded because the engine does not issue a grade AT ALL — it reads one
+  // signal and reports it. Saying "not graded yet" would promise a letter that
+  // is not coming; saying nothing would let the blank read as an oversight.
+  if (components.family === 'uoa_day_trade') {
+    return 'Not graded. This alert comes from a single measurement — unusual options flow — and that '
+      + 'engine issues no letter grade. A grade here would be an opinion nothing produced.';
+  }
+
   if (components.source !== 'kai_sms_scanner') return null;
   if (components.live_family !== false) return null;
   return setup.mode === 'day_trade'
     ? 'Not graded. This was an intraday alert, and the grade is calibrated on the swing family only.'
     : 'Not graded. This family is kept as a record of what was sent, and the grade is calibrated on the long swing family only.';
+}
+
+/**
+ * The contracts the producing engine named, if it named any.
+ *
+ * Read straight off the row the ingest wrote — this function does not choose a
+ * contract, rank one, or fill a gap. An engine that named nothing produces
+ * null here and the card's whole options section is absent, which is the
+ * difference between "nothing qualified" and "we have not looked".
+ */
+function recommendedOptionsOf(setup: SetupRow | null): AlertOptionContract[] | null {
+  if (!setup) return null;
+  const raw = ((setup.score_components ?? {}) as Record<string, unknown>).recommended_options;
+  if (!Array.isArray(raw) || !raw.length) return null;
+  const out: AlertOptionContract[] = [];
+  for (const item of raw) {
+    const parsed = AlertOptionContract.safeParse(item);
+    // A contract missing a strike, an expiry or a side is not a contract. It is
+    // dropped rather than drawn with dashes in it.
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out.length ? out : null;
+}
+
+/**
+ * The 0-100 bars, where the engine behind this row actually measured one.
+ *
+ * ABSENT IS NOT ZERO. Only keys the producer wrote are passed through; a bar
+ * the engine never looked at stays null and is not drawn. Sending zero would
+ * render "we did not measure trend" identically to "trend is as weak as it
+ * gets", which are opposite claims.
+ */
+function barScoresOf(setup: SetupRow | null): AlertScores | null {
+  if (!setup) return null;
+  const raw = ((setup.score_components ?? {}) as Record<string, unknown>).scores;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const src = raw as Record<string, unknown>;
+  const one = (v: unknown): number | null => {
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : null;
+  };
+  const scores: AlertScores = {
+    trend: one(src.trend),
+    rr: one(src.rr),
+    options_activity: one(src.options_activity),
+  };
+  return scores.trend === null && scores.rr === null && scores.options_activity === null
+    ? null
+    : scores;
 }
 
 /** Assemble one card. Pure — every input has already been loaded. */
@@ -796,6 +861,8 @@ export function buildCard(input: BuildCardInput): AlertCard {
     grade,
     score_components: components,
     family_performance: familyPerformanceOf(setup),
+    recommended_options: recommendedOptionsOf(setup),
+    scores: barScoresOf(setup),
 
     state: input.state,
     state_label: STATE_LABEL[input.state],

@@ -3537,6 +3537,55 @@ export const AlertCardOutcome = z.object({
 export type AlertCardOutcome = z.infer<typeof AlertCardOutcome>;
 
 /**
+ * The bars on the trade card. Each is 0-100 on the same scale the grade bands
+ * use, so a bar reads as a grade rather than as progress.
+ *
+ * A FIELD THAT IS ABSENT DRAWS NO BAR. It is never sent as zero to mean "we did
+ * not look" — zero is a measurement, and an engine that measures trend and
+ * finds none must not render identically to an engine that never looked at
+ * trend at all. The unusual-options-activity family sends only
+ * `options_activity` for exactly this reason.
+ */
+export const AlertScores = z.object({
+  trend: z.number().nullable().default(null),
+  rr: z.number().nullable().default(null),
+  options_activity: z.number().nullable().default(null),
+});
+export type AlertScores = z.infer<typeof AlertScores>;
+
+/**
+ * One option contract the engine actually named, shown as a small card.
+ *
+ * IT IS A CONTRACT THAT WAS NAMED, NOT A CHAIN. The card shows the one (or two)
+ * contracts the producing engine put its name to and nothing else — no chain
+ * table, no strike ladder, no "alternatives". If the engine named nothing, the
+ * array is null and the section is absent; it is never an empty box or a row of
+ * dashes, because "we looked and nothing qualified" and "we did not look" must
+ * not render the same way.
+ *
+ * `liquidity` is the engine's own hard floor, passed through as it was decided.
+ * `good` means the contract cleared the floor; `thin` means it did not and is
+ * shown anyway with that said out loud. Null means no floor was applied.
+ *
+ * The ticker is NEVER repeated inside this object — the card it sits in already
+ * carries the mark.
+ */
+export const AlertOptionContract = z.object({
+  /** Optional role, e.g. "The contract the flow bought". NEVER the ticker. */
+  label: z.string().nullable().default(null),
+  type: z.enum(['call', 'put']),
+  /** "120" — the strike as written, not a formatted price. */
+  strike: z.string(),
+  /** "Aug 21" — short, human, already in the reader's calendar. */
+  expiry: z.string(),
+  dte: z.number().nullable().default(null),
+  /** Premium per share at the ask, e.g. "5.00". The card adds the $. */
+  cost: z.string().nullable().default(null),
+  liquidity: z.enum(['good', 'thin']).nullable().default(null),
+});
+export type AlertOptionContract = z.infer<typeof AlertOptionContract>;
+
+/**
  * THE standard alert card (spec §2). One component across Active, Watching and
  * History; sections may collapse but the semantics never change.
  */
@@ -3569,6 +3618,18 @@ export const AlertCard = z.object({
    * before SWING-1 still parses.
    */
   family_performance: FamilyPerformance.nullable().default(null),
+  /**
+   * Contracts the producing engine named to express this idea. Null — and so
+   * the whole section is absent — for every engine that names none, which is
+   * every equity family. Additive: a payload written before this field still
+   * parses.
+   */
+  recommended_options: z.array(AlertOptionContract).nullable().default(null),
+  /**
+   * The 0-100 bars. Null when the engine behind this card measured none of
+   * them. Additive: a payload written before this field still parses.
+   */
+  scores: AlertScores.nullable().default(null),
 
   state: AlertCardState,
   state_label: z.string(),

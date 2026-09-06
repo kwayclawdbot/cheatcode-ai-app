@@ -13,36 +13,46 @@
  * "Alerts" over a screen of themes is the exact failure this module prevents.
  *
  * ---------------------------------------------------------------------------
- * DAY TRADE IS ARCHIVED AS COMING SOON — owner ruling, 2026-09-06.
+ * DAY TRADE WAS ARCHIVED AS COMING SOON ON 2026-09-06, AND IS LIVE AGAIN THE
+ * SAME DAY — because the condition that archived it was met.
  *
- * The same-day picker is not running. The intraday cron was disabled on
- * 2026-08-03 pending the fix the 2026-07-29 audit called for, and the last
- * opening-range alert this product sent was 2026-08-04. So Day Trade held a
- * mode chip, a tab and a heading, and behind them nothing a person could act
- * on — which reads as broken rather than as unfinished.
+ * WHY IT WAS ARCHIVED. The same-day picker was not running. The intraday cron
+ * was disabled on 2026-08-03 pending the fix the 2026-07-29 audit called for,
+ * and the last opening-range alert this product sent was 2026-08-04. So Day
+ * Trade held a mode chip, a tab and a heading, and behind them nothing a person
+ * could act on — which reads as broken rather than as unfinished.
  *
- * It is ARCHIVED, NOT REMOVED. The mode still exists, still saves, still
- * appears in onboarding and in the mode sheet, and its 317 stored setups are
- * untouched. What changes is that the app says out loud that the mode is not
- * live yet instead of drawing an empty alerts screen.
+ * WHAT CHANGED. A different same-day picker is publishing: the
+ * unusual-options-activity day-trade engine, which polls the options flow feed
+ * through the session and POSTs each alert it fires to
+ * `/api/v1/internal/uoa-alerts`, where it becomes an ordinary `setups` row with
+ * `mode = day_trade`. That is the producer-side condition this comment asked
+ * for, and it is met by a different engine to the one that broke — which is the
+ * honest reading, not a technicality: the opening-range picker is still down.
  *
- * THE FLIP BACK IS ONE LINE: `DAY_TRADE_LIVE = true`, below. Nothing else in
- * the app reads the state any other way — not the tab bar, not the tab screen,
- * not the mode sheet, not onboarding. See the report for what has to be true
- * on the producer side before that line is flipped.
+ * WHAT THE MODE NOW SHOWS. Real cards, on the days that engine fires. It is a
+ * selective filter — 17 alerts across 94 sessions in the measured record — so a
+ * quiet day is a genuinely empty board rather than a broken one. That is the
+ * one thing to watch here: if the empty days start reading as breakage again,
+ * the answer is a line on the board saying the engine is running and has not
+ * fired today, NOT flipping this back.
+ *
+ * THE FLIP IS STILL ONE LINE. Nothing else in the app reads the state any other
+ * way — not the tab bar, not the tab screen, not the mode sheet, not
+ * onboarding.
  * ---------------------------------------------------------------------------
  */
 import type { GoalMode } from '../../lib/types';
 
 /**
- * THE FLIP. `false` = Day Trade is presented as coming soon.
+ * THE FLIP. `true` = Day Trade is an ordinary alerts tab.
  *
- * Set it to `true` when the same-day picker is publishing again and Day Trade
- * goes straight back to being an ordinary alerts tab. It is the only switch;
- * if you find yourself changing a second file to turn the mode on, something
- * has grown a second answer and that is the bug.
+ * Set it back to `false` if the day-trade producer stops publishing entirely
+ * and the mode again has nothing behind it. It is the only switch; if you find
+ * yourself changing a second file to turn the mode on or off, something has
+ * grown a second answer and that is the bug.
  */
-export const DAY_TRADE_LIVE = false;
+export const DAY_TRADE_LIVE = true;
 
 /**
  * The mode a screen assumes when the profile has not loaded or has no

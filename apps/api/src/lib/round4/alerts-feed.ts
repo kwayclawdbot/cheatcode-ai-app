@@ -40,6 +40,7 @@ import { buildCard, communityBlock, deriveState, reconcileVersion, NO_COMMUNITY 
 import { alertIdentity } from './alert-identity';
 import { proportionalSlots } from './history-slots';
 import { hasAlertVersionColumns } from './schema-probe';
+import { UOA_ORIGIN } from '../uoa/ingest';
 
 const ALERT_COLUMNS =
   'id,status,natural_language,condition,data_dependency,frequency,expires_at,refs,created_at,updated_at';
@@ -70,6 +71,43 @@ const SETUP_COLUMNS =
 const MORNING_ACTIVE_LIMIT = 12;
 const MORNING_HISTORY_LIMIT = 25;
 
+
+/**
+ * The unusual-options-activity day-trade family, live and resolved.
+ *
+ * A SEPARATE QUERY RATHER THAN A WIDER ONE. The swing query above carries three
+ * owner rulings in its where-clause and a comment explaining each; loosening it
+ * to let a second family through would make every one of those rulings
+ * conditional on a family check somebody has to remember. This family has its
+ * own boundary — `quote_snapshot.origin` — and its own rules, so it gets its
+ * own three lines and the swing lane keeps behaving exactly as it did.
+ *
+ * `is_replay` is excluded from the live list at the source. A replay is a
+ * rehearsal over cached tape; the ingest already writes it `expired` so it
+ * cannot be live, and this is the second lock on the same door.
+ */
+async function uoaDayTradeSetups(
+  db: ReturnType<typeof serviceClient>,
+): Promise<{ live: SetupRow[]; resolved: SetupRow[] }> {
+  const [live, resolved] = await Promise.all([
+    db.from('setups').select(SETUP_COLUMNS)
+      .eq('mode', 'day_trade')
+      .eq('quote_snapshot->>origin', UOA_ORIGIN)
+      .in('state', ['discovered', 'watching', 'forming', 'ready'])
+      .order('valid_until', { ascending: false })
+      .limit(MORNING_ACTIVE_LIMIT),
+    db.from('setups').select(SETUP_COLUMNS)
+      .eq('mode', 'day_trade')
+      .eq('quote_snapshot->>origin', UOA_ORIGIN)
+      .in('state', ['expired', 'invalidated'])
+      .order('valid_until', { ascending: false })
+      .limit(MORNING_HISTORY_LIMIT),
+  ]);
+  return {
+    live: (live.data ?? []) as unknown as SetupRow[],
+    resolved: (resolved.data ?? []) as unknown as SetupRow[],
+  };
+}
 
 export type FeedResult = {
   cards: AlertCard[];
@@ -147,7 +185,7 @@ export async function loadAlertCards(opts: { userId: string; requestId?: string 
    * Bounded on purpose. A tab is a decision surface, not an archive: the live
    * ones, and the last few weeks of resolved ones, newest first.
    */
-  const [liveMorning, resolvedMorning] = await Promise.all([
+  const [liveMorning, resolvedMorning, uoa] = await Promise.all([
     db.from('setups').select(SETUP_COLUMNS)
       .eq('mode', 'swing')
       .eq('quote_snapshot->>origin', 'kai_sms_scanner')
@@ -160,9 +198,23 @@ export async function loadAlertCards(opts: { userId: string; requestId?: string 
       .order('valid_until', { ascending: false })
       .limit(MORNING_ACTIVE_LIMIT),
     resolvedMorningByDirection(db),
+    uoaDayTradeSetups(db),
   ]);
-  const morningLive = (liveMorning.data ?? []) as unknown as SetupRow[];
-  const morningResolved = resolvedMorning;
+  // The unusual-options-activity day-trade family joins the same two lists
+  // rather than getting a third. A card is a card: it sorts, filters, expires
+  // and lands in a tab by the same rules as everything else here, and the ONE
+  // thing that makes it different — that the engine behind it reads options
+  // flow and nothing else — is said in its own copy, not in the plumbing.
+  //
+  // SHORTS ARE NOT WITHHELD HERE. The swing family's shorts are History-only
+  // because that engine was never measured short. This one fires long and
+  // short on the same filter and was measured on both, so a bearish alert is
+  // an ordinary card. It carries no exit advice either way.
+  const morningLive = [
+    ...((liveMorning.data ?? []) as unknown as SetupRow[]),
+    ...uoa.live,
+  ];
+  const morningResolved = [...resolvedMorning, ...uoa.resolved];
 
   // Symbols we need quotes and profiles for.
   const symbols = new Set<string>();
