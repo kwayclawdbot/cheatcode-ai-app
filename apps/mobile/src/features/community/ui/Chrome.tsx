@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Pressable, Modal, ViewStyle, StyleProp } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import { alpha, color, gradient, gradientAngle, radius } from '../../../ui/tokens';
 import { T, Num } from '../../../ui/Text';
 import { ObjectCard } from '../../../ui/Panel';
@@ -79,11 +80,34 @@ export function StackHeader({
   );
 }
 
-/** Member avatar: 34px circle, initial, tinted by role (never by performance). */
-export function Avatar({ initial, size = 34, tone = 'neutral' }: {
-  initial: string; size?: number; tone?: 'neutral' | 'educator' | 'market' | 'kai';
+/**
+ * Member avatar: 34px circle, tinted by role (never by performance).
+ *
+ * A PICTURE IF THERE IS ONE, THE INITIAL IF THERE IS NOT. `url` is
+ * `profiles.avatar_url`, which is null on every account today — the upload
+ * that fills it is the media lane's (`POST /api/v1/media`, purpose `avatar`)
+ * and this lane deliberately did not build a second one. The image path is
+ * here so that the day it lands, nothing in the community has to change.
+ */
+export function Avatar({ initial, size = 34, tone = 'neutral', url = null }: {
+  initial: string; size?: number; tone?: 'neutral' | 'educator' | 'market' | 'kai'; url?: string | null;
 }) {
   if (tone === 'kai') return <KaiDot size={size} />;
+  if (url) {
+    return (
+      <Image
+        source={{ uri: url }}
+        contentFit="cover"
+        // The member's name is already next to this on every surface that
+        // draws it, so the picture is decoration to a screen reader.
+        accessibilityElementsHidden
+        style={{
+          width: size, height: size, borderRadius: size / 2, flexShrink: 0,
+          borderWidth: 0.5, borderColor: alpha.ivory14,
+        }}
+      />
+    );
+  }
   const tint =
     tone === 'educator' ? 'rgba(255,200,87,0.30)'
     : tone === 'market' ? 'rgba(50,214,255,0.25)'

@@ -348,7 +348,20 @@ export function mapKaiObject(raw: any): KaiRoomObject | null {
 
 function mapMessage(raw: any, kaiObjects?: Record<string, any>): RoomMessage {
   const author = raw.author ?? raw.profile ?? null;
-  const isKai = raw.user_id == null || raw.kind === 'kai_object';
+  /**
+   * WHO WROTE THIS.
+   *
+   * `user_id == null` meant "Kai" and only "Kai" until account deletion landed
+   * (migration 0032), which severs authorship by nulling the same column. So
+   * the null has to be read together with `author_deleted`, or every post a
+   * departed member ever made is silently signed by the assistant.
+   *
+   *   null + author_deleted false  ->  Kai
+   *   null + author_deleted true   ->  a former member, named as one
+   *   a user_id                    ->  that member
+   */
+  const severed = raw.author_deleted === true;
+  const isKai = !severed && (raw.user_id == null || raw.kind === 'kai_object');
   const objRaw = raw.kai_object ?? (raw.refs?.kai_object_id && kaiObjects ? kaiObjects[raw.refs.kai_object_id] : null);
   const structured = mapStructured(raw.structured_idea);
   const refs = raw.refs ?? null;
@@ -359,15 +372,29 @@ function mapMessage(raw: any, kaiObjects?: Record<string, any>): RoomMessage {
     created_at: raw.created_at ?? new Date().toISOString(),
     time_label: timeLabel(raw.created_at),
     author: isKai
-      ? { user_id: 'kai', display_name: 'Kai', handle: null, initial: 'K', role_labels: ['AI'], is_kai: true }
-      : {
-          user_id: String(raw.user_id ?? author?.user_id ?? ''),
-          display_name: author?.display_name ?? author?.handle ?? 'Member',
-          handle: author?.handle ?? null,
-          initial: initialOf(author?.display_name ?? author?.handle),
-          role_labels: Array.isArray(author?.role_labels) ? author.role_labels : [],
-          is_kai: false,
-        },
+      ? {
+          user_id: 'kai', display_name: 'Kai', handle: null, avatar_url: null,
+          initial: 'K', role_labels: ['AI'], is_kai: true, author_deleted: false,
+        }
+      : severed
+        ? {
+            // Not a name, a fact. The post stays where it is and stops
+            // claiming an author it no longer has.
+            user_id: '', display_name: 'Former member', handle: null, avatar_url: null,
+            initial: '·', role_labels: [], is_kai: false, author_deleted: true,
+          }
+        : {
+            user_id: String(raw.user_id ?? author?.user_id ?? ''),
+            // The name they gave, then the username they picked, then a word
+            // that claims nothing. Never an email address.
+            display_name: author?.display_name ?? author?.handle ?? 'Member',
+            handle: author?.handle ?? null,
+            avatar_url: author?.avatar_url ?? null,
+            initial: initialOf(author?.display_name ?? author?.handle),
+            role_labels: Array.isArray(author?.role_labels) ? author.role_labels : [],
+            is_kai: false,
+            author_deleted: false,
+          },
     body: raw.deleted ? null : raw.body ?? null,
     refs,
     structured_idea: structured,
@@ -551,7 +578,7 @@ export const communityApi = {
       kind: payload.kind ?? 'text',
       created_at: now,
       time_label: timeLabel(now),
-      author: { user_id: 'me', display_name: 'You', handle: null, initial: 'Y', role_labels: [], is_kai: false },
+      author: { user_id: 'me', display_name: 'You', handle: null, avatar_url: null, initial: 'Y', role_labels: [], is_kai: false, author_deleted: false },
       body: payload.body,
       refs: payload.refs ?? null,
       structured_idea: payload.structured_idea ?? null,

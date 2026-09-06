@@ -461,8 +461,20 @@ export type OnboardingCompleteRequest = z.infer<typeof OnboardingCompleteRequest
 
 export const ProfileResponse = z.object({
   user_id: z.string(),
+  /**
+   * The member's username, in the case they typed it. Null means they have not
+   * picked one — say so. Never invent one, and never derive one from an email
+   * address (the rules live in `packages/shared/handles.ts`).
+   */
   handle: z.string().nullable(),
   display_name: z.string().nullable(),
+  /**
+   * The column has existed since 0002 and was null on every account until the
+   * media lane's upload (`POST /api/v1/media`, purpose `avatar`) landed. This
+   * field is the surface for it. The database refuses anything that is not a
+   * web address (0034, `profiles_identity_guard`).
+   */
+  avatar_url: z.string().nullable().default(null),
   primary_mode: AppMode,
   experience: ExperienceLevel,
   involvement: Involvement,
@@ -1772,6 +1784,35 @@ export const ContributorResponse = z.object({
 export type ContributorResponse = z.infer<typeof ContributorResponse>;
 
 /* ------------------------------------------------------------------ */
+/* GET /api/v1/handles/check?handle=                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * "Is this username free, and if not, what else could I have?"
+ *
+ * Three separate questions, answered separately, because "that will not work"
+ * tells somebody nothing about which rule they broke:
+ *   * `valid`     — does it obey the format rules;
+ *   * `reserved`  — is it kept for the team or for the app itself;
+ *   * `available` — has somebody else already got it (compared folded, so
+ *                   `Kway` collides with `kway`).
+ *
+ * `suggestions` are offered only after a collision, and every one of them has
+ * been checked against the database before it is returned. A suggestion that
+ * is also taken is worse than no suggestion at all.
+ */
+export const HandleCheckResponse = z.object({
+  handle: z.string(),
+  valid: z.boolean(),
+  reserved: z.boolean(),
+  available: z.boolean(),
+  /** Null when it is fine. Otherwise the one sentence to put under the box. */
+  plain: z.string().nullable(),
+  suggestions: z.array(z.string()),
+});
+export type HandleCheckResponse = z.infer<typeof HandleCheckResponse>;
+
+/* ------------------------------------------------------------------ */
 /* Account                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -2894,6 +2935,27 @@ export const SettingsRound4Request = z
         text_scale: z.number().min(0.8).max(2).optional(),
       })
       .optional(),
+    /**
+     * WHO THIS PERSON IS. Added 2026-09-06 — until then no screen in the app
+     * asked for a name anywhere, and 5 of 8 accounts had none.
+     *
+     * The rules are in `packages/shared/handles.ts`; the LAST WORD on them is
+     * the database (0034, `profiles_identity_guard`), because the phone holds
+     * INSERT/UPDATE on `profiles` and can write it directly through PostgREST.
+     * A rule that lives only in this route is advisory. This route validates
+     * first anyway, so the member reads a sentence instead of a constraint.
+     *
+     * `handle` accepts null to clear it back to "not set". It never silently
+     * becomes an email address or a display name.
+     */
+    handle: z.string().max(20).nullable().optional(),
+    display_name: z.string().max(40).nullable().optional(),
+    /**
+     * Stored, not produced. The media lane owns the upload that makes one of
+     * these (`POST /api/v1/media`, purpose `avatar`); this only records the
+     * address it hands back, and only from our own storage.
+     */
+    avatar_url: z.string().max(2048).nullable().optional(),
     /** Round 4: the Account tab's "Your Kai profile" rows. */
     experience: OnboardingExperience.optional(),
     focus: z.array(FocusKey).max(6).optional(),
@@ -4125,7 +4187,10 @@ export const ORDER_CONFIRMED_PLAIN =
 export const PaperTickRound4Response = PaperTickResponse.extend({
   alerts_evaluated: z.number(),
   alerts_triggered: z.number(),
-  circles_opened: z.number(),
+  /**
+   * How many circles the tick CLOSED. There is no `circles_opened` any more:
+   * nothing opens a room automatically (0034, owner instruction 2026-09-05).
+   */
   circles_closed: z.number(),
 });
 export type PaperTickRound4Response = z.infer<typeof PaperTickRound4Response>;
@@ -4969,8 +5034,35 @@ export const CreditsResponse = z.object({
 });
 export type CreditsResponse = z.infer<typeof CreditsResponse>;
 
+/**
+ * WHAT THE ACCOUNT TAB NEEDS IN ORDER TO ASK SOMEBODY FOR A USERNAME.
+ *
+ * `needs_handle` is the only thing that gates the prompt and it is derived
+ * from the database on every read, so an account that picks a name on one
+ * device stops being asked on the other.
+ *
+ * `suggested_handle` is a SUGGESTION and nothing more. It is pre-filled in the
+ * box for the person to accept or type over, and nothing is written until they
+ * press save. It comes from their display name when they have one and is null
+ * when they do not: deriving `kcoffie90` from `kcoffie90@gmail.com` is calling
+ * somebody by their login, which an earlier lane rejected for `display_name`
+ * and was right to.
+ */
+export const IdentityBlock = z.object({
+  handle: z.string().nullable(),
+  display_name: z.string().nullable(),
+  avatar_url: z.string().nullable(),
+  needs_handle: z.boolean(),
+  suggested_handle: z.string().nullable(),
+  plain: z.string(),
+  route: z.string(),
+});
+export type IdentityBlock = z.infer<typeof IdentityBlock>;
+
 export const MeRound6Response = MeRound4Response.extend({
   staff: MeStaffBlock,
+  /** Optional so an API build that predates 0034 still parses. */
+  identity: IdentityBlock.nullable().default(null),
   /** Optional so an API build that predates 0030 still parses. */
   credits: CreditsBlock.nullable().default(null),
 });

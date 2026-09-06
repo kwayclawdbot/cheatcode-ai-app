@@ -11,20 +11,20 @@ import type {
 } from './types';
 
 const KAI: Author = {
-  user_id: 'kai', display_name: 'Kai', handle: null, initial: 'K',
-  role_labels: ['AI'], is_kai: true,
+  user_id: 'kai', display_name: 'Kai', handle: null, avatar_url: null, initial: 'K',
+  role_labels: ['AI'], is_kai: true, author_deleted: false,
 };
 const JORDAN: Author = {
-  user_id: 'u-jordan', display_name: 'Jordan', handle: 'jordan', initial: 'J',
-  role_labels: ['Educator'], is_kai: false,
+  user_id: 'u-jordan', display_name: 'Jordan', handle: 'jordan', avatar_url: null, initial: 'J',
+  role_labels: ['Educator'], is_kai: false, author_deleted: false,
 };
 const SAM: Author = {
-  user_id: 'u-sam', display_name: 'Sam', handle: 'sam', initial: 'S',
-  role_labels: [], is_kai: false,
+  user_id: 'u-sam', display_name: 'Sam', handle: 'sam', avatar_url: null, initial: 'S',
+  role_labels: [], is_kai: false, author_deleted: false,
 };
 const MARCUS: Author = {
-  user_id: 'u-marcus', display_name: 'Marcus T.', handle: 'marcus', initial: 'M',
-  role_labels: ['Moderator'], is_kai: false,
+  user_id: 'u-marcus', display_name: 'Marcus T.', handle: 'marcus', avatar_url: null, initial: 'M',
+  role_labels: ['Moderator'], is_kai: false, author_deleted: false,
 };
 
 const META_SETUP: RoomSetup = {

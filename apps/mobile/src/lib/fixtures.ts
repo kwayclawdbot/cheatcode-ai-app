@@ -146,6 +146,11 @@ export const fixtureInstruments: Instrument[] = [
 export const fixtureProfile: Profile = {
   user_id: 'fixture-user',
   display_name: 'Kway',
+  handle: 'kway',
+  // Null on purpose. Every real account's avatar is null too until the media
+  // lane's upload lands, and a fixture that shows a picture nobody can get
+  // would make the empty state look like a bug.
+  avatar_url: null,
   primary_mode: 'day_trade',
   involvement: 'hands_on',
   memory_enabled: true,
@@ -561,6 +566,17 @@ export const fixtureMe: Me = {
   // look exactly like real ones. Staff is a fact about a database row.
   staff: { is_staff: false, role: null, plain: 'You do not have staff access.' },
   credits: fixtureCredits,
+  // The sample account HAS a username, so fixtures show the settled state.
+  // To see the prompt, set `needs_handle` true and `handle` null here.
+  identity: {
+    handle: 'kway',
+    display_name: 'Kway',
+    avatar_url: null,
+    needs_handle: false,
+    suggested_handle: null,
+    plain: 'You post as kway.',
+    route: '/account/username',
+  },
 };
 
 export const fixtureNotifications: NotificationRow[] = [

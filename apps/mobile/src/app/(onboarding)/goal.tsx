@@ -42,7 +42,7 @@ export default function Goal() {
 
   return (
     <Screen variant="corner" layout="stack" testID="screen-goal">
-      <ProgressBars total={4} done={1} />
+      <ProgressBars total={5} done={1} />
       <T size={27} weight="bold" ls={-0.4} lh={32}>What do you want to do?</T>
       <T size={14} c={color.muted} style={{ marginTop: 8 }}>Pick your main focus. You can switch anytime.</T>
 

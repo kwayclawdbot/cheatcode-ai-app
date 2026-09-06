@@ -42,6 +42,14 @@ export type SetupRow = {
 
 export type ProfileRow = {
   user_id: string;
+  /**
+   * The member's username. Read here so that every surface built on this row
+   * — /me, /settings, Kai's own context — has the real value. It was hardcoded
+   * to null in two responses until 0034, which is why the Account tab could
+   * never show a name that was sitting in the database all along.
+   */
+  handle: string | null;
+  avatar_url: string | null;
   display_name: string | null;
   primary_mode: AppMode;
   experience: string;
@@ -134,7 +142,7 @@ export async function loadProfile(userId: string): Promise<ProfileRow> {
   const db = serviceClient();
   const { data, error } = await db
     .from('profiles')
-    .select('user_id,display_name,primary_mode,experience,involvement,explanation_level,memory_enabled,onboarding,timezone')
+    .select('user_id,handle,avatar_url,display_name,primary_mode,experience,involvement,explanation_level,memory_enabled,onboarding,timezone')
     .eq('user_id', userId)
     .single();
   if (error) throw error;

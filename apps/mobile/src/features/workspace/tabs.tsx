@@ -381,7 +381,10 @@ export function CommunityTab({ w, testID = 'tab-body-community' }: { w: SymbolWo
           onPress={() => router.push(`/room/${encodeURIComponent(w.community.room_id as string)}`)}
         />
       ) : (
-        <T size={12} lh={18} c={color.muted}>Discussion opens when a room covers this symbol.</T>
+        <T size={12} lh={18} c={color.muted}>
+          No room covers this symbol. The Cheat Code team opens circles; the app does not open
+          one because an alert published.
+        </T>
       )}
 
       <Button

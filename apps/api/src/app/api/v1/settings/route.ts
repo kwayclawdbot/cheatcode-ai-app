@@ -15,6 +15,8 @@ import { emitUserEvent } from '@/lib/events';
 import { loadProfile } from '@/lib/kai/context';
 import { readPrefs, writePrefs } from '@/lib/prefs';
 import { writeKaiProfile } from '@/lib/round4/profile-round4';
+import { handleForStorage } from '@/lib/handles';
+import { avatarForStorage } from '@/lib/avatars';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +27,36 @@ export const PUT = authed(async (req: NextRequest, ctx: Ctx) => {
 
   const profilePatch: Record<string, unknown> = {};
   if (body.explanation_level) profilePatch.explanation_level = body.explanation_level;
+
+  /**
+   * WHO THIS PERSON IS.
+   *
+   * `handle` is validated and its availability checked BEFORE anything else in
+   * this request is written, so a taken username never half-saves a settings
+   * change. `handleForStorage` throws the sentence the member should read.
+   *
+   * `null` clears it. `undefined` — the field simply absent — leaves it alone,
+   * which is what every other field in this route does and what a PATCH means.
+   *
+   * The database has the same rules in `profiles_identity_guard` (0034) and
+   * gets the last word, because the phone can write `profiles` directly.
+   */
+  if (body.handle !== undefined) {
+    profilePatch.handle = body.handle === null ? null : await handleForStorage(body.handle, ctx.user.id);
+  }
+  if (body.display_name !== undefined) {
+    const name = body.display_name === null ? null : body.display_name.trim();
+    profilePatch.display_name = name ? name : null;
+  }
+  /**
+   * The address of an image the media lane has already stored. This route does
+   * NOT upload anything and must not grow an upload — `POST /api/v1/media`
+   * with purpose `avatar` is the one upload path in this app. All that happens
+   * here is that the address is checked to be ours and written down.
+   */
+  if (body.avatar_url !== undefined) {
+    profilePatch.avatar_url = body.avatar_url === null ? null : avatarForStorage(body.avatar_url);
+  }
 
   // Round 4: the Account board's Kai-profile rows. `experience` is the word the
   // user picked (new / some / pro); `experience_level` and `explanation_level`
@@ -105,7 +137,8 @@ export const PUT = authed(async (req: NextRequest, ctx: Ctx) => {
     SettingsResponse.parse({
       profile: {
         user_id: updated.user_id,
-        handle: null,
+        handle: updated.handle,
+        avatar_url: updated.avatar_url,
         display_name: updated.display_name,
         primary_mode: updated.primary_mode,
         experience: updated.experience,

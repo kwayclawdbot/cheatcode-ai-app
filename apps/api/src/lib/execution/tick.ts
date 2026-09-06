@@ -83,8 +83,11 @@ export async function runPaperTick(opts: {
     ...new Set([...positions, ...orders].map((r) => String(r.symbol)).concat(alertSymbols)),
   ].sort();
 
-  // Circles open and close on their own clock, which has nothing to do with
-  // whether this user has a position open — so the sweep runs on every tick.
+  // Circles close on their own clock, which has nothing to do with whether
+  // this user has a position open — so the sweep runs on every tick.
+  //
+  // It only CLOSES. Opening a room for a setup was removed in 0034 on the
+  // owner's instruction; the team opens circles, the clock closes them.
   const swept = await sweepCircles({ requestId: opts.requestId });
 
   if (!symbols.length) {
@@ -101,7 +104,6 @@ export async function runPaperTick(opts: {
       plain: 'Nothing is open and nothing is resting, so there was nothing to mark.',
       alerts_evaluated: 0,
       alerts_triggered: 0,
-      circles_opened: swept.opened,
       circles_closed: swept.closed,
     };
   }
@@ -299,7 +301,6 @@ export async function runPaperTick(opts: {
     plain: `Marked ${marked} position${marked === 1 ? '' : 's'} and filled ${filled} resting order${filled === 1 ? '' : 's'} against ${markQuality(marks)} prices. ${PAPER_FILL_PLAIN}`,
     alerts_evaluated: alertEval.evaluated,
     alerts_triggered: alertEval.triggered,
-    circles_opened: swept.opened,
     circles_closed: swept.closed,
   };
 }

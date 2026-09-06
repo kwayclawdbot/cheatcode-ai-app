@@ -1,5 +1,5 @@
 import type {
-  AlertDraftResponse, AlertsResponse, CreateConversationResponse, HomeResponse,
+  AlertDraftResponse, AlertsResponse, CreateConversationResponse, HandleCheckResponse, HomeResponse,
   ModeResponse, OnboardingCompleteRequest, OnboardingCompleteResponse, SetupsResponse,
 } from '@cheatcode/shared';
 import type {
@@ -215,6 +215,24 @@ export const api = {
 
   putSettings: (body: Record<string, unknown>) =>
     request<unknown>('/settings', { method: 'PUT', body: JSON.stringify(body) }),
+
+  /**
+   * "Is this username free?" — asked while somebody types, so the box can
+   * answer before they press save.
+   *
+   * It DECIDES nothing. `PUT /settings` checks again, and after that the
+   * database trigger checks again, so a stale yes here can never become a
+   * wrong write.
+   */
+  checkHandle: (handle: string) =>
+    request<HandleCheckResponse>(`/handles/check?handle=${encodeURIComponent(handle)}`),
+
+  /**
+   * Save the username. Separate from `putSettings` only so the call site reads
+   * as what it is; it is the same endpoint, and `handle: null` clears it.
+   */
+  putHandle: (handle: string) =>
+    request<unknown>('/settings', { method: 'PUT', body: JSON.stringify({ handle }) }),
 
   memory: async (): Promise<MemoryRow[]> => adaptMemory(await request<unknown>('/memory')),
 

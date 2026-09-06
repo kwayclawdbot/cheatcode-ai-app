@@ -14,6 +14,7 @@ import { Check } from '../../../ui/Icons';
 import { alpha, color, radius } from '../../../ui/tokens';
 import { GradeChip } from '../../portal/grade';
 import { KaiObjectView } from './KaiObjects';
+import { Avatar } from './Chrome';
 import type { RoomMessage } from '../types';
 
 /** `$META` → a cyan chip that opens the ticker page. */
@@ -153,14 +154,9 @@ export function ClubMessage({
       testID={`club-message-${message.id}`}
     >
       {kai ? <KaiOrb size={32} /> : (
-        <View
-          style={{
-            width: 32, height: 32, borderRadius: 16, backgroundColor: alpha.chip85,
-            borderWidth: 0.5, borderColor: alpha.ivory14, alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          <T size={12} weight="bold">{message.author.initial}</T>
-        </View>
+        // Drawn through the shared Avatar so a member's picture appears here
+        // the moment they have one, without a second copy of the fallback.
+        <Avatar size={32} initial={message.author.initial} url={message.author.avatar_url} />
       )}
       <View
         style={{
@@ -170,6 +166,9 @@ export function ClubMessage({
       >
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 7, flexWrap: 'wrap' }}>
           <T size={13} weight="bold" c={kai ? color.violetLight : color.text}>{message.author.display_name}</T>
+          {message.author.handle ? (
+            <T size={10.5} c={color.dim}>{`@${message.author.handle}`}</T>
+          ) : null}
           {kai ? (
             <View style={{ paddingHorizontal: 5, borderRadius: 4, borderWidth: 0.5, borderColor: alpha.violet50 }}>
               <T size={8.5} weight="bold" c={color.violetLight}>AI</T>

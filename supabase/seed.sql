@@ -294,13 +294,19 @@ insert into entitlement_flags (tier, flag, value) values
 on conflict (tier, flag) do update set value = excluded.value;
 
 -- =====================================================================
--- circles (round 4) — two time-boxed setup rooms, opened through the RPC so the
--- seed and the API take exactly the same path (name, slug, expiry, counters,
--- setups.discussion_room_id back-fill).
+-- circles (round 4) — NO LONGER SEEDED, and the reason is the product rule.
 --
--- The pattern the room is named after lives in setups.annotations.pattern; the
--- two lead seed setups get one so the circles read "META Breakout" /
--- "NVDA Breakout" rather than "META Setup".
+-- This block used to call `open_setup_circle()` twice to give the seed two
+-- rooms about two setups. 0034 removed that function: circles are opened by
+-- the team, never by a setup publishing (owner instruction, 2026-09-05). A
+-- seed that hands a fresh database two rooms nobody opened would teach the
+-- next person the old rule.
+--
+-- To have a circle in a local database, open one the way the app does:
+--   POST /api/v1/circles {"symbol":"NVDA","ttl":"3d"}  as a staff account.
+--
+-- The pattern annotation is kept — the desk and the workspace read it, and it
+-- has nothing to do with rooms.
 -- =====================================================================
 update setups
    set annotations = coalesce(annotations, '{}'::jsonb) || '{"pattern":"breakout","seed":true}'::jsonb
@@ -308,6 +314,3 @@ update setups
    '11111111-1111-4111-8111-000000000001',   -- META
    '11111111-1111-4111-8111-000000000002'    -- NVDA
  );
-
-select open_setup_circle('11111111-1111-4111-8111-000000000001'::uuid, interval '3 days');
-select open_setup_circle('11111111-1111-4111-8111-000000000002'::uuid, interval '3 days');

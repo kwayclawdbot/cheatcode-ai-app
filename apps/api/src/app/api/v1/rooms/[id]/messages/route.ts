@@ -136,6 +136,27 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
 
   const db = serviceClient();
 
+  /**
+   * YOU NEED A NAME BEFORE YOU CAN POST.
+   *
+   * Not a hurdle for its own sake. A post signed by nobody cannot be replied
+   * to, cannot be mentioned, and cannot be judged over time — which is the
+   * whole basis of `contributor_stats` and of the mention lane that is being
+   * built on top of this. Reading every room stays open to anybody; writing
+   * into one asks for the name it will be signed with.
+   *
+   * It is checked here rather than only on the phone because the phone is not
+   * the only way in: this route is the one door every post goes through.
+   */
+  const author = await db.from('profiles').select('handle').eq('user_id', ctx.user.id).maybeSingle();
+  if (!((author.data as { handle?: string | null } | null)?.handle ?? null)) {
+    throw new ApiError(
+      'VALIDATION_FAILED',
+      'Pick a username before you post. It is the name this will be signed with, and the name other members can mention you by.',
+      { detail: { reason: 'handle_required', route: '/account/username' } }
+    );
+  }
+
   // Slow mode, when the room asks for it.
   const slowSeconds = Number(config.slow_mode_s ?? 0);
   if (Number.isFinite(slowSeconds) && slowSeconds > 0) {

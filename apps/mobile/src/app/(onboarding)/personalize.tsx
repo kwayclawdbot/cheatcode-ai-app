@@ -42,7 +42,7 @@ export default function Personalize() {
 
   return (
     <Screen variant="dome" layout="stack" testID="screen-personalize">
-      <ProgressBars total={4} done={3} />
+      <ProgressBars total={5} done={3} />
       <T size={26} weight="bold" ls={-0.4} lh={31}>{'Let\u2019s tune Kai to you'}</T>
       <T size={14} c={color.muted} style={{ marginTop: 8 }}>Two quick answers. You can change both later.</T>
 
@@ -107,7 +107,7 @@ export default function Personalize() {
         label="Continue"
         height={52}
         arrow
-        onPress={() => router.push('/kai-plan')}
+        onPress={() => router.push('/username')}
         accessibilityHint={`Kai is set to ${EXPERIENCE_LABEL[experience]}`}
       />
     </Screen>

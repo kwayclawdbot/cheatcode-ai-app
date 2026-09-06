@@ -149,6 +149,23 @@ export function toRoomRow(
 export const MESSAGE_COLUMNS =
   'id,room_id,user_id,seq,kind,body,parent_id,refs,structured_idea,position_disclosure,deleted,created_at';
 
+/**
+ * Every author on a page, in ONE query.
+ *
+ * `profiles_public` (0015) is a definer view over `profiles` joined to
+ * `contributor_stats` — identity fields only, never a financial one — so a
+ * page of fifty messages costs one round trip, not fifty. Do not move this
+ * lookup inside the row mapper.
+ *
+ * EVERY ID ASKED FOR COMES BACK, even when the profile row does not.
+ * `toMessageRow` used to write `author: null` whenever this map had no entry,
+ * and the phone's rule for a null author is "this was written by Kai"
+ * (`community-api.ts`, `isKai = raw.user_id == null`). So a member whose
+ * profile row was missing for any reason — a half-finished sign-up, a row
+ * removed by hand, a view that failed to resolve — had their posts silently
+ * signed by the assistant. A member with no profile row is a member we know
+ * nothing about, which is a blank name, not somebody else's name.
+ */
 export async function authorsFor(userIds: string[]): Promise<Map<string, MessageAuthor>> {
   const out = new Map<string, MessageAuthor>();
   const ids = [...new Set(userIds.filter(Boolean))];
@@ -166,6 +183,18 @@ export async function authorsFor(userIds: string[]): Promise<Map<string, Message
       avatar_url: (r.avatar_url as string) ?? null,
       role_labels: (r.role_labels as string[]) ?? [],
       route: `/contributor/${String(r.user_id)}`,
+    });
+  }
+  // The gap is filled with a member who has no name yet, never left empty.
+  for (const id of ids) {
+    if (out.has(id)) continue;
+    out.set(id, {
+      user_id: id,
+      handle: null,
+      display_name: null,
+      avatar_url: null,
+      role_labels: [],
+      route: `/contributor/${id}`,
     });
   }
   return out;

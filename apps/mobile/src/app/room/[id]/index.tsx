@@ -240,7 +240,7 @@ export default function RoomScreen() {
           kind: 'kai_object',
           created_at: now,
           time_label: 'just now',
-          author: { user_id: 'kai', display_name: 'Kai', handle: null, initial: 'K', role_labels: ['AI'], is_kai: true },
+          author: { user_id: 'kai', display_name: 'Kai', handle: null, avatar_url: null, initial: 'K', role_labels: ['AI'], is_kai: true, author_deleted: false },
           body: null, refs: null, structured_idea: null, position_disclosure: null,
           kai_object: object, deleted: false, is_claim: false, reactions: [],
         }]);

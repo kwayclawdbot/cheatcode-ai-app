@@ -23,7 +23,7 @@ import type {
 import type {
   AlertRow, AlertsPayload, Briefing, BriefingLine, CreditPlan, Credits,
   CreditsPayload, Freshness, GradedSetup,
-  HomePayload, KaiActionPreview, MarketStatus, NotificationCategory,
+  HomePayload, Identity, KaiActionPreview, MarketStatus, NotificationCategory,
   NotificationCategoryMap, PushDevice, PushPlatform, PushRegistry,
   PushSubscriptionState, PushSuppression, PushTestResult, PushTransport, Quote,
   SetupState, WatchingItem,
@@ -907,6 +907,7 @@ export function adaptMe(v: unknown): Me {
       user_id: str(p.user_id),
       display_name: nStr(p.display_name),
       handle: nStr(p.handle),
+      avatar_url: nStr(p.avatar_url),
       primary_mode: (nStr(p.primary_mode) as GoalMode | null) ?? null,
       involvement: (nStr(p.involvement) as Me['profile']['involvement']) ?? null,
       experience: nStr(p.experience),
@@ -962,6 +963,32 @@ export function adaptMe(v: unknown): Me {
     // this can be unknown: an API that predates 0025, a malformed block, a
     // fixture. A door that appears when we are unsure is a door.
     staff: adaptStaff(r.staff),
+    // 0034. Null when the API did not send one, and null means DO NOT ASK — an
+    // older build answering nothing must not be read as "this person needs a
+    // username", or every screen would open on a prompt it cannot satisfy.
+    identity: adaptIdentity(r.identity),
+  };
+}
+
+/**
+ * `/me.identity` → the username prompt.
+ *
+ * `needs_handle` is only ever true when the server said so AND said the handle
+ * is null. Two independent reasons to leave somebody alone, because being
+ * asked for a name you already have is the most irritating bug in this class.
+ */
+export function adaptIdentity(v: unknown): Identity | null {
+  if (!v || typeof v !== 'object') return null;
+  const i = obj(v);
+  const handle = nStr(i.handle);
+  return {
+    handle,
+    display_name: nStr(i.display_name),
+    avatar_url: nStr(i.avatar_url),
+    needs_handle: bool(i.needs_handle) && handle === null,
+    suggested_handle: nStr(i.suggested_handle),
+    plain: str(i.plain, handle ? `You post as ${handle}.` : 'You have not picked a username yet.'),
+    route: str(i.route, '/account/username'),
   };
 }
 

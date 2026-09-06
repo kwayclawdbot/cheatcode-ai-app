@@ -1,44 +1,51 @@
 /**
- * Circles — time-boxed setup rooms.
+ * Circles — the time-boxed rooms the team opens.
  *
  * A circle is a `rooms` row with `type='setup'` and an expiry. It exists while
- * the setup it belongs to is worth talking about and then it closes, which is
+ * the thing it is about is worth talking about and then it closes, which is
  * the whole point: a room about a META breakout that is still open in November
  * is not a community, it is litter.
  *
- * THREE WAYS ONE OPENS
- *   1. automatically, in the tick, for a setup that reaches `ready` at grade
- *      A or B — the conversation the room exists for is the one the app just
- *      told everybody about;
- *   2. by a premium member, for a symbol they choose (entitlement flag
- *      `circles_create`);
- *   3. by Kai, from a room action, which already existed.
+ * =====================================================================
+ * ONE WAY A CIRCLE OPENS: A MEMBER OF STAFF OPENS IT.
+ * =====================================================================
+ * Owner instruction, 2026-09-05: "circles should be setup admin only not
+ * based on alerts". Until 0034 there were three doors and the widest of them
+ * was automatic — the paper tick opened a room for every setup that reached
+ * `ready` at grade A or B, once a minute, for ever. Eight rooms had appeared
+ * that way on the hosted database and nobody had ever posted in one of them.
  *
- * ONE WAY ONE CLOSES: the expiry passes, or the setup dies. Closing means
- * READ-ONLY plus a move into history — messages are never deleted, because a
- * room where the conversation vanishes teaches nobody anything.
+ * That door is gone at both ends. `openSetupCircle` was deleted along with
+ * everything that only existed to serve it:
+ *   * the sweep's OPEN pass, which is what actually created the rooms;
+ *   * `reviveLiveCircles`, which re-derived a fresh expiry for every circle
+ *     whose setup was still live and put it back — the reason those eight
+ *     rooms would never have expired on their own, whatever their clock said;
+ *   * `closeDeadSetupCircles`, which closed a circle when its setup died;
+ *   * the clock helpers `circleTtlHours` / `circleExpiryFor` / `circleName`,
+ *     which derived a room's name and its lifetime FROM a setup.
+ * And 0034 closes it in the DATABASE, which is the part that actually matters:
+ * dropping `open_setup_circle()` alone was not enough, because `openSetupCircle`
+ * fell through to a direct insert whenever the RPC failed. The eight rooms were
+ * deleted and came back inside a minute — the deployed cron simply took the
+ * fallback. So 0034 also adds `rooms_no_setup_link`, a check constraint saying
+ * a room may not be tied to a setup at all, and that holds whatever version of
+ * this file is deployed. All eight rooms were empty; nothing was lost.
  *
- * THE CLOCK IS DERIVED, NEVER GUESSED. A circle's expiry is
- * `max(3 days, time until the setup's valid_until)` and is ALWAYS in the
- * future. `valid_until` that is null, unparseable or already past does not
- * shorten anything — it falls back to the three-day floor. A room stamped with
- * an expiry in the past is a bug, not a state: `close_expired_circles()` would
- * close it on the very next tick and the setup it is about is still live.
+ * What is left is `createCircle`, whose only caller is `POST /api/v1/circles`
+ * behind `staff_role()` at `admin` or above. A circle opened this way carries
+ * no `setup_id`, so a setup no longer has a room of its own — the surfaces
+ * that used to link to one already handle that (`discussion_room_id` is null
+ * and every reader of it has a null path).
  *
- * WHICH IS WHY THE SWEEP REVIVES. `close_expired_circles()` only knows about
- * time, and time can be wrong (a backdated row, a clock skew, a setup that got
- * extended after its room was stamped). So every tick re-derives the clock for
- * every circle whose setup is STILL LIVE and puts it back — see
- * `reviveLiveCircles`. The RPC cannot do this: `open_setup_circle` is
- * idempotent per setup and returns the existing row UNCHANGED, so calling it
- * again never extends anything. The extension is therefore an explicit
- * service-role UPDATE of `expires_at` + `config.posting_restricted=false`,
- * which is exactly the pair `close_expired_circles()` reads.
+ * ONE WAY ONE CLOSES: the expiry passes. Closing means READ-ONLY plus a move
+ * into history — messages are never deleted, because a room where the
+ * conversation vanishes teaches nobody anything.
  *
- * SCHEMA. `rooms.expires_at` belongs to SCHEMA-4. Until it lands the expiry is
- * kept in `rooms.config.expires_at`, which exists today and is read by exactly
- * the same code path (`expiryOf`). Both are written so a migration mid-flight
- * cannot lose a circle's clock.
+ * WHERE THE CLOCK LIVES. Older rows carry the expiry in `config.expires_at`;
+ * 0021 added a real `expires_at` column. Both are read through the same code
+ * path (`expiryOf`), and `hasRoomExpiry()` decides whether the column can be
+ * asked for at all, so a migration mid-flight cannot lose a circle's clock.
  */
 import { CIRCLE_TTL_HOURS, type CircleRow, type GradeMedallion } from '@shared/api';
 import { serviceClient } from '../db';
@@ -70,53 +77,6 @@ export function timeLeftPlain(expiresAt: string | null): { plain: string; expire
   return { plain: `${Math.max(1, Math.round(ms / 60_000))}m left`, expired: false };
 }
 
-/* ------------------------------------------------------------------ */
-/* The clock                                                            */
-/* ------------------------------------------------------------------ */
-
-/** The floor. A circle is worth at least three days of conversation. */
-export const CIRCLE_MIN_TTL_HOURS = 72;
-
-/** Setup states that mean "there is nothing left to talk about". */
-const DEAD_SETUP_STATES = ['invalidated', 'expired'];
-
-/**
- * How long a setup's circle should stay open, in hours.
- *
- * `max(3 days, time until valid_until)` — and never less, never negative. A
- * `valid_until` in the PAST (or null, or unparseable) is not a shorter clock,
- * it is no information, so the floor applies. This is the whole fix for the
- * 1970/2020 expiries: the TTL is a duration derived here, never a timestamp
- * copied from a stale column.
- */
-export function circleTtlHours(validUntil: string | null | undefined, now: number = Date.now()): number {
-  const floor = CIRCLE_MIN_TTL_HOURS;
-  if (typeof validUntil !== 'string' || !validUntil) return floor;
-  const at = new Date(validUntil).getTime();
-  if (!Number.isFinite(at)) return floor;
-  const hours = (at - now) / 3_600_000;
-  return hours > floor ? Math.ceil(hours) : floor;
-}
-
-/** The expiry a circle should carry right now, as an ISO string in the future. */
-export function circleExpiryFor(validUntil: string | null | undefined, now: number = Date.now()): string {
-  return new Date(now + circleTtlHours(validUntil, now) * 3_600_000).toISOString();
-}
-
-/** "<SYM> <pattern>" — the room's name comes from the setup, not from a user. */
-export function circleName(symbol: string, setup: { thesis_plain?: string | null } | null): string {
-  const thesis = setup?.thesis_plain ?? '';
-  const pattern = /breakout/i.test(thesis)
-    ? 'Breakout'
-    : /reclaim/i.test(thesis)
-      ? 'Reclaim'
-      : /pullback/i.test(thesis)
-        ? 'Pullback'
-        : /range/i.test(thesis)
-          ? 'Range'
-          : 'Setup';
-  return `${symbol.toUpperCase()} ${pattern}`;
-}
 
 export type LoadedCircle = CircleRow;
 
@@ -214,92 +174,14 @@ function symbolFromName(name: string): string | null {
   return m ? m[1] : null;
 }
 
-/* ------------------------------------------------------------------ */
-/* Opening                                                              */
-/* ------------------------------------------------------------------ */
-
-export type OpenResult = { id: string; created: boolean } | null;
-
 /**
- * Idempotent per setup. Prefers SCHEMA-4's `open_setup_circle` RPC (which does
- * the insert and the moderator row in one transaction); falls back to a direct
- * insert when the function is not there yet, keeping the same idempotency.
- */
-export async function openSetupCircle(opts: {
-  setupId: string;
-  symbol: string;
-  /** Explicit override. Left out, the clock is derived from `validUntil`. */
-  ttlHours?: number;
-  /** The setup's `valid_until`. Past/null/unparseable = the three-day floor. */
-  validUntil?: string | null;
-  thesisPlain?: string | null;
-  creatorUserId?: string | null;
-}): Promise<OpenResult> {
-  const db = serviceClient();
-  // max(3 days, time until the setup dies) — and always a positive duration, so
-  // `now() + p_ttl` inside the RPC cannot land in the past.
-  const ttl = Math.max(1, Math.round(opts.ttlHours ?? circleTtlHours(opts.validUntil)));
-
-  // Ask first, so "created" is honest. 0021's `open_setup_circle` is idempotent
-  // per setup (a unique partial index makes that a database guarantee) and
-  // returns the EXISTING row unchanged on a second call — which is right, but
-  // means the RPC alone cannot tell us whether this call opened anything.
-  const existing = await db.from('rooms').select('id').eq('type', 'setup').eq('setup_id', opts.setupId).maybeSingle();
-  if (existing.data) {
-    return { id: String((existing.data as Record<string, unknown>).id), created: false };
-  }
-
-  try {
-    const rpc = await db.rpc('open_setup_circle', {
-      p_setup_id: opts.setupId,
-      p_ttl: `${ttl} hours`,
-    });
-    if (!rpc.error && rpc.data) {
-      const row = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data;
-      const id = typeof row === 'string' ? row : String((row as Record<string, unknown>)?.id ?? '');
-      if (id) return { id, created: true };
-    }
-  } catch {
-    /* fall through to the direct path */
-  }
-
-  const expiresAt = new Date(Date.now() + ttl * 3_600_000).toISOString();
-  const withExpiry = await hasRoomExpiry();
-  const insert: Record<string, unknown> = {
-    type: 'setup',
-    setup_id: opts.setupId,
-    name: circleName(opts.symbol, { thesis_plain: opts.thesisPlain ?? null }),
-    description: `A room for this ${opts.symbol.toUpperCase()} setup. It closes when the setup does.`,
-    config: { intel_eligible: false, expires_at: expiresAt, circle: true },
-  };
-  if (withExpiry) insert.expires_at = expiresAt;
-
-  const { data, error } = await db.from('rooms').insert(insert).select('id').single();
-  if (error || !data) {
-    log('warn', '-', 'circles.open_failed', { setup_id: opts.setupId, message: error?.message });
-    return null;
-  }
-  const id = String((data as Record<string, unknown>).id);
-
-  // The setup points at its room, so the workspace and the alert card can find it.
-  await db.from('setups').update({ discussion_room_id: id }).eq('id', opts.setupId);
-
-  if (opts.creatorUserId) {
-    await db
-      .from('room_members')
-      .upsert({ room_id: id, user_id: opts.creatorUserId, role: 'moderator' } as never, { onConflict: 'room_id,user_id' });
-  }
-  return { id, created: true };
-}
-
-/**
- * A STAFF-created circle: named for the symbol, no setup behind it.
+ * A STAFF-created circle: named for the symbol, with no setup behind it.
  *
- * Was "member-created" until 2026-09-05, when the owner ruled that Circles are
- * opened by the team. The gate is in the route (`/api/v1/circles`), against
- * `staff_role()`, and it is NOT repeated here — this function does the work and
- * the route decides who may ask for it. Anything that calls this without
- * checking first is the bug.
+ * The ONLY way a circle is created. Was "member-created" until 2026-09-05 and
+ * "created by the tick as well" until 0034. The gate is in the route
+ * (`/api/v1/circles`), against `staff_role()`, and it is NOT repeated here —
+ * this function does the work and the route decides who may ask for it.
+ * Anything that calls this without checking first is the bug.
  *
  * `created_by` is written twice on purpose: the real column (0031) is the fact,
  * and `config.created_by` stays for the rows that already carry it and for any
@@ -355,139 +237,38 @@ export async function createCircle(opts: {
   return { id };
 }
 
+
 /* ------------------------------------------------------------------ */
 /* Closing (called from the tick)                                       */
 /* ------------------------------------------------------------------ */
 
-export type SweepResult = { opened: number; closed: number; revived: number };
+export type SweepResult = { closed: number };
 
 /**
- * Put the clock back on every circle whose SETUP is still live.
+ * One pass: close every circle whose clock has run out.
  *
- * `close_expired_circles()` only knows about time. A circle can carry an expiry
- * in the past for reasons that have nothing to do with the setup being over —
- * it was stamped from a stale `valid_until`, a fixture backdated it, the row
- * predates this fix — and closing it hides a room people are still using.
- *
- * The RPC cannot fix that: `open_setup_circle` is idempotent per setup and
- * returns the EXISTING row unchanged, so a second call never extends anything.
- * So this is an explicit service-role UPDATE. It writes both halves of what
- * "open" means, because `close_expired_circles()` reads both:
- *   `expires_at`                    — a fresh, future clock;
- *   `config.posting_restricted`     — back to false (the RPC's close guard);
- * and it clears `closed_at` / `closed_reason` / `posting_locked` so the room
- * does not read as history in the UI. Nothing else in the config is touched.
- *
- * Runs BEFORE the close pass, so a circle that should never have expired is
- * repaired rather than closed and re-opened — `circles_closed` stays an honest
- * count of rooms whose conversation actually ended.
- */
-async function reviveLiveCircles(requestId?: string): Promise<number> {
-  const db = serviceClient();
-  const withExpiry = await hasRoomExpiry();
-  const cols = withExpiry ? `${CIRCLE_COLUMNS},expires_at` : CIRCLE_COLUMNS;
-
-  const rooms = await db.from('rooms').select(cols).eq('type', 'setup').limit(200);
-  const rows = ((rooms.data ?? []) as unknown as Record<string, unknown>[]).filter(
-    (r) => typeof r.setup_id === 'string' && r.setup_id
-  );
-  if (!rows.length) return 0;
-
-  const setups = await db
-    .from('setups')
-    .select('id,state,valid_until')
-    .in('id', rows.map((r) => String(r.setup_id)));
-  const live = new Map<string, string | null>();
-  for (const s of ((setups.data ?? []) as Record<string, unknown>[])) {
-    if (DEAD_SETUP_STATES.includes(String(s.state))) continue;
-    live.set(String(s.id), (s.valid_until as string) ?? null);
-  }
-
-  const now = Date.now();
-  let revived = 0;
-
-  for (const r of rows) {
-    const setupId = String(r.setup_id);
-    if (!live.has(setupId)) continue; // the setup is over: it stays closed.
-
-    const cfg = ((r.config as Record<string, unknown>) ?? {}) as Record<string, unknown>;
-    const expiresAt = expiryOf(r);
-    const at = expiresAt ? new Date(expiresAt).getTime() : NaN;
-    const stale = !Number.isFinite(at) || at <= now;
-    const closed = Boolean(cfg.closed_at) || cfg.posting_restricted === true || cfg.posting_locked === true;
-    if (!stale && !closed) continue;
-
-    const fresh = circleExpiryFor(live.get(setupId) ?? null, now);
-    const nextCfg: Record<string, unknown> = { ...cfg, expires_at: fresh, posting_restricted: false };
-    delete nextCfg.closed_at;
-    delete nextCfg.closed_reason;
-    delete nextCfg.posting_locked;
-    nextCfg.reopened_at = new Date(now).toISOString();
-
-    const patch: Record<string, unknown> = { config: nextCfg };
-    if (withExpiry) patch.expires_at = fresh;
-
-    const { error } = await db.from('rooms').update(patch).eq('id', String(r.id));
-    if (error) {
-      log('warn', requestId ?? '-', 'circles.revive_failed', { room_id: String(r.id), message: error.message });
-      continue;
-    }
-    revived += 1;
-  }
-
-  if (revived) log('info', requestId ?? '-', 'circles.revived', { revived });
-  return revived;
-}
-
-/**
- * One pass: open a circle for every ready A/B setup that has none, and close
- * every circle whose clock has run out or whose setup has died.
+ * NOTHING OPENS HERE ANY MORE. This function used to begin by opening a room
+ * for every ready A/B setup that did not have one, and that is exactly the
+ * behaviour the owner ruled out. What is left is the half that was always
+ * right: a circle the team opened for three days stops taking posts after
+ * three days, on its own, without anybody having to remember.
  *
  * Closing is `config.closed_at` + `config.posting_locked`, which the posting
- * pipeline already respects through the room's config — the room stays readable
- * and stops accepting posts. Nothing is deleted.
+ * pipeline already respects through the room's config — the room stays
+ * readable and stops accepting posts. Nothing is deleted.
  */
 export async function sweepCircles(opts: { requestId?: string } = {}): Promise<SweepResult> {
   const db = serviceClient();
-  let opened = 0;
   let closed = 0;
 
-  // --- open -------------------------------------------------------------
-  const ready = await db
-    .from('setups')
-    .select('id,symbol,state,grade_band,grade_display,score,thesis_plain,valid_until,discussion_room_id')
-    .eq('state', 'ready')
-    .in('grade_band', ['A', 'B'])
-    .limit(20);
-
-  for (const s of ((ready.data ?? []) as Record<string, unknown>[])) {
-    if (s.discussion_room_id) continue;
-    const r = await openSetupCircle({
-      setupId: String(s.id),
-      symbol: String(s.symbol),
-      thesisPlain: (s.thesis_plain as string) ?? null,
-      validUntil: (s.valid_until as string) ?? null,
-    });
-    if (r?.created) opened += 1;
-  }
-
-  // --- revive -----------------------------------------------------------
-  // Before anything is closed: a circle whose setup is still live gets its
-  // clock re-derived and put back. See reviveLiveCircles.
-  const revived = await reviveLiveCircles(opts.requestId);
-
-  // --- close ------------------------------------------------------------
   // 0021 ships `close_expired_circles()`, which flips only the rows THIS call
   // actually closed and returns their ids, so the sweep can narrate them once.
   try {
     const rpc = await db.rpc('close_expired_circles');
     if (!rpc.error && Array.isArray(rpc.data)) {
       closed += rpc.data.length;
-      if (opened || closed || revived) {
-        log('info', opts.requestId ?? '-', 'circles.swept', { opened, closed, revived });
-      }
-      await closeDeadSetupCircles();
-      return { opened, closed, revived };
+      if (closed) log('info', opts.requestId ?? '-', 'circles.swept', { closed });
+      return { closed };
     }
   } catch {
     /* fall through to the in-TypeScript sweep below */
@@ -497,22 +278,11 @@ export async function sweepCircles(opts: { requestId?: string } = {}): Promise<S
   const cols = withExpiry ? `${CIRCLE_COLUMNS},expires_at` : CIRCLE_COLUMNS;
   const rooms = await db.from('rooms').select(cols).eq('type', 'setup').limit(200);
 
-  const deadSetupIds = new Set<string>();
-  const setupIds = ((rooms.data ?? []) as unknown as Record<string, unknown>[])
-    .map((r) => r.setup_id)
-    .filter((s): s is string => typeof s === 'string');
-  if (setupIds.length) {
-    const dead = await db.from('setups').select('id,state').in('id', setupIds).in('state', DEAD_SETUP_STATES);
-    for (const d of ((dead.data ?? []) as Record<string, unknown>[])) deadSetupIds.add(String(d.id));
-  }
-
   for (const r of ((rooms.data ?? []) as unknown as Record<string, unknown>[])) {
     const cfg = (r.config as Record<string, unknown>) ?? {};
     if (cfg.closed_at) continue;
     const expiresAt = expiryOf(r);
-    const past = expiresAt ? new Date(expiresAt).getTime() <= Date.now() : false;
-    const setupDead = typeof r.setup_id === 'string' && deadSetupIds.has(r.setup_id);
-    if (!past && !setupDead) continue;
+    if (!expiresAt || new Date(expiresAt).getTime() > Date.now()) continue;
 
     await db
       .from('rooms')
@@ -521,54 +291,15 @@ export async function sweepCircles(opts: { requestId?: string } = {}): Promise<S
           ...cfg,
           closed_at: new Date().toISOString(),
           posting_locked: true,
-          closed_reason: setupDead
-            ? 'The setup this room was about is no longer live.'
-            : 'The time on this circle ran out.',
+          closed_reason: 'The time on this circle ran out.',
         },
       })
       .eq('id', String(r.id));
     closed += 1;
   }
 
-  if (opened || closed || revived) {
-    log('info', opts.requestId ?? '-', 'circles.swept', { opened, closed, revived });
-  }
-  return { opened, closed, revived };
-}
-
-/**
- * A circle whose SETUP died closes too, even if its clock has not run out. The
- * database function only knows about time; "the idea this room is about is no
- * longer live" is a product rule and it lives here.
- */
-async function closeDeadSetupCircles(): Promise<void> {
-  const db = serviceClient();
-  const rooms = await db.from('rooms').select('id,setup_id,config').eq('type', 'setup').limit(200);
-  const rows = ((rooms.data ?? []) as Record<string, unknown>[]).filter(
-    (r) => typeof r.setup_id === 'string' && !((r.config as Record<string, unknown>) ?? {}).closed_at
-  );
-  if (!rows.length) return;
-  const dead = await db
-    .from('setups')
-    .select('id')
-    .in('id', rows.map((r) => String(r.setup_id)))
-    .in('state', DEAD_SETUP_STATES);
-  const deadIds = new Set(((dead.data ?? []) as Record<string, unknown>[]).map((d) => String(d.id)));
-  for (const r of rows) {
-    if (!deadIds.has(String(r.setup_id))) continue;
-    const cfg = ((r.config as Record<string, unknown>) ?? {}) as Record<string, unknown>;
-    await db
-      .from('rooms')
-      .update({
-        config: {
-          ...cfg,
-          posting_restricted: true,
-          closed_at: new Date().toISOString(),
-          closed_reason: 'The setup this room was about is no longer live.',
-        },
-      })
-      .eq('id', String(r.id));
-  }
+  if (closed) log('info', opts.requestId ?? '-', 'circles.swept', { closed });
+  return { closed };
 }
 
 /* ------------------------------------------------------------------ */

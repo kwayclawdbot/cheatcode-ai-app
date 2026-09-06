@@ -54,7 +54,7 @@ function NavRow({
  */
 export default function Account() {
   const router = useRouter();
-  const { profile, session, signOut, patchProfile } = useSession();
+  const { profile, signOut, patchProfile } = useSession();
   const { data, loading, isFixture, notAvailable, reload } = useMe();
   const [memory, setMemory] = useState<boolean>(profile?.memory_enabled ?? true);
   const [simulating, setSimulating] = useState(false);
@@ -66,10 +66,23 @@ export default function Account() {
     setMemory(data?.memory_enabled ?? profile?.memory_enabled ?? true);
   }, [data?.memory_enabled, profile?.memory_enabled]);
 
-  /** No display name yet: use the readable part of the email, without the
-   *  `+tag` a test or alias address carries. */
-  const emailName = session?.user.email?.split('@')[0]?.split('+')[0];
-  const name = data?.profile.display_name ?? profile?.display_name ?? (emailName || 'You');
+  /**
+   * WHAT THIS PERSON IS CALLED, AND WHAT WE REFUSE TO CALL THEM.
+   *
+   * The order is: the name they gave, then the username they picked, then
+   * "You".
+   *
+   * IT NO LONGER FALLS BACK TO THEIR EMAIL ADDRESS. It used to read
+   * `kcoffie90` off `kcoffie90@gmail.com` and print it at the top of the
+   * Account tab as though it were a name somebody had chosen. It is not — it
+   * is a login, and showing it as a name is the same mistake an earlier lane
+   * rejected for `display_name`. If there is nothing real to show, "You" is
+   * honest and the username row below says what is missing.
+   */
+  const identity = data?.identity ?? null;
+  const handle = identity?.handle ?? data?.profile.handle ?? profile?.handle ?? null;
+  const name = data?.profile.display_name ?? profile?.display_name ?? handle ?? 'You';
+  const needsHandle = identity ? identity.needs_handle : handle === null;
   const mode = (data?.profile.primary_mode ?? profile?.primary_mode ?? 'day_trade') as GoalMode;
   const involvement = (data?.risk_policy.involvement ?? profile?.involvement ?? 'hands_on') as 'hands_on' | 'guided';
   const policy = data?.risk_policy ?? null;
@@ -128,6 +141,11 @@ export default function Account() {
           </LinearGradient>
           <View style={{ flex: 1 }}>
             <T size={20} weight="bold" numberOfLines={1}>{name}</T>
+            {/* The username, under the name, exactly as a post is signed. A
+                blank says it is blank; it never borrows the display name. */}
+            <T size={12} c={handle ? color.muted : color.volt} numberOfLines={1} testID="account-handle">
+              {handle ? `@${handle}` : 'No username yet'}
+            </T>
             <View style={{ flexDirection: 'row', gap: 5, marginTop: 4, alignItems: 'center' }}>
               {/* Mode is global context, so it is CHANGEABLE wherever it is shown
                   (audit §6) — the same sheet Trade uses, writing PUT /mode. */}
@@ -148,6 +166,48 @@ export default function Account() {
             </View>
           </View>
         </View>
+
+        {/* WHO YOU ARE — the username, and the picture that goes with it.
+            Drawn ABOVE the Kai profile because it is the only row on this
+            screen other members ever see. */}
+        <Eyebrow>YOU</Eyebrow>
+        <RowList testID="identity">
+          <Pressable
+            testID="identity-username"
+            accessibilityRole="button"
+            accessibilityLabel={handle ? `Username, ${handle}. Change it.` : 'Pick a username.'}
+            onPress={() => router.push('/account/username')}
+          >
+            <Row>
+              <View style={{ flex: 1 }}>
+                <T size={14}>Username</T>
+                <T size={11.5} c={color.muted} style={{ marginTop: 2 }}>
+                  {needsHandle
+                    ? 'Members are known by a name. Posting asks for one.'
+                    : 'What your posts are signed with.'}
+                </T>
+              </View>
+              <T size={13} weight="semibold" c={needsHandle ? color.volt : color.text}>
+                {handle ? `@${handle}` : 'Pick one'}
+              </T>
+              <ArrowRight size={12} color={color.dim} />
+            </Row>
+          </Pressable>
+          <Row last>
+            <View style={{ flex: 1 }}>
+              <T size={14}>Profile picture</T>
+              {/* SAYS WHAT IS TRUE TODAY. The column exists, the upload is
+                  another lane's and has not landed; a button that opened a
+                  picker and then failed would be worse than this sentence. */}
+              <T size={11.5} c={color.muted} style={{ marginTop: 2 }}>
+                {identity?.avatar_url
+                  ? 'Shown next to your posts.'
+                  : 'Not set. Picking a photo arrives with the next release.'}
+              </T>
+            </View>
+            <T size={13} c={color.dim}>{identity?.avatar_url ? 'Set' : 'None'}</T>
+          </Row>
+        </RowList>
 
         {/* YOUR KAI PROFILE — the three answers that shape how Kai works.
             Tapping a row changes it and writes PUT /settings. */}

@@ -38,7 +38,7 @@ export default function Risk() {
 
   return (
     <Screen variant="corner" layout="stack" testID="screen-risk">
-      <ProgressBars total={4} done={2} />
+      <ProgressBars total={5} done={2} />
       <T size={27} weight="bold" ls={-0.4} lh={32}>How much risk feels right?</T>
       <T size={14} c={color.muted} style={{ marginTop: 8 }}>
         {`Real examples, not jargon. This sets your daily loss cap on the ${account} you'll practice with.`}

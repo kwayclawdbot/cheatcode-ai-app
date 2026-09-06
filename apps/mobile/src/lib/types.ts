@@ -118,7 +118,13 @@ export type FundingChoice = 'paper' | 'broker' | 'later';
 export type Profile = {
   user_id: string;
   display_name?: string | null;
+  /** The username. Null means not picked — say so, never invent one. */
   handle?: string | null;
+  /**
+   * Null on every account until the media lane's upload lands. The surface is
+   * wired; the picture is not there yet.
+   */
+  avatar_url?: string | null;
   primary_mode?: GoalMode | null;
   involvement?: Involvement | null;
   experience?: string | null;
@@ -475,6 +481,28 @@ export type Me = {
    * asks `staff_members` again. An API that predates 0025 answers `false`.
    */
   staff: StaffBlock;
+  /**
+   * Who this person is, and whether the app still has to ask. `needs_handle`
+   * comes from the database on every `/me`, so an account that picks a name on
+   * one device stops being asked on the other. Null from an API build that
+   * predates it — treat that as "do not ask", never as "needs one".
+   */
+  identity: Identity | null;
+};
+
+export type Identity = {
+  handle: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  needs_handle: boolean;
+  /**
+   * Pre-filled in the box for the person to accept or type over. NOTHING is
+   * saved until they press save, and it is never derived from an email
+   * address.
+   */
+  suggested_handle: string | null;
+  plain: string;
+  route: string;
 };
 
 export type NotificationGroup = 'action_required' | 'changes' | 'fyi';

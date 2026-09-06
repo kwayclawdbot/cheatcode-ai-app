@@ -62,10 +62,21 @@ export type Room = {
 export type Author = {
   user_id: string;
   display_name: string;
+  /** The username, shown as `@handle`. Null when they have not picked one. */
   handle: string | null;
+  /** Null on every account until the media lane's avatar upload lands. */
+  avatar_url: string | null;
   initial: string;
   role_labels: string[];
   is_kai: boolean;
+  /**
+   * The author deleted their account. `user_id` is null on these rows and
+   * WITHOUT this flag that null reads as "posted by Kai" (migration 0010's
+   * meaning, still true for Kai's own posts). A surface must check this before
+   * it falls back to Kai — re-attributing a stranger's posts to the assistant
+   * is a fabricated record.
+   */
+  author_deleted: boolean;
 };
 
 /** 08 §10 — required on structured trade-idea posts. */

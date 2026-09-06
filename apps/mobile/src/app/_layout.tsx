@@ -43,8 +43,26 @@ const STACK_GROUPS = new Set([
  *   otherwise                       -> (tabs) or a known stack destination
  * In fixtures mode every route is directly reachable (owner preview + Playwright).
  */
+/**
+ * THE USERNAME PROMPT IS SHOWN ONCE PER LAUNCH, AND IT IS NOT A WALL.
+ *
+ * Accounts made before 2026-09-06 have no username, because until then no
+ * screen in the app ever asked for one. They need one — @mentions cannot work
+ * against a namespace that is five-eighths empty — so the first screen after
+ * sign-in is the box that asks.
+ *
+ * ONCE. This flag is module state, so it survives a re-render and dies with
+ * the process: somebody who backs out of that screen gets on with their day
+ * and is asked again next time they open the app. The hard requirement lives
+ * where it belongs and cannot be dodged — `POST /rooms/:id/messages` refuses a
+ * post from an account with no username, on the server, whatever the phone
+ * thinks. Making the whole app unreachable instead would mean one failed write
+ * locks somebody out of their own positions.
+ */
+let usernameAsked = false;
+
 function Gate({ children }: { children: React.ReactNode }) {
-  const { loading, session, onboardingDone } = useSession();
+  const { loading, session, onboardingDone, profile } = useSession();
   const segments = useSegments();
   const router = useRouter();
 
@@ -58,12 +76,25 @@ function Gate({ children }: { children: React.ReactNode }) {
 
     if (!session) {
       if (!inAuth) router.replace('/welcome');
-    } else if (!onboardingDone) {
-      if (!inOnboarding) router.replace('/goal');
-    } else if (inAuth || inOnboarding || (!inTabs && !inStack)) {
-      router.replace('/home');
+      return;
     }
-  }, [loading, session, onboardingDone, segments, router]);
+    if (!onboardingDone) {
+      if (!inOnboarding) router.replace('/goal');
+      return;
+    }
+    if (inAuth || inOnboarding || (!inTabs && !inStack)) {
+      router.replace('/home');
+      return;
+    }
+
+    // Onboarded, on a legitimate screen, and still nameless. Ask — once, and
+    // only when the profile has actually been read (undefined is "not loaded",
+    // null is "we asked and there is none").
+    if (!usernameAsked && profile && !profile.handle) {
+      usernameAsked = true;
+      router.push('/account/username');
+    }
+  }, [loading, session, onboardingDone, profile, segments, router]);
 
   return <>{children}</>;
 }

@@ -85,6 +85,7 @@ export function MessageRow({
       >
         <Avatar
           initial={m.author.initial}
+          url={m.author.avatar_url}
           tone={isKai ? 'kai' : m.author.role_labels.some((r) => roleTone(r) === 'gold') ? 'educator' : 'neutral'}
         />
       </Pressable>
@@ -100,6 +101,12 @@ export function MessageRow({
           >
             <T size={13.5} weight="bold" c={nameColor}>{m.author.display_name}</T>
           </Pressable>
+          {/* The username, next to the name. Absent when there is none —
+              this line never repeats the display name with an `@` in front
+              of it, because that would be a mention nobody can type. */}
+          {m.author.handle ? (
+            <T size={11.5} c={color.dim} testID={`message-handle-${m.id}`}>{`@${m.author.handle}`}</T>
+          ) : null}
           {m.author.role_labels.map((r) => <RoleChip key={r} label={r} tone={roleTone(r)} />)}
           {m.position_disclosure ? (
             <DisclosureChip label={m.position_disclosure.label} holds={m.position_disclosure.holds} />

@@ -84,7 +84,7 @@ export default function KaiPlan() {
 
   return (
     <Screen variant="dome" layout="stack" testID="screen-kai-plan">
-      <ProgressBars total={4} done={4} />
+      <ProgressBars total={5} done={5} />
 
       <View style={{ alignItems: 'center', gap: 14 }}>
         <KaiOrb size={62} />

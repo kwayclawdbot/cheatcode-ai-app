@@ -23,6 +23,7 @@ import { canResetPaper, resetPlain } from '@/lib/paper';
 import { readPrefs } from '@/lib/prefs';
 import { kaiProfile, ruleAdherence } from '@/lib/round4/profile-round4';
 import { loadStaffRole, staffPlain } from '@/lib/admin/staff';
+import { identityBlock } from '@/lib/handles';
 import { creditBlock, creditState } from '@/lib/kai/credits';
 
 export const dynamic = 'force-dynamic';
@@ -54,6 +55,11 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
     creditState(ctx.user.id, ctx.requestId),
   ]);
 
+  // Needs `profile`, so it is not in the Promise.all above. One read at most,
+  // and only when the person has no username yet (it looks for a free
+  // suggestion); an account that already has one costs nothing here.
+  const identity = await identityBlock(profile);
+
   const acc = (account.data as Record<string, unknown> | null) ?? null;
   const lastReset = (acc?.last_reset_at as string) ?? null;
   const canReset = canResetPaper(lastReset);
@@ -64,7 +70,10 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
     MeRound6Response.parse({
       profile: {
         user_id: profile.user_id,
-        handle: null,
+        // Was hardcoded `null` until 2026-09-06, which is why the Account tab
+        // could never show a username that was sitting in the database.
+        handle: profile.handle,
+        avatar_url: profile.avatar_url,
         display_name: profile.display_name,
         primary_mode: profile.primary_mode,
         experience: profile.experience,
@@ -131,6 +140,9 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
       // gone from the next screen the user opens rather than at token expiry.
       // ---- 0030: the allowance ----------------------------------------
       credits: creditBlock(credits),
+
+      // ---- 0034: who this person is, and whether we still have to ask ----
+      identity,
 
       staff: {
         is_staff: staffRole !== null,
