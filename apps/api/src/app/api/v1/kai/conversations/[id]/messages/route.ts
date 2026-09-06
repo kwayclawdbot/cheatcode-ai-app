@@ -42,6 +42,7 @@ import {
   ChartCommandRequest,
   availableDrawings,
   availableIndicators,
+  availableZones,
   availableLevels,
   chartAnswerProtocol,
   chartCommandProtocol,
@@ -269,6 +270,7 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
     // and because listing them together is what taught Kai to mark a moving
     // average as a horizontal shelf in the first place.
     const chartIndicators = chartCtx ? availableIndicators(chartCtx) : [];
+    const chartZones = chartCtx ? availableZones(chartCtx) : [];
     const answerLevels = chartCtx ? [...levelTableFor(chartCtx).keys()] : [];
     const chartOnScreen = chartCtx
       ? { symbol: chartCtx.symbol, timeframe: chartCtx.timeframe, levels: chartLevels }
@@ -326,6 +328,7 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
             available: chartLevels,
             drawings: chartDrawings,
             indicators: chartIndicators,
+            zones: chartZones,
           })
         : null,
       chartCtx
@@ -334,6 +337,7 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
             timeframe: chartCtx.timeframe,
             available: answerLevels,
             indicators: chartIndicators,
+            zones: chartZones,
           })
         : null,
     ]

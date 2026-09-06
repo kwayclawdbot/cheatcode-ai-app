@@ -127,6 +127,7 @@ const toWire = (a: Annotation): ChoreoAnnotation => ({
   // ignores them everywhere else.
   indicator: a.indicator ?? null,
   period: a.period ?? null,
+  mult: a.mult ?? null,
 });
 
 const toWireCandle = (c: Candle) => ({ t: c.t, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v ?? null });

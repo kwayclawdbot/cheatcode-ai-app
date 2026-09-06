@@ -24,11 +24,16 @@ import {
 } from '@shared/api';
 import { LIVE_ZONE_TARGETS } from '@shared/live';
 import {
+  computeIndicatorNow,
+  DRAWABLE_INDICATORS,
+  INDICATORS,
   indicatorKey,
   indicatorLabel,
   indicatorPlain,
+  indicatorRefusal,
   looksLikeIndicator,
   parseIndicator,
+  withDefaults,
   type IndicatorSpec,
 } from '@shared/indicators';
 import { z } from 'zod';
@@ -372,12 +377,18 @@ function computedLevels(ctx: ChartContext): Map<string, Resolved> {
  */
 export type ResolvedIndicator = {
   spec: IndicatorSpec;
-  /** The resolver key: `ema21`, `vwap`. */
+  /** The resolver key: `ema21`, `bollinger20`, `vwap`. */
   key: string;
-  /** The chip: "EMA 21", "VWAP". */
+  /** The chip: "EMA 21", "BB 20", "Trend Clouds 20". */
   label: string;
-  /** Newest value of the curve. */
+  /** Newest value of the PRIMARY output. */
   price: number;
+  /**
+   * The newest value of every output this indicator produces — `basis`, `upper`
+   * and `lower` for a band. Carried so a person asking "where are the bands"
+   * gets numbers, and so the levels rail can show the one that matters.
+   */
+  outputs: Record<string, number | null>;
   reason: string;
   provenance: string;
   /**
@@ -387,6 +398,23 @@ export type ResolvedIndicator = {
    */
   anchorTs: string | null;
 };
+
+/**
+ * WHY THIS ONE CANNOT GO ON THE PRICE CHART, or null when it can.
+ *
+ * The registry knows that RSI runs 0 to 100 and a price runs in dollars, so
+ * asking for it produces a SENTENCE rather than a line. That is the whole point
+ * of naming panel indicators at all: before they were in the registry, "put the
+ * RSI on there" resolved to nothing, and Kai either went quiet or quietly drew
+ * something else. The failure mode being avoided is not a missing feature, it is
+ * a 0-to-100 oscillator rescaled onto a dollar axis, which looks like analysis
+ * and is arithmetic nonsense.
+ */
+export function indicatorRefusalFor(key: string): string | null {
+  const raw = String(key ?? '').trim().toLowerCase();
+  const spec = parseIndicator(LEVEL_ALIAS[raw] ?? raw);
+  return spec ? indicatorRefusal(spec) : null;
+}
 
 /** Every curve the loaded bars already priced, keyed by the name Kai may say. */
 function computedIndicators(ctx: ChartContext): Map<string, ResolvedIndicator> {
@@ -399,6 +427,7 @@ function computedIndicators(ctx: ChartContext): Map<string, ResolvedIndicator> {
       key: indicatorKey(spec),
       label: indicatorLabel(spec),
       price: r2(l.price),
+      outputs: { [INDICATORS[spec.indicator].outputs[0]]: r2(l.price) },
       reason: `${l.what} It is ${indicatorPlain(spec)}, so it is drawn as a line across the chart rather than as a level.`,
       provenance: `${l.from} ${note}`,
       anchorTs: l.ts,
@@ -438,42 +467,99 @@ export function resolveIndicator(ctx: ChartContext, key: string): ResolvedIndica
   const raw = String(key ?? '').trim().toLowerCase();
   const k = LEVEL_ALIAS[raw] ?? raw;
 
-  const known = computedIndicators(ctx).get(k);
-  if (known) return known;
-
   const spec = parseIndicator(k);
   if (!spec) return null;
-  // Only a windowed average can be computed here. A VWAP needs volume-stamped
-  // session bars, and if `computeIntradayLevels` could not build one there is no
-  // session to average over — which is a real answer, not a gap to paper over.
-  if (spec.indicator === 'vwap' || spec.period === null) return null;
+  // A PANEL INDICATOR RESOLVES TO NOTHING DRAWABLE, ON PURPOSE. It is a real
+  // indicator and the registry knows what it is; it simply cannot share the
+  // price axis. `indicatorRefusalFor` is what turns that into a sentence.
+  if (indicatorRefusal(spec)) return null;
 
-  const bars = ctx.dailyBars ?? [];
-  const closes = bars.map((b) => b.c).filter((c): c is number => typeof c === 'number');
-  if (closes.length < spec.period) return null;
-  const value =
-    spec.indicator === 'sma'
-      ? closes.slice(-spec.period).reduce((a, b) => a + b, 0) / spec.period
-      : emaLast(closes, spec.period);
-  if (value === null || !Number.isFinite(value)) return null;
+  // The ones `computeKeyLevels` already priced — the four averages the alert
+  // engine uses, and the session VWAP with its anchor. Preferred because they
+  // carry the provenance string naming the bars they came from.
+  const known = computedIndicators(ctx).get(k);
+  if (known && known.spec.indicator === spec.indicator && (spec.period === null || known.spec.period === spec.period)) {
+    return known;
+  }
 
-  const label = indicatorLabel(spec);
+  /**
+   * EVERYTHING ELSE IS COMPUTED HERE, FROM STORED BARS.
+   *
+   * A 9-day average, a Bollinger band, the Trend Clouds: all of them are
+   * arithmetic over closes that are already in `ctx.dailyBars`, so refusing them
+   * would be refusing to do a sum rather than refusing to invent a number. The
+   * anti-invention rule is about prices nobody stored, and every close here was
+   * stored. It runs the SAME `computeIndicatorSeries` the chart page runs and
+   * takes its last point, so the label can never disagree with the line.
+   */
+  const bars = (ctx.dailyBars ?? []).filter(
+    (b): b is typeof b & { o: number; h: number; l: number; c: number } =>
+      typeof b.o === 'number' && typeof b.h === 'number' && typeof b.l === 'number' && typeof b.c === 'number'
+  );
+  if (!bars.length) return null;
+  // A session VWAP needs volume-stamped intraday bars. If `computeIntradayLevels`
+  // could not build one there is no session to average over, and that is a real
+  // answer rather than a gap to paper over with daily bars.
+  if (spec.indicator === 'vwap') return null;
+
+  const now = computeIndicatorNow(bars, spec);
+  if (!now) return null;
+  const entry = INDICATORS[spec.indicator];
+  const primary = entry.outputs[0];
+  const value = now[primary];
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+
+  const full = withDefaults(spec);
+  const label = indicatorLabel(full);
+  const outputs: Record<string, number | null> = {};
+  for (const o of entry.outputs) outputs[o] = typeof now[o] === 'number' ? r2(now[o] as number) : null;
+
+  const edges = entry.band
+    ? ` The band runs from $${outputs.lower ?? '—'} to $${outputs.upper ?? '—'} on the newest bar and moves with every one before it.`
+    : '';
   return {
-    spec,
-    key: indicatorKey(spec),
+    spec: full,
+    key: indicatorKey(full),
     label,
     price: r2(value),
-    reason:
-      `${label} is at $${r2(value)} right now. It is ${indicatorPlain(spec)}, so it is drawn as a line ` +
-      'across the chart rather than as a level.',
-    provenance: `${spec.period}-bar ${spec.indicator === 'sma' ? 'simple' : 'exponential'} moving average of ${closes.length} stored daily closes for ${ctx.symbol}.`,
+    outputs,
+    reason: `${label} is at $${r2(value)} right now. It is ${indicatorPlain(full)}, so it is drawn as a line across the chart rather than as a level.${edges}`,
+    provenance: `${label} computed from ${bars.length} stored daily bars for ${ctx.symbol}.`,
     anchorTs: null,
   };
 }
 
-/** The curves that resolve on this chart right now. */
+/**
+ * The curves that resolve on this chart right now.
+ *
+ * REGISTRY-DRIVEN, so an indicator added to `INDICATORS` is offered to Kai the
+ * moment it is added. This used to be a hand-written list of five strings, which
+ * meant every new indicator needed a second edit here that nothing would have
+ * caught if it were forgotten — the chart would simply have been able to draw
+ * something Kai was never told about.
+ */
 export function availableIndicators(ctx: ChartContext): string[] {
-  return INDICATOR_KEYS.filter((k) => resolveIndicator(ctx, k) !== null);
+  const out: string[] = [];
+  for (const id of DRAWABLE_INDICATORS) {
+    const entry = INDICATORS[id];
+    // The periods worth advertising: the alert engine's four averages for
+    // `ema`, and the registry default for everything else. Kai may still name
+    // any other period and it is computed on demand.
+    const periods = id === 'ema' ? [8, 21, 50, 200] : [entry.params.period?.default ?? null];
+    for (const p of periods) {
+      const key = indicatorKey({ indicator: id, period: p, mult: null });
+      if (resolveIndicator(ctx, key)) out.push(key);
+    }
+  }
+  return out;
+}
+
+/** What Kai must be told he CANNOT draw, so he offers a sentence instead of a line. */
+export function refusedIndicators(): { name: string; why: string }[] {
+  return (Object.keys(INDICATORS) as (keyof typeof INDICATORS)[])
+    .map((id) => INDICATORS[id])
+    .filter((e) => e.surface === 'panel')
+    .map((e) => ({ name: e.aliases[0], why: e.refusal ?? '' }));
 }
 
 /**
@@ -927,6 +1013,9 @@ async function markIndicator(
     timeframe: ctx.levelTimeframe,
     kind: 'indicator' as const,
     price: ind.price,
+    // The band's edges, so a stored row can still say how wide it was without a
+    // second column. Null on a plain line, which is most of them.
+    price2: typeof ind.outputs.upper === 'number' ? ind.outputs.upper : null,
     ts_from: ind.anchorTs,
     text: ind.label,
     reason: ind.reason,
@@ -946,8 +1035,10 @@ async function markIndicator(
       // the curve and, for a running average, where the running starts.
       indicator: ind.spec.indicator,
       period: ind.spec.period,
+      mult: ind.spec.mult ?? null,
       anchor_ts: ind.anchorTs,
       price: ind.price,
+      outputs: ind.outputs,
       label: ind.label,
       kind: 'indicator',
       symbol: ctx.symbol,
@@ -958,6 +1049,149 @@ async function markIndicator(
       `I put the ${ind.label} on the chart as a line. It is at $${ind.price} right now, but it moves — ${indicatorPlain(ind.spec)}.`
     ),
     provenance: ind.provenance,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Zones                                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The zones a chart can shade, each one built from levels that already resolved.
+ *
+ * THE ANTI-INVENTION RULE, APPLIED TO AN AREA. A zone is two prices and a start
+ * bar, and all three have to come from somewhere real or the rectangle is a
+ * claim about a region of the chart that nothing supports. So Kai names WHICH
+ * zone and this table says which two levels it is made of — every one of them a
+ * level `resolveLevel` can already produce on its own. There is no path here
+ * that takes a number from the model.
+ */
+const ZONE_TARGETS: Record<string, { edges: [string, string]; label: string; what: string }> = {
+  risk: {
+    edges: ['trigger', 'stop'],
+    label: 'At risk',
+    what: 'Everything between where the idea becomes live and where it stops being true. This is the part of the move you are paying for.',
+  },
+  reward: {
+    edges: ['trigger', 'target'],
+    label: 'To target',
+    what: 'The stretch between the trigger and the first place the plan takes something off.',
+  },
+  range: {
+    edges: ['support', 'resistance'],
+    label: 'The range',
+    what: 'The band price has been stuck inside — buyers keep showing up at the bottom of it and sellers at the top.',
+  },
+  value: {
+    edges: ['nearest_support', 'nearest_resistance'],
+    label: 'Between the levels',
+    what: 'The gap between the closest level below price and the closest one above it. Nothing in here is a decision; the edges are.',
+  },
+  prior_day: {
+    edges: ['prior_day_low', 'prior_day_high'],
+    label: "Yesterday's range",
+    what: 'Everything the previous session covered. Price leaving it in either direction is the day doing something new.',
+  },
+  premarket: {
+    edges: ['premarket_low', 'premarket_high'],
+    label: 'Premarket range',
+    what: 'What it did before the bell, on thinner volume than the rest of the day.',
+  },
+  opening_range: {
+    edges: ['open_range_low', 'open_range_high'],
+    label: 'Opening range',
+    what: 'The first fifteen minutes. A lot of the day gets decided by which side of this it leaves on.',
+  },
+  session: {
+    edges: ['session_low', 'session_high'],
+    label: "Today's range",
+    what: 'The high and low of the session so far, and everything between them.',
+  },
+};
+
+/** The zones that can actually be built on this chart right now. */
+export function availableZones(ctx: ChartContext): string[] {
+  return Object.keys(ZONE_TARGETS).filter((k) => {
+    const t = ZONE_TARGETS[k];
+    return resolveLevel(ctx, t.edges[0]) !== null && resolveLevel(ctx, t.edges[1]) !== null;
+  });
+}
+
+/**
+ * Shade an area of the chart.
+ *
+ * IT RUNS TO THE RIGHT EDGE UNLESS TOLD OTHERWISE. A supply zone is not a thing
+ * that happened between two dates — it is a shelf that is still there, and a
+ * rectangle that stops halfway across the plot says it expired. `ts_to` is left
+ * null and the client extends it, which is also what lets the zone stay correct
+ * when new bars arrive without anything being rewritten.
+ *
+ * A ZONE WITH NO HEIGHT IS A LEVEL, AND IS DRAWN AS ONE. Two edges that resolve
+ * to the same number — a trigger and an entry that start at the same price, a
+ * range on a symbol whose support and resistance deduped into one shelf —
+ * produce a rectangle nobody can see, sitting on top of a line that says the
+ * same thing. It converts rather than drawing a zero-height box.
+ */
+async function markZone(
+  ctx: ChartContext,
+  name: string,
+  say: (fallback: string) => string
+): Promise<ChartCommandFrame | null> {
+  const v = String(name ?? '').trim().toLowerCase();
+  const target = ZONE_TARGETS[v] ?? ZONE_TARGETS[LEVEL_ALIAS[v] ?? ''] ?? null;
+  if (!target) return null;
+
+  const a = resolveLevel(ctx, target.edges[0]);
+  const b = resolveLevel(ctx, target.edges[1]);
+  if (!a || !b) return null;
+
+  const top = Math.max(a.price, b.price);
+  const bottom = Math.min(a.price, b.price);
+
+  // Zero height, or so close to it that the fill would be a hairline: this is a
+  // level wearing a rectangle's clothes. Draw the level.
+  if (top - bottom < Math.max(0.01, Math.abs(top) * 0.0005)) {
+    return await executeChartCommand(ctx, { command: 'mark_level', args: { level: target.edges[0] } });
+  }
+
+  const anchor = a.ts ?? b.ts ?? ctx.triggerTs ?? ctx.bars.firstTs;
+  if (!anchor) return null;
+
+  const draft = {
+    symbol: ctx.symbol,
+    timeframe: ctx.levelTimeframe,
+    kind: 'zone' as const,
+    price: top,
+    price2: bottom,
+    ts_from: anchor,
+    // Left open on purpose — see the note above.
+    ts_to: null,
+    text: target.label,
+    reason: `${target.what} Its edges are the ${target.edges[0].replace(/_/g, ' ')} at $${a.price} and the ${target.edges[1].replace(/_/g, ' ')} at $${b.price}.`,
+    provenance: 'kai' as const,
+    source_alert_id: ctx.alertId,
+    source_setup_id: ctx.setup?.id ?? null,
+    source_plan_id: ctx.planId,
+  };
+  const ann = (await upsertAnnotation(ctx.userId, draft)) ?? ephemeralAnnotation(draft);
+
+  return {
+    type: 'chart_command',
+    command: 'mark_zone',
+    payload: {
+      zone: v,
+      price: top,
+      price2: bottom,
+      from: anchor,
+      to: null,
+      label: target.label,
+      kind: 'zone',
+      symbol: ctx.symbol,
+      timeframe: ctx.timeframe,
+    },
+    annotations: [ann],
+    narration: say(`I shaded ${target.label.toLowerCase()} — $${bottom} up to $${top}. ${target.what}`),
+    provenance: `${a.provenance} and ${b.provenance}`,
   };
 }
 
@@ -998,6 +1232,27 @@ export async function executeChartCommand(
          */
         const curve = resolveIndicator(ctx, key);
         if (curve) return await markIndicator(ctx, key, say);
+
+        /**
+         * ASKED FOR SOMETHING THAT CANNOT GO ON A PRICE AXIS.
+         *
+         * This is the one command that answers with WORDS and no drawing. RSI on
+         * a price chart is either a flat line down near zero or a rescaled
+         * invention, and both are worse than saying plainly why it needs its own
+         * panel. The frame carries no annotation, so nothing is drawn and Kai
+         * says the registry's sentence.
+         */
+        const refusal = indicatorRefusalFor(key);
+        if (refusal) {
+          return {
+            type: 'chart_command',
+            command: 'mark_level',
+            payload: { level: key, refused: true, symbol: ctx.symbol, timeframe: ctx.timeframe },
+            annotations: [],
+            narration: say(refusal),
+            provenance: 'Nothing was drawn — this indicator does not share the price axis.',
+          };
+        }
 
         const r = resolveLevel(ctx, key);
         if (!r) return null;
@@ -1046,6 +1301,9 @@ export async function executeChartCommand(
           provenance: r.provenance,
         };
       }
+
+      case 'mark_zone':
+        return await markZone(ctx, String(args.zone ?? args.level ?? args.name ?? ''), say);
 
       case 'mark_plan': {
         const setupLevels = ctx.setup ? levels(ctx.setup) : { entry: null, stop: null, targets: [], perShare: null, rr: null };
@@ -1419,11 +1677,15 @@ export function chartCommandProtocol(ctx: {
   available: string[];
   /** The drawings that resolve right now: `trendline:uptrend`, `fib`, and so on. */
   drawings?: string[];
-  /** The CURVES that resolve right now: `ema21`, `vwap`. Drawn as lines, never as levels. */
+  /** The CURVES that resolve right now: `ema21`, `bollinger20`. Drawn as lines, never as levels. */
   indicators?: string[];
+  /** The AREAS that can be shaded right now: `range`, `risk`. */
+  zones?: string[];
 }): string {
   const drawings = ctx.drawings ?? [];
   const indicators = ctx.indicators ?? [];
+  const zones = ctx.zones ?? [];
+  const refusals = refusedIndicators();
   return `CHART CONTROL
 
 You are talking to the user underneath a live ${ctx.symbol} chart on the
@@ -1449,19 +1711,33 @@ Rules, and they are strict:
   resistance, the entry, the stop, the target, the previous session's high and
   low, the opening range, a round number. A horizontal line is what those look
   like, and horizontal lines are reserved for them.
-- AN AVERAGE IS NOT ONE OF THOSE AND YOU DO NOT MARK IT AS A LEVEL. ${
+- AN INDICATOR IS NOT ONE OF THOSE AND YOU DO NOT MARK IT AS A LEVEL. ${
     indicators.length
-      ? `These are CURVES and this chart has them: ${indicators.join(', ')}. Name one exactly as you would name a level — \`{"command":"mark_level","args":{"level":"ema21"}}\` — and the chart draws the whole line, correct on every bar. You may also name any other average by period (\`ema9\`, \`sma20\`) and it is computed from the stored closes.`
-      : 'No average or volume-weighted average can be priced on this chart right now, so do not offer to draw one.'
+      ? `These are CURVES and this chart has them: ${indicators.join(', ')}. Name one exactly as you would name a level — \`{"command":"mark_level","args":{"level":"ema21"}}\` — and the chart draws the whole line, correct on every bar. You may also name any other period (\`ema9\`, \`sma20\`, \`bollinger50\`) and it is computed from the stored bars.`
+      : 'No indicator can be priced on this chart right now, so do not offer to draw one.'
   }
   Do not describe an average as a level, do not say it "is at" a price as though
   that price were a shelf, and never ask for it any other way — a moving average
   drawn as a horizontal rule is wrong about the one thing that makes it a moving
   average, and a chart carrying five of them is unreadable.
+- BANDS ARE ONE MARK, NOT TWO. Bollinger Bands and the CheatCode Trend Clouds
+  each draw their whole band — both edges and the middle — from a single
+  \`mark_level\`. Never ask for the edges separately.
+- NEVER SAY "SUPERTREND". The indicator is CheatCode Trend Clouds, always.
+- SOME INDICATORS CANNOT GO ON A PRICE CHART AT ALL${
+    refusals.length
+      ? `: ${refusals.map((r) => r.name).join(', ')}. They are measured on their own scale, not in dollars, so there is no honest way to draw them over candles. Asking for one draws nothing and says why — which is the right answer. Offer to tell the user what it READS instead of offering to draw it.`
+      : '.'
+  }
+- ZONES SHADE AN AREA, not a price.${
+    zones.length
+      ? ` \`{"command":"mark_zone","args":{"zone":"range"}}\`. THIS CHART HAS: ${zones.join(', ')} — naming any other shades nothing. Each one's edges are levels from the list above, so a zone never asserts anything a line could not.`
+      : ' No zone resolves on this chart right now, so do not offer to shade one.'
+  }
 - One command per reply. Say your sentence in the text BEFORE the block — the
   chart changing without you saying what changed is not acceptable.
-- commands: mark_level · set_timeframe (args.timeframe one of 1m, 5m, 15m, 1h,
-  4h, 1d) · show_invalidation · mark_plan · zoom_trigger · compare_prior ·
+- commands: mark_level · mark_zone (args.zone) · set_timeframe (args.timeframe
+  one of 1m, 5m, 15m, 1h, 4h, 1d) · show_invalidation · mark_plan · zoom_trigger · compare_prior ·
   highlight_community · annotation_remove (args.annotation_id) ·
   annotation_explain (args.annotation_id) · alert_from_level · prepare_trade
 - camera commands, for looking rather than marking: zoom_range (args.from,
@@ -1526,8 +1802,12 @@ export function chartAnswerProtocol(ctx: {
   available: string[];
   /** The curves this chart can draw. Named in prose exactly like a level. */
   indicators?: string[];
+  /** The areas it can shade. The director's `[ZONE:…]` may name these. */
+  zones?: string[];
 }): string {
   const indicators = ctx.indicators ?? [];
+  const zones = ctx.zones ?? [];
+  const refusals = refusedIndicators();
   return `ANSWERING ON THE CHART
 
 When the user asks a QUESTION about this ${ctx.symbol} chart — why the grade is
@@ -1552,8 +1832,18 @@ Rules:
   drawn; nothing is invented to fill it.
 - ${
     indicators.length
-      ? `AVERAGES ARE DRAWN AS LINES, NOT AS LEVELS, and this chart has ${indicators.join(', ')}. Name one in your sentence — "it is holding above the twenty-one day" — and the whole curve is laid over the bars. Say that it MOVES; do not talk about it as a price that is sitting somewhere.`
-      : 'This chart cannot price a moving average right now, so do not mention one.'
+      ? `INDICATORS ARE DRAWN AS LINES, NOT AS LEVELS, and this chart has ${indicators.join(', ')}. Name one in your sentence — "it is holding above the twenty-one day", "the bands are squeezing" — and the whole curve is laid over the bars. Say that it MOVES; do not talk about it as a price that is sitting somewhere. The indicator is CheatCode Trend Clouds; never say "SuperTrend".`
+      : 'This chart cannot price an indicator right now, so do not mention one.'
+  }
+- ${
+    refusals.length
+      ? `${refusals.map((r) => r.name.toUpperCase()).join(', ')} CANNOT BE DRAWN over price — they run on their own scale. If one comes up, say what it reads and why it needs its own panel. Do not name it as though it were about to appear on the chart.`
+      : ''
+  }
+- ${
+    zones.length
+      ? `TALKING ABOUT AN AREA SHADES IT. This chart can shade ${zones.join(', ')} — say "the range it has been stuck in" or "what you are risking" and the region is shaded behind the candles. Use it when the point is a stretch of chart rather than one price.`
+      : 'This chart has no shadeable area right now, so describe prices rather than regions.'
   }
 - Two to four sentences. This is fifteen to thirty seconds of speech, not a
   segment. Say the thing and stop. ASKED TO MARK A SET, NAME EVERY MEMBER OF IT

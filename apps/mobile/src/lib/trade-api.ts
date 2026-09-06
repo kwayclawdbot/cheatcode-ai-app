@@ -937,7 +937,7 @@ import type { Candle } from './types';
  */
 const ANNOTATION_KINDS: AnnotationKind[] = [
   'trigger', 'entry', 'stop', 'invalidation', 'target', 'support', 'resistance', 'note',
-  'trendline', 'box', 'vertical', 'circle', 'arrow', 'indicator',
+  'trendline', 'box', 'vertical', 'circle', 'arrow', 'indicator', 'zone',
 ];
 const readKind = (v: unknown): AnnotationKind => {
   const s = str(v).toLowerCase();
@@ -994,21 +994,21 @@ export function adaptAnnotation(v: unknown, fallbackSymbol = ''): Annotation {
  * reached the app unrepaired, so no path through the client draws a moving
  * average as a horizontal rule.
  */
-function readIndicator(r: Record<string, unknown>): { kind?: AnnotationKind; indicator: IndicatorName | null; period: number | null } {
+function readIndicator(r: Record<string, unknown>): { kind?: AnnotationKind; indicator: IndicatorName | null; period: number | null; mult: number | null } {
   const named = str(pick(r, 'indicator')).toLowerCase();
   const direct: IndicatorName | null = named === 'ema' || named === 'sma' || named === 'vwap' ? named : null;
-  if (direct) return { indicator: direct, period: num(pick(r, 'period')) ?? null };
+  if (direct) return { indicator: direct, period: num(pick(r, 'period')) ?? null, mult: num(pick(r, 'mult')) ?? null };
 
   const label = str(pick(r, 'text', 'label'));
   const kind = str(pick(r, 'kind')).toLowerCase();
   const spec = parseIndicator(label);
-  if (!spec) return { indicator: null, period: null };
+  if (!spec) return { indicator: null, period: null, mult: null };
   // Only promote something that was being drawn AS A PRICE. A trendline or a box
   // named after an average is already the right shape and is left alone.
   const promotable = kind === 'indicator' || kind === 'support' || kind === 'resistance' ||
     kind === 'trigger' || kind === 'entry' || kind === 'stop' || kind === 'invalidation' || kind === 'target';
-  if (!promotable) return { indicator: null, period: null };
-  return { kind: 'indicator', indicator: spec.indicator, period: spec.period };
+  if (!promotable) return { indicator: null, period: null, mult: null };
+  return { kind: 'indicator', indicator: spec.indicator, period: spec.period, mult: spec.mult ?? null };
 }
 
 function adaptScoreComponents(v: unknown): ScoreComponent[] {

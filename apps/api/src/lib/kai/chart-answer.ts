@@ -268,9 +268,17 @@ function commandFor(m: LiveMarker, drawn: Set<string>, ctx: ChartContext): Chart
       // window nobody recorded.
       return { command: 'zoom_trigger', args: { level: v } };
 
+    case 'ZONE':
+      // A ZONE HAS ITS OWN COMMAND NOW. It used to ride `mark_level` with a
+      // shape argument and come out as a `box` stretched across the whole stored
+      // window; `mark_zone` anchors it to the bar its edges came from and runs
+      // it forward to the live edge, which is what a region of the chart
+      // actually claims.
+      drawn.add(v);
+      return { command: 'mark_zone', args: { zone: v } };
+
     case 'CIRCLE':
     case 'ARROW':
-    case 'ZONE':
       // Shapes ride `mark_level`; see `markShape` in chart-commands.ts.
       drawn.add(v);
       return { command: 'mark_level', args: { level: v, shape: m.name.toLowerCase() } };

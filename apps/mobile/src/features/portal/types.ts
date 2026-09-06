@@ -45,10 +45,17 @@ export type AnnotationKind =
    * be ruled across the plot at `price`; that is the bug this kind exists to
    * make impossible.
    */
-  | 'indicator';
+  | 'indicator'
+  /**
+   * A PRICE RANGE OVER TIME — a supply or demand area, a consolidation box, a
+   * gap. `price` and `price2` are its edges, `ts_from` the bar it starts at,
+   * and `ts_to` an optional end; left null it runs to the live edge, because a
+   * zone that is still there should not look as though it expired.
+   */
+  | 'zone';
 
 /** Which curve, for `kind: 'indicator'`. */
-export type IndicatorName = 'ema' | 'sma' | 'vwap';
+export type IndicatorName = 'ema' | 'sma' | 'vwap' | 'bollinger' | 'trend_clouds' | 'rsi' | 'macd' | 'stochastic';
 
 export type AnnotationProvenance = 'kai' | 'user' | 'community' | 'plan';
 export type AnnotationStatus = 'valid' | 'invalidated' | 'hidden' | 'deleted';
@@ -79,6 +86,8 @@ export type Annotation = {
   indicator?: IndicatorName | null;
   /** Bars in the lookback. Null for VWAP, which is anchored rather than windowed. */
   period?: number | null;
+  /** Standard deviations for a band, or the ATR multiple. */
+  mult?: number | null;
 };
 
 /* ------------------------------------------------------------------ */
@@ -87,7 +96,7 @@ export type Annotation = {
 
 export type ChartCommandName =
   | 'mark_level' | 'set_timeframe' | 'show_invalidation' | 'mark_plan'
-  | 'zoom_trigger' | 'compare_prior' | 'highlight_community'
+  | 'zoom_trigger' | 'compare_prior' | 'highlight_community' | 'mark_zone'
   | 'annotation_remove' | 'annotation_explain' | 'alert_from_level' | 'prepare_trade'
   // v2 (LIVE-1): the camera is a first-class command, so Kai can say "look
   // over here" instead of narrating a level that is 400 bars off screen.
@@ -273,6 +282,7 @@ export const KIND_LABEL: Record<AnnotationKind, string> = {
   // "VWAP" — and that is what the chip and the rail show; this is what is left
   // if a row somehow arrives with no label at all.
   indicator: 'Average',
+  zone: 'Zone',
 };
 
 export const PROVENANCE_LABEL: Record<AnnotationProvenance, string> = {

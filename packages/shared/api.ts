@@ -3692,6 +3692,19 @@ export const AnnotationKind = z.enum([
    * at 604" — and it is what the price tag and the levels rail show.
    */
   'indicator',
+  /**
+   * A PRICE RANGE OVER TIME — a supply or demand area, a consolidation box, the
+   * gap left by an opening print.
+   *
+   * It is not a `box`, and the difference is worth keeping. A `box` is the band
+   * between two named plan levels drawn across the whole stored window (the
+   * live show's risk and reward bands). A `zone` is an AREA with its own
+   * identity: it starts at a bar, it runs forward from there — to the right edge
+   * unless an end is given — and it is coloured by which side of price it sits
+   * on, exactly as a level is. `price` and `price2` are its two edges, in either
+   * order.
+   */
+  'zone',
 ]);
 export type AnnotationKind = z.infer<typeof AnnotationKind>;
 
@@ -3733,9 +3746,11 @@ export const AnnotationRow = z.object({
    * have been filled in for rows written after the change, which is exactly the
    * rows that did not need fixing.
    */
-  indicator: z.enum(['ema', 'sma', 'vwap']).nullish(),
+  indicator: z.enum(['ema', 'sma', 'vwap', 'bollinger', 'trend_clouds', 'rsi', 'macd', 'stochastic']).nullish(),
   /** Bars in the lookback. Null for VWAP, which is anchored rather than windowed. */
   period: z.number().int().nullish(),
+  /** Standard deviations for a band, or the ATR multiple. Null when it has none. */
+  mult: z.number().nullish(),
 });
 export type AnnotationRow = z.infer<typeof AnnotationRow>;
 
@@ -3819,6 +3834,14 @@ export const ChartCommandName = z.enum([
   'scroll_to_now',
   'flash_annotation',
   'pointer_hint',
+  /**
+   * Shade a price RANGE over time. Its own command rather than another
+   * `args.shape` on `mark_level`, because a zone takes two edges and an anchor
+   * where every other mark takes one price — folding it in would have made the
+   * one command that everything funnels through take a different argument shape
+   * depending on a string.
+   */
+  'mark_zone',
 ]);
 export type ChartCommandName = z.infer<typeof ChartCommandName>;
 

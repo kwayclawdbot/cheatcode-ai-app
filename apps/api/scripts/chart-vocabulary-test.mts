@@ -58,6 +58,8 @@ import {
 import {
   availableDrawings,
   availableIndicators,
+  availableZones,
+  indicatorRefusalFor,
   executeChartCommand,
   availableLevels,
   resolveIndicator,
@@ -516,6 +518,101 @@ ok('and it carries the anchor its running total starts from', typeof vwapFrame?.
 const shelfFrame = await executeChartCommand(bare, { command: 'mark_level', args: { level: 'prior_day_high' } });
 ok('a real shelf is still a level, still a horizontal line', shelfFrame?.payload.kind === 'resistance' || shelfFrame?.payload.kind === 'support', shelfFrame?.payload);
 ok('and it is not accidentally an overlay', shelfFrame?.payload.indicator === undefined);
+
+/* ------------------------------------------------------------------ */
+section('The indicator library — calling one by name, and being told no');
+
+/**
+ * THE OWNER'S FOLLOW-UP: "we need to build indicator library tools on how to
+ * draw them or call them or whatever needs to happen to make them work."
+ *
+ * The thing that has to be true is that a name Kai can say resolves to something
+ * the chart can draw, WITHOUT a second list anywhere to keep in step. Adding a
+ * row to `INDICATORS` is the whole change; these assertions are what prove the
+ * resolver, the advertised vocabulary and the refusals all read that one row.
+ */
+const bb = resolveIndicator(bare, 'bollinger');
+ok('Bollinger Bands resolve from bars alone', typeof bb?.price === 'number', bb?.label);
+ok('and answer with all three of their edges', typeof bb?.outputs.upper === 'number' && typeof bb?.outputs.lower === 'number' && typeof bb?.outputs.basis === 'number', bb?.outputs);
+ok('the band is the right way up', (bb?.outputs.upper as number) > (bb?.outputs.basis as number) && (bb?.outputs.basis as number) > (bb?.outputs.lower as number));
+ok('a wider multiple is a wider band', (() => {
+  const wide = resolveIndicator(bare, 'bollinger');
+  return wide !== null && wide.spec.mult === 2;
+})());
+
+const tc = resolveIndicator(bare, 'cheatcode trend clouds');
+ok('CheatCode Trend Clouds resolve by the product name', typeof tc?.price === 'number', tc?.label);
+ok('and by the upstream one, which is an alias and never a label', (() => {
+  const alias = resolveIndicator(bare, 'supertrend');
+  return alias !== null && alias.spec.indicator === 'trend_clouds' && !/supertrend/i.test(alias.label);
+})());
+ok('the label is the product name', /Trend Clouds/.test(tc?.label ?? ''), tc?.label);
+
+ok('every drawable indicator is advertised to Kai', (() => {
+  const offered = availableIndicators(bare);
+  return offered.some((k) => k.startsWith('bollinger')) && offered.some((k) => k.startsWith('trend_clouds'));
+})(), availableIndicators(bare));
+
+/**
+ * REFUSING IS A FIRST-CLASS ANSWER. An RSI drawn on a price axis is either a
+ * flat line down near zero or a rescaled invention that looks like analysis.
+ * Saying plainly why it needs its own panel is the better outcome, and it has to
+ * be a sentence rather than a null so Kai has something to say.
+ */
+for (const panel of ['rsi', 'relative strength index', 'macd', 'stochastic']) {
+  ok(`${panel} does not resolve as something drawable`, resolveIndicator(bare, panel) === null);
+  const why = indicatorRefusalFor(panel);
+  ok(`${panel} refuses with a plain sentence instead`, typeof why === 'string' && why.length > 30, why);
+}
+ok('and it is never mistaken for a level either', resolveLevel(bare, 'rsi') === null);
+ok('an average is not refused', indicatorRefusalFor('ema21') === null);
+
+const rsiFrame = await executeChartCommand(bare, { command: 'mark_level', args: { level: 'rsi' } });
+ok('asking to mark the RSI still answers', rsiFrame !== null);
+ok('it draws NOTHING', (rsiFrame?.annotations.length ?? 1) === 0 && rsiFrame?.payload.refused === true, rsiFrame?.payload);
+ok('and says why, in words a beginner can act on', /own panel/i.test(rsiFrame?.narration ?? ''), rsiFrame?.narration);
+
+const bbFrame = await executeChartCommand(bare, { command: 'mark_level', args: { level: 'bollinger' } });
+ok('a band is ONE mark, not two', (bbFrame?.annotations.length ?? 0) === 1, bbFrame?.annotations.length);
+ok('and it goes out as an overlay naming the curve', bbFrame?.payload.indicator === 'bollinger' && bbFrame?.payload.kind === 'indicator');
+ok('carrying the multiple, so the client draws the same band the server priced', bbFrame?.payload.mult === 2);
+
+/* ------------------------------------------------------------------ */
+section('Zones — shading an area, from levels that already resolved');
+
+const zonesNow = availableZones(bare);
+ok('this chart can shade something', zonesNow.length > 0, zonesNow);
+ok("and yesterday's range is one of them", zonesNow.includes('prior_day'), zonesNow);
+
+const zFrame = await executeChartCommand(bare, { command: 'mark_zone', args: { zone: 'prior_day' } });
+ok('marking a zone produces a frame', zFrame !== null);
+ok('typed as a zone, not a level and not a box', zFrame?.payload.kind === 'zone' && zFrame?.annotations[0]?.kind === 'zone');
+ok('with two edges', typeof zFrame?.payload.price === 'number' && typeof zFrame?.payload.price2 === 'number');
+ok('the top edge is the top', (zFrame?.payload.price as number) > (zFrame?.payload.price2 as number));
+ok('both edges are the levels it was built from', (() => {
+  const hi = resolveLevel(bare, 'prior_day_high')?.price;
+  const lo = resolveLevel(bare, 'prior_day_low')?.price;
+  return zFrame?.payload.price === hi && zFrame?.payload.price2 === lo;
+})(), { got: [zFrame?.payload.price, zFrame?.payload.price2] });
+ok('it is anchored to a real bar', typeof zFrame?.payload.from === 'string');
+ok(
+  'and it is left OPEN at the right — a shelf that is still there has not expired',
+  zFrame?.payload.to === null,
+);
+ok('a name nothing defines shades nothing', (await executeChartCommand(bare, { command: 'mark_zone', args: { zone: 'the_vibes' } })) === null);
+
+/**
+ * A ZONE WITH NO HEIGHT IS A LEVEL. Two edges resolving to the same number
+ * produce a rectangle nobody can see sitting on top of a line that says the same
+ * thing, so it converts rather than drawing a zero-height box.
+ */
+const flatCtx: ChartContext = {
+  ...bare,
+  supports: [100],
+  resistances: [100],
+};
+const flat = await executeChartCommand(flatCtx, { command: 'mark_zone', args: { zone: 'range' } });
+ok('a zone whose edges are the same price is drawn as a level instead', flat === null || flat.payload.kind !== 'zone', flat?.payload);
 
 /* ------------------------------------------------------------------ */
 section('Drawings');

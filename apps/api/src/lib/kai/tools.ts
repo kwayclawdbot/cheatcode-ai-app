@@ -47,6 +47,8 @@ import { loadChartContext } from '../round4/chart-context';
 import {
   availableDrawings,
   availableIndicators,
+  availableZones,
+  refusedIndicators,
   availableLevels,
   resolveIndicator,
   resolveLevel,
@@ -92,12 +94,16 @@ export const KAI_TOOLS: Anthropic.Tool[] = [
   {
     name: 'read_chart_levels',
     description:
-      'Get every price level that can be measured on a stock\'s chart from its real bars — the previous ' +
-      'session\'s high, low and close, the 8/21/50/200-day averages, the opening range, VWAP, the day\'s ' +
-      'high and low, the year\'s high and low, swing highs and lows, and support and resistance. ' +
-      'NONE of these need a graded setup: they are arithmetic on bars and exist for almost any symbol. ' +
+      'Get everything measurable on a stock\'s chart from its real bars. It answers in three parts and ' +
+      'they are different things. LEVELS are prices that stay put — the previous session\'s high, low and ' +
+      'close, the opening range, the day\'s and the year\'s extremes, swing highs and lows, support and ' +
+      'resistance — and those are what get drawn as horizontal lines. INDICATORS are curves that have a ' +
+      'different value on every bar: the moving averages, VWAP, Bollinger Bands, the CheatCode Trend ' +
+      'Clouds. ZONES are areas that can be shaded. It also tells you which indicators need their own ' +
+      'panel and therefore cannot be drawn on price at all. ' +
+      'NONE of it needs a graded setup: it is arithmetic on bars and exists for almost any symbol. ' +
       'Call this when the user asks what is on a chart, where the levels are, or what price is doing ' +
-      'relative to anything. It returns only levels that actually resolved — anything absent from the ' +
+      'relative to anything. It returns only what actually resolved — anything absent from the ' +
       'result does not exist for this symbol and must not be mentioned as though it does.',
     input_schema: {
       type: 'object',
@@ -242,7 +248,16 @@ async function readChartLevels(input: Record<string, unknown>, ctx: ToolCtx): Pr
     .map((name) => {
       const r = resolveIndicator(chart, name);
       return r
-        ? { indicator: name, value_right_now: r.price, what_it_is: r.reason, from: r.provenance }
+        ? {
+            indicator: name,
+            call_it: r.label,
+            value_right_now: r.price,
+            // A band answers with all three of its edges, so "where are the
+            // bands" has numbers behind it rather than a shrug.
+            outputs: r.outputs,
+            what_it_is: r.reason,
+            from: r.provenance,
+          }
         : null;
     })
     .filter((l): l is NonNullable<typeof l> => l !== null);
@@ -258,10 +273,17 @@ async function readChartLevels(input: Record<string, unknown>, ctx: ToolCtx): Pr
     timeframe: 'the daily chart',
     last_price: chart.bars.lastPrice,
     levels,
-    moving_averages: indicators,
-    moving_averages_note:
+    indicators,
+    indicators_note:
       'These are LINES, not levels. Each one has a different value on every bar; the number above is only where it sits on the newest one. ' +
-      'Mark them with mark_level and the chart draws the whole curve — never describe one as a price sitting at a level.',
+      'Mark them with mark_level and the chart draws the whole curve — never describe one as a price sitting at a level. ' +
+      'A band (Bollinger, Trend Clouds) draws all of its edges from one mark; never ask for them separately. ' +
+      'The indicator is CheatCode Trend Clouds — never say "SuperTrend".',
+    indicators_that_need_their_own_panel: refusedIndicators(),
+    zones_available: availableZones(chart),
+    zones_note:
+      'A zone shades an AREA rather than a price, with mark_zone. Every zone above is built from two levels in the list, ' +
+      'so shading one asserts nothing a pair of lines would not.',
     drawings_available: availableDrawings(chart),
     has_graded_setup: Boolean(chart.setup),
     must_say: chart.setup

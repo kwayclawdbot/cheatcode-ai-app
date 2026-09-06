@@ -559,7 +559,12 @@ var TAG_FONT = '500 9.5px "JetBrains Mono", ui-monospace, "SF Mono", Menlo, mono
 
 function shapeOf(a) {
   if (a.kind === 'trendline') return 'trendline';
-  if (a.kind === 'box') return 'box';
+  // A `zone` and a `box` are the same rectangle drawn from the same four
+  // numbers. They differ in what they MEAN — a box is the band between two plan
+  // levels across the whole window, a zone is a named area anchored at a bar and
+  // running forward — and that difference is honoured inside the branch, not by
+  // having two of them.
+  if (a.kind === 'box' || a.kind === 'zone') return 'box';
   if (a.kind === 'vertical') return 'vertical';
   if (a.kind === 'circle') return 'circle';
   if (a.kind === 'arrow') return 'arrow';
@@ -574,62 +579,202 @@ function shapeOf(a) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Indicators — the arithmetic, done where the bars are                 */
+/* The indicator library — the arithmetic, done where the bars are      */
 /* ------------------------------------------------------------------ */
+
+/**
+ * THE COMPUTE HALF OF THE REGISTRY IN packages/shared/indicators.ts.
+ *
+ * It is a second copy of the math and that is a deliberate cost, not an
+ * oversight. This page is a self-contained document with no module system (see
+ * chart-web/build.mjs — the "build" is a concatenation), and it is the one
+ * holding the candles. Sending a precomputed series down the bridge instead
+ * would send something derivable, that goes stale on the next tick, and that
+ * would have to be re-sent on every pan.
+ *
+ * THE DUPLICATION IS CHECKED RATHER THAN TRUSTED. `scripts/chart-indicators-
+ * test.mjs` runs this table and the TypeScript one over the same fixture bars
+ * and fails on any entry whose numbers disagree. Adding an indicator means one
+ * row there and one row here, and forgetting the second is a test failure
+ * rather than a curve that silently stops being drawable.
+ *
+ * COLOUR IS NOT IN HERE. Every overlay is the one muted family (palette lock
+ * 14): colour on this chart means MEANING, and an indicator that picked a hue
+ * would be claiming to be risk, or a target, or the tape. Weight and dash are
+ * what tell the curves apart, and the label is what names them.
+ */
+var IND = {
+  ema:          { outputs: ['ema'],                    band: false, weight: 1.2, dash: null,   period: 21,  mult: null },
+  sma:          { outputs: ['sma'],                    band: false, weight: 1.2, dash: null,   period: 20,  mult: null },
+  vwap:         { outputs: ['vwap'],                   band: false, weight: 1.3, dash: [5, 3], period: null, mult: null },
+  bollinger:    { outputs: ['basis', 'upper', 'lower'], band: true, weight: 1,   dash: null,   period: 20,  mult: 2 },
+  trend_clouds: { outputs: ['line', 'upper', 'lower'],  band: true, weight: 1.5, dash: null,   period: 20,  mult: 1.5 }
+};
 
 /**
  * Which curve this annotation names.
  *
- * The host sends `indicator` and `period`. The parse from the LABEL is the
- * fallback for a row that has neither: one the user drew and typed "50 EMA"
- * into, or one written by a build that predates the fields. Mirrors
+ * The host sends `indicator`, `period` and `mult`. The parse from the LABEL is
+ * the fallback for a row that has none of them: one the user drew and typed
+ * "50 EMA" into, or one written by a build that predates the fields. Mirrors
  * `parseIndicator` in packages/shared/indicators.ts — deliberately the loose
  * half of it, because everything strict already happened server-side.
+ *
+ * A NAME THIS TABLE DOES NOT HOLD RESOLVES TO NOTHING, which is how a panel
+ * indicator (RSI, MACD) that somehow reached the client is refused rather than
+ * rescaled onto a dollar axis. `shapeOf` turns that into a note, not a rule.
  */
 function specOf(a) {
   var name = String(a.indicator || '').toLowerCase();
-  if (name === 'vwap') return { indicator: 'vwap', period: null };
-  if (name === 'ema' || name === 'sma') {
+  var entry = IND[name];
+  if (entry) {
     var p = Number(a.period);
-    if (isFinite(p) && p >= 2 && p <= 500) return { indicator: name, period: Math.round(p) };
-    return null;
+    var m = Number(a.mult);
+    return {
+      indicator: name,
+      period: entry.period === null ? null : (isFinite(p) && p >= 2 && p <= 500 ? Math.round(p) : entry.period),
+      mult: entry.mult === null ? null : (isFinite(m) && m > 0 ? m : entry.mult)
+    };
   }
+  if (name) return null;
+
   var label = String(a.text || '').toLowerCase();
   if (!label) return null;
-  if (/\bv\.?w\.?a\.?p\b/.test(label)) return { indicator: 'vwap', period: null };
-  var m = /\b(?:ema|sma|ma)\s*[-_]?\s*(\d{1,3})\b/.exec(label) ||
-          /\b(\d{1,3})\s*[-_]?\s*(?:day|period|bar)?\s*[-_]?\s*(?:ema|sma|ma)\b/.exec(label) ||
-          // Spelled out. "50-day moving average" has no acronym in it at all,
-          // and it is what a row labelled by a person most often says.
-          (/\bmoving\s+average\b/.test(label) ? /(\d{1,3})/.exec(label) : null);
-  if (!m) return null;
-  var n = Number(m[1]);
+  if (/\bv\.?w\.?a\.?p\b/.test(label)) return { indicator: 'vwap', period: null, mult: null };
+  if (/bollinger|bbands|\bbb\b|\bbb\s*\d/.test(label)) {
+    return { indicator: 'bollinger', period: readNum(label, IND.bollinger.period), mult: IND.bollinger.mult };
+  }
+  if (/trend\s+clouds?|supertrend|super\s+trend/.test(label)) {
+    return { indicator: 'trend_clouds', period: readNum(label, IND.trend_clouds.period), mult: IND.trend_clouds.mult };
+  }
+  var m2 = /\b(?:ema|sma|ma)\s*[-_]?\s*(\d{1,3})\b/.exec(label) ||
+           /\b(\d{1,3})\s*[-_]?\s*(?:day|period|bar)?\s*[-_]?\s*(?:ema|sma|ma)\b/.exec(label) ||
+           // Spelled out. "50-day moving average" has no acronym in it at all,
+           // and it is what a row labelled by a person most often says.
+           (/\bmoving\s+average\b/.test(label) ? /(\d{1,3})/.exec(label) : null);
+  if (!m2) return null;
+  var n = Number(m2[1]);
   if (!isFinite(n) || n < 2 || n > 500) return null;
-  return { indicator: /\bsma\b|\bsimple\b/.test(label) ? 'sma' : 'ema', period: Math.round(n) };
+  return { indicator: /\bsma\b|\bsimple\b/.test(label) ? 'sma' : 'ema', period: Math.round(n), mult: null };
+}
+
+/** The first plausible period in a label, or the registry's default. */
+function readNum(label, fallback) {
+  var m = /(\d{1,3})/.exec(String(label).split('(')[0]);
+  if (!m) return fallback;
+  var n = Number(m[1]);
+  return isFinite(n) && n >= 2 && n <= 500 ? Math.round(n) : fallback;
 }
 
 function specKey(spec, anchor) {
-  return spec.indicator + ':' + (spec.period == null ? '-' : spec.period) + ':' + (anchor == null ? '-' : anchor);
+  return spec.indicator + ':' + (spec.period == null ? '-' : spec.period) +
+         ':' + (spec.mult == null ? '-' : spec.mult) + ':' + (anchor == null ? '-' : anchor);
+}
+
+/* ---- the primitives every entry is built from ---- */
+
+/** SMA-seeded EMA. Null until the window has filled — never zero. */
+function _ema(values, period) {
+  var out = new Array(values.length);
+  for (var z = 0; z < out.length; z++) out[z] = null;
+  if (values.length < period) return out;
+  var k = 2 / (period + 1), seed = 0, i;
+  for (i = 0; i < period; i++) seed += values[i];
+  var e = seed / period;
+  out[period - 1] = e;
+  for (i = period; i < values.length; i++) { e = values[i] * k + e * (1 - k); out[i] = e; }
+  return out;
+}
+
+function _sma(values, period) {
+  var out = new Array(values.length);
+  for (var z = 0; z < out.length; z++) out[z] = null;
+  var sum = 0;
+  for (var i = 0; i < values.length; i++) {
+    sum += values[i];
+    if (i >= period) sum -= values[i - period];
+    if (i >= period - 1) out[i] = sum / period;
+  }
+  return out;
 }
 
 /**
- * The series, as {time, value} pairs over the bars this page is holding.
+ * `ewm(span, adjust=False)` — seeded with the FIRST value, not with an SMA.
  *
- * NOTHING IS FETCHED AND NOTHING IS SENT. An EMA is a recurrence over closes, a
- * VWAP is a running division, and the closes and the volumes are already on this
- * page — so the curve is recomputed for free whenever the data changes and can
- * never disagree with the candles it is drawn over. Sending a precomputed series
- * down the bridge instead would be sending something derivable, that goes stale
- * on the next tick, and that would have to be re-sent on every pan.
+ * Deliberately different from `_ema` and NOT interchangeable with it. This is
+ * the smoothing pandas does, and CheatCode Trend Clouds is defined in terms of
+ * it (`_ema` in engine/kai_score/reference_cca.py). Using the SMA-seeded one
+ * would move every band by a little, forever, and the line drawn here would
+ * stop being the line the alert engine scored on.
+ */
+function _ewm(values, span) {
+  var k = 2 / (span + 1), prev = null;
+  var out = new Array(values.length);
+  for (var i = 0; i < values.length; i++) {
+    var v = values[i];
+    if (v == null || !isFinite(v)) { out[i] = prev; continue; }
+    prev = prev == null ? v : v * k + prev * (1 - k);
+    out[i] = prev;
+  }
+  return out;
+}
+
+/** Population standard deviation, ddof = 0 — the one pandas and Pine both use. */
+function _stdev(values, period) {
+  var out = new Array(values.length);
+  for (var z = 0; z < out.length; z++) out[z] = null;
+  for (var i = period - 1; i < values.length; i++) {
+    var m = 0, j;
+    for (j = 0; j < period; j++) m += values[i - period + 1 + j];
+    m /= period;
+    var s = 0;
+    for (j = 0; j < period; j++) { var d = values[i - period + 1 + j] - m; s += d * d; }
+    out[i] = Math.sqrt(s / period);
+  }
+  return out;
+}
+
+/** `ta.linreg(series, length, 0)` — the least-squares value at the newest bar. */
+function _lsma(values, length) {
+  var out = new Array(values.length);
+  for (var z = 0; z < out.length; z++) out[z] = null;
+  var sumX = (length * (length - 1)) / 2;
+  var sumXX = ((length - 1) * length * (2 * length - 1)) / 6;
+  var denom = length * sumXX - sumX * sumX;
+  for (var i = length - 1; i < values.length; i++) {
+    var sumY = 0, sumXY = 0;
+    for (var j = 0; j < length; j++) { var y = values[i - length + 1 + j]; sumY += y; sumXY += j * y; }
+    var slope = (length * sumXY - sumX * sumY) / denom;
+    out[i] = (sumY - slope * sumX) / length + slope * (length - 1);
+  }
+  return out;
+}
+
+function _trueRange(bars) {
+  var out = new Array(bars.length);
+  for (var i = 0; i < bars.length; i++) {
+    if (i === 0) { out[i] = bars[i].high - bars[i].low; continue; }
+    var pc = bars[i - 1].close;
+    out[i] = Math.max(bars[i].high - bars[i].low, Math.abs(bars[i].high - pc), Math.abs(bars[i].low - pc));
+  }
+  return out;
+}
+
+/**
+ * Every point of every output, aligned to `bars` index for index.
  *
- * Values before the window has filled are ABSENT, not zero. A 200-day average
+ * Values before the window has filled are ABSENT, not zero. A 200-bar average
  * over 150 bars starts nowhere, and a line dropping to the bottom of the pane
  * for its first 199 bars is a claim that price was there.
  */
 function indicatorSeries(bars, vols, spec, anchorTime) {
   if (!bars || bars.length < 2) return null;
-  var out = [];
-  var i;
+  var entry = IND[spec.indicator];
+  if (!entry) return null;
+  var i, closes = [];
+  for (i = 0; i < bars.length; i++) closes.push(bars[i].close);
+  var out = new Array(bars.length);
+  for (i = 0; i < bars.length; i++) out[i] = { time: bars[i].time };
 
   if (spec.indicator === 'vwap') {
     // WHERE THE RUNNING TOTAL STARTS. The host sends the anchor — the first bar
@@ -645,50 +790,84 @@ function indicatorSeries(bars, vols, spec, anchorTime) {
     if (start < 0) {
       var step = bars[1].time - bars[0].time;
       if (step >= 82800) return null;             // 23h — these are daily bars
-      var day = 86400;
       for (i = bars.length - 1; i > 0; i--) {
-        if (Math.floor(bars[i].time / day) !== Math.floor(bars[i - 1].time / day)) { start = i; break; }
+        if (Math.floor(bars[i].time / 86400) !== Math.floor(bars[i - 1].time / 86400)) { start = i; break; }
       }
       if (start < 0) start = 0;
     }
     if (start >= bars.length - 1) return null;
-    var pv = 0, vol = 0;
+    var pv = 0, vol = 0, any = false;
     for (i = start; i < bars.length; i++) {
       var v = vols && vols[i] != null ? vols[i] : 0;
       if (!(v > 0)) continue;
       pv += ((bars[i].high + bars[i].low + bars[i].close) / 3) * v;
       vol += v;
-      if (vol > 0) out.push({ time: bars[i].time, value: pv / vol });
+      out[i].vwap = pv / vol;
+      any = true;
     }
-    return out.length > 1 ? out : null;
+    return any ? out : null;
   }
 
-  var p = spec.period;
-  if (!p || bars.length < p) return null;
+  if (spec.indicator === 'ema' || spec.indicator === 'sma') {
+    if (bars.length < spec.period) return null;
+    var line = spec.indicator === 'ema' ? _ema(closes, spec.period) : _sma(closes, spec.period);
+    for (i = 0; i < bars.length; i++) out[i][spec.indicator] = line[i];
+    return out;
+  }
 
-  if (spec.indicator === 'sma') {
-    var sum = 0;
+  if (spec.indicator === 'bollinger') {
+    if (bars.length < spec.period) return null;
+    var basis = _sma(closes, spec.period);
+    var sd = _stdev(closes, spec.period);
     for (i = 0; i < bars.length; i++) {
-      sum += bars[i].close;
-      if (i >= p) sum -= bars[i - p].close;
-      if (i >= p - 1) out.push({ time: bars[i].time, value: sum / p });
+      if (basis[i] == null || sd[i] == null) continue;
+      out[i].basis = basis[i];
+      out[i].upper = basis[i] + spec.mult * sd[i];
+      out[i].lower = basis[i] - spec.mult * sd[i];
     }
-    return out.length > 1 ? out : null;
+    return out;
   }
 
-  // SMA-seeded EMA — the same shape as `emaLast` in apps/api/src/lib/market/
-  // key-levels.ts, so the value at the right-hand edge of this line is the same
-  // number the server priced and put in the rail.
-  var k = 2 / (p + 1);
-  var seed = 0;
-  for (i = 0; i < p; i++) seed += bars[i].close;
-  var e = seed / p;
-  out.push({ time: bars[p - 1].time, value: e });
-  for (i = p; i < bars.length; i++) {
-    e = bars[i].close * k + e * (1 - k);
-    out.push({ time: bars[i].time, value: e });
+  if (spec.indicator === 'trend_clouds') {
+    /**
+     * PORTED FROM `supertrend` IN engine/kai_score/reference_cca.py, at its
+     * default sensitivity ('Medium', an LSMA-12 source). The shapes are kept
+     * identical to the reference rather than tidied, and the test runs the
+     * PYTHON and fails on any bar that disagrees. That matters more here than
+     * anywhere else on this page — the alert engine scores on a fresh
+     * trend-cloud flip, so a port that drifted would draw a line disagreeing
+     * with the grade printed beside it.
+     */
+    var n = bars.length;
+    var src = _lsma(closes, 12);
+    var atr = _ewm(_trueRange(bars), spec.period);
+    var up = new Array(n), dn = new Array(n), trend = new Array(n);
+    for (i = 0; i < n; i++) { up[i] = null; dn[i] = null; trend[i] = 1; }
+    for (i = 1; i < n; i++) {
+      var sv = src[i], av = atr[i];
+      if (sv == null || av == null) {
+        up[i] = up[i - 1] == null ? 0 : up[i - 1];
+        dn[i] = dn[i - 1] == null ? 0 : dn[i - 1];
+        trend[i] = trend[i - 1];
+        continue;
+      }
+      var u2 = sv - spec.mult * av, d2 = sv + spec.mult * av;
+      var u1 = up[i - 1] == null ? u2 : up[i - 1];
+      var d1 = dn[i - 1] == null ? d2 : dn[i - 1];
+      up[i] = closes[i - 1] > u1 ? Math.max(u2, u1) : u2;
+      dn[i] = closes[i - 1] < d1 ? Math.min(d2, d1) : d2;
+      var prev = trend[i - 1];
+      if (prev === -1 && closes[i] > d1) trend[i] = 1;
+      else if (prev === 1 && closes[i] < u1) trend[i] = -1;
+      else trend[i] = prev;
+      out[i].line = trend[i] === 1 ? up[i] : dn[i];
+      out[i].upper = dn[i];
+      out[i].lower = up[i];
+    }
+    return out;
   }
-  return out.length > 1 ? out : null;
+
+  return null;
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -869,6 +1048,39 @@ AnnotationLayer.prototype._curve = function (a) {
 var MAX_RULES = 8;
 /** Two rules this close together are one shelf drawn twice. */
 var MERGE_PCT = 0.001;
+/**
+ * How many shaded areas before the chart is a stack of tints.
+ *
+ * Lower than the line budget, and it has to be: a rule costs one row of pixels
+ * and a zone costs a region, so four overlapping fills darken each other into an
+ * unreadable smear long before eight lines become a problem.
+ */
+var MAX_ZONES = 4;
+/** Two zones overlapping by this much of their height are one area. */
+var ZONE_MERGE = 0.6;
+
+/**
+ * WHICH TONE A ZONE TAKES, decided by where price is.
+ *
+ * The same rule the server uses for a level: an area under the last price is
+ * acting as support and one above it as resistance, and it is the same area
+ * either way. Naming the SIDE rather than the zone's own label is what stops a
+ * "demand zone" keeping its tone after price has fallen through it.
+ *
+ * BOTH SIDES ARE CYAN TODAY, and that is the palette being right rather than
+ * this function being pointless. Lock 14 gives red to risk and green to the
+ * outcome; support and resistance are both market information and share the one
+ * hue, so a zone is separated from a level by ALPHA — a wash rather than a rule
+ * — not by colour. Asking `kindColor` anyway is the seam that keeps zones
+ * following levels automatically if the palette ever does split them.
+ */
+AnnotationLayer.prototype._zoneColour = function (a) {
+  var ref = this._lastPrice;
+  var top = Math.max(a.price, a.price2);
+  var bottom = Math.min(a.price, a.price2);
+  if (ref == null || (ref <= top && ref >= bottom)) return kindColor('support');
+  return kindColor(ref > top ? 'support' : 'resistance');
+};
 
 /**
  * WHICH LEVEL SURVIVES A COLLISION, AND WHICH SURVIVES THE CAP.
@@ -903,12 +1115,67 @@ function rulePriority(kind) {
 AnnotationLayer.prototype._budget = function (items) {
   var rules = [];
   var others = [];
+  var zones = [];
   var i;
   for (i = 0; i < items.length; i++) {
     var a = items[i];
     if (!a || a.status === 'hidden' || a.status === 'deleted') continue;
     if (shapeOf(a) === 'level' && typeof a.price === 'number' && isFinite(a.price)) rules.push(a);
+    else if (a.kind === 'zone' && typeof a.price === 'number' && typeof a.price2 === 'number') zones.push(a);
     else others.push(a);
+  }
+
+  /**
+   * ZONES GET THEIR OWN BUDGET, NOT A SHARE OF THE LINES'.
+   *
+   * A rule costs one row of pixels; a zone costs a region, and two overlapping
+   * washes are darker than either of them alone. So they are capped separately
+   * and merged on a different rule — not "within a tenth of a percent" but
+   * "mostly on top of each other", because two supply areas that share most of
+   * their height ARE one area however far apart their edges happen to be.
+   */
+  zones.sort(function (x, y) {
+    return Math.min(x.price, x.price2) - Math.min(y.price, y.price2);
+  });
+  var zoneGroups = [];
+  for (i = 0; i < zones.length; i++) {
+    var z = zones[i];
+    var zTop = Math.max(z.price, z.price2), zBot = Math.min(z.price, z.price2);
+    var merged = false;
+    for (var g = 0; g < zoneGroups.length; g++) {
+      var q = zoneGroups[g];
+      var overlap = Math.min(zTop, q.top) - Math.max(zBot, q.bottom);
+      var smaller = Math.min(zTop - zBot, q.top - q.bottom);
+      if (smaller > 0 && overlap / smaller >= ZONE_MERGE) {
+        // The union, so nothing the user marked ends up outside the area that
+        // stands in for it.
+        q.top = Math.max(q.top, zTop);
+        q.bottom = Math.min(q.bottom, zBot);
+        q.extra += 1;
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) zoneGroups.push({ lead: z, top: zTop, bottom: zBot, extra: 0 });
+  }
+  // Nearest to price first: an area twenty percent away is not what the user is
+  // looking at even when it is real.
+  var zref = this._lastPrice;
+  if (zref != null) {
+    zoneGroups.sort(function (x, y) {
+      var dx = x.bottom > zref ? x.bottom - zref : zref > x.top ? zref - x.top : 0;
+      var dy = y.bottom > zref ? y.bottom - zref : zref > y.top ? zref - y.top : 0;
+      return dx - dy;
+    });
+  }
+  var keptZones = this._showAll ? zoneGroups : zoneGroups.slice(0, MAX_ZONES);
+  var hiddenZones = zoneGroups.length - keptZones.length;
+  for (i = 0; i < keptZones.length; i++) {
+    var kz = keptZones[i];
+    // The merged group is drawn as one area spanning all of its members.
+    others.push(kz.extra > 0
+      ? Object.assign({}, kz.lead, { price: kz.top, price2: kz.bottom, text: (kz.lead.text || 'Zone') + ' +' + kz.extra })
+      : kz.lead);
   }
 
   // --- merge ---
@@ -944,7 +1211,7 @@ AnnotationLayer.prototype._budget = function (items) {
     // would leave a mark the user placed apparently missing.
     drawn.push(keep[i].members.length > 1 ? { lead: keep[i].lead, extra: keep[i].members.length - 1 } : { lead: keep[i].lead, extra: 0 });
   }
-  return { rules: drawn, others: others, hidden: hidden };
+  return { rules: drawn, others: others, hidden: hidden + hiddenZones };
 };
 
 /** Tell the layer where the floating chrome is, in plot coordinates. */
@@ -1157,20 +1424,43 @@ AnnotationLayer.prototype._draw = function (target) {
         self._chipAndTag(ctx, a, col, claimY(yA), W, chip, base, hit, dead);
 
       } else if (shape === 'box') {
-        var x1 = toX(a.ts_from), x2 = toX(a.ts_to);
+        /**
+         * A SHADED AREA. `price` and `price2` are its edges in either order,
+         * `ts_from` the bar it starts at, `ts_to` an optional end.
+         *
+         * AN UNBOUNDED ZONE RUNS TO THE RIGHT EDGE, and that is the difference
+         * between a zone and a box rather than a detail of one. A supply shelf
+         * is not something that happened between two dates — it is still there,
+         * and a rectangle that stops halfway across the plot says it expired.
+         * Leaving `ts_to` null and extending it here is also what keeps the zone
+         * correct as new bars arrive, with nothing rewritten anywhere.
+         */
+        var x1 = toX(a.ts_from), x2 = a.ts_to == null ? null : toX(a.ts_to);
         var by1 = toY(a.price), by2 = toY(a.price2);
         if (by1 == null || by2 == null) continue;
         if (x1 == null) x1 = 0;
         if (x2 == null) x2 = W;
         var bx = Math.min(x1, x2), bw = Math.max(3, Math.abs(x2 - x1)) * grown;
         var byT = Math.min(by1, by2), bh = Math.max(2, Math.abs(by2 - by1));
-        ctx.globalAlpha = 0.14 * pulse * (dead ? 0.4 : 1);
+        // A zone is coloured by which side of price it is on — the same rule
+        // `computedLevels` uses on the server to decide whether a level is
+        // acting as support or as resistance. The chart is the only place that
+        // knows where price is, so it is the only place that can decide.
+        var zc = a.kind === 'zone' ? self._zoneColour(a) : col;
+        ctx.globalAlpha = 0.11 * pulse * (dead ? 0.4 : 1);
+        ctx.fillStyle = zc;
         ctx.fillRect(bx, byT, bw, bh);
-        ctx.globalAlpha = base * 0.85;
-        ctx.setLineDash([3, 3]);
+        // A hairline, so the area reads as a region rather than as two more
+        // levels with a tint between them.
+        ctx.globalAlpha = base * 0.55;
+        ctx.strokeStyle = zc;
+        ctx.lineWidth = 1;
         ctx.strokeRect(bx + 0.5, byT + 0.5, bw - 1, bh - 1);
-        ctx.setLineDash([]);
-        self._chipAt(ctx, a, col, bx + 4, claimY(byT - 1), chip, base, hit, dead, W);
+        // The label goes INSIDE the top-left of the area it names. Outside and
+        // above, it collides with whatever level is sitting on the zone's own
+        // upper edge — which, since the edges of a zone ARE levels, is common.
+        var inside = bh > 22 ? byT + 10 : byT - 1;
+        self._chipAt(ctx, a, zc, bx + 5, bh > 22 ? inside : claimY(inside), chip, base, hit, dead, W);
 
       } else if (shape === 'trendline') {
         var tx1 = toX(a.ts_from), tx2 = toX(a.ts_to);
@@ -1259,40 +1549,88 @@ AnnotationLayer.prototype._draw = function (target) {
         var curve = self._curve(a);
         if (!curve || curve.length < 2) continue;
         var spec = specOf(a);
+        var entry = IND[spec.indicator];
         var per = spec.period || 0;
-        var weight = spec.indicator === 'vwap' ? 0.8 : per <= 21 ? 0.85 : per <= 50 ? 0.68 : 0.52;
-        ctx.globalAlpha = base * weight;
-        ctx.lineWidth = per > 50 ? 1 : 1.2;
+        // A LONGER AVERAGE SITS FURTHER BACK. The short one is what price is
+        // actually trading against; the 200 is a horizon. Weight is the only
+        // thing distinguishing them, because hue is spoken for.
+        var weight = entry.band ? 0.72 : spec.indicator === 'vwap' ? 0.8 : per <= 21 ? 0.85 : per <= 50 ? 0.68 : 0.52;
         ctx.lineJoin = 'round';
-        // VWAP is dashed. It is the only one of these that is anchored rather
-        // than rolling, and the dash is what says "this restarted somewhere".
-        if (spec.indicator === 'vwap') ctx.setLineDash([5, 3]);
 
         // The reveal runs left to right with everything else, so a curve
         // arriving mid-sentence is the same gesture as a level arriving.
         var upto = Math.max(2, Math.round(curve.length * grown));
-        var started = false;
-        var lx = null, ly = null;
-        ctx.beginPath();
-        for (var ci = 0; ci < upto; ci++) {
-          var px = toX(curve[ci].time);
-          var py = toY(curve[ci].value);
-          if (px == null || py == null) { started = false; continue; }
-          // Off-pane vertically is normal for a long average on a zoomed chart
-          // and is left to the canvas to clip. Off-pane HORIZONTALLY by a wide
-          // margin is not worth the path segment.
-          if (px < -W || px > W * 2) { started = false; continue; }
-          if (!started) { ctx.moveTo(px, py); started = true; } else { ctx.lineTo(px, py); }
-          lx = px; ly = py;
+
+        /** One output as a polyline, returning where it ended. */
+        var stroke = function (field, lw, alpha) {
+          ctx.globalAlpha = base * alpha;
+          ctx.lineWidth = lw;
+          if (entry.dash) ctx.setLineDash(entry.dash);
+          var started = false, ex = null, ey = null;
+          ctx.beginPath();
+          for (var ci = 0; ci < upto; ci++) {
+            var v = curve[ci][field];
+            if (v == null) { started = false; continue; }
+            var px = toX(curve[ci].time);
+            var py = toY(v);
+            if (px == null || py == null) { started = false; continue; }
+            // Off-pane vertically is normal for a long average on a zoomed
+            // chart and is left to the canvas to clip. Off-pane HORIZONTALLY by
+            // a wide margin is not worth the path segment.
+            if (px < -W || px > W * 2) { started = false; continue; }
+            if (!started) { ctx.moveTo(px, py); started = true; } else { ctx.lineTo(px, py); }
+            ex = px; ey = py;
+          }
+          ctx.stroke();
+          ctx.setLineDash([]);
+          return ex == null ? null : { x: ex, y: ey };
+        };
+
+        /**
+         * THE FILL IS WHAT MAKES A BAND READ AS ONE OBJECT.
+         *
+         * Bollinger's two edges and the Trend Clouds' two ratcheting bands are
+         * not two indicators that happen to be near each other — the DISTANCE
+         * between them is the whole message ("the band is squeezing", "the cloud
+         * is holding under price"). Drawn as two separate thin lines they read
+         * as two more averages on a chart that already has four. Every pixel of
+         * the fill is bounded by two computed series; nothing here is invented
+         * to make a shape.
+         */
+        if (entry.band) {
+          ctx.globalAlpha = 0.055 * pulse * (dead ? 0.4 : 1);
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          var open = false, k2;
+          for (k2 = 0; k2 < upto; k2++) {
+            var hv = curve[k2].upper;
+            if (hv == null) continue;
+            var hx = toX(curve[k2].time), hy = toY(hv);
+            if (hx == null || hy == null) continue;
+            if (!open) { ctx.moveTo(hx, hy); open = true; } else ctx.lineTo(hx, hy);
+          }
+          if (open) {
+            for (k2 = upto - 1; k2 >= 0; k2--) {
+              var lv2 = curve[k2].lower;
+              if (lv2 == null) continue;
+              var lx2 = toX(curve[k2].time), ly2 = toY(lv2);
+              if (lx2 == null || ly2 == null) continue;
+              ctx.lineTo(lx2, ly2);
+            }
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.strokeStyle = col;
+          stroke('upper', 0.9, weight * 0.8);
+          stroke('lower', 0.9, weight * 0.8);
         }
-        ctx.stroke();
-        ctx.setLineDash([]);
+
+        ctx.strokeStyle = col;
+        var end = stroke(entry.outputs[0], entry.band ? entry.weight : (per > 50 ? 1 : 1.2), weight);
         // THE LABEL SITS ON THE END OF THE LINE, which is the only place on a
         // moving average where a single number is true. `_chipAt` keeps it clear
         // of the price axis on its own.
-        if (lx != null && ly != null) {
-          self._chipAt(ctx, a, col, lx + 6, claimY(ly), chip, base, hit, dead, W);
-        }
+        if (end) self._chipAt(ctx, a, col, end.x + 6, claimY(end.y), chip, base, hit, dead, W);
 
       } else if (shape === 'note') {
         var nx = toX(a.ts_from);
@@ -1326,7 +1664,7 @@ AnnotationLayer.prototype._draw = function (target) {
      * puts the budget back.
      */
     if (plan.hidden > 0 || self._showAll) {
-      var oTxt = self._showAll ? 'Show fewer levels' : '+' + plan.hidden + ' more level' + (plan.hidden === 1 ? '' : 's');
+      var oTxt = self._showAll ? 'Show fewer marks' : '+' + plan.hidden + ' more mark' + (plan.hidden === 1 ? '' : 's');
       ctx.font = CHIP_FONT;
       ctx.textBaseline = 'middle';
       var ow = ctx.measureText(oTxt).width + 12;

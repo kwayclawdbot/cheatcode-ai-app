@@ -90,8 +90,9 @@ export type ChoreoAnnotation = {
    * something it can derive, that goes stale the moment a bar updates, and that
    * would have to be re-sent on every pan.
    */
-  indicator?: 'ema' | 'sma' | 'vwap' | null;
+  indicator?: 'ema' | 'sma' | 'vwap' | 'bollinger' | 'trend_clouds' | 'rsi' | 'macd' | 'stochastic' | null;
   period?: number | null;
+  mult?: number | null;
 };
 
 export type PointerTarget = {
@@ -181,6 +182,12 @@ export function sequenceFor(input: ChoreoInput): ChoreoStep[] {
   switch (input.command) {
     /* ---- marking ---- */
 
+    // A ZONE STAGES LIKE A LEVEL. It is one gesture — the pointer travels to it,
+    // it fills in, the pointer leaves — and routing it here rather than giving it
+    // its own branch is what stops the two drifting apart. Without this case at
+    // all it would fall to `default` and return no steps, which is how a command
+    // that resolved perfectly well ends up moving nothing.
+    case 'mark_zone':
     case 'mark_level':
     case 'highlight_community': {
       if (!anns.length) return [];

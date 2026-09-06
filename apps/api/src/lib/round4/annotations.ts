@@ -16,7 +16,7 @@
  * and `degraded` — see schema-probe.ts for why there is no jsonb fallback here.
  */
 import type { AnnotationKind, AnnotationRow, AnnotationProvenance, AnnotationStatus } from '@shared/api';
-import { indicatorLabel, looksLikeIndicator, parseIndicator } from '@shared/indicators';
+import { indicatorLabel, indicatorRefusal, looksLikeIndicator, parseIndicator, withDefaults } from '@shared/indicators';
 import { serviceClient } from '../db';
 import { ApiError } from '../errors';
 import { log } from '../log';
@@ -49,6 +49,9 @@ const SEMANTIC: Record<AnnotationKind, AnnotationRow['semantic']> = {
   // An overlay is market information about the whole window, never a risk and
   // never a target. The client gives it its own muted colour off this.
   indicator: 'level',
+  // A zone takes its meaning from which side of price it lands on, exactly as a
+  // level does, so it is neutral here and coloured on the client.
+  zone: 'level',
 };
 
 /**
@@ -78,6 +81,7 @@ function repairIndicator(kind: AnnotationKind, text: string | null): {
   text: string | null;
   indicator: AnnotationRow['indicator'];
   period: AnnotationRow['period'];
+  mult: AnnotationRow['mult'];
 } {
   // Shapes and notes are left exactly as they are: a trendline through two real
   // bars is already a curve, and a box named after an average is a band, not a line.
@@ -86,21 +90,26 @@ function repairIndicator(kind: AnnotationKind, text: string | null): {
     kind === 'entry' || kind === 'stop' || kind === 'invalidation' || kind === 'target';
 
   if (kind !== 'indicator' && !(isLevelLike && looksLikeIndicator(text))) {
-    return { kind, text, indicator: null, period: null };
+    return { kind, text, indicator: null, period: null, mult: null };
   }
   const spec = parseIndicator(text);
-  if (!spec) {
-    return kind === 'indicator'
-      ? { kind: 'note', text, indicator: null, period: null }
-      : { kind: 'note', text, indicator: null, period: null };
-  }
+  // Nothing computable behind the label, so it becomes a note: an anchored dot,
+  // never a rule across the plot. Refusing to draw the wrong thing beats
+  // drawing it.
+  if (!spec) return { kind: 'note', text, indicator: null, period: null, mult: null };
+  // A PANEL INDICATOR STORED AS A DRAWING IS ALSO A NOTE. Somebody may have
+  // saved a row labelled "RSI 14" before the registry knew RSI cannot share the
+  // price axis; drawing it now would put a 0-to-100 number on a dollar scale.
+  const full = withDefaults(spec);
+  if (indicatorRefusal(full)) return { kind: 'note', text, indicator: null, period: null, mult: null };
   return {
     kind: 'indicator',
     // Re-labelled from the parse, so `Ema21` and `21 ema` both come back as the
     // one string the chip, the rail and the price tag all show.
-    text: indicatorLabel(spec),
-    indicator: spec.indicator,
-    period: spec.period,
+    text: indicatorLabel(full),
+    indicator: full.indicator,
+    period: full.period,
+    mult: full.mult ?? null,
   };
 }
 
@@ -130,6 +139,7 @@ export function toAnnotationRow(row: Record<string, unknown>): AnnotationRow {
     created_at: String(row.created_at),
     updated_at: (row.updated_at as string) ?? null,
     indicator: fixed.indicator,
+    mult: fixed.mult,
     period: fixed.period,
   };
 }
@@ -260,7 +270,9 @@ export async function upsertAnnotation(userId: string, a: NewAnnotation): Promis
         status: 'valid',
         // Only an overlay moves. A trigger whose price changed is a different
         // trigger and gets its own row, exactly as it always has.
-        ...(byName ? { price: a.price ?? null, ts_from: a.ts_from ?? (found.ts_from as string) ?? null } : {}),
+        ...(byName
+          ? { price: a.price ?? null, price2: a.price2 ?? null, ts_from: a.ts_from ?? (found.ts_from as string) ?? null }
+          : {}),
         source_alert_id: a.source_alert_id ?? (found.source_alert_id as string) ?? null,
         source_setup_id: a.source_setup_id ?? (found.source_setup_id as string) ?? null,
         source_plan_id: a.source_plan_id ?? (found.source_plan_id as string) ?? null,

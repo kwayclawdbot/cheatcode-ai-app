@@ -40,6 +40,17 @@ export const kindColor = (k: AnnotationKind): string => {
      */
     case 'indicator':
       return color.muted;
+    /**
+     * A ZONE TAKES ITS MEANING FROM WHERE IT IS, and the chart page is the only
+     * thing that knows where price is, so the tone is decided there (see
+     * `zoneColour` in chart-web/src/03-annotations.js): an area under price is
+     * acting as support and over it as resistance, the same rule
+     * `computedLevels` uses on the server. Cyan is the neutral answer for
+     * anything asking here without that context — a zone is market information,
+     * never risk and never a target.
+     */
+    case 'zone':
+      return color.cyan;
     case 'trigger':
     case 'entry':
     case 'support':
