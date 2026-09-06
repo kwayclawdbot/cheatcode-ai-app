@@ -1998,6 +1998,181 @@ export const MuteResponse = z.object({
 });
 export type MuteResponse = z.infer<typeof MuteResponse>;
 
+/* ===========================================================================
+ * SOCIAL: following, shared trades, member calls, belts and the board.
+ * Schema: supabase/migrations/0038 (objects) and 0039 (scoring).
+ *
+ * The one rule that governs every shape below: A SHARED TRADE CARRIES LEVELS
+ * AND NEVER SIZE. There is no quantity, no notional and no dollar P/L in any
+ * type here, because there is none in the table either — 0038 enforces the
+ * promise by not having the columns. If a field like that ever appears in this
+ * section, the table it came from is wrong, not this file.
+ * ======================================================================== */
+
+/** The ladder. Ordered white → black; `belt_for()` in 0039 is the authority. */
+export const Belt = z.enum(['white', 'blue', 'purple', 'brown', 'black']);
+export type Belt = z.infer<typeof Belt>;
+
+export const BeltBlock = z.object({
+  key: Belt,
+  label: z.string(),
+  /** Points needed for the belt above this one. Null at black. */
+  next_at: z.number().nullable(),
+  next_label: z.string().nullable(),
+  /** 0–1 toward the next belt. Null at black, where there is nothing to fill. */
+  progress: z.number().nullable(),
+});
+export type BeltBlock = z.infer<typeof BeltBlock>;
+
+/**
+ * The formula, in the words the app prints. Served from the API rather than
+ * hardcoded on the phone so that the numbers a user reads are the numbers the
+ * database actually used — a scoring system nobody can check reads as rigged,
+ * and two copies of it is how the printed one starts lying.
+ */
+export const PointsExplainer = z.object({
+  lines: z.array(z.string()),
+  belts: z.array(z.object({ key: Belt, label: z.string(), min_points: z.number() })),
+});
+export type PointsExplainer = z.infer<typeof PointsExplainer>;
+
+/** Author identity, as every social surface renders it. */
+export const SocialAuthor = z.object({
+  user_id: z.string(),
+  handle: z.string().nullable(),
+  display_name: z.string(),
+  avatar_url: z.string().nullable(),
+  initial: z.string(),
+  belt: Belt,
+});
+export type SocialAuthor = z.infer<typeof SocialAuthor>;
+
+/**
+ * A member's own published call. `graded: false` always — this is the ungraded
+ * AlertCard path, and there is no letter and no score bar anywhere on it,
+ * because nothing graded it. See 0038 on why `scoreable` is generated.
+ */
+export const CommunityCall = z.object({
+  id: z.string(),
+  author: SocialAuthor,
+  symbol: z.string(),
+  direction: z.enum(['long', 'short']),
+  entry: z.number().nullable(),
+  stop: z.number().nullable(),
+  target: z.number().nullable(),
+  thesis: z.string(),
+  /** Entry plus a stop or a target. Only these can ever score. */
+  scoreable: z.boolean(),
+  status: z.enum(['open', 'target', 'stop', 'expired', 'withdrawn']),
+  result_pct: z.number().nullable(),
+  /** "Hit target" · "Stopped" · "Still open" · "Expired unresolved". */
+  outcome_label: z.string().nullable(),
+  published_at: z.string(),
+  time_label: z.string(),
+  resolved_at: z.string().nullable(),
+});
+export type CommunityCall = z.infer<typeof CommunityCall>;
+
+/**
+ * An executed paper trade its owner chose to show. NOTE WHAT IS NOT HERE:
+ * quantity, notional, dollar risk, dollar P/L. `result_pct` is a percentage
+ * move off the entry — a fact about the instrument, not about the account.
+ */
+export const SharedTrade = z.object({
+  id: z.string(),
+  author: SocialAuthor,
+  symbol: z.string(),
+  direction: z.enum(['long', 'short']),
+  entry: z.number(),
+  stop: z.number().nullable(),
+  target: z.number().nullable(),
+  outcome: z.enum(['open', 'target', 'stop', 'closed']),
+  outcome_label: z.string().nullable(),
+  result_pct: z.number().nullable(),
+  opened_at: z.string(),
+  time_label: z.string(),
+  closed_at: z.string().nullable(),
+});
+export type SharedTrade = z.infer<typeof SharedTrade>;
+
+/** One row in the Following feed. Discriminated so the list can render either. */
+export const FollowFeedItem = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('call'), at: z.string(), call: CommunityCall }),
+  z.object({ kind: z.literal('trade'), at: z.string(), trade: SharedTrade }),
+]);
+export type FollowFeedItem = z.infer<typeof FollowFeedItem>;
+
+export const FollowFeedResponse = z.object({
+  items: z.array(FollowFeedItem),
+  /** Shown when you follow nobody — a different sentence from "they posted nothing". */
+  follows_nobody: z.boolean(),
+  empty_plain: z.string().nullable(),
+});
+export type FollowFeedResponse = z.infer<typeof FollowFeedResponse>;
+
+/** The follow button's whole state, so the phone never infers it. */
+export const FollowState = z.object({
+  user_id: z.string(),
+  following: z.boolean(),
+  follower_count: z.number(),
+  following_count: z.number(),
+});
+export type FollowState = z.infer<typeof FollowState>;
+
+/**
+ * The record shown on a profile. `accuracy` is the one number beside every
+ * board row, present so the board teaches that being right is what is measured.
+ */
+export const SocialRecord = z.object({
+  points: z.number(),
+  wins: z.number(),
+  losses: z.number(),
+  resolved: z.number(),
+  accuracy: z.number().nullable(),
+  belt: BeltBlock,
+  /** True while the first five resolutions still count at face value. */
+  in_warmup: z.boolean(),
+});
+export type SocialRecord = z.infer<typeof SocialRecord>;
+
+export const LeaderboardPeriod = z.enum(['week', 'month', 'all']);
+export type LeaderboardPeriod = z.infer<typeof LeaderboardPeriod>;
+
+export const LeaderboardRow = z.object({
+  rank: z.number(),
+  author: SocialAuthor,
+  points: z.number(),
+  wins: z.number(),
+  resolved: z.number(),
+  accuracy: z.number().nullable(),
+  is_you: z.boolean(),
+});
+export type LeaderboardRow = z.infer<typeof LeaderboardRow>;
+
+export const LeaderboardResponse = z.object({
+  period: LeaderboardPeriod,
+  rows: z.array(LeaderboardRow),
+  /**
+   * The caller's own row when it is not in `rows`, so it can be pinned. Null
+   * when they are already on screen or have never scored.
+   */
+  you: LeaderboardRow.nullable(),
+  explainer: PointsExplainer,
+  empty_plain: z.string().nullable(),
+});
+export type LeaderboardResponse = z.infer<typeof LeaderboardResponse>;
+
+/** Body of POST /community/calls. Levels are optional; a thesis is not. */
+export const CreateCommunityCallBody = z.object({
+  symbol: z.string().min(1).max(10),
+  direction: z.enum(['long', 'short']),
+  entry: z.number().positive().nullable().optional(),
+  stop: z.number().positive().nullable().optional(),
+  target: z.number().positive().nullable().optional(),
+  thesis: z.string().min(1).max(280),
+});
+export type CreateCommunityCallBody = z.infer<typeof CreateCommunityCallBody>;
+
 export const ContributorResponse = z.object({
   user_id: z.string(),
   handle: z.string().nullable(),
@@ -2022,8 +2197,26 @@ export const ContributorResponse = z.object({
       position_disclosure: z.record(z.string(), z.unknown()).nullable(),
     })
   ),
-  /** 08 §8: no points, streaks, leaderboards or profit contests. Ever. */
-  rankings: z.null(),
+  /**
+   * WAS `z.null()`, AND THE COMMENT ABOVE IT READ "08 §8: no points, streaks,
+   * leaderboards or profit contests. Ever." That was a deliberate structural
+   * refusal — the contract was made unable to express a ranking so that no
+   * future contributor could add one — and the OWNER HAS REVERSED IT, asking
+   * for points, belts and a leaderboard in as many words. Reversed here in the
+   * open rather than by deleting the guard and saying nothing; the argument is
+   * in supabase/migrations/0039's header.
+   *
+   * WHAT SURVIVED THE REVERSAL, because it was the good half of the old rule:
+   * nothing is scored that did not RESOLVE, and not one number in `SocialRecord`
+   * is denominated in money. It is a record of calls that came true, not a
+   * profit contest — the thing 08 §8 was actually protecting against.
+   */
+  rankings: SocialRecord.nullable(),
+  /** Whether the caller follows this person, and the two counts. */
+  follow: FollowState.nullable().default(null),
+  /** Only ever populated while this author's `share_trades` is on. */
+  shared_trades: z.array(SharedTrade).default([]),
+  calls: z.array(CommunityCall).default([]),
   actions: z.array(UiAction),
 });
 export type ContributorResponse = z.infer<typeof ContributorResponse>;
@@ -2094,6 +2287,14 @@ export const NotificationCategory = z.enum([
   'community',
   'coaching',
   'system',
+  /**
+   * Somebody you follow published a call or shared a trade, and belts you
+   * reached. Separate from `community` on purpose: `community` is Kai replying
+   * to you, which you asked for by writing to him, and this is a person you
+   * chose to hear from doing something on their own schedule. A user who wants
+   * one and not the other must be able to say so.
+   */
+  'social',
 ]);
 export type NotificationCategory = z.infer<typeof NotificationCategory>;
 
@@ -2142,6 +2343,16 @@ export const MeResponse = z.object({
     push_enabled: z.boolean(),
     /** Round 5: absent key = on. */
     notification_categories: NotificationCategoryMap,
+    /**
+     * Opt-in trade sharing (0038). DEFAULTS FALSE and the default is the point:
+     * a trading app that ships this switched on has published its members'
+     * positions before any of them opened a settings screen. When it is off,
+     * previously shared trades stop being readable too — the switch is
+     * retroactive, because that is what a person means by turning it off.
+     *
+     * `.default(false)` so an API build that predates 0038 still parses.
+     */
+    share_trades: z.boolean().default(false),
   }),
   broker: z.object({ connected: z.boolean(), plain: z.string() }),
   dev_tools: z.boolean(),
@@ -2180,6 +2391,16 @@ export const SettingsResponse = z.object({
     push_enabled: z.boolean(),
     /** Round 5: absent key = on. */
     notification_categories: NotificationCategoryMap,
+    /**
+     * Opt-in trade sharing (0038). DEFAULTS FALSE and the default is the point:
+     * a trading app that ships this switched on has published its members'
+     * positions before any of them opened a settings screen. When it is off,
+     * previously shared trades stop being readable too — the switch is
+     * retroactive, because that is what a person means by turning it off.
+     *
+     * `.default(false)` so an API build that predates 0038 still parses.
+     */
+    share_trades: z.boolean().default(false),
   }),
   plain: z.string(),
 });
@@ -3195,6 +3416,12 @@ export const SettingsRound4Request = z
      */
     handle: z.string().max(20).nullable().optional(),
     display_name: z.string().max(40).nullable().optional(),
+    /**
+     * The trade-sharing switch (0038). Optional like everything else here — a
+     * settings PUT patches whatever it names — but NOT nullable: sharing is on
+     * or off, and "unset" is what `false` already means.
+     */
+    share_trades: z.boolean().optional(),
     /**
      * Stored, not produced. The media lane owns the upload that makes one of
      * these (`POST /api/v1/media`, purpose `avatar`); this only records the

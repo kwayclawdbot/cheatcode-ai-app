@@ -9,6 +9,7 @@ import { Avatar } from '../community/ui/Chrome';
 import { PostBody } from '../community/ui/PostBody';
 import { NOT_ADVICE_COMMUNITY_CALL } from '../legal/disclaimers';
 import { BeltChip } from './BeltChip';
+import { secondaryHandle } from './naming';
 import { FollowButton } from './FollowButton';
 import type { CommunityCall } from '../../lib/types';
 
@@ -133,8 +134,10 @@ export function CommunityCallCard({
           <Eyebrow c={color.volt}>COMMUNITY TRADE</Eyebrow>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <T size={13} weight="bold" numberOfLines={1}>{call.author.display_name}</T>
-            {call.author.handle ? (
-              <T size={10.5} c={color.dim} testID={`call-handle-${call.id}`}>{`@${call.author.handle}`}</T>
+            {secondaryHandle(call.author.display_name, call.author.handle) ? (
+              <T size={10.5} c={color.dim} testID={`call-handle-${call.id}`}>
+                {secondaryHandle(call.author.display_name, call.author.handle)}
+              </T>
             ) : null}
             <BeltChip belt={call.author.belt} testID={`call-belt-${call.id}`} />
             <T size={10} c={color.dim}>{call.time_label}</T>

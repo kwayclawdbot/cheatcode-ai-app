@@ -12,6 +12,7 @@ import { Avatar, DisclosureChip, RoleChip, Sheet, SheetRow, StackHeader } from '
 import { Flag, MuteGlyph } from '../../features/community/ui/Icons';
 import {
   BeltChip, BeltProgress, CommunityCallCard, FollowButton, SharedTradeRow, useContributorSocial,
+  secondaryHandle,
 } from '../../features/social';
 import type { ContributorProfile } from '../../features/community/types';
 
@@ -149,9 +150,11 @@ export default function Contributor() {
             />
             <View style={{ flex: 1, minWidth: 0 }}>
               <T size={20} weight="bold" numberOfLines={1}>{profile.display_name}</T>
-              {handle ? (
-                <T size={12.5} c={color.muted} testID="contributor-handle">{`@${handle}`}</T>
-              ) : (
+              {secondaryHandle(profile.display_name, handle) ? (
+                <T size={12.5} c={color.muted} testID="contributor-handle">
+                  {secondaryHandle(profile.display_name, handle)}
+                </T>
+              ) : handle ? null : (
                 <T size={12.5} c={color.dim} testID="contributor-handle">No username</T>
               )}
               <View style={{ flexDirection: 'row', gap: 5, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
