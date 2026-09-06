@@ -1,4 +1,16 @@
 /**
+ * SUPERSEDED ON 2026-09-06, AND KEPT AS THE RECORD OF THE ARCHIVED STATE.
+ *
+ * This proves Day Trade was presented as coming-soon. It is not any more:
+ * `DAY_TRADE_LIVE` is true and the mode draws real cards from the
+ * unusual-options-activity engine, so EVERY assertion below now fails by
+ * design. It is left in place because it documents what the mode used to do and
+ * would be the proof again if the mode were ever archived a second time — but
+ * do not run it expecting a pass, and do not "fix" it by flipping the flag back.
+ *
+ * The proof that replaces it is `proof-uoa-day-trade.mjs`.
+ *
+ * ---------------------------------------------------------------------------
  * DAY TRADE COMING SOON — signed in, against the hosted stack.
  *
  *   cd apps/mobile
