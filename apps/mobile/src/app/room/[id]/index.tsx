@@ -6,6 +6,7 @@ import { Wash } from '../../../ui/Wash';
 import { T } from '../../../ui/Text';
 import { ObjectCard } from '../../../ui/Panel';
 import { color, radius, alpha } from '../../../ui/tokens';
+import { RoomAvatar, roomImageUrl } from '../../../ui/RoomAvatar';
 import { communityApi } from '../../../lib/community-api';
 import { subscribeRoom, transportLabel, type RealtimeMode } from '../../../lib/realtime';
 import {
@@ -201,6 +202,20 @@ export default function RoomScreen() {
   const isSetupRoom = room?.type === 'setup' && !!room.setup;
   const title = room ? (room.type === 'setup' ? `${room.setup?.symbol ?? room.name} room` : `# ${room.name}`) : 'Room';
 
+  /*
+   * THE ROOM'S PICTURE.
+   *
+   * A room about a company wears that company's logo; anything else wears the
+   * picture an admin gave it, or its initial. The symbol comes from the setup
+   * where there is one and otherwise off the front of the name, which is how
+   * the server derives it too (`symbolFromName`, round4/circles.ts) — a circle
+   * is named "META Circle", so the ticker is the first word.
+   */
+  const roomSymbol = room?.type === 'setup'
+    ? (room.setup?.symbol ?? (String(room.name).match(/^([A-Z]{1,6})\b/)?.[1] ?? null))
+    : null;
+  const roomImage = roomImageUrl(room?.config);
+
   const subtitle = room
     ? [
         room.discussing_count ? `${room.discussing_count} discussing` : null,
@@ -317,6 +332,15 @@ export default function RoomScreen() {
           </View>
         }
         onBack={() => router.back()}
+        leading={room ? (
+          <RoomAvatar
+            symbol={roomSymbol}
+            name={room.name}
+            imageUrl={roomImage}
+            size={28}
+            testID="room-avatar"
+          />
+        ) : undefined}
         right={room?.setup?.grade_display ? <T size={16} weight="bold" c={color.violet}>{room.setup.grade_display}</T> : undefined}
         onRight={() => setMoreSheet(true)}
         rightLabel="Room options"

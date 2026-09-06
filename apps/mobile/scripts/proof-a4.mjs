@@ -84,6 +84,51 @@ const assertText = async (page, needle, where) => {
   return false;
 };
 
+/** A section that was deliberately taken off a screen must stay off it. */
+const assertNoText = async (page, needle, where) => {
+  const text = await page.locator('#root').innerText();
+  if (!text.includes(needle)) { console.log(`  ✓ ${where}: no "${needle}"`); return true; }
+  failures.push(`${where}: "${needle}" is still on screen`);
+  console.log(`  ✗ ${where}: "${needle}" is still on screen`);
+  return false;
+};
+
+const assertTestId = async (page, testid, where) => {
+  if (await page.getByTestId(testid).count()) { console.log(`  ✓ ${where}: ${testid}`); return true; }
+  failures.push(`${where}: expected ${testid} on screen`);
+  console.log(`  ✗ ${where}: missing ${testid}`);
+  return false;
+};
+
+const assertNoTestId = async (page, testid, where) => {
+  if (!(await page.getByTestId(testid).count())) { console.log(`  ✓ ${where}: no ${testid}`); return true; }
+  failures.push(`${where}: ${testid} is still rendered`);
+  console.log(`  ✗ ${where}: ${testid} is still rendered`);
+  return false;
+};
+
+/**
+ * The expanded alert card reads top to bottom in ONE order (owner, 6 Sept):
+ * levels → the bars card → the option contracts → the story → the CTA.
+ * Asserting the order, not just the presence, is the only way a section can
+ * be caught drifting back up or down the card.
+ */
+const assertOrder = async (page, needles, where) => {
+  const text = await page.locator('#root').innerText();
+  const at = needles.map((n) => [n, text.indexOf(n)]);
+  const missing = at.filter(([, i]) => i < 0).map(([n]) => n);
+  if (missing.length) {
+    failures.push(`${where}: missing ${missing.join(', ')}`);
+    console.log(`  ✗ ${where}: missing ${missing.join(', ')}`);
+    return false;
+  }
+  const ordered = at.every(([, i], k) => k === 0 || i > at[k - 1][1]);
+  if (ordered) { console.log(`  ✓ ${where}: ${needles.join(' → ')}`); return true; }
+  failures.push(`${where}: out of order — ${at.map(([n, i]) => `${n}@${i}`).join(', ')}`);
+  console.log(`  ✗ ${where}: out of order`);
+  return false;
+};
+
 async function captureApp(browser) {
   const ctx = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 2, colorScheme: 'dark' });
   await installHideDevChrome(ctx);
@@ -129,17 +174,70 @@ async function captureApp(browser) {
   await shot(page, 'p4a-14-ticker-community');
   await assertNoFractions(page, 'ticker page');
 
-  console.log('[4] Alerts — Active / Watching / History, medallion + scorecard');
-  await open(page, '/alerts');        await shot(page, 'p4a-15-alerts-active');
+  console.log('[4] Alerts — Active / Watching / History, medallion + the bars card');
+  await open(page, '/alerts');
+  /*
+   * Onboarding above picks Day Trade, and since a6fcb55 Day Trade is archived
+   * — the second tab says "Not live yet" and draws no cards at all. That is
+   * correct behaviour and it is its own proof (proof-day-trade-soon.mjs), but
+   * it means this board has NO alert on it to assert against. Switch to Swing,
+   * which is the mode that publishes today, and shoot the real thing.
+   */
+  if (await tap(page, 'day-trade-soon-switch', 'switch to Swing')) await settle(page, 1200);
+  await shot(page, 'p4a-15-alerts-active');
   await assertNoFractions(page, 'alerts · active (collapsed)');
   await tap(page, 'alert-expand-META', 'expand META');
   await settle(page, 700);            await shot(page, 'p4a-16-alerts-expanded');
-  await assertText(page, 'WHY THIS GRADE', 'alerts · scorecard');
-  await assertText(page, 'Strong', 'alerts · qualitative status');
+
+  /*
+   * The expanded card is the trade, and as of 6 Sept it is ONLY the trade.
+   * The scorecard that explained the grade is gone, and so is the family's
+   * record — the card now runs levels → bars → contracts → story → CTA.
+   * These assertions replace the ones that read the removed sections; they
+   * are the same idea (the expanded card renders what it promises) pointed
+   * at the design that actually ships.
+   */
+  await assertTestId(page, 'bars-META', 'alerts · the bars card');
+  await assertText(page, 'Trend strength', 'alerts · trend bar');
+  await assertText(page, 'Risk:Reward', 'alerts · risk:reward bar');
+  await assertTestId(page, 'hold-plan-META', 'alerts · hold plan, inside the bars card');
+  await assertText(page, 'Hold plan', 'alerts · hold plan label');
+  await assertTestId(page, 'contracts-META', 'alerts · the option contracts');
+  await assertText(page, 'IF YOU TRADE THIS WITH OPTIONS', 'alerts · contracts eyebrow');
+  await assertTestId(page, 'alert-story-META', 'alerts · the story toggle');
+
+  // The two sections the owner took OFF the card must stay off it.
+  await assertNoText(page, 'WHY THIS GRADE', 'alerts · scorecard removed');
+  await assertNoTestId(page, 'scorecard-META', 'alerts · scorecard removed');
+  await assertNoTestId(page, 'family-performance-META', 'alerts · family record removed');
+  await assertNoText(page, 'picks were higher after', 'alerts · family record removed');
+
+  // Top to bottom, in the one order the card is allowed to read in.
+  await assertOrder(
+    page,
+    ['Entry', 'Trend strength', 'Hold plan', 'IF YOU TRADE THIS WITH OPTIONS', 'The story'],
+    'alerts · expanded card order',
+  );
+
+  /*
+   * "It should just go from story dropdown to the open trade button." The
+   * order assertion above proves nothing is BEFORE the story that should not
+   * be; this proves nothing is AFTER it either. The family record used to sit
+   * in exactly this gap, so the gap is what gets measured.
+   */
+  {
+    const story = await page.getByTestId('alert-story-META').first().boundingBox();
+    const cta = await page.getByTestId('alert-cta-META').first().boundingBox();
+    const gap = story && cta ? cta.y - (story.y + story.height) : null;
+    const tight = gap != null && gap >= 0 && gap < 60;
+    console.log(`  ${tight ? '✓' : '✗'} alerts · the story runs straight into the button (${gap}px)`);
+    if (!tight) failures.push(`alerts · ${gap}px between the story toggle and the CTA — something is in the gap`);
+  }
+
   await assertNoFractions(page, 'alerts · active (expanded)');
-  await tap(page, 'scorecard-evidence', 'see evidence');
-  await shot(page, 'p4a-17-alerts-evidence');
-  await assertNoFractions(page, 'alerts · evidence open');
+  await tap(page, 'alert-story-META', 'open the story');
+  await shot(page, 'p4a-17-alerts-story');
+  await assertNoFractions(page, 'alerts · story open');
   await tap(page, 'alerts-tab-watching', 'Watching tab');
   await shot(page, 'p4a-18-alerts-watching');
   await assertNoFractions(page, 'alerts · watching');

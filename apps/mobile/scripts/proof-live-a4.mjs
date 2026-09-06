@@ -9,7 +9,7 @@
  * JWT, then walks the round-4 arc against the REAL stack:
  *   sign up → personalize ("New to this" + two focus chips) → plan →
  *   Home (drawer open, new conversation, pin) → ticker page sections →
- *   Alerts (medallion + scorecard, expand, NO fractions asserted by text) →
+ *   Alerts (medallion + the bars card, expand, NO fractions by text) →
  *   CTA lands on /trade/<sym>?alert=… (lane MOBILE-B owns the destination) →
  *   Account rows.
  * Shots land in proof/live-a4-*.png.
@@ -243,7 +243,7 @@ const main = async () => {
     await shot(page, 'live-a4-12d-alerts-watching-after-create');
   }
 
-  // whatever card the live account has — expand it and read the scorecard
+  // whatever card the live account has — expand it and read the bars card
   const card = page.locator('[data-testid^="alert-card-"]').first();
   const symbol = (await card.count())
     ? (await page.locator('[data-testid^="alert-expand-"]').first().getAttribute('data-testid') ?? '').replace('alert-expand-', '')
@@ -255,19 +255,31 @@ const main = async () => {
     await shot(page, 'live-a4-13-alerts-expanded');
     const medallion = await page.locator(`[data-testid="medallion-${symbol}"]`).count();
     note(medallion > 0, `grade medallion rendered for ${symbol}`);
-    // A user-written watch with no graded setup behind it has no scorecard —
-    // spec §4 leaves it unqualified rather than inventing components. Assert
-    // the scorecard only where there IS a grade to explain.
+    // A user-written watch with no graded setup behind it has no bars — spec
+    // §4 leaves it unqualified rather than inventing components. Assert the
+    // bars card only where there IS a grade behind it.
     // The medallion shows a bare `87` in a gauge now, not `87/100`; the score
     // element is the stable signal for "this object actually has a grade".
     const graded = (await page.locator(`[data-testid="medallion-${symbol}"] [data-testid="grade-score"]`).count()) > 0;
-    const scorecard = await page.locator(`[data-testid="scorecard-${symbol}"]`).count();
-    if (graded) note(scorecard > 0, `qualitative scorecard rendered for graded ${symbol}`);
-    else console.log(`  · ${symbol} is an ungraded watch — no scorecard, which is correct (§4)`);
+    const bars = await page.locator(`[data-testid="bars-${symbol}"]`).count();
+    if (graded) note(bars > 0, `the bars card rendered for graded ${symbol}`);
+    else console.log(`  · ${symbol} is an ungraded watch — no bars card, which is correct (§4)`);
+
+    // The scorecard and the family record came off the trade card on 6 Sept.
+    // On a LIVE account they must be absent whatever the payload carries.
+    note(
+      (await page.locator(`[data-testid="scorecard-${symbol}"]`).count()) === 0,
+      `no "why this grade" scorecard on the ${symbol} trade card`,
+    );
+    note(
+      (await page.locator(`[data-testid="family-performance-${symbol}"]`).count()) === 0,
+      `no family record section on the ${symbol} trade card`,
+    );
+
     await assertNoFractions(page, 'alerts · active (expanded)');
-    await softTap(page, 'screen-alerts', 'scorecard-evidence', 'See evidence');
-    await shot(page, 'live-a4-14-alerts-evidence');
-    await assertNoFractions(page, 'alerts · evidence open');
+    await softTap(page, 'screen-alerts', `alert-story-${symbol}`, 'The story');
+    await shot(page, 'live-a4-14-alerts-story');
+    await assertNoFractions(page, 'alerts · story open');
   } else {
     console.log('  · no active card on this account — Watching is where the seed lands');
   }

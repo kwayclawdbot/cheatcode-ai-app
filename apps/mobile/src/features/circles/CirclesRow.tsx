@@ -14,6 +14,7 @@ import React from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import Svg, { Circle as SvgCircle, Path } from 'react-native-svg';
 import { T, Num } from '../../ui/Text';
+import { RoomAvatar } from '../../ui/RoomAvatar';
 import { alpha, color } from '../../ui/tokens';
 import type { Circle } from './types';
 
@@ -78,11 +79,17 @@ export function CirclesRow({
         >
           <View>
             <Ring progress={c.progress} tone={toneFor(c)}>
-              {/* Board rhythm: a ticker that fits reads whole (CPI), a longer
-                  one reads as its initial (META → M). */}
-              <T size={c.symbol.length > 1 ? 12 : 15} weight="bold">
-                {c.symbol.length <= 3 ? c.symbol : c.symbol.slice(0, 1)}
-              </T>
+              {/* The company's own logo, not a letter standing in for it — a
+                  circle for META wears the Meta mark. A circle that is not
+                  about a company, or one an admin gave a picture to, is
+                  handled by the same component. */}
+              <RoomAvatar
+                symbol={c.symbol}
+                name={c.name}
+                imageUrl={c.image_url ?? null}
+                size={44}
+                testID={`circle-avatar-${c.id}`}
+              />
             </Ring>
             {c.unread ? (
               <View

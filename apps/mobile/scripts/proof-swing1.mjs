@@ -19,9 +19,12 @@
  *   - the Alerts tab renders the ingested swing setups;
  *   - the medallion carries the percentile score, not the 31..190 raw one;
  *   - the band the medallion draws is the band the ingest computed;
- *   - the scorecard shows no fraction anywhere (spec §4, grade.ts rule 2);
- *   - the family's real win rate appears as its OWN line with its n, separate
- *     from the medallion (§4).
+ *   - no component fraction appears anywhere on the card (spec §4, rule 2);
+ *   - the expanded card is the TRADE — the bars card (trend, risk:reward,
+ *     hold plan), then the contracts, then the story, then the button, with
+ *     no scorecard and no family record between them (owner, 6 Sept). The
+ *     family record's own honesty rules moved to proof-swing4.mjs, which
+ *     asserts them against the payload now that no screen draws that line.
  *
  * Everything lands in proof/swing1-*.png.
  */
@@ -272,46 +275,72 @@ const main = async () => {
     await page.waitForTimeout(600);
     await shot(page, 'swing1-02-alert-detail');
 
-    ok('the scorecard is open', await page.locator(`[data-testid="scorecard-${gold.symbol}"]`).count() > 0);
-    // Scoped to the SCORECARD, not the card: the medallion is allowed to show
-    // "90 of 100" — that is grade.ts rule 1, the letter plus its supporting
-    // score. Rule 2 is about the components, and "18/20" is what must never
-    // reach a screen.
-    const scorecardText = await page.locator(`[data-testid="scorecard-${gold.symbol}"]`).last().innerText();
+    /*
+     * The expanded card, as of 6 Sept. The scorecard that explained the grade
+     * and the family's record are both OFF the trade card now (owner call) —
+     * the card runs levels → bars → contracts → story → CTA. What replaces
+     * them here is the same question asked of the new layout: does the card
+     * render the setup it promises, and does it stay free of fractions?
+     *
+     * The family record's honesty rules did not go away with the render —
+     * they are asserted against the PAYLOAD in proof-swing4.mjs, which is
+     * where they belong now that no screen draws that line.
+     */
+    const cardEl = page.locator(`[data-testid="alert-card-${gold.symbol}"]`).last();
+    const cardText = (await cardEl.innerText()).replace(/\s+/g, ' ');
+
+    ok('the bars card is open', await page.locator(`[data-testid="bars-${gold.symbol}"]`).count() > 0);
+    ok('it says how strong the trend is', /Trend strength/i.test(cardText), cardText.slice(0, 300));
+    ok('and what the trade risks against what it pays', /Risk:Reward/i.test(cardText), cardText.slice(0, 300));
+    ok(
+      'the hold plan is in that card, not stray small print',
+      await page.locator(`[data-testid="hold-plan-${gold.symbol}"]`).count() > 0,
+    );
+
+    // The medallion may show "90 of 100" — that is grade.ts rule 1, the letter
+    // plus its supporting score. Rule 2 is about the components, and "18/20"
+    // is what must never reach a screen. With the scorecard gone the rule is
+    // checked across the WHOLE card, which is a stricter test than before.
     ok(
       'no component fraction reaches the screen (grade.ts rule 2)',
-      !/\b\d{1,3}\s*\/\s*\d{1,3}\b/.test(scorecardText),
-      scorecardText.match(/\b\d{1,3}\s*\/\s*\d{1,3}\b/g),
+      !/\b\d{1,3}\s*\/\s*(?!100\b)\d{1,3}\b/.test(cardText),
+      cardText.match(/\b\d{1,3}\s*\/\s*(?!100\b)\d{1,3}\b/g),
+    );
+
+    // The two sections the owner removed must stay removed.
+    ok(
+      'the "why this grade" scorecard is gone from the trade card',
+      await page.locator(`[data-testid="scorecard-${gold.symbol}"]`).count() === 0
+        && !/WHY THIS GRADE/i.test(cardText),
     );
     ok(
-      'a component the scanner had no read on says Unknown rather than scoring zero',
-      /Unknown/.test(scorecardText) || !/risk/i.test(scorecardText),
-      scorecardText.replace(/\s+/g, ' ').slice(0, 300),
+      'the family record is gone from the trade card',
+      await page.locator(`[data-testid="family-performance-${gold.symbol}"]`).count() === 0
+        && !/picks were higher after/i.test(cardText),
     );
 
-    const perf = page.locator(`[data-testid="family-performance-${gold.symbol}"]`).last();
-    ok('the family\'s real record is on the card as its own line (§4)', await perf.count() > 0);
-    if (await perf.count()) {
-      const line = (await perf.innerText()).replace(/\s+/g, ' ');
-      console.log(`  · record line: ${line}`);
-      ok('it carries its sample size', /\bof \d+ picks\b/.test(line), line);
-      ok('it says it is a record, not a forecast', /what has happened, not what will/i.test(line), line);
-      ok('and it says what it measured — close to close, no stop, no target', /close to close/i.test(line) && /no stop was published and no target/i.test(line), line);
-      ok('and it explicitly disowns the medallion', /grade above says nothing about it/i.test(line), line);
-    }
+    // The card ends story → CTA, with nothing between them.
+    const storyAt = cardText.search(/The story/i);
+    const ctaAt = cardText.search(/View setup details|Hide setup details/i);
+    ok('the story toggle is on the card', storyAt >= 0, cardText.slice(0, 400));
+    ok(
+      'and it is the LAST thing before the button',
+      storyAt >= 0 && ctaAt > storyAt,
+      { storyAt, ctaAt },
+    );
 
-    // Evidence, so the scorecard's Unknowns are visible rather than asserted.
-    if (await seen(page, `scorecard-${gold.symbol}`, 'scorecard-evidence')) {
-      await page.locator(`[data-testid="scorecard-${gold.symbol}"] [data-testid="scorecard-evidence"]`).last().click();
+    await page.locator(`[data-testid="bars-${gold.symbol}"]`).last()
+      .scrollIntoViewIfNeeded().catch(() => {});
+    await page.waitForTimeout(600);
+    await shot(page, 'swing1-03-bars-and-hold-plan');
+
+    // The story, opened — the words are one tap away, not deleted.
+    if (await seen(page, `alert-card-${gold.symbol}`, `alert-story-${gold.symbol}`)) {
+      await page.locator(`[data-testid="alert-story-${gold.symbol}"]`).last().click();
       await page.waitForTimeout(900);
     }
-    await page.locator(`[data-testid="scorecard-${gold.symbol}"]`).last().scrollIntoViewIfNeeded().catch(() => {});
-    await page.waitForTimeout(600);
-    await shot(page, 'swing1-03-scorecard-evidence');
-
-    await perf.scrollIntoViewIfNeeded().catch(() => {});
-    await page.waitForTimeout(600);
-    await shot(page, 'swing1-04-family-record');
+    await page.waitForTimeout(400);
+    await shot(page, 'swing1-04-the-story');
 
     console.log('\n[5] History — the back catalogue, with what each alert did');
     await go(page, '/alerts', 3500);

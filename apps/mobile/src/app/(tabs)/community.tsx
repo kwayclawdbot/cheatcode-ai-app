@@ -33,6 +33,9 @@ import { CirclesRow } from '../../features/circles/CirclesRow';
 import { CreateCircleSheet } from '../../features/circles/CreateCircleSheet';
 import type { Circle, CircleTtl } from '../../features/circles/types';
 import type { MessageReactions, ReactionKind, Room, RoomMessage } from '../../features/community/types';
+import { ModeSegmented } from '../../features/home';
+import { DEFAULT_MODE } from '../../features/nav/second-tab';
+import type { GoalMode } from '../../lib/types';
 
 const MODE_ORDER = ['day_trade', 'swing', 'invest'];
 const rank = (mode: string | null) => {
@@ -57,6 +60,8 @@ const MembersIcon = () => (
 export default function Community() {
   const router = useRouter();
   const { profile, session } = useSession();
+  /** The one global mode, read the same way every other screen reads it. */
+  const mode = (profile?.primary_mode as GoalMode) ?? DEFAULT_MODE;
 
   /**
    * WHO IS STAFF. `/me.staff` is re-derived from `staff_members` on every call,
@@ -295,12 +300,12 @@ export default function Community() {
     <Screen variant="corner" layout="tab" testID="screen-community">
       <View
         style={{
-          flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16,
+          flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 16,
           paddingTop: 8, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: alpha.ivory07,
         }}
       >
         <View style={{ flex: 1, minWidth: 0 }}>
-          <T size={16} weight="bold">Cheat Code Club</T>
+          <T size={16} weight="bold" numberOfLines={1}>Cheat Code Club</T>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <T size={10.5} c={color.dim} testID="club-presence">{presence}</T>
             {/* What is actually keeping this feed fresh, in its own words. It
@@ -325,6 +330,24 @@ export default function Community() {
         >
           <SearchIcon />
         </Pressable>
+
+        {/*
+          Mode lives in the headbar now (owner, 6 Sept), between search and the
+          people button. It is the same global setting the chip and the sheet
+          write — `PUT /mode` — and on this screen it also opens the room that
+          belongs to the mode you picked, so the control is never a switch that
+          appears to do nothing. The rail below stays: it carries the unread
+          counts, and tapping either keeps the other in step.
+        */}
+        <ModeSegmented
+          mode={mode}
+          testID="club-mode-segmented"
+          onChanged={(m) => {
+            const room = coreRooms.find((r) => r.mode === m);
+            if (room) setRoomId(room.id);
+          }}
+        />
+
         <Pressable
           testID="club-members"
           accessibilityRole="button"
@@ -461,12 +484,21 @@ export default function Community() {
             </View>
 
             {note ? <T size={11} c={color.gold} style={{ paddingHorizontal: 16, paddingTop: 10 }}>{note}</T> : null}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 12 }}>
-              <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color.dim }} />
-              <T size={10} lh={14} c={color.dim} style={{ flex: 1 }}>
-                {source === 'fixtures' ? 'Example rooms · ' : ''}Claims stay unverified until Kai checks them.
-              </T>
-            </View>
+            {/*
+              The standing "Claims stay unverified until Kai checks them"
+              disclaimer was removed here (owner, 6 Sept). It said the same
+              thing under every feed, every time, so it had stopped being read.
+              Nothing that makes a real claim is now unlabelled: each post that
+              Kai has actually looked at still carries its own ClaimChip
+              (Unverified / Partly verified / Verified by Kai), which is the
+              per-claim statement rather than a blanket one.
+            */}
+            {source === 'fixtures' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 12 }}>
+                <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color.dim }} />
+                <T size={10} lh={14} c={color.dim} style={{ flex: 1 }}>Example rooms</T>
+              </View>
+            ) : null}
           </>
         )}
       </ScrollView>

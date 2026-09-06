@@ -186,6 +186,97 @@ export function ModeSheet({
   );
 }
 
+/**
+ * Short names, for the segmented control ONLY.
+ *
+ * "Day Trade · Swing · Invest" is 130pt of text before any padding, and a
+ * 390pt header also has to hold a title and two icon buttons. The segment says
+ * "Day"; the screen reader still says "Day Trade", and the sheet — where there
+ * is room to explain what each one changes — still says it in full.
+ */
+const SHORT_LABEL: Record<GoalMode, string> = {
+  day_trade: 'Day',
+  swing: 'Swing',
+  invest: 'Invest',
+};
+
+/**
+ * The mode control as a compact segmented bar, sized to sit INSIDE a header
+ * row between the icon buttons (owner, 6 Sept). Same three modes and the same
+ * write path as the sheet: `PUT /mode` is the truth, the local profile is
+ * patched so every screen re-reads in the new mode at once. This is a second
+ * SHAPE for the control, not a second source of truth.
+ *
+ * A mode that is not live yet is still offered — archived, not removed — it
+ * just reads dim until you pick it, exactly as it does in the sheet.
+ */
+export function ModeSegmented({ mode, onChanged, testID = 'mode-segmented' }: {
+  mode: GoalMode; onChanged?: (m: GoalMode) => void; testID?: string;
+}) {
+  const { patchProfile } = useSession();
+  const [busy, setBusy] = useState<GoalMode | null>(null);
+
+  const choose = useCallback(async (m: GoalMode) => {
+    if (m === mode || busy) return;
+    setBusy(m);
+    try {
+      if (api.available()) await api.setMode(m);
+      await patchProfile({ primary_mode: m });
+      onChanged?.(m);
+    } catch {
+      // Nothing to say in a header this small. The control simply stays on the
+      // mode that is still true, rather than showing a switch that did not take.
+    } finally {
+      setBusy(null);
+    }
+  }, [mode, busy, onChanged, patchProfile]);
+
+  return (
+    <View
+      testID={testID}
+      accessibilityRole="tablist"
+      accessibilityLabel="How Kai reads the market"
+      style={{
+        flexDirection: 'row', alignItems: 'center', padding: 2,
+        borderRadius: radius.pill, backgroundColor: color.surface2,
+        borderWidth: 0.5, borderColor: alpha.ivory10,
+      }}
+    >
+      {MODES.map((m) => {
+        const active = m === mode;
+        return (
+          <Pressable
+            key={m}
+            testID={`mode-seg-${m}`}
+            accessibilityRole="tab"
+            accessibilityLabel={MODE_LABEL[m]}
+            accessibilityHint="Changes how Kai reads the market for you"
+            accessibilityState={{ selected: active, busy: busy === m }}
+            disabled={!!busy}
+            onPress={() => { void choose(m); }}
+            style={({ pressed }) => ({
+              height: 24, paddingHorizontal: 9, borderRadius: radius.pill,
+              alignItems: 'center', justifyContent: 'center',
+              backgroundColor: active ? alpha.volt14 : 'transparent',
+              borderWidth: active ? 0.5 : 0,
+              borderColor: active ? alpha.volt55 : 'transparent',
+              opacity: pressed || busy === m ? 0.7 : 1,
+            })}
+          >
+            <T
+              size={10.5}
+              weight={active ? 'bold' : 'regular'}
+              c={active ? color.volt : modeIsLive(m) ? color.muted : color.dim}
+            >
+              {SHORT_LABEL[m]}
+            </T>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 /** Chip + sheet as one unit; the common case on Home and Trade. */
 export function ModeControl({ mode, onChanged, testID }: { mode: GoalMode; onChanged?: (m: GoalMode) => void; testID?: string }) {
   const [open, setOpen] = useState(false);

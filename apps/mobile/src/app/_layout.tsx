@@ -21,6 +21,12 @@ import { NotificationBridge } from '../features/notifications';
 const STACK_GROUPS = new Set([
   'setup', 'alert', 'symbol', 'account',       // this lane
   'room', 'debrief', 'contributor',            // MOBILE-B round 2
+  // Reply-with-quote pushes `/thread/<id>?quote=<id>`. It was added with the
+  // six-emoji reactions and never listed here, so on a REAL session the gate
+  // read `thread` as an unknown group and bounced every Reply tap to Home —
+  // the composer never opened. Fixtures mode skips the gate entirely, which
+  // is exactly why the proof scripts never saw it.
+  'thread',
   'order', 'plan', 'position',                 // MOBILE-B round 3 (paper execution)
   'trade', 'circle',                           // MOBILE-B round 4 (portal + circles)
   // The research desk. It is a tab in Invest mode AND a pushed screen from the

@@ -4277,6 +4277,12 @@ export const CircleRow = z.object({
   id: z.string(),
   symbol: z.string().nullable(),
   name: z.string(),
+  /**
+   * An admin-set picture for the room, out of `rooms.config.image_url`.
+   * A room named for a company does not need one — it wears that company's
+   * logo. This is for the rooms that are not named for a company.
+   */
+  image_url: z.string().nullable(),
   setup_id: z.string().nullable(),
   members: z.number(),
   messages: z.number(),

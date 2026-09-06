@@ -9,7 +9,7 @@ import { KaiOrb } from '../../ui/KaiOrb';
 // A ticker is never plain text and never a letter in a gradient square — the
 // one shared mark lives in the design system now (see src/ui/Ticker.tsx).
 import { TickerMark } from '../../ui/Ticker';
-import { GradeMedallion, GradeChip, Scorecard, gradeBand } from '../grade';
+import { GradeMedallion, GradeChip, gradeBand } from '../grade';
 import type {
   AlertCard as AlertCardModel, AlertCardState, AlertOptionContract, AlertScoreComponent,
 } from '../../lib/types';
@@ -185,7 +185,6 @@ function stateTone(state: AlertCardState): string {
 export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; testID?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [evidence, setEvidence] = useState(false);
   const [story, setStory] = useState(false);
   const band = gradeBand(alert.grade, alert.score);
   const acting = ACTING.has(alert.state);
@@ -194,6 +193,13 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
   const bars = tradeBars(alert);
   const contracts = alert.recommended_options ?? [];
   const hasStory = !!(alert.company_summary || alert.kai_interpretation || alert.community);
+  /**
+   * How long you are meant to hold it, and when the setup stops counting —
+   * one plain line. Either half can be missing; a missing half is left out
+   * rather than shown as a dash, which would read as "no plan".
+   */
+  const holdPlan = [trade.hold, trade.expires ? `expires ${trade.expires}` : null]
+    .filter(Boolean).join(' · ');
 
   const openPortal = () =>
     router.push(`/trade/${encodeURIComponent(alert.symbol)}?alert=${encodeURIComponent(alert.alert_id ?? alert.id)}&ctx=alert`);
@@ -259,8 +265,32 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
             <T size={11.5} c={color.muted} lh={17}>{trade.note}</T>
           ) : null}
 
-          {bars.length ? (
-            <View testID={`bars-${alert.symbol}`} style={{ gap: 7 }}>
+          {/* What it costs YOU — a number, so it stays with the levels. */}
+          {alert.fit ? (
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <T size={11} c={color.muted}>
+                Your risk <Num size={11} c={color.gold}>{alert.fit.risk_amount ?? '—'}</Num>
+                {alert.fit.cap_line ? ` · ${alert.fit.cap_line}` : ''}
+              </T>
+              {alert.fit.conflicts ? <T size={11} c={color.muted}>{alert.fit.conflicts}</T> : null}
+            </View>
+          ) : null}
+
+          {/*
+            How good each part of the trade is, and how long you are meant to
+            be in it — one card, because they answer the same question. The
+            hold plan used to be a stray line of small print underneath; it is
+            the last row of this card now, on the same label column as the
+            bars, so it reads as part of the setup rather than a footnote.
+          */}
+          {bars.length || holdPlan ? (
+            <View
+              testID={`bars-${alert.symbol}`}
+              style={{
+                gap: 7, paddingVertical: 11, paddingHorizontal: 12, borderRadius: 13,
+                backgroundColor: alpha.ivory035, borderWidth: 0.5, borderColor: alpha.ivory10,
+              }}
+            >
               {bars.map((b) => (
                 <GradeBar
                   key={b.key}
@@ -271,24 +301,19 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
                   testID={`bar-${b.key}-${alert.symbol}`}
                 />
               ))}
-            </View>
-          ) : null}
-
-          {trade.hold || trade.expires ? (
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              {trade.hold ? <T size={11} c={color.muted}>Hold: {trade.hold}</T> : <View />}
-              {trade.expires ? <T size={11} c={color.muted}>Expires {trade.expires}</T> : null}
-            </View>
-          ) : null}
-
-          {/* What it costs YOU — a number, so it stays with the levels. */}
-          {alert.fit ? (
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <T size={11} c={color.muted}>
-                Your risk <Num size={11} c={color.gold}>{alert.fit.risk_amount ?? '—'}</Num>
-                {alert.fit.cap_line ? ` · ${alert.fit.cap_line}` : ''}
-              </T>
-              {alert.fit.conflicts ? <T size={11} c={color.muted}>{alert.fit.conflicts}</T> : null}
+              {holdPlan ? (
+                <View
+                  testID={`hold-plan-${alert.symbol}`}
+                  accessibilityLabel={`Hold plan, ${holdPlan}`}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 9,
+                    ...(bars.length ? { paddingTop: 8, borderTopWidth: 0.5, borderTopColor: alpha.ivory08 } : null),
+                  }}
+                >
+                  <T size={11} c={color.muted} numberOfLines={1} style={{ width: 99 }}>Hold plan</T>
+                  <T size={11} c={color.text} style={{ flex: 1 }}>{holdPlan}</T>
+                </View>
+              ) : null}
             </View>
           ) : null}
 
@@ -311,15 +336,6 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
                 ))}
               </View>
             </View>
-          ) : null}
-
-          {alert.score_components.length ? (
-            <Scorecard
-              components={alert.score_components}
-              showEvidence={evidence}
-              onToggleEvidence={() => setEvidence((v) => !v)}
-              testID={`scorecard-${alert.symbol}`}
-            />
           ) : null}
 
           {/*
@@ -379,33 +395,11 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
           ) : null}
 
           {/*
-            SWING-1 §4 — the family's real record, deliberately BELOW the
-            scorecard and outside the medallion's colour. The grade is a
-            setup-quality mark; this is history, and it always carries its n.
-            It is NOT behind the story toggle: the honesty line is never a
-            thing you have to go looking for.
+            The story is the LAST thing in the expanded card. The family's
+            record used to sit under it; it is off the trade card now (the
+            field is still on the model and still served — this is a
+            presentation decision, not a data one). The card goes story → CTA.
           */}
-          {alert.family_performance ? (
-            <View
-              testID={`family-performance-${alert.symbol}`}
-              style={{ gap: 4, paddingTop: 10, borderTopWidth: 0.5, borderTopColor: alpha.ivory08 }}
-            >
-              <T size={9.5} weight="bold" c={color.muted} style={{ letterSpacing: 0.7 }}>
-                {alert.family_performance.family.toUpperCase()} — WHAT ACTUALLY HAPPENED
-              </T>
-              <T size={11.5} c={color.muted} lh={17}>
-                <Num size={11.5} c={color.text}>{alert.family_performance.wins}</Num>
-                {' of '}
-                <Num size={11.5} c={color.text}>{alert.family_performance.n}</Num>
-                {` picks were higher after ${alert.family_performance.horizon} — `}
-                <Num size={11.5} c={color.text}>{`${alert.family_performance.win_pct}%`}</Num>
-                {'. Measured close to close, holding the whole way: no stop was published and no target, '
-                  + 'so this is not the result of a trade anyone managed. What has happened, not what will — '
-                  + 'and the grade above says nothing about it.'}
-              </T>
-            </View>
-          ) : null}
-
         </>
       ) : null}
 

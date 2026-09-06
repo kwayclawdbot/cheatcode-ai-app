@@ -17,12 +17,18 @@ import { KaiDot } from './KaiDot';
 
 /** V3-C1 / S81 / S85 stack header: back · centred title+subtitle · right slot. */
 export function StackHeader({
-  title, subtitle, subtitleColor, onBack, right, onRight, rightLabel, testID,
+  title, subtitle, subtitleColor, onBack, leading, right, onRight, rightLabel, testID,
 }: {
   title: string;
   subtitle?: React.ReactNode;
   subtitleColor?: string;
   onBack?: () => void;
+  /**
+   * A mark that sits between the back arrow and the title — the room's own
+   * picture, on the screens that have one. Optional, because most stack
+   * screens are about a thing that has no picture.
+   */
+  leading?: React.ReactNode;
   right?: React.ReactNode;
   onRight?: () => void;
   rightLabel?: string;
@@ -52,6 +58,8 @@ export function StackHeader({
       >
         {onBack ? <ChevronLeft size={20} /> : null}
       </Pressable>
+
+      {leading ? <View style={{ marginLeft: 8 }}>{leading}</View> : null}
 
       <View style={{ flex: 1, alignItems: 'center' }}>
         <T size={16} weight="bold" numberOfLines={1}>{title}</T>

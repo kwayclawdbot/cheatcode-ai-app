@@ -31,10 +31,11 @@ import type { MessageReactions, ReactionKind } from '../../features/community/ty
 import { ReactionBar } from '../../features/community/ui/Social';
 import type { Candle } from '../../lib/types';
 import type { Freshness } from '../../ui/FreshnessMark';
+import { RoomAvatar } from '../../ui/RoomAvatar';
 
 const RING = 2 * Math.PI * 16.5;
 
-function HeaderRing({ progress, initial }: { progress: number; initial: string }) {
+function HeaderRing({ progress, children }: { progress: number; children: React.ReactNode }) {
   return (
     <View style={{ width: 36, height: 36 }}>
       <Svg viewBox="0 0 36 36" width={36} height={36} style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}>
@@ -51,7 +52,7 @@ function HeaderRing({ progress, initial }: { progress: number; initial: string }
           backgroundColor: alpha.chip85, alignItems: 'center', justifyContent: 'center',
         }}
       >
-        <T size={12} weight="bold">{initial}</T>
+        {children}
       </View>
     </View>
   );
@@ -320,7 +321,17 @@ export default function CircleRoom() {
             <Path d="M15 5l-7 7 7 7" />
           </Svg>
         </Pressable>
-        <HeaderRing progress={c.progress} initial={(c.symbol[0] ?? 'C').toUpperCase()} />
+        {/* The room's own picture — the company's logo where the circle is
+            named for one, the admin's image where it is not. */}
+        <HeaderRing progress={c.progress}>
+          <RoomAvatar
+            symbol={c.symbol}
+            name={c.name}
+            imageUrl={c.image_url ?? null}
+            size={26}
+            testID="circle-avatar"
+          />
+        </HeaderRing>
         <View style={{ flex: 1, minWidth: 0 }}>
           <T size={15} weight="bold" numberOfLines={1} testID="circle-name">{c.name}</T>
           <T size={10} c={color.dim} testID="circle-meta">

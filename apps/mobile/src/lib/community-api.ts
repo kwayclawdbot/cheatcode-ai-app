@@ -1082,6 +1082,7 @@ export const debriefApi = {
 /* ==================================================================== */
 
 import type { Circle, CircleDetail, CircleMessage, CircleTtl } from '../features/circles/types';
+import { roomImageUrl } from '../ui/RoomAvatar';
 import { fixtureCircleDetail, fixtureCircles } from '../features/circles/fixtures';
 
 const MS = { h: 3600_000, d: 86_400_000 };
@@ -1133,6 +1134,9 @@ function mapCircle(raw: any, createdAt?: string | null): Circle {
     members: asNum(raw?.member_count ?? raw?.members) ?? 0,
     unread: asNum(raw?.unread ?? raw?.unread_count ?? raw?.messages) ?? 0,
     setup_id: raw?.setup_id ? String(raw.setup_id) : null,
+    // The admin's picture, served flat by the API and also read straight out
+    // of the room's config bag for any payload that still carries it whole.
+    image_url: raw?.image_url ? String(raw.image_url) : roomImageUrl(raw?.config),
     grade_display: raw?.grade?.display ?? raw?.grade_display ?? raw?.setup?.grade_display ?? null,
     last_activity_plain: raw?.last_activity_plain ?? raw?.preview?.text ?? null,
     closed: Boolean(raw?.expired ?? raw?.closed) || (expires ? Date.parse(expires) <= Date.now() : false),
@@ -1239,6 +1243,7 @@ export const circlesApi = {
         members: 1,
         unread: 0,
         setup_id: null,
+        image_url: null,
         grade_display: null,
         last_activity_plain: 'You opened this circle',
         closed: false,
@@ -1303,6 +1308,7 @@ export const circlesApi = {
           id, symbol: '', name: 'Circle', pattern: null, time_left_plain: 'no end date',
           progress: 0, expires_at: null, members: 0, unread: 0,
           setup_id: setupId ? String(setupId) : null,
+          image_url: null,
           grade_display: null, last_activity_plain: null, closed: false,
         },
         levels,

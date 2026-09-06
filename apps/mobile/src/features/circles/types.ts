@@ -22,6 +22,12 @@ export type Circle = {
   unread: number;
   /** setups.id the circle was opened for, when there is one. */
   setup_id: string | null;
+  /**
+   * An admin-set picture for the room (`rooms.config.image_url`). Null on
+   * every room today — a circle named for a company wears that company's logo
+   * instead, and one that is not gets its initial. See ui/RoomAvatar.tsx.
+   */
+  image_url: string | null;
   grade_display: string | null;
   last_activity_plain: string | null;
   closed: boolean;

@@ -148,6 +148,7 @@ export async function listCircles(opts: { userId: string; includeExpired?: boole
         id,
         symbol: (setup?.symbol as string) ?? symbolFromName(String(r.name)),
         name: String(r.name),
+        image_url: imageOf(r),
         setup_id: (r.setup_id as string) ?? null,
         members: memberCount.get(id) ?? 0,
         messages: msgCount.get(id) ?? 0,
@@ -172,6 +173,33 @@ export async function listCircles(opts: { userId: string; includeExpired?: boole
 function symbolFromName(name: string): string | null {
   const m = name.match(/^([A-Z]{1,6})\b/);
   return m ? m[1] : null;
+}
+
+/**
+ * THE ROOM'S PICTURE, IF SOMEBODY SET ONE.
+ *
+ * Owner instruction, 6 Sept: a room named for a company wears that company's
+ * logo; a room named for anything else wears a picture an admin gives it.
+ * The first half needs nothing from the database — the client already draws
+ * the shared ticker mark off `symbol`. This is the second half.
+ *
+ * It lives in `config`, the room's existing jsonb metadata bag, rather than a
+ * new column: `config` is already selected (CIRCLE_COLUMNS) and already
+ * reaches the client, so the field cost no migration. Anything that is not an
+ * http(s) string is treated as no picture, so a half-written value falls
+ * through to the logo or the initial instead of rendering as a broken image.
+ *
+ * NOTHING WRITES THIS YET. There is no admin screen for rooms at all (the
+ * admin boards are overview/people/invites/sources/audit), so today this is
+ * always null and every room falls through to its logo or its initial — which
+ * is the designed behaviour, not a gap in the render path.
+ */
+function imageOf(row: Record<string, unknown>): string | null {
+  const cfg = row.config;
+  if (!cfg || typeof cfg !== 'object') return null;
+  const raw = (cfg as Record<string, unknown>).image_url ?? (cfg as Record<string, unknown>).avatar_url;
+  const s = typeof raw === 'string' ? raw.trim() : '';
+  return /^https?:\/\//i.test(s) ? s : null;
 }
 
 /**
