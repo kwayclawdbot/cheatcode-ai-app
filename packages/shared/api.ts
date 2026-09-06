@@ -3678,6 +3678,20 @@ export const AnnotationKind = z.enum([
    */
   'circle',
   'arrow',
+  /**
+   * AN OVERLAY, NOT A PRICE. A moving average and a volume-weighted average are
+   * CURVES: they have a value on every bar and a different one on each. They
+   * used to resolve to their newest value and get drawn as a horizontal rule,
+   * which said the opposite of what they are and turned a chart with five of
+   * them into a wall of lines.
+   *
+   * The row carries the NAME of the curve (`indicator`, `period`) and the
+   * client computes the series from the candles it is already holding, so the
+   * line is right on every bar rather than right on the last one. `price` is
+   * still the newest value — the number a person means when they say "the 21 is
+   * at 604" — and it is what the price tag and the levels rail show.
+   */
+  'indicator',
 ]);
 export type AnnotationKind = z.infer<typeof AnnotationKind>;
 
@@ -3709,6 +3723,19 @@ export const AnnotationRow = z.object({
   editable: z.boolean(),
   created_at: z.string(),
   updated_at: z.string().nullable(),
+  /**
+   * WHICH CURVE, for `kind: 'indicator'`. Absent on every other kind.
+   *
+   * DERIVED AT READ TIME, NOT STORED IN ITS OWN COLUMN. The name is already in
+   * `text` — "EMA 21", "VWAP" — and reading it back out with the shared parser
+   * is what lets rows written BEFORE indicators existed come back as overlays
+   * instead of as the horizontal rules they were saved as. A column would only
+   * have been filled in for rows written after the change, which is exactly the
+   * rows that did not need fixing.
+   */
+  indicator: z.enum(['ema', 'sma', 'vwap']).nullish(),
+  /** Bars in the lookback. Null for VWAP, which is anchored rather than windowed. */
+  period: z.number().int().nullish(),
 });
 export type AnnotationRow = z.infer<typeof AnnotationRow>;
 

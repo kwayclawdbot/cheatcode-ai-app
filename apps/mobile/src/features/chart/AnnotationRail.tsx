@@ -37,12 +37,29 @@ export function AnnotationRail({
   onSelect?: (a: Annotation) => void;
   testID?: string;
 }) {
+  /**
+   * THE RAIL IS THE OVERFLOW.
+   *
+   * The chart itself now caps how many horizontal lines it will draw at once and
+   * merges the ones sitting on top of each other, because a plot carrying every
+   * level at full weight is a plot you cannot read. Nothing is LOST when it
+   * does: every mark is still a chip here, in price order, reachable and
+   * speakable, including the ones the chart folded away. That is what makes the
+   * cap safe — the chart is edited for legibility, the rail stays complete.
+   */
   const visible = useMemo(
     () => annotations
       .filter((a) => a.status === 'valid' || a.status === 'invalidated')
       // Price order, high to low — the same order they sit in on the chart, so
       // the rail reads as a legend rather than as a list in insertion order.
-      .sort((a, b) => (b.price ?? -Infinity) - (a.price ?? -Infinity)),
+      // CURVES GO LAST, whatever their price: an average is context, and leading
+      // with four of them buries the stop behind a scroll.
+      .sort((a, b) => {
+        const ai = a.kind === 'indicator' ? 1 : 0;
+        const bi = b.kind === 'indicator' ? 1 : 0;
+        if (ai !== bi) return ai - bi;
+        return (b.price ?? -Infinity) - (a.price ?? -Infinity);
+      }),
     [annotations],
   );
 
@@ -63,7 +80,9 @@ export function AnnotationRail({
         // The KIND, then the NUMBER. Not the chip's own label: "Entry 504-507"
         // followed by "504.00" says the same thing twice and pushes the next
         // level off the screen.
-        const label = KIND_LABEL[a.kind];
+        // An overlay's name IS its label — "EMA 21", "VWAP" — and there is no
+        // generic word for it that is not worse than the name.
+        const label = a.kind === 'indicator' ? (a.text || KIND_LABEL[a.kind]) : KIND_LABEL[a.kind];
         const value = a.price == null
           ? null
           : a.price2 != null
@@ -75,7 +94,11 @@ export function AnnotationRail({
             testID={`annotation-${a.id}`}
             accessibilityRole="button"
             accessibilityLabel={
-              `${KIND_LABEL[a.kind]}${a.price != null ? ` at ${a.price.toFixed(2)}` : ''}. ` +
+              // "at 604" is true of a level and false of a curve, which is
+              // somewhere different on every bar. Spoken aloud, the difference
+              // between "support at 604" and "the twenty-one day, 604 right now"
+              // is the whole distinction this chip is making visually.
+              `${label}${a.price != null ? (a.kind === 'indicator' ? `, ${a.price.toFixed(2)} right now` : ` at ${a.price.toFixed(2)}`) : ''}. ` +
               `${PROVENANCE_LABEL[a.provenance]}.${a.reason ? ` ${a.reason}` : ''}`
             }
             accessibilityHint="Opens why this level is on the chart"

@@ -34,6 +34,7 @@
  * every function in this file a pure one that a test can drive with fixtures.
  */
 import type { Candle } from '@shared/api';
+import type { IndicatorSpec } from '@shared/indicators';
 
 /* ------------------------------------------------------------------ */
 /* Small shared arithmetic                                              */
@@ -153,8 +154,22 @@ export type NamedLevel = {
   what: string;
   /** Which bars produced it. Goes verbatim into `provenance`. */
   from: string;
-  /** The bar this level is ABOUT, when one bar owns it. Null for averages. */
+  /**
+   * The bar this level is ABOUT, when one bar owns it. Null for averages.
+   * For an ANCHORED average it is the anchor — the bar the running total starts
+   * from — which is what the client needs to redraw the curve for itself.
+   */
   ts: string | null;
+  /**
+   * SET WHEN THIS IS A CURVE RATHER THAN A PRICE.
+   *
+   * `price` is still filled in and is still the newest value, because that is
+   * the number a person means by "the 21 is at 604" — but a caller that draws
+   * levels must not draw this one as a horizontal rule, and a caller that ranks
+   * support and resistance must not rank it at all. Naming it in the type is
+   * what makes both of those checkable instead of a string match on the label.
+   */
+  indicator?: IndicatorSpec;
 };
 
 export type KeyLevels = {
@@ -228,6 +243,8 @@ export function computeKeyLevels(candles: Candle[]): KeyLevels | null {
       what: `The ${p}-day moving average, currently $${round2(v)}. It is a line, so it moves with every new close.`,
       from: `${p}-day exponential moving average of ${closes.length} daily closes, ${window}.`,
       ts: null,
+      // A CURVE. `price` is today's value of it; the chart draws the whole line.
+      indicator: { indicator: 'ema', period: p },
     });
   }
 
@@ -289,8 +306,16 @@ export function computeKeyLevels(candles: Candle[]): KeyLevels | null {
 
   // The 0.2% dead band around price is the War Room's: a "resistance" one tick
   // above the last close is not a level, it is the last close.
-  const resistance = levels.filter((l) => l.price > current * 1.002).sort((a, b) => a.price - b.price);
-  const support = levels.filter((l) => l.price < current * 0.998).sort((a, b) => b.price - a.price);
+  //
+  // AN AVERAGE IS NOT A SHELF AND IS EXCLUDED FROM BOTH LISTS. "Nearest support"
+  // meant "nearest anything below price", so on a trending name it kept coming
+  // back as the 8-day average — a number that will be somewhere else tomorrow —
+  // and it was then drawn as a fixed line labelled Support. These lists feed
+  // `nearest_support` / `nearest_resistance` and the chart's shelf vocabulary,
+  // and every member of them has to be a price that PRINTED and stayed put.
+  const shelves = levels.filter((l) => !l.indicator);
+  const resistance = shelves.filter((l) => l.price > current * 1.002).sort((a, b) => a.price - b.price);
+  const support = shelves.filter((l) => l.price < current * 0.998).sort((a, b) => b.price - a.price);
 
   return {
     current,
@@ -382,10 +407,11 @@ export function computeIntradayLevels(candles: Candle[]): IntradayLevels | null 
     price: number | null,
     ts: string | null,
     what: string,
-    from: string
+    from: string,
+    indicator?: IndicatorSpec
   ) => {
     if (price === null || !Number.isFinite(price)) return;
-    levels.push({ name, price, what, from, ts });
+    levels.push({ name, price, what, from, ts, ...(indicator ? { indicator } : {}) });
   };
 
   const extreme = (
@@ -466,9 +492,15 @@ export function computeIntradayLevels(candles: Candle[]): IntradayLevels | null 
     push(
       'vwap',
       pv / vol,
-      dayRows[dayRows.length - 1].bar.ts,
+      // THE ANCHOR, NOT THE LATEST BAR. A VWAP is a running total, so the one
+      // thing a client needs in order to redraw the whole curve for itself is
+      // where the total STARTED. Handing it the newest bar instead was fine
+      // while the only thing ever drawn was a rule at the newest value, and is
+      // exactly the assumption that made it a rule in the first place.
+      dayRows[0].bar.ts,
       `The volume-weighted average price for the session, $${round2(pv / vol)} — the average price everyone who traded today actually paid.`,
-      `Typical price times volume over ${dayRows.length} five-minute bars in ${label} on ${date}.`
+      `Typical price times volume over ${dayRows.length} five-minute bars in ${label} on ${date}.`,
+      { indicator: 'vwap', period: null }
     );
   }
 

@@ -49,6 +49,15 @@ function kindColor(kind) {
       return TOKENS.green;
     case 'note':
       return TOKENS.violetLight;
+    // AN OVERLAY IS CONTEXT, NOT A DECISION. Averages are the most-drawn thing
+    // on a chart and the least decisive — no average is where you enter, where
+    // you get out, or where you were wrong. In cyan, four of them carry the same
+    // visual weight as the trigger and bury it. `muted` is already the app's
+    // secondary-text grey, so this borrows no meaning and adds nothing to the
+    // fourteen. Curves are told apart by their labels and their weight, never by
+    // hue: one family, one meaning. Mirrors src/features/chart/semantics.ts.
+    case 'indicator':
+      return TOKENS.muted;
     case 'trigger':
     case 'entry':
     case 'support':

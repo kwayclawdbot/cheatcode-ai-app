@@ -16,6 +16,7 @@
  * and `degraded` — see schema-probe.ts for why there is no jsonb fallback here.
  */
 import type { AnnotationKind, AnnotationRow, AnnotationProvenance, AnnotationStatus } from '@shared/api';
+import { indicatorLabel, looksLikeIndicator, parseIndicator } from '@shared/indicators';
 import { serviceClient } from '../db';
 import { ApiError } from '../errors';
 import { log } from '../log';
@@ -45,10 +46,68 @@ const SEMANTIC: Record<AnnotationKind, AnnotationRow['semantic']> = {
   // from already carries it.
   circle: 'level',
   arrow: 'level',
+  // An overlay is market information about the whole window, never a risk and
+  // never a target. The client gives it its own muted colour off this.
+  indicator: 'level',
 };
 
+/**
+ * THE REPAIR, AND IT RUNS ON EVERY READ.
+ *
+ * Rows written before overlays existed say `kind: 'support'` (or `resistance`,
+ * whichever side of price the average happened to be on) and `text: 'Ema21'`.
+ * They are on real conversations, on real charts, right now — the wall of
+ * horizontal lines the owner reported IS those rows. Rewriting them in place
+ * would mean a data migration whose blast radius is every chart in the product
+ * and whose only signal that it was wrong would arrive after the fact, so
+ * nothing is rewritten: the label is re-read on the way out.
+ *
+ * IT IS ALSO DEFENCE IN DEPTH GOING FORWARD. Any caller that writes an
+ * indicator-shaped label through the level path — a stale client, a worker that
+ * has not been redeployed, `markPlanLevels` if someone ever gives a plan leg an
+ * average for a name — comes back out as an overlay. There is no route through
+ * this module by which a moving average reaches a chart as a horizontal rule.
+ *
+ * A LABEL THAT MATCHES BUT WILL NOT PARSE STILL STOPS BEING A LINE. If the
+ * pattern says "indicator" and the parser cannot say which one, the row is left
+ * as a `note` — Kai's own commentary, drawn as an anchored dot rather than a
+ * rule across the plot. Refusing to draw the wrong thing beats drawing it.
+ */
+function repairIndicator(kind: AnnotationKind, text: string | null): {
+  kind: AnnotationKind;
+  text: string | null;
+  indicator: AnnotationRow['indicator'];
+  period: AnnotationRow['period'];
+} {
+  // Shapes and notes are left exactly as they are: a trendline through two real
+  // bars is already a curve, and a box named after an average is a band, not a line.
+  const isLevelLike =
+    kind === 'support' || kind === 'resistance' || kind === 'trigger' ||
+    kind === 'entry' || kind === 'stop' || kind === 'invalidation' || kind === 'target';
+
+  if (kind !== 'indicator' && !(isLevelLike && looksLikeIndicator(text))) {
+    return { kind, text, indicator: null, period: null };
+  }
+  const spec = parseIndicator(text);
+  if (!spec) {
+    return kind === 'indicator'
+      ? { kind: 'note', text, indicator: null, period: null }
+      : { kind: 'note', text, indicator: null, period: null };
+  }
+  return {
+    kind: 'indicator',
+    // Re-labelled from the parse, so `Ema21` and `21 ema` both come back as the
+    // one string the chip, the rail and the price tag all show.
+    text: indicatorLabel(spec),
+    indicator: spec.indicator,
+    period: spec.period,
+  };
+}
+
 export function toAnnotationRow(row: Record<string, unknown>): AnnotationRow {
-  const kind = String(row.kind) as AnnotationKind;
+  const stored = String(row.kind) as AnnotationKind;
+  const fixed = repairIndicator(stored, (row.text as string) ?? null);
+  const kind = fixed.kind;
   return {
     id: String(row.id),
     symbol: String(row.symbol),
@@ -58,7 +117,7 @@ export function toAnnotationRow(row: Record<string, unknown>): AnnotationRow {
     price2: row.price2 === null || row.price2 === undefined ? null : Number(row.price2),
     ts_from: (row.ts_from as string) ?? null,
     ts_to: (row.ts_to as string) ?? null,
-    text: (row.text as string) ?? null,
+    text: fixed.text,
     reason: (row.reason as string) ?? null,
     provenance: (row.provenance as AnnotationProvenance) ?? 'kai',
     status: (row.status as AnnotationStatus) ?? 'valid',
@@ -70,6 +129,8 @@ export function toAnnotationRow(row: Record<string, unknown>): AnnotationRow {
     editable: true,
     created_at: String(row.created_at),
     updated_at: (row.updated_at as string) ?? null,
+    indicator: fixed.indicator,
+    period: fixed.period,
   };
 }
 
@@ -162,10 +223,19 @@ export async function createAnnotation(userId: string, a: NewAnnotation): Promis
  * Idempotent by (symbol, timeframe, kind, price, source). Kai marking the same
  * trigger twice must not leave two lines on the chart — the second call updates
  * the reason and returns the same row.
+ *
+ * AN OVERLAY IS IDENTIFIED BY ITS NAME, NOT BY ITS VALUE. The 21-day average has
+ * a different price on every bar, so matching an indicator on `price` would
+ * create a fresh row every time Kai mentioned it and the chart would accumulate
+ * one curve per session — the clutter bug all over again in a new shape. So for
+ * `indicator` the match is on `text` ("EMA 21") and the newest value is written
+ * over the old one, which is the correct behaviour for a number that is a
+ * snapshot of something moving rather than a claim about a fixed shelf.
  */
 export async function upsertAnnotation(userId: string, a: NewAnnotation): Promise<AnnotationRow | null> {
   if (!(await hasAnnotationsTable())) return null;
   const db = serviceClient();
+  const byName = a.kind === 'indicator';
   let q = db
     .from('chart_annotations')
     .select(COLUMNS)
@@ -175,7 +245,8 @@ export async function upsertAnnotation(userId: string, a: NewAnnotation): Promis
     .eq('kind', a.kind)
     .neq('status', 'deleted')
     .limit(1);
-  if (a.price === null || a.price === undefined) q = q.is('price', null);
+  if (byName) q = q.eq('text', a.text ?? '');
+  else if (a.price === null || a.price === undefined) q = q.is('price', null);
   else q = q.eq('price', a.price);
 
   const existing = await q;
@@ -187,6 +258,9 @@ export async function upsertAnnotation(userId: string, a: NewAnnotation): Promis
         reason: a.reason ?? (found.reason as string) ?? null,
         text: a.text ?? (found.text as string) ?? null,
         status: 'valid',
+        // Only an overlay moves. A trigger whose price changed is a different
+        // trigger and gets its own row, exactly as it always has.
+        ...(byName ? { price: a.price ?? null, ts_from: a.ts_from ?? (found.ts_from as string) ?? null } : {}),
         source_alert_id: a.source_alert_id ?? (found.source_alert_id as string) ?? null,
         source_setup_id: a.source_setup_id ?? (found.source_setup_id as string) ?? null,
         source_plan_id: a.source_plan_id ?? (found.source_plan_id as string) ?? null,
@@ -202,6 +276,44 @@ export async function upsertAnnotation(userId: string, a: NewAnnotation): Promis
   } catch {
     return null;
   }
+}
+
+/**
+ * An overlay that was never written down.
+ *
+ * THE STORE IS NOT ALLOWED TO BE THE REASON A CURVE DOES NOT APPEAR. Every other
+ * annotation asserts a number that came from somewhere — a graded setup, a saved
+ * plan — so if it cannot be persisted, dropping it is the honest outcome. An
+ * indicator asserts nothing of the kind: it is arithmetic over the candles the
+ * client already has on screen, and the client would draw exactly the same curve
+ * whether a row exists for it or not. So when the table is absent, or the kind
+ * constraint has not been widened on this database yet (migration 0036), the
+ * frame still carries a row and the chart still draws the average. It simply
+ * does not survive a reload, which is the correct amount of degradation.
+ *
+ * The id is DERIVED, not random, so a second mention of the same average
+ * replaces the first on the client instead of stacking a second curve on it.
+ */
+export function ephemeralAnnotation(a: NewAnnotation & { id?: string }): AnnotationRow {
+  return toAnnotationRow({
+    id: a.id ?? `local:${a.symbol.toUpperCase()}:${a.timeframe ?? '1d'}:${a.kind}:${a.text ?? ''}`,
+    symbol: a.symbol.toUpperCase(),
+    timeframe: a.timeframe ?? '1d',
+    kind: a.kind,
+    price: a.price ?? null,
+    price2: a.price2 ?? null,
+    ts_from: a.ts_from ?? null,
+    ts_to: a.ts_to ?? null,
+    text: a.text ?? null,
+    reason: a.reason ?? null,
+    provenance: a.provenance ?? 'kai',
+    status: 'valid',
+    source_alert_id: a.source_alert_id ?? null,
+    source_setup_id: a.source_setup_id ?? null,
+    source_plan_id: a.source_plan_id ?? null,
+    created_at: new Date().toISOString(),
+    updated_at: null,
+  });
 }
 
 export async function patchAnnotation(

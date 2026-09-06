@@ -123,6 +123,10 @@ const toWire = (a: Annotation): ChoreoAnnotation => ({
   text: a.text,
   provenance: a.provenance,
   status: a.status,
+  // Only meaningful on `kind: 'indicator'`; null everywhere else, and the page
+  // ignores them everywhere else.
+  indicator: a.indicator ?? null,
+  period: a.period ?? null,
 });
 
 const toWireCandle = (c: Candle) => ({ t: c.t, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v ?? null });

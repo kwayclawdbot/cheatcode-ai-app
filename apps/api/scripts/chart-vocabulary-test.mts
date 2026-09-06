@@ -57,11 +57,16 @@ import {
 } from '../src/lib/market/key-levels.ts';
 import {
   availableDrawings,
+  availableIndicators,
+  executeChartCommand,
   availableLevels,
+  resolveIndicator,
   resolveLevel,
   type ChartContext,
 } from '../src/lib/kai/chart-commands.ts';
 import { fetchAggregates, lastTradingDate, polygonConfigured } from '../src/lib/market/polygon.ts';
+import { toAnnotationRow } from '../src/lib/round4/annotations.ts';
+import { looksLikeIndicator, parseIndicator } from '../../../packages/shared/indicators.ts';
 
 const VERBOSE = process.argv.includes('--verbose');
 
@@ -337,10 +342,9 @@ ok(
   before.filter((k) => resolveLevel(bare, k) !== null)
 );
 const now = availableLevels(bare);
-ok('the new vocabulary resolves on the same chart', now.length >= 15, now);
+ok('the new vocabulary resolves on the same chart', now.length >= 12, now);
 ok('including the previous session', near(resolveLevel(bare, 'prior_day_high')?.price, 133.5));
 ok('including today\'s opening range', near(resolveLevel(bare, 'open_range_high')?.price, 107));
-ok('including the volume-weighted average', near(resolveLevel(bare, 'vwap')?.price, byHand, 0.01));
 ok(
   'and the nearest level in either direction, which is what "what is next" means',
   typeof resolveLevel(bare, 'nearest_support')?.price === 'number' &&
@@ -358,11 +362,163 @@ ok(
   'a level whose bar is known brings that bar with it, so the camera can go there',
   typeof resolveLevel(bare, 'prior_day_high')?.ts === 'string'
 );
-ok('an average belongs to no single bar and says so with a null', resolveLevel(bare, 'ema8')?.ts === null);
 ok('a name nobody defined still draws nothing', resolveLevel(bare, 'the_bit_that_looks_dodgy') === null);
+
+/* ------------------------------------------------------------------ */
+section('An average is a CURVE and never resolves as a level');
+
+/**
+ * THE OWNER'S SECOND COMPLAINT, WORD FOR WORD: "Kai marks out levels like ema
+ * etc as horizontal levels not actual ema so the entire chart is nothing but
+ * multiple horizontal levels."
+ *
+ * It was exactly true. `ema21` resolved through `resolveLevel`, which returns a
+ * PRICE and an annotation kind, and the only thing the chart can do with a price
+ * and a kind of `support` is rule a dashed line across the plot. So the fix has
+ * to be asserted at the resolver, not at the renderer: an average must not come
+ * back from the level path AT ALL, because anything that does is a horizontal
+ * line by construction.
+ */
+const curveNames = ['ema8', 'ema21', 'ema50', 'vwap', '21ema', 'ema_50', 'session_vwap'];
+ok(
+  'not one of them comes back from the level resolver',
+  curveNames.every((k) => resolveLevel(bare, k) === null),
+  curveNames.filter((k) => resolveLevel(bare, k) !== null)
+);
+// Anchored, because "premarket_high" contains the letters e-m-a and a loose
+// match here would have reported the fix as broken while it was working.
+const CURVE_KEY = /^(?:ema|sma)_?\d|^vwap$/i;
+ok(
+  'and none of them is advertised to Kai as a level he can mark',
+  now.every((k) => !CURVE_KEY.test(k)),
+  now.filter((k) => CURVE_KEY.test(k))
+);
+ok('they resolve as curves instead', availableIndicators(bare).length >= 3, availableIndicators(bare));
+ok('the 8-day average is priced', typeof resolveIndicator(bare, 'ema8')?.price === 'number');
+ok('and it knows it is an 8-bar exponential average',
+  resolveIndicator(bare, 'ema8')?.spec.indicator === 'ema' && resolveIndicator(bare, 'ema8')?.spec.period === 8);
+ok('the volume-weighted average is priced the same way it always was', near(resolveIndicator(bare, 'vwap')?.price, byHand, 0.01));
+ok(
+  'and it carries its ANCHOR — where the running total starts, which is what the client redraws from',
+  typeof resolveIndicator(bare, 'vwap')?.anchorTs === 'string'
+);
+ok('a rolling average has no anchor, because it is recomputed on every bar', resolveIndicator(bare, 'ema8')?.anchorTs === null);
+ok(
+  'a period nobody precomputed is still arithmetic over stored closes',
+  typeof resolveIndicator(bare, 'ema9')?.price === 'number' && resolveIndicator(bare, 'ema9')?.label === 'EMA 9'
+);
+ok('a 200-day average over thirty bars is refused, not approximated', resolveIndicator(bare, 'ema200') === null);
+ok('and a support is still a support', resolveIndicator(bare, 'prior_day_high') === null);
+
+/**
+ * The averages used to be in the support and resistance lists too, which is how
+ * "nearest support" kept coming back as a number that will be somewhere else
+ * tomorrow — and then got drawn as a fixed shelf labelled Support.
+ */
+ok(
+  'no average leaks into the nearest-support answer',
+  !/ema|vwap|average/i.test(resolveLevel(bare, 'nearest_support')?.reason ?? ''),
+  resolveLevel(bare, 'nearest_support')?.reason
+);
+ok(
+  'nor into nearest resistance',
+  !/ema|vwap|average/i.test(resolveLevel(bare, 'nearest_resistance')?.reason ?? ''),
+  resolveLevel(bare, 'nearest_resistance')?.reason
+);
 ok('"pdh" is what a person types, and it resolves to the same number', near(resolveLevel(bare, 'pdh')?.price, 133.5));
 ok('"hod" too', near(resolveLevel(bare, 'hod')?.price, 112));
 ok('and casing and spaces do not break it', near(resolveLevel(bare, '  PDH ')?.price, 133.5));
+
+/* ------------------------------------------------------------------ */
+section('Rows already in the table — repaired on the way out, not migrated');
+
+/**
+ * THE HALF THAT FIXES CHARTS THAT ARE ALREADY WRONG.
+ *
+ * Every average Kai has ever marked is sitting in `chart_annotations` as
+ * `kind: 'support'` (or `resistance`, whichever side of price it was on) with
+ * `text: 'Ema21'`. Those rows ARE the wall of horizontal lines. Rewriting them
+ * would be a data migration across every chart in the product whose only signal
+ * that it went wrong would arrive afterwards, so `toAnnotationRow` re-reads the
+ * label instead: nothing is rewritten, and there is nothing to back out.
+ *
+ * `Ema21` is the case that matters most and the one a careless guard misses —
+ * `\bema\b` does not match it, because the next character is a digit.
+ */
+const row = (kind: string, text: string) =>
+  toAnnotationRow({
+    id: 'r', symbol: 'TEST', timeframe: '1d', kind, price: 604.12, price2: null,
+    ts_from: null, ts_to: null, text, reason: 'x', provenance: 'kai', status: 'valid',
+    source_alert_id: null, source_setup_id: null, source_plan_id: null,
+    created_at: '2026-01-01T00:00:00Z', updated_at: null,
+  });
+
+ok('a support labelled "Ema21" comes back as a curve', row('support', 'Ema21').kind === 'indicator', row('support', 'Ema21'));
+ok('and it is re-labelled to the one name the chip, the rail and the tag all use', row('support', 'Ema21').text === 'EMA 21');
+ok('and it carries which curve and how many bars', row('support', 'Ema21').indicator === 'ema' && row('support', 'Ema21').period === 21);
+ok('a resistance labelled "Vwap" comes back as a curve', row('resistance', 'Vwap').kind === 'indicator' && row('resistance', 'Vwap').indicator === 'vwap');
+ok('"50-day moving average" too', row('support', '50-day moving average').period === 50);
+ok('and it is a level semantic either way, so it is never coloured as risk', row('support', 'Ema21').semantic === 'level');
+
+ok('a real shelf is untouched', row('support', 'Prior day low').kind === 'support');
+ok('so is a trigger', row('trigger', 'Trigger').kind === 'trigger');
+ok(
+  'and a level that merely STARTS like an acronym stays a level',
+  row('support', 'Smart money zone').kind === 'support' && row('resistance', 'Major shelf').kind === 'resistance',
+);
+ok(
+  'a shape named after an average keeps its shape — a trendline is already a curve',
+  row('trendline', 'EMA 21 channel').kind === 'trendline',
+);
+ok(
+  'and an indicator row that names no computable curve becomes a note, never a rule',
+  row('indicator', 'something').kind === 'note',
+);
+
+ok('the guard catches every spelling the parser can read', ['Ema21', 'EMA 21', '21 EMA', 'ma50', 'VWAP', '50-day moving average']
+  .every((s) => looksLikeIndicator(s) && parseIndicator(s) !== null));
+ok('and fires on none of the level names', ['Support', 'Resistance', 'Trigger', 'Prior day high', 'Smart money zone', 'Fib 61.8%', 'First target']
+  .every((s) => !looksLikeIndicator(s)), ['Support', 'Resistance', 'Trigger', 'Prior day high', 'Smart money zone', 'Fib 61.8%', 'First target'].filter(looksLikeIndicator));
+
+/* ------------------------------------------------------------------ */
+section('mark_level — the command that used to draw the rule');
+
+/**
+ * THE ONE ASSERTION THE WHOLE FIX HANGS ON.
+ *
+ * `mark_level` is where every path meets: the chat's fenced block, the
+ * director's `[MARK:]` cues, the show's resolver. Asked for `ema21` it must
+ * produce an OVERLAY frame — one that names the curve and lets the client draw
+ * the series — and it must not produce a frame carrying a price and a level
+ * kind, because that frame is a horizontal line by the time it reaches a canvas.
+ *
+ * The annotation may or may not persist here (there is no signed-in user behind
+ * this test, and migration 0036 may not be applied on whatever database it is
+ * pointed at). That is deliberate: an overlay is arithmetic over bars the client
+ * already holds, so it draws either way, and this asserts that too.
+ */
+const curveFrame = await executeChartCommand(bare, { command: 'mark_level', args: { level: 'ema21' } });
+ok('asking to mark the 21-day produces a frame', curveFrame !== null);
+ok('and it is an OVERLAY, not a level', curveFrame?.payload.kind === 'indicator', curveFrame?.payload);
+ok('naming which curve and over how many bars', curveFrame?.payload.indicator === 'ema' && curveFrame?.payload.period === 21);
+ok('with an annotation the chart can draw, persisted or not', (curveFrame?.annotations.length ?? 0) === 1 && curveFrame?.annotations[0].kind === 'indicator');
+ok('labelled the way a person says it', curveFrame?.annotations[0].text === 'EMA 21');
+ok(
+  'and Kai says out loud that it MOVES, rather than that it sits at a price',
+  /moves? with every new close|line that moves/i.test(curveFrame?.narration ?? ''),
+  curveFrame?.narration
+);
+
+const vwapFrame = await executeChartCommand(bare, { command: 'mark_level', args: { level: 'vwap' } });
+ok('the volume-weighted average is an overlay too', vwapFrame?.payload.kind === 'indicator' && vwapFrame?.payload.indicator === 'vwap');
+ok('and it carries the anchor its running total starts from', typeof vwapFrame?.payload.anchor_ts === 'string');
+
+const shelfFrame = await executeChartCommand(bare, { command: 'mark_level', args: { level: 'prior_day_high' } });
+ok('a real shelf is still a level, still a horizontal line', shelfFrame?.payload.kind === 'resistance' || shelfFrame?.payload.kind === 'support', shelfFrame?.payload);
+ok('and it is not accidentally an overlay', shelfFrame?.payload.indicator === undefined);
+
+/* ------------------------------------------------------------------ */
+section('Drawings');
 
 const drawings = availableDrawings(bare);
 ok('the drawings that resolve are advertised as copyable arguments', drawings.some((s) => s.includes('"fib"')), drawings);

@@ -916,17 +916,28 @@ export { adaptOrder, adaptPosition, adaptPreview, adaptPlan };
 /* ==================================================================== */
 
 import type {
-  Annotation, AnnotationKind, AnnotationProvenance, AnnotationStatus, PortalAlert,
+  Annotation, AnnotationKind, AnnotationProvenance, AnnotationStatus, IndicatorName, PortalAlert,
   PortalCommunity, PortalContext, PortalPlan, PortalTimeframe, ScoreComponent, TradePortal,
   ExecutionState,
 } from '../features/portal/types';
 import { PORTAL_TIMEFRAMES } from '../features/portal/types';
+import { parseIndicator } from '@shared/indicators';
 import { fixturePortal } from '../features/portal/fixtures';
 import { fixtureCandles, fixtureCandlesDaily } from './fixtures';
 import type { Candle } from './types';
 
+/**
+ * EVERY KIND THE CHART CAN DRAW, AND THE LIST HAD FALLEN BEHIND.
+ *
+ * Anything not on it is read as `note`, which is a dot with a label rather than
+ * the shape the server sent — so a trendline arrived as a dot, a box arrived as
+ * a dot, and nothing anywhere reported that a shape had been flattened. The five
+ * shape kinds have been in `AnnotationKind` since LIVE-1 and 0027; they belong
+ * here too, and `indicator` would have been silently flattened the same way.
+ */
 const ANNOTATION_KINDS: AnnotationKind[] = [
   'trigger', 'entry', 'stop', 'invalidation', 'target', 'support', 'resistance', 'note',
+  'trendline', 'box', 'vertical', 'circle', 'arrow', 'indicator',
 ];
 const readKind = (v: unknown): AnnotationKind => {
   const s = str(v).toLowerCase();
@@ -967,7 +978,37 @@ export function adaptAnnotation(v: unknown, fallbackSymbol = ''): Annotation {
     source_plan_id: str(pick(r, 'source_plan_id', 'plan_id')) || null,
     created_at: str(pick(r, 'created_at')) || null,
     updated_at: str(pick(r, 'updated_at')) || null,
+    ...readIndicator(r),
   };
+}
+
+/**
+ * Which curve an overlay row names, and the client's own last line of defence.
+ *
+ * The server sends `indicator` and `period` on every `kind: 'indicator'` row, so
+ * the normal path is to read them. The parse from `text` is for the rows it
+ * cannot: a mark the user drew and labelled "50 EMA" by hand, a row that came
+ * back from an API build that predates the fields. THE PARSE ALSO PROMOTES: a
+ * row still labelled like an average but typed as a support — the exact shape of
+ * every mark written before this existed — becomes an overlay here even if it
+ * reached the app unrepaired, so no path through the client draws a moving
+ * average as a horizontal rule.
+ */
+function readIndicator(r: Record<string, unknown>): { kind?: AnnotationKind; indicator: IndicatorName | null; period: number | null } {
+  const named = str(pick(r, 'indicator')).toLowerCase();
+  const direct: IndicatorName | null = named === 'ema' || named === 'sma' || named === 'vwap' ? named : null;
+  if (direct) return { indicator: direct, period: num(pick(r, 'period')) ?? null };
+
+  const label = str(pick(r, 'text', 'label'));
+  const kind = str(pick(r, 'kind')).toLowerCase();
+  const spec = parseIndicator(label);
+  if (!spec) return { indicator: null, period: null };
+  // Only promote something that was being drawn AS A PRICE. A trendline or a box
+  // named after an average is already the right shape and is left alone.
+  const promotable = kind === 'indicator' || kind === 'support' || kind === 'resistance' ||
+    kind === 'trigger' || kind === 'entry' || kind === 'stop' || kind === 'invalidation' || kind === 'target';
+  if (!promotable) return { indicator: null, period: null };
+  return { kind: 'indicator', indicator: spec.indicator, period: spec.period };
 }
 
 function adaptScoreComponents(v: unknown): ScoreComponent[] {

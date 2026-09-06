@@ -23,12 +23,27 @@ import {
   type ChartCommandFrame,
 } from '@shared/api';
 import { LIVE_ZONE_TARGETS } from '@shared/live';
+import {
+  indicatorKey,
+  indicatorLabel,
+  indicatorPlain,
+  looksLikeIndicator,
+  parseIndicator,
+  type IndicatorSpec,
+} from '@shared/indicators';
 import { z } from 'zod';
 import { levels, isLong } from '../setups';
 import type { SetupRow } from './context';
-import { markPlanLevels, patchAnnotation, upsertAnnotation, listAnnotations } from '../round4/annotations';
+import {
+  ephemeralAnnotation,
+  markPlanLevels,
+  patchAnnotation,
+  upsertAnnotation,
+  listAnnotations,
+} from '../round4/annotations';
 import {
   computeAnchoredVwap,
+  emaLast,
   round2 as r2,
   type FibGrid,
   type IntradayLevels,
@@ -91,10 +106,6 @@ const DAILY_LEVEL_KEYS = [
   'year_low',
   'swing_high',
   'swing_low',
-  'ema8',
-  'ema21',
-  'ema50',
-  'ema200',
   'nearest_support',
   'nearest_resistance',
 ] as const;
@@ -107,8 +118,28 @@ const INTRADAY_LEVEL_KEYS = [
   'open_range_low',
   'session_high',
   'session_low',
-  'vwap',
 ] as const;
+
+/**
+ * NAMES THAT ARE CURVES, AND THEY ARE NOT LEVELS.
+ *
+ * These were in `DAILY_LEVEL_KEYS` and `INTRADAY_LEVEL_KEYS` until the owner
+ * reported the chart as "nothing but multiple horizontal levels", which it was:
+ * `mark_level` resolved `ema21` to its value on the newest bar, a value is a
+ * price, and the only thing the level path can do with a price is rule a dashed
+ * line across the entire plot labelled Support. Five averages, five rules, none
+ * of them true anywhere except the right-hand edge.
+ *
+ * A name in this list resolves through `resolveIndicator` instead, and the frame
+ * it produces carries the NAME of the curve rather than a price to draw a rule
+ * at. The client already holds the candles; it computes the series itself and
+ * draws a line that is correct on every bar.
+ *
+ * NOT A CLOSED LIST, unlike the levels. Any `ema<n>` or `sma<n>` a person names
+ * is arithmetic over closes that are already loaded, so `resolveIndicator`
+ * computes it on demand — these are just the ones advertised in the prompt.
+ */
+const INDICATOR_KEYS = ['ema8', 'ema21', 'ema50', 'ema200', 'vwap'] as const;
 
 const LEVEL_KEYS = [...SETUP_LEVEL_KEYS, ...DAILY_LEVEL_KEYS, ...INTRADAY_LEVEL_KEYS] as const;
 type LevelKey = (typeof SETUP_LEVEL_KEYS)[number];
@@ -274,6 +305,10 @@ function labelOf(name: string): string {
 function computedLevels(ctx: ChartContext): Map<string, Resolved> {
   const out = new Map<string, Resolved>();
   const add = (l: NamedLevel, current: number, sourceNote: string) => {
+    // A CURVE NEVER ENTERS THE LEVEL TABLE. It has a `price` — today's value —
+    // and that price is what made it a horizontal rule for as long as this
+    // function could not tell the two apart. `resolveIndicator` has it instead.
+    if (l.indicator) return;
     const kind: AnnotationKind = l.price < current ? 'support' : 'resistance';
     out.set(l.name, {
       price: r2(l.price),
@@ -319,6 +354,126 @@ function computedLevels(ctx: ChartContext): Map<string, Resolved> {
   }
 
   return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Curves                                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A moving average or a volume-weighted average, resolved as what it is.
+ *
+ * `price` IS FILLED IN AND IS NOT WHAT GETS DRAWN. It is today's value of the
+ * curve — the number a person means by "the 21 is at 604" — so the price tag,
+ * the levels rail and Kai's own sentence all have a number to show. The LINE
+ * comes from the client, which recomputes the whole series off the candles it is
+ * already holding, so it is right on every bar rather than right on the last one
+ * and flat everywhere else.
+ */
+export type ResolvedIndicator = {
+  spec: IndicatorSpec;
+  /** The resolver key: `ema21`, `vwap`. */
+  key: string;
+  /** The chip: "EMA 21", "VWAP". */
+  label: string;
+  /** Newest value of the curve. */
+  price: number;
+  reason: string;
+  provenance: string;
+  /**
+   * Where a RUNNING total starts. A VWAP has one; a windowed average does not,
+   * because it is recomputed from scratch on every bar. The client needs it to
+   * draw the same curve the server priced.
+   */
+  anchorTs: string | null;
+};
+
+/** Every curve the loaded bars already priced, keyed by the name Kai may say. */
+function computedIndicators(ctx: ChartContext): Map<string, ResolvedIndicator> {
+  const out = new Map<string, ResolvedIndicator>();
+  const add = (l: NamedLevel, note: string) => {
+    if (!l.indicator) return;
+    const spec = l.indicator;
+    const r: ResolvedIndicator = {
+      spec,
+      key: indicatorKey(spec),
+      label: indicatorLabel(spec),
+      price: r2(l.price),
+      reason: `${l.what} It is ${indicatorPlain(spec)}, so it is drawn as a line across the chart rather than as a level.`,
+      provenance: `${l.from} ${note}`,
+      anchorTs: l.ts,
+    };
+    // Both spellings point at the same curve: the name in the data (`ema21`)
+    // and the canonical key. They are the same string today and this is what
+    // keeps them the same string if one of them is ever renamed.
+    out.set(l.name, r);
+    out.set(r.key, r);
+  };
+
+  const daily = ctx.computed ?? null;
+  if (daily) {
+    const note = `Computed from ${daily.bars} daily bars for ${ctx.symbol}.`;
+    for (const l of daily.levels) add(l, note);
+  }
+  const intra = ctx.intraday ?? null;
+  if (intra) {
+    const note = `Computed from ${intra.bars} five-minute bars for ${ctx.symbol} on ${intra.date}.`;
+    for (const l of intra.levels) add(l, note);
+  }
+  return out;
+}
+
+/**
+ * Resolve one named curve. Null when the loaded bars cannot price it.
+ *
+ * TWO PASSES, AND THE SECOND ONE IS WHY THE LIST IS NOT CLOSED. First the ones
+ * `computeKeyLevels` already worked out — the four averages the alert engine
+ * uses, and the session VWAP. Then, for anything else a person can reasonably
+ * name, the arithmetic itself: a 9-day average is a recurrence over closes that
+ * are already in `ctx.dailyBars`, so refusing to draw it would be refusing to do
+ * a sum, not refusing to invent a number. The anti-invention rule is about
+ * prices nobody stored; every close here was stored.
+ */
+export function resolveIndicator(ctx: ChartContext, key: string): ResolvedIndicator | null {
+  const raw = String(key ?? '').trim().toLowerCase();
+  const k = LEVEL_ALIAS[raw] ?? raw;
+
+  const known = computedIndicators(ctx).get(k);
+  if (known) return known;
+
+  const spec = parseIndicator(k);
+  if (!spec) return null;
+  // Only a windowed average can be computed here. A VWAP needs volume-stamped
+  // session bars, and if `computeIntradayLevels` could not build one there is no
+  // session to average over — which is a real answer, not a gap to paper over.
+  if (spec.indicator === 'vwap' || spec.period === null) return null;
+
+  const bars = ctx.dailyBars ?? [];
+  const closes = bars.map((b) => b.c).filter((c): c is number => typeof c === 'number');
+  if (closes.length < spec.period) return null;
+  const value =
+    spec.indicator === 'sma'
+      ? closes.slice(-spec.period).reduce((a, b) => a + b, 0) / spec.period
+      : emaLast(closes, spec.period);
+  if (value === null || !Number.isFinite(value)) return null;
+
+  const label = indicatorLabel(spec);
+  return {
+    spec,
+    key: indicatorKey(spec),
+    label,
+    price: r2(value),
+    reason:
+      `${label} is at $${r2(value)} right now. It is ${indicatorPlain(spec)}, so it is drawn as a line ` +
+      'across the chart rather than as a level.',
+    provenance: `${spec.period}-bar ${spec.indicator === 'sma' ? 'simple' : 'exponential'} moving average of ${closes.length} stored daily closes for ${ctx.symbol}.`,
+    anchorTs: null,
+  };
+}
+
+/** The curves that resolve on this chart right now. */
+export function availableIndicators(ctx: ChartContext): string[] {
+  return INDICATOR_KEYS.filter((k) => resolveIndicator(ctx, k) !== null);
 }
 
 /**
@@ -742,6 +897,70 @@ async function markShape(
   return null;
 }
 
+/**
+ * Put a CURVE on the chart.
+ *
+ * The frame names the average; it does not describe the line. Every point of it
+ * is computed on the client from the candles already on screen, which is the
+ * whole reason this is not a level: there is no single number to be right or
+ * wrong about, and there is nothing to go stale between the server pricing it
+ * and the user panning the chart.
+ *
+ * IT DRAWS EVEN IF IT CANNOT BE SAVED. Every other annotation asserts a number
+ * that came from a graded object, so a failed write means the assertion goes
+ * unmade and the command is dropped. An overlay asserts arithmetic over bars the
+ * client is holding, so a database that is missing the table — or that has not
+ * had migration 0036 applied yet — is not a reason to leave the chart blank
+ * while Kai says he drew the 21-day. The row goes out unpersisted instead: same
+ * curve, gone on reload.
+ */
+async function markIndicator(
+  ctx: ChartContext,
+  key: string,
+  say: (fallback: string) => string
+): Promise<ChartCommandFrame | null> {
+  const ind = resolveIndicator(ctx, key);
+  if (!ind) return null;
+
+  const draft = {
+    symbol: ctx.symbol,
+    timeframe: ctx.levelTimeframe,
+    kind: 'indicator' as const,
+    price: ind.price,
+    ts_from: ind.anchorTs,
+    text: ind.label,
+    reason: ind.reason,
+    provenance: 'kai' as const,
+    source_alert_id: ctx.alertId,
+    source_setup_id: ctx.setup?.id ?? null,
+    source_plan_id: ctx.planId,
+  };
+  const ann = (await upsertAnnotation(ctx.userId, draft)) ?? ephemeralAnnotation(draft);
+
+  return {
+    type: 'chart_command',
+    command: 'mark_level',
+    payload: {
+      level: ind.key,
+      // WHAT THE CLIENT DRAWS FROM. Not a price to rule a line at — the name of
+      // the curve and, for a running average, where the running starts.
+      indicator: ind.spec.indicator,
+      period: ind.spec.period,
+      anchor_ts: ind.anchorTs,
+      price: ind.price,
+      label: ind.label,
+      kind: 'indicator',
+      symbol: ctx.symbol,
+      timeframe: ctx.timeframe,
+    },
+    annotations: [ann],
+    narration: say(
+      `I put the ${ind.label} on the chart as a line. It is at $${ind.price} right now, but it moves — ${indicatorPlain(ind.spec)}.`
+    ),
+    provenance: ind.provenance,
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* Execution                                                            */
 /* ------------------------------------------------------------------ */
@@ -766,8 +985,34 @@ export async function executeChartCommand(
         // horizontal rule that `mark_level` has always drawn.
         const shape = typeof args.shape === 'string' ? args.shape.trim().toLowerCase() : null;
         if (shape) return await markShape(ctx, shape, key, say);
+
+        /**
+         * THE CURVE GATE, AND IT IS THE FIRST THING THAT HAPPENS.
+         *
+         * `mark_level` is the one command every path funnels through — the chat
+         * block, the director's `[MARK:]` cues, the show's resolver — so this is
+         * the single place where "the user asked for the 21-day" turns into
+         * something drawn. Putting the check here rather than at each caller is
+         * what makes it impossible to reach the horizontal-rule path with the
+         * name of an average.
+         */
+        const curve = resolveIndicator(ctx, key);
+        if (curve) return await markIndicator(ctx, key, say);
+
         const r = resolveLevel(ctx, key);
         if (!r) return null;
+        /**
+         * DEFENCE IN DEPTH. Nothing upstream produces an indicator-labelled
+         * level any more — `computedLevels` skips them and the support and
+         * resistance lists exclude them. But a graded setup can be titled
+         * anything, a plan leg can be labelled by hand, and a stored row written
+         * by an older build is still a row. If what came back is NAMED like an
+         * average, it is drawn like one, whatever the level table thought.
+         */
+        if (looksLikeIndicator(r.label)) {
+          const converted = await markIndicator(ctx, r.label, say);
+          if (converted) return converted;
+        }
         const ann = await upsertAnnotation(ctx.userId, {
           symbol: ctx.symbol,
           timeframe: ctx.levelTimeframe,
@@ -880,7 +1125,21 @@ export async function executeChartCommand(
         // Kai was talking about something else. The default is unchanged, so
         // every existing caller behaves exactly as it did.
         const key = typeof args.level === 'string' && args.level.trim() ? args.level : 'trigger';
-        const r = resolveLevel(ctx, key);
+        // A CURVE IS STILL SOMEWHERE THE CAMERA CAN GO. "Take me to the 200-day"
+        // is a request to frame a price, and the average has one; it is only the
+        // DRAWING of it that must not be a rule. Losing the camera move as a
+        // side effect of fixing the line would be a worse chart, not a better one.
+        const curve = resolveIndicator(ctx, key);
+        const r: Resolved | null = resolveLevel(ctx, key) ?? (curve
+          ? {
+              price: curve.price,
+              label: curve.label,
+              kind: 'indicator',
+              reason: curve.reason,
+              provenance: curve.provenance,
+              ts: curve.anchorTs,
+            }
+          : null);
         // THE CANDLE THE LEVEL COMES FROM, when it has one. The trigger's is on
         // the alert; a computed level's is the bar that printed it. Everything
         // else — an average, a plan's stop — is framed by price alone, which is
@@ -977,7 +1236,11 @@ export async function executeChartCommand(
 
       case 'alert_from_level': {
         const key = String(args.level ?? 'trigger');
-        const r = resolveLevel(ctx, key);
+        // "Tell me when it touches the 50-day" is a real request, and the alert
+        // is armed at today's value of it — which is what the user means and
+        // what the confirmation screen will show them before they arm it.
+        const curve = resolveIndicator(ctx, key);
+        const r = resolveLevel(ctx, key) ?? (curve ? { price: curve.price, provenance: curve.provenance } : null);
         if (!r) return null;
         // A PROPOSAL. Kai does not create the alert — the client posts it to the
         // real endpoint and the normal confirmation applies (spec §8).
@@ -1105,7 +1368,11 @@ export async function executeChartCommand(
         // attention first, then the mark.
         const rail = typeof args.rail === 'string' ? (TIMEFRAME_ALIAS[args.rail] ?? args.rail) : null;
         const key = typeof args.level === 'string' ? args.level : null;
-        const r = key ? resolveLevel(ctx, key) : null;
+        // Pointing at an average points at where it is NOW, which is where the
+        // curve meets the right-hand edge — the only place on a moving line that
+        // a single price is true.
+        const curve = key ? resolveIndicator(ctx, key) : null;
+        const r = (key ? resolveLevel(ctx, key) : null) ?? (curve ? { price: curve.price, provenance: curve.provenance } : null);
         const ts = typeof args.ts === 'string' ? args.ts : ctx.triggerTs;
         if (!rail && !r && !ts) return null;
         return {
@@ -1152,8 +1419,11 @@ export function chartCommandProtocol(ctx: {
   available: string[];
   /** The drawings that resolve right now: `trendline:uptrend`, `fib`, and so on. */
   drawings?: string[];
+  /** The CURVES that resolve right now: `ema21`, `vwap`. Drawn as lines, never as levels. */
+  indicators?: string[];
 }): string {
   const drawings = ctx.drawings ?? [];
+  const indicators = ctx.indicators ?? [];
   return `CHART CONTROL
 
 You are talking to the user underneath a live ${ctx.symbol} chart on the
@@ -1174,6 +1444,20 @@ Rules, and they are strict:
   } The server
   looks the number up in the setup, the plan or the room and draws it. A number
   you write is discarded, and a level that is not in the data is not drawn at all.
+- A LEVEL IS A PRICE THAT STAYS PUT. Everything in that list is a shelf: a price
+  something happened at and that is still sitting where it happened — support,
+  resistance, the entry, the stop, the target, the previous session's high and
+  low, the opening range, a round number. A horizontal line is what those look
+  like, and horizontal lines are reserved for them.
+- AN AVERAGE IS NOT ONE OF THOSE AND YOU DO NOT MARK IT AS A LEVEL. ${
+    indicators.length
+      ? `These are CURVES and this chart has them: ${indicators.join(', ')}. Name one exactly as you would name a level — \`{"command":"mark_level","args":{"level":"ema21"}}\` — and the chart draws the whole line, correct on every bar. You may also name any other average by period (\`ema9\`, \`sma20\`) and it is computed from the stored closes.`
+      : 'No average or volume-weighted average can be priced on this chart right now, so do not offer to draw one.'
+  }
+  Do not describe an average as a level, do not say it "is at" a price as though
+  that price were a shelf, and never ask for it any other way — a moving average
+  drawn as a horizontal rule is wrong about the one thing that makes it a moving
+  average, and a chart carrying five of them is unreadable.
 - One command per reply. Say your sentence in the text BEFORE the block — the
   chart changing without you saying what changed is not acceptable.
 - commands: mark_level · set_timeframe (args.timeframe one of 1m, 5m, 15m, 1h,
@@ -1236,7 +1520,14 @@ price has done instead.`;
  * marker never writes `[MARK:resistance:625.66]`, and a price that is never
  * written cannot be wrong.
  */
-export function chartAnswerProtocol(ctx: { symbol: string; timeframe: string; available: string[] }): string {
+export function chartAnswerProtocol(ctx: {
+  symbol: string;
+  timeframe: string;
+  available: string[];
+  /** The curves this chart can draw. Named in prose exactly like a level. */
+  indicators?: string[];
+}): string {
+  const indicators = ctx.indicators ?? [];
   return `ANSWERING ON THE CHART
 
 When the user asks a QUESTION about this ${ctx.symbol} chart — why the grade is
@@ -1259,6 +1550,11 @@ Rules:
       : 'This chart has no named level that resolves right now, so talk about what price has done rather than about levels.'
   } A level you name that is not in the data is simply not
   drawn; nothing is invented to fill it.
+- ${
+    indicators.length
+      ? `AVERAGES ARE DRAWN AS LINES, NOT AS LEVELS, and this chart has ${indicators.join(', ')}. Name one in your sentence — "it is holding above the twenty-one day" — and the whole curve is laid over the bars. Say that it MOVES; do not talk about it as a price that is sitting somewhere.`
+      : 'This chart cannot price a moving average right now, so do not mention one.'
+  }
 - Two to four sentences. This is fifteen to thirty seconds of speech, not a
   segment. Say the thing and stop. ASKED TO MARK A SET, NAME EVERY MEMBER OF IT
   THAT THIS CHART HAS — each one you name is drawn, and a level you leave out is

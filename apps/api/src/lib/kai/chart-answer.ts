@@ -31,7 +31,13 @@ import { LIVE_MARK_TARGETS, parseMarkers, stripMarkers, type LiveMarker } from '
 import type { ChartAnswerAction } from '@shared/api';
 import { completeOnce } from './stream';
 import { answerVoiceEnabled, speak } from './tts';
-import { executeChartCommand, resolveLevel, type ChartContext, type ChartCommandRequest } from './chart-commands';
+import {
+  executeChartCommand,
+  resolveIndicator,
+  resolveLevel,
+  type ChartContext,
+  type ChartCommandRequest,
+} from './chart-commands';
 import { log } from '../log';
 
 /* ------------------------------------------------------------------ */
@@ -102,6 +108,36 @@ function railOf(tf: string): string {
 export function levelTableFor(ctx: ChartContext): Map<string, DirectorLevel> {
   const table = new Map<string, DirectorLevel>();
   for (const name of LIVE_MARK_TARGETS) {
+    /**
+     * THE AVERAGES ARE STILL NAMEABLE; THEY ARE JUST NO LONGER LEVELS.
+     *
+     * `ema8`, `ema21`, `ema50`, `ema200` and `vwap` are in the marker grammar
+     * and Kai talks about them constantly — "it is holding the twenty-one day"
+     * is half of what there is to say about a trend. They stopped resolving
+     * through `resolveLevel` when they became curves, and if that were the end
+     * of it the director would have quietly lost five of its twenty-nine names
+     * and Kai would have stopped mentioning the one thing he mentions most.
+     *
+     * So they come in here as `indicator`, and `commandFor` sends them down the
+     * same `mark_level` path everything else uses — which now draws the whole
+     * curve instead of a rule at its newest value.
+     */
+    const curve = resolveIndicator(ctx, name);
+    if (curve) {
+      table.set(name, {
+        name,
+        price: curve.price,
+        kind: 'indicator',
+        reason: curve.reason,
+        provenance: curve.provenance,
+        // An average belongs to every bar in its window and to no single one, so
+        // there is no candle for the camera to fly to. A VWAP has an anchor,
+        // which is a real bar and is exactly where its running total starts.
+        ts: curve.anchorTs,
+      });
+      continue;
+    }
+
     const r = resolveLevel(ctx, name);
     if (!r) continue;
     // `resolveLevel` returns the annotation kind, which has values a level
@@ -213,6 +249,14 @@ function commandFor(m: LiveMarker, drawn: Set<string>, ctx: ChartContext): Chart
       // The gesture arrived before the line. Draw it rather than point at
       // empty chart — the cue was right about what mattered, only early.
       if (!drawn.has(v)) return draw();
+      // A CURVE CANNOT BE FLASHED BY KIND. Every overlay is stored as
+      // `kind: 'indicator'`, so `flash_annotation` matching on kind would pulse
+      // whichever average happened to be first in the list rather than the one
+      // Kai just named. Pointing at it is the honest gesture and it lands on the
+      // right price.
+      if (m.name === 'FLASH' && resolveIndicator(ctx, v)) {
+        return { command: 'pointer_hint', args: { level: v, linger: true } };
+      }
       return m.name === 'POINT'
         ? { command: 'pointer_hint', args: { level: v, linger: true } }
         : { command: 'flash_annotation', args: { kind: v === 'invalidation' ? 'invalidation' : v, pulses: 2 } };

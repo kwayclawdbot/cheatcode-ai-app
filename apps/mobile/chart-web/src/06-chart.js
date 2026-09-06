@@ -250,6 +250,14 @@ Chart.prototype._bindTaps = function () {
     var y = e.clientY - r.top;
 
     var id = self.annotations.hitTest(x, y);
+    // The overflow chip is a control, not a mark. It belongs to the chart, so
+    // tapping it neither flashes an annotation nor tells the host that one was
+    // selected — it just shows the levels the budget folded away.
+    if (id === OVERFLOW_ID) {
+      self.annotations.toggleOverflow();
+      lastTap = 0;
+      return;
+    }
     if (id) {
       self.annotations.flash(id, 1);
       post({ type: 'annotationTap', payload: { id: id } });
@@ -305,7 +313,10 @@ Chart.prototype.setData = function (p) {
   this.series.setData(bars);
   this.volume.setData(vols);
   this.session.setBars(bars, this.timeframe);
-  this.annotations.setBars(bars);
+  // VOLUME AND THE LAST PRICE GO WITH THE BARS. VWAP is computed on this page
+  // from the volume, and the horizontal-line budget picks the levels nearest to
+  // price when it has to choose which ones to draw.
+  this.annotations.setBars(bars, vols.map(function (v) { return v.value; }), this.lastPrice);
   this.empty.classList.toggle('is-on', bars.length === 0);
 
   if (wasEmpty || p.resetView !== false) this.fitDefault(0);
@@ -410,6 +421,8 @@ Chart.prototype.updateLast = function (c) {
   if (this.bars.length && this.bars[this.bars.length - 1].time === t) this.bars[this.bars.length - 1] = bar;
   else this.bars.push(bar);
   this.lastPrice = bar.close;
+  // Which levels are nearest has just changed, and the budget chooses by that.
+  this.annotations.setLastPrice(bar.close);
 };
 
 Chart.prototype.setVolume = function (on) {

@@ -53,7 +53,13 @@ import { LIVE_CAM_MOVES, LIVE_MARK_TARGETS, type LiveSlideName } from './live';
 export type DirectorLevel = {
   name: string;
   price: number;
-  kind: 'trigger' | 'entry' | 'stop' | 'invalidation' | 'target' | 'support' | 'resistance';
+  /**
+   * `indicator` is a CURVE, not a shelf, and it is in this union so the
+   * director can still name the twenty-one day average in a sentence. What it
+   * changes is downstream: the marker resolves to an overlay the client draws
+   * across every bar, never to a horizontal rule at today's value.
+   */
+  kind: 'trigger' | 'entry' | 'stop' | 'invalidation' | 'target' | 'support' | 'resistance' | 'indicator';
   reason: string;
   provenance: string;
   ts: string | null;

@@ -34,7 +34,21 @@ export const PORTAL_TIMEFRAMES: PortalTimeframe[] = ['1m', '5m', '15m', '1h', '4
 export type AnnotationKind =
   | 'trigger' | 'entry' | 'stop' | 'invalidation' | 'target'
   | 'support' | 'resistance' | 'note'
-  | 'trendline' | 'box' | 'vertical' | 'circle' | 'arrow';
+  | 'trendline' | 'box' | 'vertical' | 'circle' | 'arrow'
+  /**
+   * A CURVE, AND THE ONLY KIND THAT IS NOT DRAWN AT ITS PRICE.
+   *
+   * A moving average has a value on every bar and a different one on each, so
+   * `price` here is only where the line sits on the newest bar — the number a
+   * person means by "the 21 is at 604". The chart page recomputes the whole
+   * series from the candles it already has and draws it as a line. It must never
+   * be ruled across the plot at `price`; that is the bug this kind exists to
+   * make impossible.
+   */
+  | 'indicator';
+
+/** Which curve, for `kind: 'indicator'`. */
+export type IndicatorName = 'ema' | 'sma' | 'vwap';
 
 export type AnnotationProvenance = 'kai' | 'user' | 'community' | 'plan';
 export type AnnotationStatus = 'valid' | 'invalidated' | 'hidden' | 'deleted';
@@ -61,6 +75,10 @@ export type Annotation = {
   source_plan_id: string | null;
   created_at: string | null;
   updated_at: string | null;
+  /** Which curve to compute, for `kind: 'indicator'`. Null on every other kind. */
+  indicator?: IndicatorName | null;
+  /** Bars in the lookback. Null for VWAP, which is anchored rather than windowed. */
+  period?: number | null;
 };
 
 /* ------------------------------------------------------------------ */
@@ -251,6 +269,10 @@ export const KIND_LABEL: Record<AnnotationKind, string> = {
   vertical: 'Mark',
   circle: 'Here',
   arrow: 'To go',
+  // The fallback only. An overlay always carries its own name — "EMA 21",
+  // "VWAP" — and that is what the chip and the rail show; this is what is left
+  // if a row somehow arrives with no label at all.
+  indicator: 'Average',
 };
 
 export const PROVENANCE_LABEL: Record<AnnotationProvenance, string> = {

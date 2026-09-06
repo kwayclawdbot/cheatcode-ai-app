@@ -81,6 +81,17 @@ export type ChoreoAnnotation = {
   text?: string | null;
   provenance?: string;
   status?: string;
+  /**
+   * For `kind: 'indicator'` only: WHICH curve, and over how many bars.
+   *
+   * These two fields are the whole payload of an overlay. There is no series on
+   * the wire and there deliberately is not one — the chart page is holding the
+   * candles, so sending it a few hundred precomputed points would be sending it
+   * something it can derive, that goes stale the moment a bar updates, and that
+   * would have to be re-sent on every pan.
+   */
+  indicator?: 'ema' | 'sma' | 'vwap' | null;
+  period?: number | null;
 };
 
 export type PointerTarget = {

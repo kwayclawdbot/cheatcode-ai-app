@@ -8,6 +8,7 @@
  *   red   = risk (stop, invalidation)
  *   green = the positive outcome (target)
  *   violet = Kai's own commentary (note)
+ *   muted = an indicator overlay — context, not a level
  */
 import { color } from '../../ui/tokens';
 import type { AnnotationKind } from '../portal/types';
@@ -21,6 +22,24 @@ export const kindColor = (k: AnnotationKind): string => {
       return color.green;
     case 'note':
       return color.violetLight;
+    /**
+     * AN OVERLAY IS BACKGROUND, AND IT HAS TO LOOK LIKE IT.
+     *
+     * Averages are the most-drawn thing on the chart and the least decisive: no
+     * average is where you enter, where you get out, or where you were wrong.
+     * Drawing them in cyan would give a moving line the same weight as the
+     * trigger, and four of them would drown it — which is the second half of why
+     * the chart read as noise even once the shape was right.
+     *
+     * `muted` IS ALREADY IN THE PALETTE. It is the warm grey the app uses for
+     * secondary text, so nothing is added to the fourteen and nothing borrows a
+     * meaning it does not have. It reads as "context" next to cyan, red and
+     * green, which is exactly what an average is. The curves are told apart from
+     * each other by their labels and by weight, never by hue — one family, one
+     * meaning.
+     */
+    case 'indicator':
+      return color.muted;
     case 'trigger':
     case 'entry':
     case 'support':

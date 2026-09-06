@@ -44,7 +44,13 @@ import { log } from '../log';
 import { resolveQuote } from '../market/polygon';
 import { getCompanyProfile, marketCapPlain, refreshCompanyProfile, summaryFor } from '../market/profile';
 import { loadChartContext } from '../round4/chart-context';
-import { availableDrawings, availableLevels, resolveLevel } from './chart-commands';
+import {
+  availableDrawings,
+  availableIndicators,
+  availableLevels,
+  resolveIndicator,
+  resolveLevel,
+} from './chart-commands';
 import type { AppMode } from '@shared/api';
 
 /* ------------------------------------------------------------------ */
@@ -223,7 +229,25 @@ async function readChartLevels(input: Record<string, unknown>, ctx: ToolCtx): Pr
     })
     .filter((l): l is NonNullable<typeof l> => l !== null);
 
-  if (!levels.length) {
+  /**
+   * CURVES ARE ANSWERED SEPARATELY FROM LEVELS, AND THAT IS THE POINT.
+   *
+   * They used to come back in the same list, which is how Kai learned to talk
+   * about the 21-day average as though it were a shelf at a price and to ask for
+   * it as a level — and a level is drawn as a horizontal rule. Two fields with
+   * two names, and the value of an average labelled as what it is: where the
+   * line is RIGHT NOW, on a line that moves.
+   */
+  const indicators = availableIndicators(chart)
+    .map((name) => {
+      const r = resolveIndicator(chart, name);
+      return r
+        ? { indicator: name, value_right_now: r.price, what_it_is: r.reason, from: r.provenance }
+        : null;
+    })
+    .filter((l): l is NonNullable<typeof l> => l !== null);
+
+  if (!levels.length && !indicators.length) {
     return NOT_FOUND(
       `${symbol} has bars but not enough of them for any level to be measured yet, so there is nothing on its chart I can name.`
     );
@@ -234,6 +258,10 @@ async function readChartLevels(input: Record<string, unknown>, ctx: ToolCtx): Pr
     timeframe: 'the daily chart',
     last_price: chart.bars.lastPrice,
     levels,
+    moving_averages: indicators,
+    moving_averages_note:
+      'These are LINES, not levels. Each one has a different value on every bar; the number above is only where it sits on the newest one. ' +
+      'Mark them with mark_level and the chart draws the whole curve — never describe one as a price sitting at a level.',
     drawings_available: availableDrawings(chart),
     has_graded_setup: Boolean(chart.setup),
     must_say: chart.setup
