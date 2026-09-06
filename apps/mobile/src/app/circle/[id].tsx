@@ -27,6 +27,8 @@ import { MessageActionsSheet, type MessageActionsTarget } from '../../features/c
 import { portalApi } from '../../lib/trade-api';
 import { ClubBody } from '../../features/community/ui/ClubFeed';
 import type { CircleDetail, CircleMessage } from '../../features/circles/types';
+import type { MessageReactions, ReactionKind } from '../../features/community/types';
+import { ReactionBar } from '../../features/community/ui/Social';
 import type { Candle } from '../../lib/types';
 import type { Freshness } from '../../ui/FreshnessMark';
 
@@ -122,7 +124,11 @@ function CircleChart({ candles, levels }: { candles: Candle[]; levels: CircleDet
   );
 }
 
-function Message({ m, onActions }: { m: CircleMessage; onActions?: () => void }) {
+function Message({ m, onActions, onReact }: {
+  m: CircleMessage;
+  onActions?: () => void;
+  onReact?: (messageId: string, kind: ReactionKind) => void;
+}) {
   return (
     // No `accessibilityRole="button"` — see the note in ClubFeed: a message row
     // contains buttons of its own, and a <button> cannot nest one.
@@ -181,22 +187,11 @@ function Message({ m, onActions }: { m: CircleMessage; onActions?: () => void })
           <View style={{ marginTop: 2 }}><ClubBody text={m.body} size={13.5} /></View>
         )}
 
-        {m.reactions.length ? (
-          <View style={{ flexDirection: 'row', gap: 5, marginTop: 5 }}>
-            {m.reactions.map((r) => (
-              <View
-                key={r.emoji}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3,
-                  borderRadius: 8, backgroundColor: alpha.green12, borderWidth: 0.5, borderColor: alpha.green40,
-                }}
-              >
-                <T size={10}>{r.emoji}</T>
-                <Num size={10} weight="regular" c={color.green}>{String(r.count)}</Num>
-              </View>
-            ))}
-          </View>
-        ) : null}
+        <ReactionBar
+          reactions={m.reactions}
+          onToggle={onReact ? (k) => onReact(m.id, k) : undefined}
+          testID={`reactions-${m.id}`}
+        />
       </View>
     </Pressable>
   );
@@ -216,6 +211,34 @@ export default function CircleRoom() {
   const [freshness, setFreshness] = useState<RealtimeMode>('off');
   const [postNotice, setPostNotice] = useState<string | null>(null);
   const [actionTarget, setActionTarget] = useState<MessageActionsTarget | null>(null);
+
+  /**
+   * Optimistic, then corrected — the same shape as the room and the club board.
+   * A failure puts the previous state back rather than leaving a count that
+   * never happened standing on screen.
+   */
+  const react = async (messageId: string, kind: ReactionKind) => {
+    const before = detail?.messages.find((m) => m.id === messageId)?.reactions;
+    if (!before) return;
+    const on = before.mine.includes(kind);
+    const optimistic: MessageReactions = {
+      counts: { ...before.counts, [kind]: Math.max(0, (before.counts[kind] ?? 0) + (on ? -1 : 1)) },
+      mine: on ? before.mine.filter((k) => k !== kind) : [...before.mine, kind],
+    };
+    if (optimistic.counts[kind] === 0) delete optimistic.counts[kind];
+
+    const write = (r: MessageReactions) =>
+      setDetail((prev) =>
+        prev ? { ...prev, messages: prev.messages.map((m) => (m.id === messageId ? { ...m, reactions: r } : m)) } : prev
+      );
+
+    write(optimistic);
+    try {
+      write(await circlesApi.react(messageId, kind));
+    } catch {
+      write(before);
+    }
+  };
 
   const load = useCallback(async () => {
     if (!circleId) return;
@@ -355,6 +378,7 @@ export default function CircleRoom() {
           <Message
             key={m.id}
             m={m}
+            onReact={react}
             onActions={() =>
               setActionTarget({
                 messageId: m.id,

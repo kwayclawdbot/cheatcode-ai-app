@@ -5,7 +5,9 @@
  * membership check is done in code — the RLS that would do it for a client is
  * bypassed here by design (see db.ts SECURITY BOUNDARY).
  */
-import type { RoomRow, MessageRow, MessageAuthor, KaiObjectEnvelope } from '@shared/api';
+import type {
+  RoomRow, MessageRow, MessageAuthor, KaiObjectEnvelope, MessageReactions, ReactionKind, MessageMedia,
+} from '@shared/api';
 import { serviceClient } from './db';
 import { ApiError } from './errors';
 import { envelope } from './kai/objects';
@@ -146,8 +148,49 @@ export function toRoomRow(
 /* Messages                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * ONE STRING LITERAL, NOT A CONCATENATION. supabase-js reads this at the type
+ * level to shape the row it returns, and it can only do that for a literal —
+ * split it over a `+` and every read through it degrades to an error type.
+ *
+ * The last four are migration 0033's. `reaction_counts` and `attachment_count`
+ * are denormalised onto the message precisely so that reading them is free:
+ * they arrive with the row the room was already fetching.
+ */
 export const MESSAGE_COLUMNS =
-  'id,room_id,user_id,seq,kind,body,parent_id,refs,structured_idea,position_disclosure,deleted,created_at';
+  'id,room_id,user_id,seq,kind,body,parent_id,refs,structured_idea,position_disclosure,deleted,created_at,reaction_counts,reply_count,attachment_count,author_deleted';
+
+/**
+ * WHICH REACTIONS DID *THIS* PERSON GIVE — for a whole page, in one query.
+ *
+ * The counts are on the message row already. This is the only part that cannot
+ * be: it is per-person, so it lives in `message_reactions` and is fetched with
+ * a single `in (...)` over the page's ids. One round trip for fifty messages,
+ * never one per message.
+ */
+export async function reactionsMineFor(
+  messageIds: string[],
+  userId: string
+): Promise<Map<string, ReactionKind[]>> {
+  const out = new Map<string, ReactionKind[]>();
+  const ids = [...new Set(messageIds.filter(Boolean))];
+  if (!ids.length) return out;
+
+  const db = serviceClient();
+  const { data } = await db
+    .from('message_reactions')
+    .select('message_id,kind')
+    .eq('user_id', userId)
+    .in('message_id', ids);
+
+  for (const r of (data ?? []) as Record<string, unknown>[]) {
+    const key = String(r.message_id);
+    const list = out.get(key) ?? [];
+    list.push(r.kind as ReactionKind);
+    out.set(key, list);
+  }
+  return out;
+}
 
 /**
  * Every author on a page, in ONE query.
@@ -229,7 +272,8 @@ export async function objectsFor(objectIds: string[]): Promise<Map<string, KaiOb
 export function toMessageRow(
   row: Record<string, unknown>,
   authors: Map<string, MessageAuthor>,
-  objects: Map<string, KaiObjectEnvelope>
+  objects: Map<string, KaiObjectEnvelope>,
+  extras?: { mine?: Map<string, ReactionKind[]>; media?: Map<string, MessageMedia[]> }
 ): MessageRow {
   const refs = (row.refs as Record<string, unknown>) ?? null;
   const objectId = typeof refs?.kai_object_id === 'string' ? refs.kai_object_id : null;
@@ -248,5 +292,26 @@ export function toMessageRow(
     created_at: String(row.created_at),
     author: row.user_id ? (authors.get(String(row.user_id)) ?? null) : null,
     kai_object: objectId ? (objects.get(objectId) ?? null) : null,
+    author_deleted: Boolean(row.author_deleted),
+    reactions: reactionsOf(row, extras?.mine?.get(String(row.id)) ?? []),
+    reply_count: Number(row.reply_count ?? 0),
+    media: extras?.media?.get(String(row.id)) ?? [],
   };
+}
+
+/**
+ * A removed message keeps its place and loses everything else. The view already
+ * blanks the counts, and this repeats it on the way out rather than trusting one
+ * of the two: reactions on a post nobody can read are a score with no game.
+ */
+function reactionsOf(row: Record<string, unknown>, mine: ReactionKind[]): MessageReactions {
+  const deleted = Boolean(row.deleted ?? row.deleted_at);
+  if (deleted) return { counts: {}, mine: [] };
+  const raw = (row.reaction_counts as Record<string, unknown> | null) ?? {};
+  const counts: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) counts[k] = n;
+  }
+  return { counts: counts as MessageReactions['counts'], mine };
 }

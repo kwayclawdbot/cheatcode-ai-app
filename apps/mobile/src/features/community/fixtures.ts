@@ -7,8 +7,9 @@
  * freshness and the seeded `source_ts` rhythm the rest of the app uses.
  */
 import type {
-  Author, ContributorProfile, KaiRoomObject, Room, RoomMessage, RoomSetup,
+  Author, ContributorProfile, KaiRoomObject, MessageMedia, Room, RoomMessage, RoomSetup,
 } from './types';
+import { EMPTY_REACTIONS } from './types';
 
 const KAI: Author = {
   user_id: 'kai', display_name: 'Kai', handle: null, avatar_url: null, initial: 'K',
@@ -115,47 +116,113 @@ const SUMMARY: KaiRoomObject = {
   footnote: 'Sample 41 · sentiment never changes the grade',
 };
 
+/**
+ * A picture for the fixture feed, so the media frame can be SEEN in a proof
+ * screenshot rather than only asserted in a test.
+ *
+ * A data URI and not a file in `assets/`: it is example content, it belongs
+ * with the rest of the example content, and a fixture that adds a binary to
+ * the repository is a fixture somebody will later mistake for a real asset.
+ * Nothing in the app ever writes a data URI — a real attachment is always a
+ * short-lived signed URL from the private bucket.
+ */
+const FIXTURE_CHART: MessageMedia = {
+  id: 'fixture-chart',
+  url:
+    'data:image/png;base64,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',
+  mime_type: 'image/png',
+  width: 480,
+  height: 300,
+  bytes: 2852,
+  aspect: 0.625,
+};
+
 export const fixtureMessages: RoomMessage[] = [
   {
-    id: 'm-1', seq: 4, kind: 'text', created_at: '2026-08-26T13:40:00Z', time_label: 'Today at 9:40',
+    id: 'm-1', room_id: 'room-meta', seq: 4, kind: 'text', created_at: '2026-08-26T13:40:00Z', time_label: 'Today at 9:40',
     author: JORDAN, body: 'Reclaimed VWAP on strong volume. Watching 501 for the entry.',
     refs: { symbol: 'META', levels: [501] }, structured_idea: null,
     position_disclosure: { holds: true, symbol: 'META', label: 'Holds META' },
     kai_object: null, deleted: false, is_claim: true,
-    reactions: [{ label: '🔥', count: 14, tone: 'neutral' }, { label: '💬', count: 9, tone: 'market' }],
+    reactions: { counts: { agree: 14, watching: 9 }, mine: ['agree'] }, reply_count: 2,
+    parent_id: null, media: [FIXTURE_CHART], author_deleted: false,
   },
   {
-    id: 'm-2', seq: 5, kind: 'text', created_at: '2026-08-26T13:41:00Z', time_label: 'Today at 9:41',
+    id: 'm-2', room_id: 'room-meta', seq: 5, kind: 'text', created_at: '2026-08-26T13:41:00Z', time_label: 'Today at 9:41',
     author: SAM, body: 'Is that volume real or just the open? @Kai verify',
     refs: null, structured_idea: null, position_disclosure: null,
-    kai_object: null, deleted: false, is_claim: false, reactions: [],
+    kai_object: null, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, media: [], author_deleted: false,
   },
   {
-    id: 'm-3', seq: 6, kind: 'kai_object', created_at: '2026-08-26T13:41:30Z', time_label: 'Today at 9:41',
+    id: 'm-3', room_id: 'room-meta', seq: 6, kind: 'kai_object', created_at: '2026-08-26T13:41:30Z', time_label: 'Today at 9:41',
     author: KAI, body: null, refs: { symbol: 'META' }, structured_idea: null,
     position_disclosure: null, kai_object: VERIFICATION, deleted: false, is_claim: false,
-    reactions: [{ label: '✅', count: 21, tone: 'kai' }],
+    reactions: { counts: { useful: 21 }, mine: [] }, reply_count: 0,
+    parent_id: null, media: [], author_deleted: false,
   },
   {
-    id: 'm-4', seq: 7, kind: 'text', created_at: '2026-08-26T13:44:00Z', time_label: 'Today at 9:44',
+    id: 'm-4', room_id: 'room-meta', seq: 7, kind: 'text', created_at: '2026-08-26T13:44:00Z', time_label: 'Today at 9:44',
     author: MARCUS, body: 'Reminder: nothing here is advice, and no one posts fills without the plan that produced them.',
     refs: null, structured_idea: null, position_disclosure: null,
-    kai_object: null, deleted: false, is_claim: false, reactions: [],
+    kai_object: null, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, media: [], author_deleted: false,
   },
   {
-    id: 'm-5', seq: 8, kind: 'position_update', created_at: '2026-08-26T13:47:00Z', time_label: 'Today at 9:47',
+    id: 'm-5', room_id: 'room-meta', seq: 8, kind: 'position_update', created_at: '2026-08-26T13:47:00Z', time_label: 'Today at 9:47',
     author: JORDAN,
     body: 'Took the entry at 504.10 on the hold. Stop stays at 460 — risk $58.',
     refs: { symbol: 'META' }, structured_idea: null,
     position_disclosure: { holds: true, symbol: 'META', label: 'Holds META' },
-    kai_object: null, deleted: false, is_claim: true, reactions: [],
+    kai_object: null, deleted: false, is_claim: true, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, media: [], author_deleted: false,
   },
   {
-    id: 'm-6', seq: 9, kind: 'kai_object', created_at: '2026-08-26T13:49:00Z', time_label: 'Today at 9:49',
+    id: 'm-6', room_id: 'room-meta', seq: 9, kind: 'kai_object', created_at: '2026-08-26T13:49:00Z', time_label: 'Today at 9:49',
     author: KAI, body: null, refs: { symbol: 'META' }, structured_idea: null,
-    position_disclosure: null, kai_object: SUMMARY, deleted: false, is_claim: false, reactions: [],
+    position_disclosure: null, kai_object: SUMMARY, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, media: [], author_deleted: false,
   },
 ];
+
+/**
+ * A THREAD, so the comments screen can be proved in fixtures.
+ *
+ * Two comments, one of them removed, because the removed one is the case that
+ * is easy to get wrong: it keeps its place and loses its words, and a comment
+ * that answers something no longer there has to be readable as such.
+ *
+ * `parent_id` is set on every one of them and `reply_count` is zero on every
+ * one of them, which is the whole threading rule in two fields: a comment
+ * belongs to a post and can never be the parent of anything.
+ */
+export function fixtureThread(parentId: string): RoomMessage[] {
+  return [
+    {
+      id: `${parentId}-c1`, room_id: 'room-meta', seq: 101, kind: 'text',
+      created_at: '2026-08-26T13:42:00Z', time_label: 'Today at 9:42',
+      author: SAM, body: 'What is your invalidation on that? 501 is thin on the daily.',
+      refs: null, structured_idea: null, position_disclosure: null, kai_object: null,
+      deleted: false, is_claim: false,
+      reactions: { counts: { agree: 3, useful: 1 }, mine: [] },
+      reply_count: 0, parent_id: parentId, media: [], author_deleted: false,
+    },
+    {
+      id: `${parentId}-c2`, room_id: 'room-meta', seq: 102, kind: 'text',
+      created_at: '2026-08-26T13:43:00Z', time_label: 'Today at 9:43',
+      author: MARCUS, body: null,
+      refs: null, structured_idea: null, position_disclosure: null, kai_object: null,
+      deleted: true, is_claim: false,
+      reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: parentId,
+      media: [], author_deleted: false,
+    },
+    {
+      id: `${parentId}-c3`, room_id: 'room-meta', seq: 103, kind: 'text',
+      created_at: '2026-08-26T13:45:00Z', time_label: 'Today at 9:45',
+      author: JORDAN, body: 'Below 495 the whole reason for being in it is gone. Stop is there, not at 501.',
+      refs: { levels: [495, 501] }, structured_idea: null, position_disclosure: null, kai_object: null,
+      deleted: false, is_claim: true,
+      reactions: { counts: { agree: 6, watching: 2 }, mine: ['agree'] },
+      reply_count: 0, parent_id: parentId, media: [], author_deleted: false,
+    },
+  ];
+}
 
 export const fixtureAlertPreview: KaiRoomObject = {
   type: 'alert_preview',

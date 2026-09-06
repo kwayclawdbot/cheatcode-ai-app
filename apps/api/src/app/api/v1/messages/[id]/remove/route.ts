@@ -43,14 +43,33 @@ export const POST = staffedParams<{ id: string }>(
           ? ' One report closed.'
           : ` ${result.reportsClosed} reports closed.`;
 
+    // Every clause here is a fact from the call, never a hopeful sentence. A
+    // moderator has to be able to read this and know exactly what happened —
+    // in particular whether other people's comments came down with it, and
+    // whether the pictures are actually gone rather than merely queued.
+    const replies =
+      result.repliesRemoved === 0
+        ? ''
+        : result.repliesRemoved === 1
+          ? ' One comment came down with it.'
+          : ` ${result.repliesRemoved} comments came down with it.`;
+    const media =
+      result.mediaPurged === 0
+        ? ''
+        : result.mediaPurged === 1
+          ? ' One picture was deleted from storage.'
+          : ` ${result.mediaPurged} pictures were deleted from storage.`;
+
     return ok(
       RemoveMessageResponse.parse({
         message_id: ctx.params.id,
         removed: true,
         reports_closed: result.reportsClosed,
+        replies_removed: result.repliesRemoved,
+        media_purged: result.mediaPurged,
         plain: result.alreadyRemoved
-          ? `That post was already down.${closed}`
-          : `Removed. It stays in the thread as a gap and its words are gone from the room.${closed}`,
+          ? `That post was already down.${closed}${media}`
+          : `Removed. It stays in the thread as a gap and its words are gone from the room.${replies}${media}${closed}`,
       })
     );
   },

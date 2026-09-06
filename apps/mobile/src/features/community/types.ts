@@ -178,6 +178,8 @@ export type KaiRoomObject =
 
 export type RoomMessage = {
   id: string;
+  /** The room it was posted in. Needed to post a comment back into it. */
+  room_id: string | null;
   seq: number;
   kind: MessageKind;
   created_at: string;
@@ -197,7 +199,80 @@ export type RoomMessage = {
   is_claim: boolean;
   /** Filled in by the room screen from the verification cards present. */
   verified_by?: { result: KaiVerificationResult; label: string } | null;
-  reactions: { label: string; count: number; tone: 'neutral' | 'kai' | 'market' }[];
+  reactions: MessageReactions;
+  /** How many comments this post has. Always 0 on a comment. */
+  reply_count: number;
+  /** The post this is a comment on, when it is one. */
+  parent_id: string | null;
+  /** Pictures attached to it, in the order they were picked. */
+  media: MessageMedia[];
+  /**
+   * The author closed their account. `user_id` is null on those rows and
+   * without this the null reads as "posted by Kai". Anything that draws an
+   * author has to check this first.
+   */
+  author_deleted: boolean;
+};
+
+/* ------------------------------------------------------------------ */
+/* Reactions and media                                                  */
+/* ------------------------------------------------------------------ */
+
+export type ReactionKind = 'agree' | 'disagree' | 'watching' | 'useful';
+
+export type MessageReactions = {
+  /** {kind: count}. A kind nobody used is absent, not present at zero. */
+  counts: Partial<Record<ReactionKind, number>>;
+  /** The kinds THIS person has given. Never guessed from the counts. */
+  mine: ReactionKind[];
+};
+
+/**
+ * FOUR, AND `disagree` IS THE ONE THAT EARNS ITS PLACE. A room where the only
+ * cheap gesture is approval reads as unanimous whether or not it is, and in a
+ * room about money that is how a bad idea gets amplified.
+ *
+ * Tones follow the app's colour law and nothing else: volt is the USER, cyan is
+ * the MARKET. A reaction is always the user's, so three of them are volt; the
+ * market tone belongs to `watching`, the only one that says something about an
+ * instrument rather than about the post. Violet is Kai's and appears nowhere
+ * here, because Kai does not react to anybody.
+ */
+export const REACTIONS: {
+  id: ReactionKind;
+  label: string;
+  /** What tapping it means, used as the accessibility hint. */
+  plain: string;
+  tone: 'user' | 'market' | 'neutral';
+}[] = [
+  { id: 'agree',    label: 'Agree',    plain: 'You think this is right.',                        tone: 'user' },
+  { id: 'disagree', label: 'Disagree', plain: 'You think this is wrong.',                        tone: 'user' },
+  { id: 'watching', label: 'Watching', plain: 'You are keeping an eye on this one.',             tone: 'market' },
+  { id: 'useful',   label: 'Useful',   plain: 'This helped you, whatever you think of the call.', tone: 'neutral' },
+];
+
+export const EMPTY_REACTIONS: MessageReactions = { counts: {}, mine: [] };
+
+/**
+ * A picture on a message.
+ *
+ * `url` IS TEMPORARY. The bucket is private, so this is a signature minted for
+ * this person after the server checked they are in the room, and it expires. It
+ * must never be stored as if it were an address, and it stops resolving the
+ * moment a moderator removes the picture — which is the behaviour the whole
+ * design is built on. `id` is the durable handle.
+ *
+ * `aspect` is height ÷ width, so the space can be reserved before the bytes
+ * land instead of shoving the conversation down the screen when they do.
+ */
+export type MessageMedia = {
+  id: string;
+  url: string | null;
+  mime_type: string;
+  width: number | null;
+  height: number | null;
+  bytes: number;
+  aspect: number | null;
 };
 
 export type KaiVerificationResult = 'verified' | 'partially_verified' | 'unverified' | 'false' | 'unverifiable';

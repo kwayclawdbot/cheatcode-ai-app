@@ -6,18 +6,13 @@ import { family } from '../../../ui/fonts';
 import { T } from '../../../ui/Text';
 import { Plus } from '../../../ui/Icons';
 import { Send } from './Icons';
+import { AttachButton, AttachmentTray, type Attachment } from '../../../ui/AttachmentTray';
 
-/**
- * Room composer (V3-C1 / S81): 52px pill, @Kai chip on the left, one volt
- * circle on the right. The artboard's right circle is a mic; voice is not in
- * this release, so the circle is the SEND action — one dominant affordance,
- * volt because it is the user's.
- *
- * "Post an idea" (the structured composer) is the secondary + button: a
- * casual message must stay the easy path (08 §7).
- */
+export type { Attachment };
+
 export function RoomComposer({
   roomLabel, onSend, onKai, onStructured, disabled, disabledReason, testID,
+  attachments = [], onAttach, onRemoveAttachment, attachLimit = 4, placeholder,
 }: {
   roomLabel: string;
   onSend: (text: string) => void;
@@ -26,9 +21,23 @@ export function RoomComposer({
   disabled?: boolean;
   disabledReason?: string | null;
   testID?: string;
+  /** Pictures already picked. Absent means this composer takes no pictures. */
+  attachments?: Attachment[];
+  onAttach?: () => void;
+  onRemoveAttachment?: (key: string) => void;
+  attachLimit?: number;
+  placeholder?: string;
 }) {
   const [value, setValue] = useState('');
-  const canSend = value.trim().length > 0 && !disabled;
+
+  const uploading = attachments.some((a) => a.state === 'uploading');
+  const ready = attachments.filter((a) => a.state === 'ready');
+  // A PICTURE ON ITS OWN IS A POST. Requiring a caption so the validator is
+  // satisfied just produces "." — so Send lights up for text OR for a picture.
+  // It stays dark while an upload is still going: posting then would drop the
+  // photo the member is watching upload, which is the worst of both.
+  const canSend = (value.trim().length > 0 || ready.length > 0) && !disabled && !uploading;
+  const canAttach = !!onAttach && !disabled && attachments.length < attachLimit;
 
   const submit = () => {
     if (!canSend) return;
@@ -42,7 +51,13 @@ export function RoomComposer({
         <T size={11} c={color.gold} style={{ paddingHorizontal: 4 }}>{disabledReason}</T>
       ) : null}
 
+      <AttachmentTray attachments={attachments} onRemove={onRemoveAttachment} />
+
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        {onAttach ? (
+          <AttachButton onPress={onAttach} disabled={!canAttach} limit={attachLimit} />
+        ) : null}
+
         <Pressable
           testID="composer-structured"
           accessibilityRole="button"
@@ -94,7 +109,7 @@ export function RoomComposer({
             onChangeText={setValue}
             onSubmitEditing={submit}
             editable={!disabled}
-            placeholder={`Message ${roomLabel}…`}
+            placeholder={placeholder ?? `Message ${roomLabel}…`}
             placeholderTextColor={color.muted}
             returnKeyType="send"
             style={{

@@ -20,6 +20,7 @@ import { Screen } from '../../ui/Screen';
 import { T, Num } from '../../ui/Text';
 import { ObjectCard } from '../../ui/Panel';
 import { Composer } from '../../ui/Composer';
+import { useAttachments } from '../../features/media/useAttachments';
 import { KaiOrb } from '../../ui/KaiOrb';
 import { alpha, color, radius } from '../../ui/tokens';
 import { useSession } from '../../lib/session';
@@ -31,7 +32,7 @@ import { MessageActionsSheet, type MessageActionsTarget } from '../../features/c
 import { CirclesRow } from '../../features/circles/CirclesRow';
 import { CreateCircleSheet } from '../../features/circles/CreateCircleSheet';
 import type { Circle, CircleTtl } from '../../features/circles/types';
-import type { Room, RoomMessage } from '../../features/community/types';
+import type { MessageReactions, ReactionKind, Room, RoomMessage } from '../../features/community/types';
 
 const MODE_ORDER = ['day_trade', 'swing', 'invest'];
 const rank = (mode: string | null) => {
@@ -80,8 +81,14 @@ export default function Community() {
 
   const [roomId, setRoomId] = useState<string | null>(null);
   const [messages, setMessages] = useState<RoomMessage[]>([]);
-  const [localReactions, setLocalReactions] = useState<Record<string, string[]>>({});
-  const [reactionsAreLocal, setReactionsAreLocal] = useState(false);
+  /**
+   * When a reaction did NOT land. There used to be a device-local store here
+   * and a line under the post saying "saved on this device only" — honest, and
+   * unnecessary now that reactions are a real table. What is left is the
+   * server's own refusal, shown against the post it belongs to.
+   */
+  const [reactionNotice, setReactionNotice] = useState<Record<string, string>>({});
+  const media = useAttachments();
 
   /** How this feed is being kept fresh, in its own words. Never claims live. */
   const [freshness, setFreshness] = useState<RealtimeMode>('off');
@@ -197,10 +204,37 @@ export default function Community() {
         })()
       : null);
 
-  const react = async (messageId: string, emoji: string) => {
-    setLocalReactions((prev) => ({ ...prev, [messageId]: [...(prev[messageId] ?? []), emoji] }));
-    const where = await circlesApi.react(messageId, emoji);
-    if (where === 'local') setReactionsAreLocal(true);
+  /**
+   * OPTIMISTIC, THEN CORRECTED. The chip flips on the tap — a reaction that
+   * waits for a round trip feels broken — and the server's answer is written
+   * over it when it arrives. On a failure the old state goes back and the
+   * server's sentence appears under the post; nothing is left looking as if it
+   * counted when it did not.
+   */
+  const react = async (messageId: string, kind: ReactionKind) => {
+    const before = messages.find((m) => m.id === messageId)?.reactions;
+    if (!before) return;
+
+    const on = before.mine.includes(kind);
+    const optimistic: MessageReactions = {
+      counts: { ...before.counts, [kind]: Math.max(0, (before.counts[kind] ?? 0) + (on ? -1 : 1)) },
+      mine: on ? before.mine.filter((k) => k !== kind) : [...before.mine, kind],
+    };
+    if (optimistic.counts[kind] === 0) delete optimistic.counts[kind];
+
+    setReactionNotice((prev) => { const next = { ...prev }; delete next[messageId]; return next; });
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions: optimistic } : m)));
+
+    try {
+      const settled = await communityApi.react(messageId, kind);
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions: settled } : m)));
+    } catch (e) {
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions: before } : m)));
+      setReactionNotice((prev) => ({
+        ...prev,
+        [messageId]: e instanceof Error ? e.message : 'That did not register.',
+      }));
+    }
   };
 
   const openCircle = (c: Circle) => router.push(`/circle/${encodeURIComponent(c.id)}` as never);
@@ -217,13 +251,16 @@ export default function Community() {
     try {
       const m = await communityApi.postMessage(
         roomId,
-        { body: text, kind: 'text' },
+        { body: text, kind: 'text', attachment_ids: media.readyIds },
         // The server's words, shown verbatim. Today this is the advice nudge:
         // a post that reads as telling somebody what to do with their money
         // goes up, gets flagged for a moderator, and the writer is told what
         // the room is for. The app never composes its own version of that.
         (plain) => setPostNotice(plain),
       );
+      // Cleared only once the post is accepted — clearing first would throw
+      // away pictures the member would then have to pick again.
+      media.clear();
       setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
     } catch (e) {
       // Nothing is faked. The refusal is the server's sentence.
@@ -390,17 +427,12 @@ export default function Community() {
               {messages.length ? messages.map((m) => (
                 <ClubMessage
                   key={m.id}
-                  message={{
-                    ...m,
-                    reactions: [
-                      ...m.reactions,
-                      ...(localReactions[m.id] ?? []).map((e) => ({ label: e, count: 1, tone: 'neutral' as const })),
-                    ],
-                  }}
+                  message={m}
                   onTicker={(s) => router.push(`/symbol/${encodeURIComponent(s)}` as never)}
-                  onReact={(e) => { void react(m.id, e); }}
+                  onReact={(k) => { void react(m.id, k); }}
                   onOpenSetup={(s) => router.push(`/trade/${encodeURIComponent(s)}?ctx=alert` as never)}
-                  reactionsLocal={reactionsAreLocal && !!localReactions[m.id]?.length}
+                  onOpenThread={() => router.push(`/thread/${encodeURIComponent(m.id)}` as never)}
+                  reactionNotice={reactionNotice[m.id] ?? null}
                   onActions={() => openActions(m)}
                 />
               )) : (
@@ -447,11 +479,17 @@ export default function Community() {
             <T size={12} lh={17} c={color.gold}>{postNotice}</T>
           </Pressable>
         ) : null}
+        {media.notice ? (
+          <T size={11} c={color.gold} style={{ paddingBottom: 8 }}>{media.notice}</T>
+        ) : null}
         <Composer
           testID="club-composer"
           placeholder="Message Cheat Code Club… $ @Kai"
           disabled={!roomId}
           onSend={(t) => { void post(t); }}
+          attachments={media.attachments}
+          onAttach={() => { void media.pick(); }}
+          onRemoveAttachment={media.remove}
         />
       </View>
 

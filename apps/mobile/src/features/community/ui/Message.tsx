@@ -4,7 +4,8 @@ import { alpha, color, radius } from '../../../ui/tokens';
 import { T, Num } from '../../../ui/Text';
 import { Avatar, ClaimChip, DisclosureChip, RoleChip } from './Chrome';
 import { KaiObjectView } from './KaiObjects';
-import type { RoomMessage } from '../types';
+import type { MessageMedia, ReactionKind, RoomMessage } from '../types';
+import { MediaStrip, ReactionBar, ThreadLine } from './Social';
 
 /**
  * One message in a room (V3-C1 / S81).
@@ -50,6 +51,7 @@ const roleTone = (label: string): 'gold' | 'kai' | 'green' | 'neutral' => {
 
 export function MessageRow({
   message, selected, onSelect, onOpenAuthor, onMore, showStructured = true,
+  onReact, onOpenThread, onOpenMedia, hideThreadLine,
 }: {
   message: RoomMessage;
   selected?: boolean;
@@ -57,6 +59,11 @@ export function MessageRow({
   onOpenAuthor?: () => void;
   onMore?: () => void;
   showStructured?: boolean;
+  onReact?: (kind: ReactionKind) => void;
+  onOpenThread?: () => void;
+  onOpenMedia?: (m: MessageMedia) => void;
+  /** True inside a thread: a comment cannot itself be commented on. */
+  hideThreadLine?: boolean;
 }) {
   const m = message;
   const isKai = m.author.is_kai;
@@ -140,6 +147,11 @@ export function MessageRow({
           )}
         </Pressable>
 
+        {/* Pictures sit OUTSIDE the selection Pressable: tapping a photo opens
+            the photo, and nesting a pressable inside a pressable makes that
+            ambiguous on iOS and illegal markup on web. */}
+        {!m.deleted && m.media.length ? <MediaStrip media={m.media} onOpen={onOpenMedia} /> : null}
+
         {!isKai && m.is_claim && !m.deleted ? (
           <View style={{ flexDirection: 'row', marginTop: 4 }}>
             <ClaimChip
@@ -154,18 +166,16 @@ export function MessageRow({
           </View>
         ) : null}
 
-        {m.reactions.length ? (
-          <View style={{ flexDirection: 'row', gap: 5, marginTop: 5 }}>
-            {m.reactions.map((r, i) => {
-              const c = r.tone === 'kai' ? color.violetLight : r.tone === 'market' ? color.cyan : color.muted;
-              const border = r.tone === 'kai' ? alpha.violet45 : r.tone === 'market' ? alpha.cyan40 : alpha.ivory20;
-              return (
-                <View key={i} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 0.5, borderColor: border }}>
-                  <Num size={10} weight="regular" c={c}>{r.label}</Num>
-                </View>
-              );
-            })}
-          </View>
+        {/* A removed post takes its reactions and its thread line with it.
+            There is nothing left to agree with, and offering to comment on a
+            gap is an invitation to argue with the moderation. */}
+        {!m.deleted ? (
+          <>
+            <ReactionBar reactions={m.reactions} onToggle={onReact} testID={`reactions-${m.id}`} />
+            {!hideThreadLine && onOpenThread ? (
+              <ThreadLine count={m.reply_count} onPress={onOpenThread} testID={`thread-${m.id}`} />
+            ) : null}
+          </>
         ) : null}
       </View>
     </View>

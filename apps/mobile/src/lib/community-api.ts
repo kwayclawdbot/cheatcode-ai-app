@@ -18,11 +18,12 @@ import { env, offlineMode } from './env';
 import { supabase } from './supabase';
 import { getAccessToken, recoverSession, SESSION_EXPIRED_COPY } from './auth-token';
 import type {
-  ContributorProfile, KaiCommand, KaiRoomObject, PositionDisclosure, Room,
-  RoomMessage, RoomSetup, StructuredIdea,
+  ContributorProfile, KaiCommand, KaiRoomObject, MessageMedia, MessageReactions,
+  PositionDisclosure, ReactionKind, Room, RoomMessage, RoomSetup, StructuredIdea,
 } from '../features/community/types';
+import { EMPTY_REACTIONS } from '../features/community/types';
 import {
-  fixtureAssist, fixtureContributor, fixtureMessages, fixtureRooms,
+  fixtureAssist, fixtureContributor, fixtureMessages, fixtureRooms, fixtureThread,
 } from '../features/community/fixtures';
 import type { ClosedPosition, Debrief } from '../features/debrief/types';
 import { fixtureClosedPositions, fixtureDebriefs } from '../features/debrief/fixtures';
@@ -367,6 +368,7 @@ function mapMessage(raw: any, kaiObjects?: Record<string, any>): RoomMessage {
   const refs = raw.refs ?? null;
   return {
     id: String(raw.id),
+    room_id: raw.room_id ? String(raw.room_id) : null,
     seq: asNum(raw.seq) ?? 0,
     kind: raw.kind ?? 'text',
     created_at: raw.created_at ?? new Date().toISOString(),
@@ -405,10 +407,40 @@ function mapMessage(raw: any, kaiObjects?: Record<string, any>): RoomMessage {
       raw.flags?.claim === true ||
       structured != null ||
       (Array.isArray(refs?.levels) && refs.levels.length > 0),
-    reactions: Array.isArray(raw.reactions)
-      ? raw.reactions.map((r: any) => ({ label: String(r.label ?? r.count ?? ''), count: asNum(r.count) ?? 0, tone: r.tone ?? 'neutral' }))
-      : [],
+    reactions: mapReactions(raw.reactions),
+    reply_count: asNum(raw.reply_count) ?? 0,
+    parent_id: raw.parent_id ? String(raw.parent_id) : null,
+    media: mapMedia(raw.media),
+    author_deleted: raw.author_deleted === true,
   };
+}
+
+function mapReactions(raw: any): MessageReactions {
+  if (!raw || typeof raw !== 'object') return { counts: {}, mine: [] };
+  const counts: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw.counts ?? {})) {
+    const n = asNum(v);
+    if (n && n > 0) counts[k] = n;
+  }
+  return {
+    counts: counts as MessageReactions['counts'],
+    mine: Array.isArray(raw.mine) ? (raw.mine as ReactionKind[]) : [],
+  };
+}
+
+function mapMedia(raw: any): MessageMedia[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((m: any) => m && m.id)
+    .map((m: any) => ({
+      id: String(m.id),
+      url: m.url ? String(m.url) : null,
+      mime_type: String(m.mime_type ?? 'image/jpeg'),
+      width: asNum(m.width),
+      height: asNum(m.height),
+      bytes: asNum(m.bytes) ?? 0,
+      aspect: asNum(m.aspect),
+    }));
 }
 
 /* ------------------------------------------------------------------ */
@@ -545,7 +577,17 @@ export const communityApi = {
    */
   async postMessage(
     roomId: string,
-    payload: { kind?: 'text' | 'chart' | 'position_update'; body: string; refs?: Record<string, unknown>; structured_idea?: StructuredIdea; position_disclosure?: PositionDisclosure },
+    payload: {
+      kind?: 'text' | 'chart' | 'position_update';
+      body: string;
+      refs?: Record<string, unknown>;
+      structured_idea?: StructuredIdea;
+      position_disclosure?: PositionDisclosure;
+      /** The post this comments on. One level only — the server refuses more. */
+      parent_id?: string;
+      /** Ids from `uploadPhoto`, in the order they should appear. */
+      attachment_ids?: string[];
+    },
     onNotice?: (plain: string) => void,
   ): Promise<RoomMessage> {
     if (live()) {
@@ -564,6 +606,8 @@ export const communityApi = {
                 plain: payload.position_disclosure.label,
               }
             : undefined,
+          parent_id: payload.parent_id,
+          attachment_ids: payload.attachment_ids?.length ? payload.attachment_ids : undefined,
         }),
       });
       const plain = typeof r?.plain === 'string' ? r.plain : '';
@@ -574,6 +618,7 @@ export const communityApi = {
     const now = new Date().toISOString();
     return {
       id: `local-${Date.now()}`,
+      room_id: roomId,
       seq: 0,
       kind: payload.kind ?? 'text',
       created_at: now,
@@ -586,8 +631,107 @@ export const communityApi = {
       kai_object: null,
       deleted: false,
       is_claim: !!payload.structured_idea,
-      reactions: [],
+      reactions: EMPTY_REACTIONS,
+      reply_count: 0,
+      parent_id: payload.parent_id ?? null,
+      media: [],
+      author_deleted: false,
     };
+  },
+
+  /* ---------------------------------------------------------------- */
+  /* Reactions, threads and pictures                                   */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * Toggle one reaction. The screen has already moved — it flips the count
+   * optimistically, because a reaction that waits for a round trip feels
+   * broken — so what this returns is the SERVER'S state, which the caller
+   * writes over the optimistic one. When it throws, the caller puts the old
+   * state back and says so.
+   */
+  async react(messageId: string, kind: ReactionKind): Promise<MessageReactions> {
+    if (!live()) {
+      // FIXTURES ONLY. The screen it is driving already says, in its own
+      // banner, that the conversation is an example — so a toggle that only
+      // exists in this process is not a claim about anything. This is NOT the
+      // old device-local reaction store coming back: with a reachable service
+      // this branch never runs, and a failed call is reported, not swallowed.
+      const seed = fixtureMessages.find((m) => m.id === messageId)?.reactions ?? EMPTY_REACTIONS;
+      const on = seed.mine.includes(kind);
+      const counts = { ...seed.counts };
+      const next = (counts[kind] ?? 0) + (on ? -1 : 1);
+      if (next > 0) counts[kind] = next; else delete counts[kind];
+      return { counts, mine: on ? seed.mine.filter((k) => k !== kind) : [...seed.mine, kind] };
+    }
+    const r = await request<any>(`/messages/${messageId}/reactions`, {
+      method: 'POST',
+      body: JSON.stringify({ kind }),
+    });
+    return mapReactions(r?.reactions);
+  },
+
+  /** A post and its comments. */
+  async replies(messageId: string): Promise<{ parent: RoomMessage; replies: RoomMessage[]; empty_copy: string } | null> {
+    if (!live()) {
+      const parent = fixtureMessages.find((m) => m.id === messageId) ?? fixtureMessages[0];
+      return {
+        parent,
+        replies: fixtureThread(parent.id),
+        empty_copy: 'No comments yet. Be the first to say something about this.',
+      };
+    }
+    try {
+      const r = await request<any>(`/messages/${messageId}/replies`);
+      return {
+        parent: mapMessage(r.parent),
+        replies: (r.replies ?? []).map((m: any) => mapMessage(m)),
+        empty_copy: String(r.empty_copy ?? 'No comments yet.'),
+      };
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Send one already-downscaled photo and get back an asset id to attach.
+   *
+   * NOT through `request()`, deliberately: that helper stamps
+   * `Content-Type: application/json` on everything, and a multipart body needs
+   * the browser/runtime to set its own boundary. Setting it by hand is the
+   * classic way to make an upload that fails with no useful message.
+   *
+   * The `{ uri, name, type }` shape is React Native's file object for FormData
+   * — it streams the file off disk rather than reading it into JavaScript, so
+   * a three-megabyte photo does not become a three-megabyte string first.
+   */
+  async uploadPhoto(
+    photo: { uri: string; name: string; mime: string },
+    purpose: 'message' | 'avatar' = 'message',
+  ): Promise<{ id: string; media: MessageMedia; plain: string }> {
+    if (!live()) throw new CommunityApiError('NO_API', 'The service is not connected yet.');
+
+    const form = new FormData();
+    form.append('purpose', purpose);
+    form.append('file', { uri: photo.uri, name: photo.name, type: photo.mime } as unknown as Blob);
+
+    const res = await fetch(`${env.apiBase}/api/v1/media`, {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: form,
+    });
+    const text = await res.text();
+    let json: any = null;
+    try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+    if (!res.ok) {
+      throw new CommunityApiError(
+        json?.error?.code ?? 'INTERNAL',
+        json?.error?.message_plain ?? 'That picture would not upload. Try another one.',
+      );
+    }
+    const media = mapMedia([json?.asset])[0];
+    if (!media) throw new CommunityApiError('INTERNAL', 'That picture would not upload. Try another one.');
+    return { id: media.id, media, plain: String(json?.plain ?? 'Added.') };
   },
 
   /** Synchronous in this round — the API runs Kai inline and inserts the object. */
@@ -922,13 +1066,7 @@ function mapCircleMessage(raw: any): CircleMessage {
           body: String(kaiObj.plain ?? kaiObj.body ?? raw?.body ?? ''),
         }
       : null,
-    reactions: Array.isArray(raw?.reactions)
-      ? raw.reactions.map((r: any) => ({
-          emoji: /^\d+$/.test(String(r?.label ?? r?.emoji ?? '')) ? '🔥' : String(r?.emoji ?? r?.label ?? '🔥'),
-          count: asNum(r?.count) ?? 0,
-          mine: Boolean(r?.mine),
-        }))
-      : [],
+    reactions: mapReactions(raw?.reactions),
   };
 }
 
@@ -1097,19 +1235,15 @@ export const circlesApi = {
   },
 
   /**
-   * Reactions. There is no reactions endpoint on this stack, so the POST is
-   * attempted and a failure is reported back — the screen then keeps the
-   * reaction locally and SAYS it is local. It never pretends the room saw it.
+   * Reactions in a circle are the SAME reactions as everywhere else. This used
+   * to POST an emoji at an endpoint that did not exist, catch the failure, and
+   * keep the tap on the device while saying so on screen — honest at the time,
+   * and unnecessary now that `message_reactions` exists.
+   *
+   * It is the community client's `react`, re-exported rather than
+   * reimplemented: one toggle, one set of counts, one place for it to be wrong.
    */
-  async react(messageId: string, emoji: string): Promise<'saved' | 'local'> {
-    if (!live()) return 'local';
-    try {
-      await request(`/messages/${messageId}/reactions`, { method: 'POST', body: JSON.stringify({ emoji }) });
-      return 'saved';
-    } catch {
-      return 'local';
-    }
-  },
+  react: (messageId: string, kind: ReactionKind) => communityApi.react(messageId, kind),
 };
 
 /* ------------------------------------------------------------------ */

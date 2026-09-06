@@ -1530,6 +1530,123 @@ export const StructuredIdea = z.object({
 });
 export type StructuredIdea = z.infer<typeof StructuredIdea>;
 
+/* ------------------------------------------------------------------ */
+/* Reactions                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * FOUR REACTIONS, AND `disagree` IS THE ONE THAT EARNS ITS PLACE.
+ *
+ * A room where the only cheap gesture is approval reads as unanimous whether
+ * or not it is, and in a room about money that is not a styling problem — it
+ * is how a bad idea gets amplified. Making dissent exactly as cheap as
+ * agreement is the whole reason this set is not a row of hearts and fires.
+ *
+ * `useful` and not "thanks", because `contributor_stats.usefulness_score`
+ * (migration 0010) has been sitting there since the beginning with nothing
+ * honest to compute it from. Nothing computes it yet; the input now exists.
+ *
+ * The tones are the app's colour law, not decoration: volt is the user, violet
+ * is Kai, cyan is the market. A reaction is always the user's, so agree and
+ * disagree are volt and the market tone is reserved for `watching` — the one
+ * that says something about an instrument rather than about the post.
+ */
+export const ReactionKind = z.enum(['agree', 'disagree', 'watching', 'useful']);
+export type ReactionKind = z.infer<typeof ReactionKind>;
+
+export const REACTIONS: {
+  id: ReactionKind;
+  label: string;
+  /** What tapping it says, in the member's own terms. Used as the a11y hint. */
+  plain: string;
+  tone: 'user' | 'market' | 'neutral';
+}[] = [
+  { id: 'agree',    label: 'Agree',    plain: 'You think this is right.',                       tone: 'user' },
+  { id: 'disagree', label: 'Disagree', plain: 'You think this is wrong.',                       tone: 'user' },
+  { id: 'watching', label: 'Watching', plain: 'You are keeping an eye on this one.',            tone: 'market' },
+  { id: 'useful',   label: 'Useful',   plain: 'This helped you, whatever you think of the call.', tone: 'neutral' },
+];
+
+export const MessageReactions = z.object({
+  /**
+   * {kind: count}. `partialRecord`, not `record`: a kind nobody has used is
+   * ABSENT rather than present at zero, so an unreacted message carries `{}`
+   * and the phone can ask "is this empty" instead of summing four zeroes.
+   */
+  counts: z.partialRecord(ReactionKind, z.number()),
+  /** The kinds THIS caller has given. Never inferred from the counts. */
+  mine: z.array(ReactionKind),
+});
+export type MessageReactions = z.infer<typeof MessageReactions>;
+
+export const ReactionToggleRequest = z.object({
+  kind: ReactionKind,
+});
+export type ReactionToggleRequest = z.infer<typeof ReactionToggleRequest>;
+
+export const ReactionToggleResponse = z.object({
+  message_id: z.string(),
+  reactions: MessageReactions,
+  /** true = it was added, false = it was taken back. */
+  on: z.boolean(),
+});
+export type ReactionToggleResponse = z.infer<typeof ReactionToggleResponse>;
+
+/* ------------------------------------------------------------------ */
+/* Media                                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A picture attached to a message.
+ *
+ * `url` IS TEMPORARY AND IS NOT AN IDENTIFIER. The buckets are private with no
+ * storage policy at all (migration 0033), so this is a signature minted for
+ * this caller after the room-membership check in the route, valid for an hour.
+ * It must never be stored, cached to disk as a permanent reference, or shown to
+ * anyone else — and it stops resolving the moment a moderator removes the
+ * object, which is the behaviour the whole design is built around. `id` is the
+ * durable handle.
+ *
+ * `aspect` is height ÷ width, sent so a phone can reserve the right space
+ * before the bytes arrive instead of shoving the conversation down the screen
+ * when they do.
+ */
+export const MessageMedia = z.object({
+  id: z.string(),
+  url: z.string().nullable(),
+  mime_type: z.string(),
+  width: z.number().nullable(),
+  height: z.number().nullable(),
+  bytes: z.number(),
+  aspect: z.number().nullable(),
+  position: z.number(),
+});
+export type MessageMedia = z.infer<typeof MessageMedia>;
+
+export const MediaPurpose = z.enum(['message', 'avatar']);
+export type MediaPurpose = z.infer<typeof MediaPurpose>;
+
+export const MediaUploadResponse = z.object({
+  asset: MessageMedia,
+  /**
+   * A PERMANENT address for this file on this API, which 302s to a freshly
+   * signed storage URL on every fetch. `asset.url` is the fast path and it
+   * expires; this one is what you WRITE DOWN — `profiles.avatar_url` holds it,
+   * which is how an avatar in a private bucket has a stable address without the
+   * bucket being made public. See `GET /api/v1/media/:id`.
+   */
+  stable_url: z.string(),
+  /**
+   * The metadata blocks that were thrown away, named. Shown to the member as
+   * "location data removed" when EXIF was among them — a person posting a photo
+   * of their trading desk should be TOLD their address was in it and is not any
+   * more, not left to hope.
+   */
+  removed: z.array(z.string()),
+  plain: z.string(),
+});
+export type MediaUploadResponse = z.infer<typeof MediaUploadResponse>;
+
 export const MessageRow = z.object({
   id: z.string(),
   room_id: z.string(),
@@ -1546,8 +1663,35 @@ export const MessageRow = z.object({
   author: MessageAuthor.nullable(),
   /** kind='kai_object' → the resolved envelope, so the client renders an object. */
   kai_object: KaiObjectEnvelope.nullable(),
+
+  /* --- added in the social round --- */
+
+  /**
+   * True when the author deleted their account. `user_id` is null on those
+   * rows and WITHOUT this the null reads as "posted by Kai" (migration 0032).
+   * Anything rendering an author must check it before falling back to Kai.
+   */
+  author_deleted: z.boolean().default(false),
+  /**
+   * Counts come denormalised off the message row, so reading them costs no
+   * extra query. `mine` is one batched lookup for the whole page.
+   */
+  reactions: MessageReactions.default({ counts: {}, mine: [] }),
+  /** How many comments this post has. Always 0 on a comment: threads are one
+   *  level deep and the database enforces it (migration 0033 §1). */
+  reply_count: z.number().default(0),
+  /** Pictures attached to this message, in the order they were picked. */
+  media: z.array(MessageMedia).default([]),
 });
 export type MessageRow = z.infer<typeof MessageRow>;
+
+export const RepliesResponse = z.object({
+  parent: MessageRow,
+  replies: z.array(MessageRow),
+  /** Plain sentence for an empty thread, so the screen never invents one. */
+  empty_copy: z.string(),
+});
+export type RepliesResponse = z.infer<typeof RepliesResponse>;
 
 export const MessagesQuery = z.object({
   after_seq: z.coerce.number().optional(),
@@ -1568,14 +1712,37 @@ export const MessagesResponse = z.object({
 });
 export type MessagesResponse = z.infer<typeof MessagesResponse>;
 
-export const PostMessageBody = z.object({
-  kind: z.enum(['text', 'chart', 'position_update']).default('text'),
-  body: z.string().min(1).max(4000),
-  refs: z.record(z.string(), z.unknown()).optional(),
-  structured_idea: StructuredIdea.optional(),
-  position_disclosure: PositionDisclosure.optional(),
-  parent_id: z.string().optional(),
-});
+export const MAX_ATTACHMENTS_PER_MESSAGE = 4;
+
+export const PostMessageBody = z
+  .object({
+    kind: z.enum(['text', 'chart', 'position_update']).default('text'),
+    /**
+     * `min(1)` is gone and the refinement below replaces it. A photo with no
+     * caption is a real post — forcing a member to type something so the
+     * validator is happy produces "." and teaches nothing.
+     */
+    body: z.string().max(4000).default(''),
+    refs: z.record(z.string(), z.unknown()).optional(),
+    structured_idea: StructuredIdea.optional(),
+    position_disclosure: PositionDisclosure.optional(),
+    /**
+     * The post this is a comment on. One level only: a comment on a comment is
+     * refused by the database, not by this schema, because there are two write
+     * paths and a rule that lives in one of them is not a rule.
+     */
+    parent_id: z.string().optional(),
+    /**
+     * Assets from `POST /media`, in the order they should appear. They are
+     * claimed after the message lands, and only if they belong to the caller
+     * and are not already attached to something.
+     */
+    attachment_ids: z.array(z.string()).max(MAX_ATTACHMENTS_PER_MESSAGE).optional(),
+  })
+  .refine((v) => v.body.trim().length > 0 || (v.attachment_ids?.length ?? 0) > 0, {
+    message: 'Write something or attach a picture.',
+    path: ['body'],
+  });
 export type PostMessageBody = z.infer<typeof PostMessageBody>;
 
 export const PostMessageResponse = z.object({
@@ -4092,6 +4259,14 @@ export const RemoveMessageResponse = z.object({
   removed: z.boolean(),
   /** How many open reports on that message this closed. */
   reports_closed: z.number(),
+  /** Comments taken down with the post. Zero when the target was a comment. */
+  replies_removed: z.number().default(0),
+  /**
+   * Files actually deleted from the storage bucket in this call — not rows
+   * marked, not intentions queued. It is reported back because the difference
+   * between the two is the whole point of the purge queue.
+   */
+  media_purged: z.number().default(0),
   plain: z.string(),
 });
 export type RemoveMessageResponse = z.infer<typeof RemoveMessageResponse>;

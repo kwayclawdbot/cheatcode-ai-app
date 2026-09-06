@@ -69,20 +69,20 @@ export const fixtureCircleDetail = (id: string): CircleDetail => {
         id: 'c1', author: 'Jordan', initial: 'J', role: 'EDUCATOR', at: '9:40',
         body: 'Reclaimed VWAP on strong volume. Watching 501 for the entry.',
         is_kai: false, verification: null,
-        reactions: [{ emoji: '🔺', count: 14, mine: false }],
+        reactions: { counts: { agree: 14, watching: 3 }, mine: [] },
       },
       {
         id: 'c2', author: 'Kai', initial: 'K', role: null, at: '9:41',
         body: 'Real — 1.6× the 20-day average, not just the open.',
         is_kai: true,
         verification: { title: 'Volume check · META', result_plain: 'Confirmed', body: 'Real — 1.6× the 20-day average, not just the open.' },
-        reactions: [],
+        reactions: { counts: {}, mine: [] },
       },
       {
         id: 'c3', author: 'Priya', initial: 'P', role: null, at: '9:44',
         body: 'Took a starter here. Stop under 498, adding if it holds into the afternoon.',
         is_kai: false, verification: null,
-        reactions: [{ emoji: '🔥', count: 6, mine: false }],
+        reactions: { counts: { useful: 6 }, mine: ['useful'] },
       },
     ],
   };

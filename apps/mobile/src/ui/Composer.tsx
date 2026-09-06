@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { alpha, color, gradient, gradientAngle, radius } from './tokens';
 import { family } from './fonts';
 import { Mic, ArrowUp } from './Icons';
+import { AttachButton, AttachmentTray, type Attachment } from './AttachmentTray';
 
 /**
  * Composer — artboard pill: 52px tall, `padding:0 6 0 16`, one 40px volt circle.
@@ -17,9 +18,32 @@ export function Composer({
   onSend,
   disabled = false,
   testID,
-}: { placeholder?: string; onSend?: (text: string) => void; disabled?: boolean; testID?: string }) {
+  attachments,
+  onAttach,
+  onRemoveAttachment,
+  attachLimit = 4,
+}: {
+  placeholder?: string;
+  onSend?: (text: string) => void;
+  disabled?: boolean;
+  testID?: string;
+  /**
+   * Pictures, when this composer takes them. ABSENT BY DEFAULT and that is
+   * deliberate: this component is also Kai's composer, and Kai does not take
+   * photographs. Passing nothing draws no camera button at all.
+   */
+  attachments?: Attachment[];
+  onAttach?: () => void;
+  onRemoveAttachment?: (key: string) => void;
+  attachLimit?: number;
+}) {
   const [value, setValue] = useState('');
-  const canSend = value.trim().length > 0 && !disabled;
+  const picked = attachments ?? [];
+  const uploading = picked.some((a) => a.state === 'uploading');
+  const ready = picked.filter((a) => a.state === 'ready');
+  // A picture on its own is a post. Send stays dark while an upload is running,
+  // because posting then would drop the photo the member is watching go up.
+  const canSend = (value.trim().length > 0 || ready.length > 0) && !disabled && !uploading;
 
   const submit = () => {
     if (!canSend) return;
@@ -27,7 +51,7 @@ export function Composer({
     setValue('');
   };
 
-  return (
+  const pill = (
     <LinearGradient
       testID={testID ?? 'composer'}
       colors={gradient.composer as unknown as readonly [string, string, ...string[]]}
@@ -86,5 +110,23 @@ export function Composer({
         {canSend ? <ArrowUp size={16} color={color.bg} /> : <Mic size={16} color={color.bg} />}
       </Pressable>
     </LinearGradient>
+  );
+
+  // Without a picture handler this is exactly the component it always was:
+  // the pill, on its own, with no wrapper and no extra button.
+  if (!onAttach) return pill;
+
+  return (
+    <View>
+      <AttachmentTray attachments={picked} onRemove={onRemoveAttachment} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <AttachButton
+          onPress={onAttach}
+          disabled={disabled || picked.length >= attachLimit}
+          limit={attachLimit}
+        />
+        <View style={{ flex: 1 }}>{pill}</View>
+      </View>
+    </View>
   );
 }

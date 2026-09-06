@@ -1833,3 +1833,181 @@ trip in the middle of that sequence, and became reproducible the moment the
 market client stopped making one (DATA-1, 2026-08-29). `id` is a `bigserial`, so
 insertion order is already recorded exactly; the read sorts on it after the
 timestamp. No rows changed.
+
+---
+
+## 0033 — photos, reactions and comments (the social lane)
+
+### 0033.1 Threads are one level, and the DATABASE is what makes them one
+
+`messages.parent_id` has existed since 0010 and nothing read it. It now means
+"this is a comment on that post", and a comment can never itself be a parent.
+
+The rule is a `before insert or update` trigger on `messages`, not a check in
+the posting route, because there are two write paths — `post_room_message`
+(0018) and the API's fallback insert when the RPC is missing — and a rule that
+lives in one of them is not a rule. It raises `parent_not_top_level` with the
+same SQLSTATE the RPC's other conditions use, and the route translates it into
+"You can comment on a post, but not on a comment."
+
+WHY ONE LEVEL, since the other answer is defensible: nested threads suit a forum
+with many moderators; this is a trading room with a handful of staff, and depth
+costs three things it cannot pay — conversation about one idea splinters into
+branches nobody reads to the end, a removal has to reason about a subtree
+instead of a post, and the phone has to draw an indent ladder that is
+unreadable past the second step at 390pt.
+
+The room feed returns TOP-LEVEL posts only (`parent_id is null`). Without that
+every conversation appears twice and the "N new since you left" count counts
+each comment as well as the post it answers.
+
+### 0033.2 Removing a post removes its comments — and records that it did
+
+`removeMessage` soft-deletes the post and then soft-deletes its direct children,
+stamping `messages.deleted_cascade_of` with the parent's id.
+
+The alternative — leaving comments standing under a "removed" gap — reads fairer
+to the people who wrote them and is wrong here: a comment quotes what it
+answers, so half a thread about a post that had to come down reconstructs the
+post. `deleted_cascade_of` is what keeps it answerable: it distinguishes "a
+moderator judged this" from "this was standing next to something a moderator
+judged", so nobody's comment is recorded as having been ruled against.
+
+There is no un-remove in this app (`keepMessage` closes reports on a post that
+is still up), so the cascade is one-way by construction.
+
+### 0033.3 Reaction counts are denormalised, and that is the whole design
+
+`message_reactions` is the truth: `(message_id, user_id, kind)` primary key, so
+"one of each kind per person" is impossible to violate rather than checked.
+
+`messages.reaction_counts` is a trigger-maintained jsonb of the same thing, and
+it exists because the read pattern is brutal: fifty messages a screen, re-read
+on every poll. Counting per message is fifty aggregates; joining is a query that
+has to be re-run on every scroll. Denormalised, the counts arrive on the row the
+room was already fetching — ZERO extra queries.
+
+The write side pays one narrow row update per toggle, on a row nothing else
+writes to (this app never edits a posted message), which is the right trade for
+something read thousands of times per write.
+
+The one thing that cannot be denormalised is "did *I* react", which is
+per-person. That is one batched `where user_id = me and message_id in (…)` per
+page — one round trip for fifty messages, never one per message. Same shape as
+`attachment_count`, which lets a page fetch attachments only for the messages
+that have any.
+
+### 0033.4 The reaction set: `agree` `disagree` `watching` `useful`
+
+Four, and `disagree` is the one that earns its place: a room where the only
+cheap gesture is approval reads as unanimous whether or not it is, and in a room
+about money that is how a bad idea gets amplified.
+
+`useful` rather than a heart because `contributor_stats.usefulness_score` (0010)
+has been waiting since the beginning for something honest to compute it from.
+Nothing computes it yet; the input now exists.
+
+A CHECK constraint, not an enum — 03 Unit 2's "no enum migrations" rule stands,
+and a check is amended in one statement.
+
+### 0033.5 DELETING A ROW IS NOT DELETING A FILE
+
+The single easiest thing to get wrong here, and it looks completely correct from
+inside psql.
+
+Supabase Storage keeps its index in `storage.objects` and the bytes in an object
+store. Deleting the index row does not delete the bytes, and no trigger, foreign
+key or cascade can: removing a file is an HTTP call, and a database function
+cannot make one. A schema that "deletes" media by deleting rows leaves every
+photo — including the reported one — in the bucket forever.
+
+So the database records the INTENT and the API carries it out:
+
+```
+media_assets row deleted  --trigger-->  media_deletions row
+media_deletions           --drain-->    storage remove, purged_at stamped
+```
+
+Two callers: the moderation route drains inline, so a reported picture is gone
+in the same second; a cron drains every five minutes, so an intent that failed
+once is retried and never lost. `media_deletions` is grant-restricted so this
+API can insert and update it but cannot DELETE from it — the receipt that an
+object was removed is not something the app may erase.
+
+MEASURED, and stated because a reviewer may ask: the object is deleted at the
+origin immediately, and an already-cached copy stopped being served from the
+edge 46 seconds later (hosted, 2026-09-06). Upload `cacheControl` was dropped
+from a year to an hour to bound the worst case if a purge is ever missed.
+
+### 0033.6 Media on removal and on account deletion is a TRIGGER, not a route
+
+A message can go down three ways: a moderator's removal, the cascade from its
+parent, and 0032's `delete_account`, which sets `deleted_at` on everything the
+person wrote. Putting the purge in the moderation route would cover one of them;
+putting it in `delete_account` would mean editing another lane's migration.
+
+It is on the table instead: the moment `deleted_at` goes from null to a
+timestamp, by any hand, the attachments are deleted and the enqueue trigger
+turns that into real removal from the bucket. `media_assets.owner_id` and
+`message_reactions.user_id` cascade from `profiles`, and `delete_account` ends
+on `delete from profiles`, so an avatar and a person's reactions go with the
+account without 0032 naming either. **0032 needs no edit.**
+
+### 0033.7 The buckets have NO policy, and that is the lock
+
+`community-media` and `avatars` are `public = false` with no row in
+`pg_policies` naming them. `storage.objects` carries RLS with no permissive
+default and the only policies on it name `live-audio` (0023), so a bucket
+nobody writes a policy for is closed to `anon` and `authenticated` for every
+verb. The service role reaches the objects by bypassing RLS — the same boundary
+every other read in this app runs on — which means reading a picture is asking
+this API for a signed URL, which means the membership check runs first.
+
+Migration 0033 asserts at apply time that no policy names either bucket.
+
+### 0033.8 An avatar in a private bucket needs a STABLE address
+
+Raised by the identity lane in `lib/avatars.ts` and settled here, because media
+is this lane's to decide.
+
+`profiles.avatar_url` is read months after it is written; a signed URL expires
+in an hour. Making the bucket public would fix the address and open every avatar
+to the internet with no check. Storing the asset id fails the column's own
+URL validation.
+
+So: `GET /api/v1/media/:id` — a permanent address on this API that 302s to a
+freshly signed storage URL per request, after checking the caller. An avatar is
+readable by any signed-in member; a message attachment only by a member of its
+room, and only while the message stands. `POST /media` returns it as
+`stable_url`, which is what `profiles.avatar_url` should hold.
+
+### 0033.9 Limits are enforced in three places and only one of them counts
+
+The phone downscales (courtesy). The API refuses on the bytes it actually
+received and the header it actually sniffed (the number a member reads). The
+bucket refuses at `file_size_limit` / `allowed_mime_types`, set ABOVE the API's
+numbers so it only ever catches something that reached storage without asking.
+
+4 MiB for a photo, 2 MiB for an avatar, at most 4 per post, JPEG and PNG only.
+The 4 MiB is not a taste: MEASURED against production on 2026-09-06, a 4.25 MiB
+body reaches the function and a 4.30 MiB body answers 413
+`FUNCTION_PAYLOAD_TOO_LARGE` before any of this app's code runs. The table is in
+`apps/api/src/lib/media/limits.ts`.
+
+JPEG and PNG only because those are the two formats the server can rewrite to
+strip metadata. A format it cannot rewrite is a format whose GPS coordinates it
+cannot remove, so it is refused rather than passed through.
+
+### 0033.10 What is NOT covered — say this out loud rather than implying it
+
+- **Video is not supported.** Not a gap that will close with a column: the bytes
+  cannot reach the code that cleans them (0033.9), the only way round that is a
+  direct-to-storage upload that skips the stripping, an iPhone records HEVC in a
+  .mov that Android cannot decode, and there is no transcoder in this project.
+- **Nothing looks at the picture.** The advice tripwire is a word check and
+  cannot read an image. Apple Guideline 1.2 is answered by reporting on media,
+  staff removal, and removal that actually deletes the object — not by any
+  automated review of what is in the frame.
+- **The picker is unverified.** `expo-image-picker` and the permission strings
+  in `app.json` only take effect in a native build, and this app has only ever
+  run in Expo Go, which carries its own Info.plist.

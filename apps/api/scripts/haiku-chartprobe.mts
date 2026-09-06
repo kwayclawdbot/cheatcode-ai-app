@@ -8,7 +8,7 @@ for (const s of ['SPY','GTLB','NVDA','AAPL','ZZZZQ']) {
   const c = await loadChartContext(U, { symbol: s, timeframe: '1d' });
   if (!c) { console.log(s, 'NO CHART CONTEXT'); continue; }
   const lv = availableLevels(c);
-  console.log('===', s, '| setup:', c.setup ? (c.setup as any).grade_display ?? 'yes' : 'none', '| lastPrice', c.bars.lastPrice, '| bars', c.bars?.daily?.length ?? '?');
+  console.log('===', s, '| setup:', c.setup ? (c.setup as any).grade_display ?? 'yes' : 'none', '| lastPrice', c.bars.lastPrice, '| bars', (c.bars as Record<string, unknown> | null)?.daily ?? '?');
   console.log('  levels:', lv.join(', '));
   console.log('  drawings:', availableDrawings(c).join(', '));
   console.log('  answerLevels:', [...levelTableFor(c).keys()].join(', '));

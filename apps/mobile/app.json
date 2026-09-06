@@ -54,6 +54,34 @@
         }
       ],
       [
+        "expo-image-picker",
+        {
+          "//": [
+            "PERMISSION STRINGS ARE PART OF THE REVIEW, NOT BOILERPLATE. Apple",
+            "rejects a purpose string that restates the permission ('this app",
+            "needs photo access'); it has to say what the app does with it.",
+            "",
+            "cameraPermission and microphonePermission are FALSE deliberately.",
+            "The picker is only ever opened onto the library — nothing in this",
+            "app calls launchCameraAsync — and left at their defaults this",
+            "plugin adds NSCameraUsageDescription plus the Android CAMERA and",
+            "RECORD_AUDIO permissions for hardware that is never opened. Same",
+            "reasoning the expo-audio block above sets out for the microphone:",
+            "a declared capability the app does not use is a question at",
+            "review and a line on Google Play's data form, and both are",
+            "avoidable by saying no here.",
+            "",
+            "NOT VERIFIABLE IN EXPO GO. Expo Go ships its own Info.plist with",
+            "its own strings, so what a member reads in the permission sheet",
+            "is Expo's copy, not this. These strings only take effect in a",
+            "native build, and this app has never been built natively."
+          ],
+          "photosPermission": "Cheat Code AI needs your photo library so you can post a chart or a screenshot in the community. Location data is removed from every picture before it is stored.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#0B0B0E",

@@ -15,7 +15,8 @@ import { MessageRow } from '../../../features/community/ui/Message';
 import { KaiObjectView } from '../../../features/community/ui/KaiObjects';
 import { CasePair, PinnedSetup } from '../../../features/community/ui/PinnedSetup';
 import { RoomComposer } from '../../../features/community/ui/RoomComposer';
-import { KAI_COMMANDS, type KaiCommand, type KaiRoomObject, type Room, type RoomMessage } from '../../../features/community/types';
+import { KAI_COMMANDS, EMPTY_REACTIONS, type KaiCommand, type KaiRoomObject, type MessageReactions, type ReactionKind, type Room, type RoomMessage } from '../../../features/community/types';
+import { useAttachments } from '../../../features/media/useAttachments';
 import {
   fixtureAlertPreview, fixtureComparison, fixtureExplain, fixtureRooms,
 } from '../../../features/community/fixtures';
@@ -96,6 +97,7 @@ export default function RoomScreen() {
 
   const lastSeq = useRef(0);
   const focusedOnce = useRef(false);
+  const media = useAttachments();
 
   const merge = useCallback((incoming: RoomMessage[]) => {
     if (!incoming.length) return;
@@ -209,12 +211,48 @@ export default function RoomScreen() {
 
   const send = async (text: string) => {
     setError(null);
+    const ids = media.readyIds;
     try {
-      const posted = await communityApi.postMessage(roomId, { body: text });
+      const posted = await communityApi.postMessage(
+        roomId,
+        { body: text, attachment_ids: ids },
+        (plain) => setError(plain),
+      );
+      // Only cleared once the post is actually accepted. Clearing first would
+      // throw away pictures the member would then have to pick again.
+      media.clear();
       merge([{ ...posted, seq: posted.seq || lastSeq.current + 1 }]);
       requestAnimationFrame(() => scroller.current?.scrollToEnd({ animated: true }));
     } catch (e: any) {
       setError(e?.message ?? 'That message did not send. Try again.');
+    }
+  };
+
+  /**
+   * A reaction, flipped straight away and corrected by the server's answer.
+   * On a failure the previous state goes back and the server's own sentence is
+   * shown — the room never keeps a count that did not happen.
+   */
+  const react = async (messageId: string, kind: ReactionKind) => {
+    const before = messages.find((m) => m.id === messageId)?.reactions;
+    if (!before) return;
+
+    const on = before.mine.includes(kind);
+    const optimistic: MessageReactions = {
+      counts: { ...before.counts, [kind]: Math.max(0, (before.counts[kind] ?? 0) + (on ? -1 : 1)) },
+      mine: on ? before.mine.filter((k) => k !== kind) : [...before.mine, kind],
+    };
+    if (optimistic.counts[kind] === 0) delete optimistic.counts[kind];
+
+    const write = (r: MessageReactions) =>
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions: r } : m)));
+
+    write(optimistic);
+    try {
+      write(await communityApi.react(messageId, kind));
+    } catch (e: any) {
+      write(before);
+      setError(e?.message ?? 'That reaction did not register.');
     }
   };
 
@@ -236,13 +274,15 @@ export default function RoomScreen() {
         const now = new Date().toISOString();
         merge([{
           id: `kai-${Date.now()}`,
+          room_id: roomId,
           seq: lastSeq.current + 1,
           kind: 'kai_object',
           created_at: now,
           time_label: 'just now',
           author: { user_id: 'kai', display_name: 'Kai', handle: null, avatar_url: null, initial: 'K', role_labels: ['AI'], is_kai: true, author_deleted: false },
           body: null, refs: null, structured_idea: null, position_disclosure: null,
-          kai_object: object, deleted: false, is_claim: false, reactions: [],
+          kai_object: object, deleted: false, is_claim: false,
+          reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, media: [], author_deleted: false,
         }]);
         requestAnimationFrame(() => scroller.current?.scrollToEnd({ animated: true }));
       } else {
@@ -344,6 +384,8 @@ export default function RoomScreen() {
                   onSelect={() => setSelected(selected === m.id ? null : m.id)}
                   onOpenAuthor={() => router.push(`/contributor/${m.author.user_id}`)}
                   onMore={() => { setSelected(m.id); setMoreSheet(true); }}
+                  onReact={(k) => { void react(m.id, k); }}
+                  onOpenThread={() => router.push(`/thread/${encodeURIComponent(m.id)}` as never)}
                 />
               </View>
             ))
@@ -374,6 +416,11 @@ export default function RoomScreen() {
               </T>
             </View>
           ) : null}
+          {media.notice ? (
+            <View style={{ paddingBottom: 8 }}>
+              <T size={11} c={color.gold}>{media.notice}</T>
+            </View>
+          ) : null}
           <RoomComposer
             roomLabel={room?.type === 'setup' ? `${room.setup?.symbol ?? room.name} room` : `# ${room?.name ?? 'room'}`}
             onSend={send}
@@ -381,6 +428,9 @@ export default function RoomScreen() {
             onStructured={() => router.push(`/room/${roomId}/compose`)}
             disabled={!!room?.config.posting_restricted}
             disabledReason={room?.config.posting_restricted ? 'Posting is restricted in this room right now. You can still read and ask Kai.' : null}
+            attachments={media.attachments}
+            onAttach={() => { void media.pick(); }}
+            onRemoveAttachment={media.remove}
           />
         </View>
       </KeyboardAvoidingView>

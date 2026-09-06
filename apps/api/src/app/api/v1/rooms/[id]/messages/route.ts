@@ -28,6 +28,7 @@ import { rateLimit } from '@/lib/ratelimit';
 import { spamPrecheck } from '@/lib/spam';
 import { adviceCheck, flagAdviceShaped } from '@/lib/moderation';
 import { callRpc, noteFallback } from '@/lib/rpc';
+import { attachToMessage, attachmentsForMessages } from '@/lib/media/store';
 import {
   loadRoom,
   loadMembership,
@@ -39,6 +40,7 @@ import {
   authorsFor,
   objectsFor,
   toMessageRow,
+  reactionsMineFor,
   unreadFor,
   catchUpPlain,
 } from '@/lib/rooms';
@@ -57,10 +59,15 @@ export const GET = authedParams<{ id: string }>(async (req: NextRequest, ctx: Ct
   requireMember(membership, String(room.name));
 
   const db = serviceClient();
+  // THE ROOM SHOWS POSTS, NOT COMMENTS. A comment lives under the post it
+  // answers (`GET /messages/:id/replies`); letting replies back into the main
+  // feed would mean every conversation appears twice and the "N new" count
+  // counts each one of them.
   let query = db
     .from('messages_public')
     .select(MESSAGE_COLUMNS)
     .eq('room_id', ctx.params.id)
+    .is('parent_id', null)
     .order('seq', { ascending: true })
     .limit(q.limit + 1);
   if (q.after_seq !== undefined) query = query.gt('seq', q.after_seq);
@@ -76,7 +83,13 @@ export const GET = authedParams<{ id: string }>(async (req: NextRequest, ctx: Ct
   const has_more = rows.length > q.limit;
   const page = has_more ? rows.slice(0, q.limit) : rows;
 
-  const [authors, objects, stats] = await Promise.all([
+  // FIVE BATCHED LOOKUPS FOR THE WHOLE PAGE, and never one per message. The
+  // reaction COUNTS are not among them — they are denormalised onto the message
+  // row (migration 0033 §2b) and arrived with the select above, so they cost
+  // nothing. `mine` cannot be, because it is per-person, and `media` is only
+  // asked for the messages whose `attachment_count` says they have any, which
+  // on an ordinary page of text is no query at all.
+  const [authors, objects, stats, mine, media] = await Promise.all([
     authorsFor(page.map((r) => String(r.user_id ?? ''))),
     objectsFor(
       page
@@ -84,9 +97,11 @@ export const GET = authedParams<{ id: string }>(async (req: NextRequest, ctx: Ct
         .filter((v): v is string => typeof v === 'string')
     ),
     roomStats([ctx.params.id]),
+    reactionsMineFor(page.map((r) => String(r.id)), ctx.user.id),
+    attachmentsForMessages(page.filter((r) => Number(r.attachment_count ?? 0) > 0).map((r) => String(r.id))),
   ]);
 
-  const messages = page.map((r) => toMessageRow(r, authors, objects));
+  const messages = page.map((r) => toMessageRow(r, authors, objects, { mine, media }));
   const lastSeq = stats.get(ctx.params.id)?.last_seq ?? 0;
   const sinceSeq = membership.last_read_seq;
   // Counted BEFORE the read mark moves below, and never counting the caller's
@@ -184,8 +199,12 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
     .limit(1)
     .maybeSingle();
 
-  const verdict = spamPrecheck(body.body, ((previous.data as Record<string, unknown> | null)?.body as string) ?? null);
-  if (!verdict.ok) throw new ApiError('VALIDATION_FAILED', verdict.plain, { detail: { reason: verdict.reason } });
+  // A picture with no caption has no words to check, and running a repetition
+  // check over two empty strings would refuse the second photo somebody posts.
+  if (body.body.trim().length > 0) {
+    const verdict = spamPrecheck(body.body, ((previous.data as Record<string, unknown> | null)?.body as string) ?? null);
+    if (!verdict.ok) throw new ApiError('VALIDATION_FAILED', verdict.plain, { detail: { reason: verdict.reason } });
+  }
 
   // Structured ideas carry a position disclosure. Not optional (08 §7).
   if (body.structured_idea && !body.position_disclosure) {
@@ -199,7 +218,9 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
     p_user_id: ctx.user.id,
     p_room_id: ctx.params.id,
     p_kind: body.kind,
-    p_body: body.body,
+    // Empty means empty. Storing '' would make a photo-only post look like a
+    // message whose text somebody deleted.
+    p_body: body.body.trim() || null,
     p_refs: body.refs ?? null,
     p_structured_idea: body.structured_idea ?? null,
     p_position_disclosure: body.position_disclosure ?? null,
@@ -239,7 +260,7 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
         user_id: ctx.user.id,
         seq,
         kind: body.kind,
-        body: body.body,
+        body: body.body.trim() || null,
         parent_id: body.parent_id ?? null,
         refs: (body.refs ?? null) as never,
         structured_idea: (body.structured_idea ?? null) as never,
@@ -248,7 +269,11 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
       .select('id,room_id,user_id,seq,kind,body,parent_id,refs,structured_idea,position_disclosure,deleted_at,created_at')
       .single();
     if (res.error || !res.data) {
-      throw new ApiError('INTERNAL', 'We could not post that. Please try again.', { detail: res.error?.message });
+      // The trigger conditions from 0018 and 0033 reach this path too — the
+      // thread-depth guard is on the TABLE, so it fires on the fallback insert
+      // exactly as it does inside the RPC. Same translation, so a member reads
+      // the same sentence whichever path served them.
+      throw postError(res.error?.message ?? '');
     }
     inserted = res.data as Record<string, unknown>;
 
@@ -262,8 +287,28 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
     );
   }
 
+  // ATTACHMENTS ARE CLAIMED AFTER THE POST LANDS, never before. An upload that
+  // was already stamped with a message id belonging to a post that then failed
+  // to insert is a file pointing at nothing, which no purge path can find. This
+  // way round, a failure leaves an unattached asset and the orphan sweep takes
+  // it an hour later.
+  const attached = body.attachment_ids?.length
+    ? await attachToMessage({
+        assetIds: body.attachment_ids,
+        ownerId: ctx.user.id,
+        messageId: String(inserted.id),
+        requestId: ctx.requestId,
+      })
+    : [];
+
   const authors = await authorsFor([ctx.user.id]);
-  const message = toMessageRow(inserted, authors, new Map());
+  const mediaMap = attached.length ? await attachmentsForMessages([String(inserted.id)]) : new Map();
+  const message = toMessageRow(
+    { ...inserted, attachment_count: attached.length },
+    authors,
+    new Map(),
+    { media: mediaMap }
+  );
 
   await db
     .from('room_members')
@@ -301,7 +346,9 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
         ? ADVICE_NUDGE_PLAIN
         : body.structured_idea
           ? 'Posted, with your disclosure attached.'
-          : 'Posted.',
+          : body.parent_id
+            ? 'Comment posted.'
+            : 'Posted.',
     }),
     { status: 201 }
   );
@@ -323,5 +370,11 @@ function postError(message: string): ApiError {
     return new ApiError('CONSENT_REQUIRED', 'Say whether you hold this before you post it as an idea. Readers deserve to know.');
   }
   if (key.includes('parent_not_in_room')) return new ApiError('VALIDATION_FAILED', 'That reply points at a message in another room.');
+  // Threads are one level deep and the database is what makes them one
+  // (migration 0033 §1). This is the sentence a member reads if a client ever
+  // tries to comment on a comment.
+  if (key.includes('parent_not_top_level')) {
+    return new ApiError('VALIDATION_FAILED', 'You can comment on a post, but not on a comment. Reply to the post itself.');
+  }
   return new ApiError('INTERNAL', 'We could not post that. Please try again.');
 }

@@ -16,6 +16,10 @@
     {
       "path": "/api/v1/internal/swing/ingest",
       "schedule": "40 21 * * 1-5"
+    },
+    {
+      "path": "/api/v1/internal/media/purge",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

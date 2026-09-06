@@ -15,7 +15,8 @@ import { alpha, color, radius } from '../../../ui/tokens';
 import { GradeChip } from '../../portal/grade';
 import { KaiObjectView } from './KaiObjects';
 import { Avatar } from './Chrome';
-import type { RoomMessage } from '../types';
+import type { MessageMedia, ReactionKind, RoomMessage } from '../types';
+import { MediaStrip, ReactionBar, ThreadLine } from './Social';
 
 /** `$META` → a cyan chip that opens the ticker page. */
 export function ClubBody({
@@ -54,37 +55,19 @@ export function ClubBody({
   );
 }
 
-export type Reaction = { emoji: string; count: number; mine: boolean };
-
-function Reactions({
-  reactions, onReact, testID,
-}: { reactions: Reaction[]; onReact?: (emoji: string) => void; testID?: string }) {
-  const shown = reactions.length ? reactions : [{ emoji: '🔥', count: 0, mine: false }];
-  return (
-    <View testID={testID} style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
-      {shown.map((r) => (
-        <Pressable
-          key={r.emoji}
-          testID={`react-${r.emoji}`}
-          accessibilityRole="button"
-          accessibilityLabel={`React ${r.emoji}${r.count ? `, ${r.count} so far` : ''}`}
-          accessibilityState={{ selected: r.mine }}
-          onPress={() => onReact?.(r.emoji)}
-          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-          style={{
-            flexDirection: 'row', alignItems: 'center', gap: 5,
-            paddingHorizontal: 9, paddingVertical: 3, borderRadius: radius.pill,
-            backgroundColor: r.mine ? alpha.volt10 : alpha.ivory06,
-            borderWidth: 0.5, borderColor: r.mine ? alpha.volt40 : alpha.ivory10,
-          }}
-        >
-          <T size={11}>{r.emoji}</T>
-          {r.count ? <Num size={11} weight="regular" c={color.muted}>{String(r.count)}</Num> : null}
-        </Pressable>
-      ))}
-    </View>
-  );
-}
+/**
+ * REACTIONS USED TO BE EMOJI HELD ON THE PHONE. They are neither now.
+ *
+ * The old bar drew whatever labels came back, defaulted to a flame, and — when
+ * the POST failed, which it always did because no endpoint existed — kept the
+ * tap in React state and printed "Saved on this device only" underneath. That
+ * was the honest thing to do at the time and it is not needed any more: there
+ * is a `message_reactions` table, the counts are on the message, and a tap
+ * either lands or says it did not.
+ *
+ * The bar itself lives in `Social.tsx` so the room, the club feed and a circle
+ * all draw the same one.
+ */
 
 /** The Kai setup object the board shows inside Priya's message. */
 export function SetupObjectCard({
@@ -121,14 +104,16 @@ export function SetupObjectCard({
 }
 
 export function ClubMessage({
-  message, onTicker, onReact, onOpenSetup, reactionsLocal, onActions,
+  message, onTicker, onReact, onOpenSetup, reactionNotice, onActions, onOpenThread, onOpenMedia,
 }: {
   message: RoomMessage;
   onTicker: (symbol: string) => void;
-  onReact?: (emoji: string) => void;
+  onReact?: (kind: ReactionKind) => void;
   onOpenSetup?: (symbol: string) => void;
-  /** true when reactions are held on this device only */
-  reactionsLocal?: boolean;
+  /** The server's sentence when a reaction did NOT land. Never our own words. */
+  reactionNotice?: string | null;
+  onOpenThread?: () => void;
+  onOpenMedia?: (m: MessageMedia) => void;
   /**
    * Press and hold: report it, or — if you are staff — remove it, mute the
    * person, or close the reports and leave it up. Kai's own posts have no
@@ -218,21 +203,22 @@ export function ClubMessage({
           </View>
         ) : null}
 
+        {!message.deleted && message.media.length ? (
+          <MediaStrip media={message.media} onOpen={onOpenMedia} />
+        ) : null}
+
         {!kai && !message.deleted ? (
           <>
-            <Reactions
-              reactions={message.reactions.map((r) => ({
-                // Round-2 payloads sometimes label a reaction with its own
-                // count; a bare number is not an emoji, so fall back per tone.
-                emoji: /^\d+$/.test(r.label) ? (r.tone === 'market' ? '💬' : r.tone === 'kai' ? '✅' : '🔥') : r.label,
-                count: r.count,
-                mine: false,
-              }))}
-              onReact={onReact}
+            <ReactionBar
+              reactions={message.reactions}
+              onToggle={onReact}
               testID={`reactions-${message.id}`}
             />
-            {reactionsLocal ? (
-              <T size={9.5} c={color.dim} style={{ marginTop: 3 }}>Saved on this device only</T>
+            {onOpenThread ? (
+              <ThreadLine count={message.reply_count} onPress={onOpenThread} testID={`thread-${message.id}`} />
+            ) : null}
+            {reactionNotice ? (
+              <T size={9.5} c={color.gold} style={{ marginTop: 3 }}>{reactionNotice}</T>
             ) : null}
           </>
         ) : null}

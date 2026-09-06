@@ -1,3 +1,4 @@
+import type { MessageReactions } from '../community/types';
 /**
  * Circles — time-boxed setup rooms (round-4 brief §8; `rooms.type='setup'` with
  * `expires_at`).
@@ -45,7 +46,12 @@ export type CircleMessage = {
   is_kai: boolean;
   /** Kai's verification object, when the message IS one. */
   verification: { title: string; result_plain: string; body: string } | null;
-  reactions: { emoji: string; count: number; mine: boolean }[];
+  /**
+   * The same persisted reactions the rest of the app uses. It used to be a
+   * list of emoji held on the device; it is now a table, and a circle is a
+   * room like any other.
+   */
+  reactions: MessageReactions;
 };
 
 export type CircleDetail = {

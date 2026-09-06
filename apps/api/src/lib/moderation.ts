@@ -29,6 +29,7 @@ import { serviceClient } from './db';
 import { ApiError } from './errors';
 import { log } from './log';
 import { writeAudit } from './admin/audit';
+import { purgePending } from './media/store';
 
 /* ------------------------------------------------------------------ */
 /* The community record                                                 */
@@ -75,7 +76,15 @@ export async function logModeration(input: {
 /* Removing a message                                                   */
 /* ------------------------------------------------------------------ */
 
-export type RemoveResult = { alreadyRemoved: boolean; reportsClosed: number; roomId: string };
+export type RemoveResult = {
+  alreadyRemoved: boolean;
+  reportsClosed: number;
+  roomId: string;
+  /** Comments taken down with the post. Zero when the post was itself a comment. */
+  repliesRemoved: number;
+  /** Files actually deleted from the bucket in this call. */
+  mediaPurged: number;
+};
 
 export async function removeMessage(opts: {
   messageId: string;
@@ -88,7 +97,7 @@ export async function removeMessage(opts: {
 
   const found = await db
     .from('messages')
-    .select('id,room_id,user_id,seq,deleted_at')
+    .select('id,room_id,user_id,seq,deleted_at,parent_id,attachment_count')
     .eq('id', opts.messageId)
     .maybeSingle();
   const row = (found.data as Record<string, unknown> | null) ?? null;
@@ -96,15 +105,18 @@ export async function removeMessage(opts: {
 
   const roomId = String(row.room_id);
   const alreadyRemoved = Boolean(row.deleted_at);
+  const isReply = row.parent_id != null;
+  let repliesRemoved = 0;
 
   // Idempotent. A moderator tapping twice, or two moderators reaching the same
   // report, must not produce a second removal with a later timestamp that
   // overwrites who actually did it.
   if (!alreadyRemoved) {
+    const now = new Date().toISOString();
     const { error } = await db
       .from('messages')
       .update({
-        deleted_at: new Date().toISOString(),
+        deleted_at: now,
         deleted_by: opts.actorId,
         deleted_reason: opts.reason,
       })
@@ -115,6 +127,67 @@ export async function removeMessage(opts: {
         detail: error.message,
       });
     }
+
+    /**
+     * REMOVING A POST REMOVES ITS COMMENTS. This is the one part of moderation
+     * where a choice had to be made, so it is written down rather than implied.
+     *
+     * The alternative is to leave the comments standing under a "this was
+     * removed" gap. It reads fairer to the people who wrote them, and it is
+     * wrong here, for one reason that outweighs the fairness: a comment quotes
+     * what it answers. Half a thread about a post that had to come down
+     * reconstructs the post. A removal that leaves the content legible in the
+     * replies is not a removal, and a reviewer asking how objectionable
+     * material is handled would be right to say so.
+     *
+     * What softens it: `deleted_cascade_of` names the parent on every comment
+     * taken this way, so the record distinguishes "a moderator judged this" from
+     * "this was standing next to something a moderator judged". Nobody's comment
+     * is recorded as having been ruled against.
+     *
+     * A comment removed on its own merits takes nothing with it — it has no
+     * children by construction, because threads are one level deep.
+     */
+    if (!isReply) {
+      const cascade = await db
+        .from('messages')
+        .update({
+          deleted_at: now,
+          deleted_by: opts.actorId,
+          deleted_reason: `Removed with the post it answered. ${opts.reason}`,
+          deleted_cascade_of: opts.messageId,
+        })
+        .eq('parent_id', opts.messageId)
+        .is('deleted_at', null)
+        .select('id');
+      repliesRemoved = (cascade.data ?? []).length;
+    }
+  }
+
+  /**
+   * AND THE PICTURES ACTUALLY GO.
+   *
+   * The `deleted_at` updates above have already fired the trigger from
+   * migration 0033 §6, which deleted the `media_assets` rows and queued the
+   * objects. Queued is not gone: deleting a row in Postgres does not delete a
+   * file in the bucket, and only an HTTP call does. This is that call, made
+   * here rather than left to the cron so that a reported picture stops
+   * resolving in the same second the moderator taps the button.
+   *
+   * It is best-effort ON PURPOSE and its failure never fails the removal — the
+   * queue keeps the intent and `/internal/media/purge` retries it every minute.
+   * A moderator being told "that did not work" about a post that IS down would
+   * be the worse outcome.
+   */
+  let mediaPurged = 0;
+  try {
+    const purge = await purgePending({ limit: 50, requestId: opts.requestId });
+    mediaPurged = purge.purged;
+  } catch (e) {
+    log('error', opts.requestId, 'moderation.media_purge_threw', {
+      message_id: opts.messageId,
+      message: e instanceof Error ? e.message : String(e),
+    });
   }
 
   const reportsClosed = await closeReports({
@@ -126,7 +199,16 @@ export async function removeMessage(opts: {
   await logModeration({
     actorId: opts.actorId,
     action: 'remove',
-    target: { message_id: opts.messageId, room_id: roomId, author_user_id: row.user_id ?? null },
+    target: {
+      message_id: opts.messageId,
+      room_id: roomId,
+      author_user_id: row.user_id ?? null,
+      replies_removed: repliesRemoved,
+      // The number of files that were on this post, recorded BEFORE they were
+      // deleted. The bytes are gone; the fact that there were three of them is
+      // what makes the removal answerable at a support desk afterwards.
+      attachments_removed: Number(row.attachment_count ?? 0),
+    },
     reason: opts.reason,
     requestId: opts.requestId,
   });
@@ -135,14 +217,14 @@ export async function removeMessage(opts: {
     action: 'community.message.remove',
     targetKind: 'message',
     targetId: opts.messageId,
-    before: { deleted: alreadyRemoved },
-    after: { deleted: true, room_id: roomId },
+    before: { deleted: alreadyRemoved, attachments: Number(row.attachment_count ?? 0) },
+    after: { deleted: true, room_id: roomId, replies_removed: repliesRemoved, media_purged: mediaPurged },
     reason: opts.reason,
     requestId: opts.requestId,
     ip: opts.ip,
   });
 
-  return { alreadyRemoved, reportsClosed, roomId };
+  return { alreadyRemoved, reportsClosed, roomId, repliesRemoved, mediaPurged };
 }
 
 /**
