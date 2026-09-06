@@ -29,6 +29,7 @@ import { fixtureDeskWatchlist, fixtureDeskWatchlistEmpty } from '../../lib/fixtu
 import { useResource } from '../../lib/useResource';
 import { useSession } from '../../lib/session';
 import { GradeMark, StateChip, LinkRow, px } from './ui';
+import { FreshnessMark } from '../../ui/FreshnessMark';
 import { LevelTrack } from './instruments';
 import { ModeControl } from '../home/ModeSheet';
 import { secondTab } from '../nav/second-tab';
@@ -245,6 +246,19 @@ function Group({ title, sub, rows, onPick }: {
               </View>
               <View style={{ alignItems: 'flex-end', gap: space.x6 }}>
                 <Num size={15} weight="semibold" c={color.cyan}>{px(r.price)}</Num>
+                {/* The desk used to paint this number in market cyan with
+                    nothing beside it, and it was whatever the brain last
+                    wrote — which could be an hour or a fortnight ago. The
+                    mark says which, and when. */}
+                {r.quote ? (
+                  <FreshnessMark
+                    freshness={r.quote.freshness ?? 'unknown'}
+                    delayReason={r.quote.delay_reason}
+                    at={r.quote.source_ts}
+                    size={10}
+                    testID={`desk-freshness-${r.ticker}`}
+                  />
+                ) : null}
                 <StateChip state={r.state} />
                 {/* Where price sits between the level that kills it and the
                     level that arms it. Drawn only when the desk wrote both

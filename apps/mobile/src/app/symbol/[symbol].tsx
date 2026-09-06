@@ -99,7 +99,7 @@ export default function TickerPageScreen() {
               </Num>
             ) : null}
             <T size={10} c={color.cyan}>{data.market_label}</T>
-            {q ? <FreshnessMark freshness={q.freshness ?? 'unknown'} size={10} /> : null}
+            {q ? <FreshnessMark freshness={q.freshness ?? 'unknown'} delayReason={q.delay_reason} at={q.source_ts} size={10} /> : null}
           </View>
         </View>
         <Star on={data.starred} />

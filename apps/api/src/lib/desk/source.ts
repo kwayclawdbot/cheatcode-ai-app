@@ -18,6 +18,7 @@
  * is why the key stays server-side and no route here forwards it.
  */
 import { kaiSource, readAll, type KaiSource } from '../swing/source';
+import { attachLiveQuotes, quoteFor } from '../market/live';
 import type {
   DeskCatalyst, DeskPick, DeskTheme, DeskThemeLead, DeskWatchRow, IdeaGrade, PickOutcome,
   WatchState,
@@ -216,7 +217,39 @@ export async function loadWatchlist(src: KaiSource): Promise<{
       'select=ticker,company,theme,pick_date,direction,horizon,idea_grade,status',
     ),
   ]);
-  return shapeWatchlist(status, picks);
+  const shaped = shapeWatchlist(status, picks);
+  await priceWatchlist(shaped.rows);
+  return shaped;
+}
+
+/**
+ * PUT A REAL PRICE ON EVERY ROW, IN ONE CALL.
+ *
+ * `watchlist_status.price` is whatever the brain last wrote — a number with no
+ * freshness beside it and, on a list the brain has not refreshed, no age the
+ * user can see. The desk screen painted it in market cyan as though it were a
+ * quote. So the live price wins when the market can be asked, the stored one
+ * survives as the fallback with its own timestamp, and either way the row
+ * carries the `quote` that says which of the two it is looking at.
+ *
+ * One `attachLiveQuotes` for the whole list: one Polygon request however many
+ * names are on it. A row we cannot price at all keeps the brain's number and
+ * is labelled by its age, because deleting a real number to avoid labelling it
+ * is not honesty, it is an empty screen.
+ */
+async function priceWatchlist(rows: DeskWatchRow[]): Promise<void> {
+  const carriers = rows.map((r) => ({
+    symbol: r.ticker,
+    // The stored reading, shaped like a snapshot so the one fallback path in
+    // lib/market/live can measure its age the same way it measures any other.
+    quote_snapshot: { price: r.price, source_ts: r.updatedAt },
+  }));
+  await attachLiveQuotes(carriers);
+  rows.forEach((row, i) => {
+    const q = quoteFor(carriers[i]);
+    row.quote = q;
+    if (q.price !== null) row.price = q.price;
+  });
 }
 
 /**

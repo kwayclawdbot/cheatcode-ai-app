@@ -3,12 +3,16 @@
  *
  * Ranked score-desc, capped 5 day / 3 swing (03 Unit 2). Each card carries
  * grade_display, state, risk, fit and exactly one next action (07 §1).
- * Freshness comes from the row's own quote_snapshot — never upgraded.
+ *
+ * PRICES ARE LIVE, IN ONE CALL. The whole list is priced by a single
+ * `attachLiveQuotes` before any card is built, so a five-row list and a
+ * fifty-row list both cost one Polygon request. A symbol the feed cannot
+ * answer for keeps its stored price and says how old it is — see lib/market/live.
  */
 import type { NextRequest } from 'next/server';
 import { SetupsQuery, SetupsResponse, SETUP_CAPS, type SetupCard } from '@shared/api';
 import { authed, ok, parseQuery, type Ctx } from '@/lib/http';
-import { marketBlock, quoteFromSnapshot } from '@/lib/market';
+import { attachLiveQuotes, liveMarketBlock, quoteFor, worstFreshness } from '@/lib/market/live';
 import {
   loadProfile,
   loadRiskPolicy,
@@ -34,7 +38,7 @@ const STATE_ACTION: Record<string, { label: string; action: SetupCard['next_acti
 };
 
 export function toCard(row: SetupRow, risk: RiskPolicyRow | null, userMode: string): SetupCard {
-  const quote = quoteFromSnapshot(row.symbol, row.quote_snapshot);
+  const quote = quoteFor(row);
   const entry = entryPrice(row.entry_condition);
   const stop = row.stop ?? invalidationPrice(row.invalidation);
   const targets = normalizeTargets(row.targets);
@@ -90,13 +94,15 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
   const cap = SETUP_CAPS[mode];
 
   const [risk, rows] = await Promise.all([loadRiskPolicy(ctx.user.id), rankedSetups(mode, cap, q.state)]);
+  await attachLiveQuotes(rows);
+  const market = await liveMarketBlock(worstFreshness(rows));
 
   return ok(
     SetupsResponse.parse({
       mode,
       cap,
       setups: rows.map((r) => toCard(r, risk, mode)),
-      market: marketBlock(),
+      market,
     })
   );
 });

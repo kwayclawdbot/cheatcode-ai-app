@@ -1036,36 +1036,50 @@ export function fixtureOpeningLine(experience: Experience): string {
  * below is the same screen on the day a new account opens it, which is the one
  * that has to lead somewhere instead of stopping dead.
  */
+/**
+ * A fixture desk quote. The desk row's price is only half a fact — the mark
+ * beside it says how old it is, so the sample has to carry one too or the
+ * fixture screen shows a shape the real screen never has.
+ */
+function deskQuote(price: number) {
+  return {
+    symbol: '—', price, prev_close: null, change: null, change_pct: null,
+    source_ts: SOURCE_TS, received_ts: SOURCE_TS,
+    freshness: 'delayed' as const, delay_reason: 'market_closed' as const,
+    label_plain: 'Market closed · last close', session: 'closed' as const,
+  };
+}
+
 export const fixtureDeskWatchlist: DeskWatchlistResponse = {
   asOf: '2026-09-04',
   rows: [
     {
       ticker: 'INOD', company: 'Innodata Inc', theme: 'Enterprise-Software-AI-Disruption',
-      state: 'armed', stateSince: '2026-09-02', price: 54.96, triggerPrice: 57.4,
+      state: 'armed', stateSince: '2026-09-02', price: 54.96, quote: deskQuote(54.96), triggerPrice: 57.4,
       invalidation: 46.1, source: 'pick', grade: 'B+', horizon: '2q',
       direction: 'long', updatedAt: '2026-09-04T15:00:00Z',
     },
     {
       ticker: 'TER', company: 'Teradyne Inc', theme: 'Humanoid-Robotics',
-      state: 'coiled', stateSince: '2026-08-28', price: 168.32, triggerPrice: 176.0,
+      state: 'coiled', stateSince: '2026-08-28', price: 168.32, quote: deskQuote(168.32), triggerPrice: 176.0,
       invalidation: 149.5, source: 'pick', grade: 'A', horizon: '4q',
       direction: 'long', updatedAt: '2026-09-04T15:00:00Z',
     },
     {
       ticker: 'VRT', company: 'Vertiv Holdings', theme: 'Data-Centre-Power',
-      state: 'triggered', stateSince: '2026-09-03', price: 141.07, triggerPrice: 138.2,
+      state: 'triggered', stateSince: '2026-09-03', price: 141.07, quote: deskQuote(141.07), triggerPrice: 138.2,
       invalidation: 122.0, source: 'pick', grade: 'B', horizon: '2q',
       direction: 'long', updatedAt: '2026-09-04T15:00:00Z',
     },
     {
       ticker: 'CRWV', company: 'CoreWeave Inc', theme: 'AI-Compute-Buildout',
-      state: 'extended', stateSince: '2026-08-19', price: 96.4, triggerPrice: null,
+      state: 'extended', stateSince: '2026-08-19', price: 96.4, quote: deskQuote(96.4), triggerPrice: null,
       invalidation: null, source: 'pick', grade: 'C', horizon: '1q',
       direction: 'long', updatedAt: '2026-09-04T15:00:00Z',
     },
     {
       ticker: 'COST', company: null, theme: null,
-      state: 'no_base', stateSince: '2026-09-01', price: 921.4, triggerPrice: null,
+      state: 'no_base', stateSince: '2026-09-01', price: 921.4, quote: deskQuote(921.4), triggerPrice: null,
       invalidation: null, source: 'manual', grade: null, horizon: null,
       direction: null, updatedAt: '2026-09-04T15:00:00Z',
     },

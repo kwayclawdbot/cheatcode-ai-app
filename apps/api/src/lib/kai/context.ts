@@ -6,9 +6,9 @@
  * no live tools in this slice — Kai talks about the real rows in the database
  * and nothing else.
  */
-import { KAI_HISTORY_TURNS, type AppMode } from '@shared/api';
+import { KAI_HISTORY_TURNS, type AppMode, type MarketBlock, type MarketQuote } from '@shared/api';
 import { serviceClient } from '../db';
-import { marketBlock, quoteFromSnapshot } from '../market';
+import { attachLiveQuotes, holidayNotice, liveMarketBlock, quoteFor, worstFreshness } from '../market/live';
 import { ensureSeedLevelsChecked } from '../v5/seed-guard';
 
 export type SetupRow = {
@@ -31,6 +31,13 @@ export type SetupRow = {
   quote_snapshot: Record<string, unknown>;
   valid_until: string | null;
   scanner_run_id: string | null;
+  /**
+   * What the market says about this symbol RIGHT NOW, stamped on by
+   * `attachLiveQuotes` at assembly time in one batched call. Absent when the
+   * feed could not answer — `quoteFor(row)` then falls back to the stored
+   * snapshot and labels it with its real age. Never populated by a scanner.
+   */
+  live_quote?: MarketQuote | null;
 };
 
 export type ProfileRow = {
@@ -90,7 +97,7 @@ export type KaiContext = {
   setups: SetupRow[];
   pinnedSetups: SetupRow[];
   turns: TurnRow[];
-  marketBlock: ReturnType<typeof marketBlock>;
+  marketBlock: MarketBlock;
 };
 
 const SETUP_COLUMNS =
@@ -188,7 +195,22 @@ export async function assembleContext(opts: {
     setupsByIds(opts.pinnedSetupIds ?? []),
     opts.conversationId ? lastTurns(opts.conversationId) : Promise.resolve([]),
   ]);
-  return { profile, risk, account, mode, setups, pinnedSetups, turns, marketBlock: marketBlock() };
+  /**
+   * ONE market call for the whole context. Every surface downstream of here —
+   * Home's priority object, "also watching", the setup cards, Kai's own prompt
+   * — reads the same quote off the same row, so they cannot disagree, and the
+   * screen costs one request however many setups it holds.
+   */
+  const rows = [...setups, ...pinnedSetups];
+  await attachLiveQuotes(rows);
+  // Sequential on purpose and it costs nothing: the snapshot above already
+  // asked for the session in the background, and `refreshMarketStatus` shares
+  // one request between everyone waiting on it. Doing it in this order is what
+  // lets the block carry the freshness the screen ACTUALLY has rather than a
+  // constant — Home's "my prices are running behind" line reads this.
+  const block = await liveMarketBlock(worstFreshness(rows));
+
+  return { profile, risk, account, mode, setups, pinnedSetups, turns, marketBlock: block };
 }
 
 /**
@@ -218,8 +240,46 @@ export type ChartOnScreen = { symbol: string; timeframe: string; levels: string[
 export function renderMarketLine(ctx: KaiContext): string {
   return (
     `MARKET: ${ctx.marketBlock.label_plain} (status=${ctx.marketBlock.status}) as of ${ctx.marketBlock.session_ts}. ` +
-    `US market holidays are NOT known to this system yet — weekends only.`
+    holidayNotice(ctx.marketBlock.holidays_known)
   );
+}
+
+/**
+ * THE PRICES, AND WHY THEY TRAVEL WITH THE TIMESTAMP RATHER THAN THE FACTS.
+ *
+ * A price moves. Put it in the cached facts block and that block is different
+ * on every turn, so nothing behind it can be re-read from cache — the exact
+ * mistake `session_ts` used to make, one level down. So the quotes ride at the
+ * END of the request, next to the market line and the user's question, where
+ * everything that moves belongs. The setups themselves — thesis, levels, stop,
+ * catalyst — do not move within a session and stay cached.
+ *
+ * Each line says the number, how fresh it is, and WHEN it is from, because
+ * "$229.49" and "$229.49 as of Friday's close" are different claims and Kai
+ * must be able to tell the user which one he is making.
+ */
+export function renderQuoteLines(ctx: KaiContext): string {
+  const rows = [...ctx.pinnedSetups, ...ctx.setups];
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const s of rows) {
+    if (seen.has(s.symbol)) continue;
+    seen.add(s.symbol);
+    lines.push(`  ${s.symbol}: ${quoteSentence(s)}`);
+  }
+  if (!lines.length) return '';
+  return (
+    'PRICES RIGHT NOW (the only prices you may quote for these symbols; ' +
+    'if one is not live, say when it is from rather than implying it is current):\n' +
+    lines.join('\n')
+  );
+}
+
+/** One symbol's price, its freshness and its age, in a form Kai can repeat. */
+function quoteSentence(s: SetupRow): string {
+  const q = quoteFor(s);
+  if (q.price === null) return 'no price available — say so, do not estimate one';
+  return `${q.price} · ${q.label_plain} (freshness=${q.freshness}, source_ts=${q.source_ts ?? 'unknown'})`;
 }
 
 /**
@@ -231,7 +291,7 @@ export function renderMarketLine(ctx: KaiContext): string {
 export function renderContext(
   ctx: KaiContext,
   chart?: ChartOnScreen | null,
-  opts?: { market?: boolean }
+  opts?: { market?: boolean; quotes?: boolean }
 ): string {
   const lines: string[] = [];
   if (opts?.market !== false) lines.push(renderMarketLine(ctx));
@@ -286,7 +346,6 @@ export function renderContext(
     );
   }
   const render = (s: SetupRow, tag: string) => {
-    const q = quoteFromSnapshot(s.symbol, s.quote_snapshot);
     const targets = normalizeTargets(s.targets)
       .map((t) => (t.label ? `${t.price} (${t.label})` : `${t.price}`))
       .join(', ');
@@ -299,7 +358,9 @@ export function renderContext(
       `  stop: ${s.stop ?? 'null'}  targets: ${targets || 'none'}`,
       `  invalidation: ${JSON.stringify(s.invalidation ?? null)}`,
       `  catalyst: ${JSON.stringify(s.catalyst ?? null)}`,
-      `  quote: price=${q.price ?? 'unknown'} freshness=${q.freshness} source_ts=${q.source_ts ?? 'unknown'} received_ts=${q.received_ts ?? 'unknown'}`,
+      // The price is deliberately NOT here — see `renderQuoteLines`. It moves,
+      // and a value that moves inside a cached block throws the cache away.
+      ...(opts?.quotes === false ? [] : [`  quote: ${quoteSentence(s)}`]),
       `  valid_until: ${s.valid_until ?? '—'}`,
     ].join('\n');
   };
@@ -442,6 +503,15 @@ export function contextNumbers(ctx: KaiContext): number[] {
     pushAll(s.entry_condition);
     pushAll(s.invalidation);
     pushAll(s.quote_snapshot);
+    // A live price is a number Kai was GIVEN, so it is his to quote. Only the
+    // money fields — a timestamp's digits are not a price and have no business
+    // in the list of numbers he is allowed to say out loud.
+    if (s.live_quote) {
+      pushAll(s.live_quote.price);
+      pushAll(s.live_quote.prev_close);
+      pushAll(s.live_quote.change);
+      pushAll(s.live_quote.change_pct);
+    }
     pushAll(s.catalyst);
     pushAll(s.thesis_plain);
     pushAll(s.thesis_technical);

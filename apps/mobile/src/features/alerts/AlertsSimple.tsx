@@ -84,7 +84,7 @@ export function AttentionCard({ a, testID }: { a: AttentionAlert; testID?: strin
       {a.quote?.price != null ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
           <Num size={12} weight="regular" c={color.muted}>{`Now ${a.quote.price.toFixed(2)}`}</Num>
-          <FreshnessMark freshness={a.quote.freshness ?? 'unknown'} delayReason={a.quote.delay_reason} size={10} />
+          <FreshnessMark freshness={a.quote.freshness ?? 'unknown'} delayReason={a.quote.delay_reason} at={a.quote.source_ts} size={10} />
         </View>
       ) : null}
 

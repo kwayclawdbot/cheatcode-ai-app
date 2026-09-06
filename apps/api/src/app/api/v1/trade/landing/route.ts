@@ -28,7 +28,8 @@ import {
 import { authed, ok, parseQuery, type Ctx } from '@/lib/http';
 import { requireTradePanel } from '@/lib/entitlements';
 import { serviceClient } from '@/lib/db';
-import { marketBlock, marketDate } from '@/lib/market';
+import { marketDate } from '@/lib/market';
+import { attachLiveQuotes, liveMarketBlock, worstFreshness } from '@/lib/market/live';
 import { getSnapshot } from '@/lib/market/polygon';
 import { loadProfile, loadRiskPolicy, rankedSetups } from '@/lib/kai/context';
 import { watchlistItems } from '@/lib/watchlist-view';
@@ -272,10 +273,16 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
   }
   for (const r of recentTop) r.quote = quoteBy.get(r.symbol) ?? null;
 
+  // The graded setups on this screen are priced from the market too, in one
+  // more call at most — every symbol already covered by the movers snapshot
+  // above is served from its cache rather than fetched again.
+  await attachLiveQuotes(setups);
+  const market = await liveMarketBlock(worstFreshness(setups));
+
   return ok(
     TradeLandingV5Response.parse({
       mode,
-      market: marketBlock(),
+      market,
       // round-2 keys
       account_strip: {
         account_id: acc ? String(acc.id) : null,

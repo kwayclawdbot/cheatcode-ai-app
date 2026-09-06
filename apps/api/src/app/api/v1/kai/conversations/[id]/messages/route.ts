@@ -21,7 +21,7 @@ import { serviceClient } from '@/lib/db';
 import { ApiError, errorResponse } from '@/lib/errors';
 import { log, newRequestId } from '@/lib/log';
 import { emitUserEvent } from '@/lib/events';
-import { assembleContext, contextNumbers, renderContext, renderMarketLine } from '@/lib/kai/context';
+import { assembleContext, contextNumbers, renderContext, renderMarketLine, renderQuoteLines } from '@/lib/kai/context';
 import { buildSystemPrompt } from '@/lib/kai/system-prompt';
 import { SHEET_ACTION_PROTOCOL, loadSheetContext } from '@/lib/kai/sheet-context';
 import {
@@ -334,7 +334,7 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
       .join('\n\n');
 
     const systemFacts = `CONTEXT (facts you may use — nothing outside this is known to you)
-${renderContext(kctx, chartOnScreen, { market: false })}${sheet.prompt_block ? `\n\n${sheet.prompt_block}` : ''}`;
+${renderContext(kctx, chartOnScreen, { market: false, quotes: false })}${sheet.prompt_block ? `\n\n${sheet.prompt_block}` : ''}`;
 
     const system = [cached(systemIdentity), cached(systemProtocols), cached(systemFacts)];
 
@@ -345,7 +345,10 @@ ${renderContext(kctx, chartOnScreen, { market: false })}${sheet.prompt_block ? `
      * because that is the only place a value that moves can sit without
      * throwing away everything cached in front of it.
      */
-    const marketLine = `${renderMarketLine(kctx)}\nUse this as the current market state and time when you answer.`;
+    const quoteLines = renderQuoteLines(kctx);
+    const marketLine =
+      `${renderMarketLine(kctx)}\nUse this as the current market state and time when you answer.` +
+      (quoteLines ? `\n\n${quoteLines}` : '');
 
     const history: KaiTurn[] = kctx.turns
       .filter((t) => t.seq !== userSeq)

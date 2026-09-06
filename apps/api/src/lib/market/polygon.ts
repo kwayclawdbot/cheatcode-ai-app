@@ -243,6 +243,36 @@ const DELAYED_PLAN_MIN = 10;
 export type PolyFail = 'not_configured' | 'rate_limited' | 'unauthorized' | 'error';
 export type PolyResult<T> = { ok: true; data: T; delayed: boolean } | { ok: false; reason: PolyFail };
 
+/**
+ * HOW MANY REQUESTS A SCREEN COSTS — measured, not estimated.
+ *
+ * Every surface in this app is supposed to price a whole list in one request.
+ * That is an easy claim to make and an easy one to break by accident (one
+ * `getQuote` inside a `.map()` and a twenty-row list quietly costs twenty
+ * calls). So the transport counts itself, and a proof script can read the
+ * count before and after a render. Two integers and a Map; it is not
+ * instrumentation anybody pays for.
+ */
+let polyCallCount = 0;
+const polyCallsByPath = new Map<string, number>();
+
+export function polygonCalls(): { total: number; by_path: Record<string, number> } {
+  return { total: polyCallCount, by_path: Object.fromEntries(polyCallsByPath) };
+}
+
+export function resetPolygonCalls(): void {
+  polyCallCount = 0;
+  polyCallsByPath.clear();
+}
+
+/** Collapse the symbol/date out of a path so the tally reads as endpoints. */
+function callBucket(path: string): string {
+  return path
+    .replace(/\/[A-Z.:]+\d{4}-\d{2}-\d{2}.*$/, '/…')
+    .replace(/\/\d{4}-\d{2}-\d{2}.*$/, '/…')
+    .replace(/\/(?:ticker|tickers)\/[^/]+/, '/…');
+}
+
 async function polyGet<T>(path: string, params: Record<string, string | number | boolean> = {}): Promise<PolyResult<T>> {
   const key = env('POLYGON_API_KEY');
   if (!key) return { ok: false, reason: 'not_configured' };
@@ -258,6 +288,9 @@ async function polyGet<T>(path: string, params: Record<string, string | number |
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 9000);
+  polyCallCount += 1;
+  const bucket = callBucket(path);
+  polyCallsByPath.set(bucket, (polyCallsByPath.get(bucket) ?? 0) + 1);
   try {
     const res = await fetch(url, { signal: controller.signal, cache: 'no-store' });
     if (res.status === 429) {
@@ -392,6 +425,8 @@ export function sessionMinutesBetween(from: Date, to: Date): number {
 /* ------------------------------------------------------------------ */
 
 let observedStatus: { status: MarketStatus; at: number } | null = null;
+/** The request in flight, shared by every caller that arrives while it runs. */
+let statusInFlight: Promise<MarketStatus | null> | null = null;
 const MARKET_STATUS_TTL_MS = 60_000;
 /** An observation older than this is not evidence about right now. */
 const OBSERVED_STATUS_MAX_AGE_MS = 10 * 60_000;
@@ -406,20 +441,33 @@ type MarketStatusBody = { market?: string; earlyHours?: boolean; afterHours?: bo
  */
 export async function refreshMarketStatus(): Promise<MarketStatus | null> {
   if (observedStatus && Date.now() - observedStatus.at < MARKET_STATUS_TTL_MS) return observedStatus.status;
-  const r = await polyGet<MarketStatusBody>('/v1/marketstatus/now');
-  if (!r.ok) return null;
-  const body = r.data;
-  const status: MarketStatus = body.earlyHours
-    ? 'pre'
-    : body.afterHours
-      ? 'after'
-      : body.market === 'open'
-        ? 'open'
-        : body.market === 'extended-hours'
+  // ONE ASK AT A TIME. A screen render fires this from two places at once —
+  // `getSnapshot` keeps it warm in the background while `liveMarketBlock`
+  // awaits it — and a plain TTL cache does not help two callers who arrive
+  // before either has answered. Measured: two requests per render before this,
+  // one after. Sharing the promise is the whole fix.
+  if (statusInFlight) return statusInFlight;
+  statusInFlight = (async () => {
+    try {
+      const r = await polyGet<MarketStatusBody>('/v1/marketstatus/now');
+      if (!r.ok) return null;
+      const body = r.data;
+      const status: MarketStatus = body.earlyHours
+        ? 'pre'
+        : body.afterHours
           ? 'after'
-          : 'closed';
-  observedStatus = { status, at: Date.now() };
-  return status;
+          : body.market === 'open'
+            ? 'open'
+            : body.market === 'extended-hours'
+              ? 'after'
+              : 'closed';
+      observedStatus = { status, at: Date.now() };
+      return status;
+    } finally {
+      statusInFlight = null;
+    }
+  })();
+  return statusInFlight;
 }
 
 /**
@@ -1756,6 +1804,7 @@ export function resetMarketCaches(): void {
   inFlight = 0;
   cooldownUntil = 0;
   observedStatus = null;
+  statusInFlight = null;
   statedEntitlement = 'unknown';
   measuredLagMin = null;
   measuredLagAt = 0;

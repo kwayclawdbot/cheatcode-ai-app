@@ -164,6 +164,16 @@ export const GET = authedParams<{ id: string }>(async (_req: NextRequest, ctx: C
 
   const shaped = alertRow(row);
 
+  /**
+   * NO QUOTE ON THIS ROUTE, DELIBERATELY. It looks like the obvious place for
+   * one, and it is not: there is no alert-detail SCREEN — `/alert/[id]` in the
+   * app resolves the symbol and redirects into the Trade Portal, which prices
+   * the symbol itself. A market call here would be paid on every push-
+   * notification tap to render nothing.
+   *
+   * The alert LIST is where a watch shows its price, and it does: one
+   * `resolveQuotes` for the whole screen in ../route.ts.
+   */
   return ok(
     AlertDetailResponse.parse({
       alert: shaped,

@@ -299,7 +299,7 @@ export default function ReviewOrder() {
                   {q.change_pct != null ? (
                     <Num size={11} weight="regular" c={changeUp ? color.green : color.red}>{signedPct(q.change_pct)}</Num>
                   ) : null}
-                  <FreshnessMark freshness={q.freshness ?? 'unknown'} delayReason={q.delay_reason} size={10} />
+                  <FreshnessMark freshness={q.freshness ?? 'unknown'} delayReason={q.delay_reason} at={q.source_ts} size={10} />
                 </>
               ) : null}
             </View>
@@ -404,7 +404,7 @@ export default function ReviewOrder() {
           </T>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-          <FreshnessMark freshness={q?.freshness ?? 'unknown'} delayReason={q?.delay_reason} size={10} />
+          <FreshnessMark freshness={q?.freshness ?? 'unknown'} delayReason={q?.delay_reason} at={q?.source_ts} size={10} />
           {secondsLeft != null && !expired ? (
             <T size={10} c={color.dim} testID="expiry-countdown">{`· these numbers hold for ${secondsLeft}s`}</T>
           ) : null}

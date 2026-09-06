@@ -371,7 +371,7 @@ export function QuoteLine({
       style={[{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }, style]}
     >
       {quote?.price != null ? <Num size={11} weight="regular" c={color.cyan}>{`Quote ${quote.price.toFixed(2)}`}</Num> : null}
-      <FreshnessMark freshness={quote?.freshness ?? 'unknown'} delayReason={quote?.delay_reason} size={11} />
+      <FreshnessMark freshness={quote?.freshness ?? 'unknown'} delayReason={quote?.delay_reason} at={quote?.source_ts} size={11} />
       {note ? <T size={11} c={color.muted}>{note}</T> : null}
     </View>
   );

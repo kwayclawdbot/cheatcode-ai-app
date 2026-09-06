@@ -31,7 +31,7 @@ import {
 import { authedParams, ok, parseQuery, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
 import { serviceClient } from '@/lib/db';
-import { marketBlock } from '@/lib/market';
+import { liveMarketBlock } from '@/lib/market/live';
 import { getNews, lastTradingDate, polygonConfigured, resolveQuote } from '@/lib/market/polygon';
 import { getCompanyProfile } from '@/lib/market/profile';
 import { computeTechnicals } from '@/lib/market/technicals';
@@ -313,7 +313,7 @@ export const GET = authedParams<{ symbol: string }>(
         name: ((instrument.data as Record<string, unknown>).name as string) ?? null,
         mode,
         quote,
-        market: marketBlock(new Date(), quote.freshness),
+        market: await liveMarketBlock(quote.freshness),
         chart: {
           timeframes: TIMEFRAMES,
           default_timeframe: mode === 'day_trade' ? '1D' : '3M',

@@ -119,7 +119,7 @@ export function PortalTopBar({
             {`${up ? '+' : ''}${quote.change_pct.toFixed(2)}%`}
           </Num>
         ) : null}
-        <FreshnessMark freshness={quote?.freshness ?? 'unknown'} delayReason={quote?.delay_reason} size={10} />
+        <FreshnessMark freshness={quote?.freshness ?? 'unknown'} delayReason={quote?.delay_reason} at={quote?.source_ts} size={10} />
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingBottom: 6 }}>

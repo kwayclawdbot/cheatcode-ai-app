@@ -11,6 +11,7 @@
  * of that work, not a second author of it.
  */
 import { z } from 'zod';
+import { MarketQuote } from './api';
 
 /** A+ down to D. The grade is on the IDEA, not on this quarter's trade. */
 export const IdeaGrade = z.enum(['A+', 'A', 'B+', 'B', 'C', 'D']);
@@ -61,7 +62,18 @@ export const DeskWatchRow = z.object({
   theme: z.string().nullable(),
   state: WatchState,
   stateSince: z.string().nullable(),
+  /**
+   * The price the row is showing. The live one when the market could be asked,
+   * the brain's last stored reading when it could not — `quote` below says
+   * which, and when it is from. Never a number without that companion.
+   */
   price: z.number().nullable(),
+  /**
+   * The full quote behind `price`: freshness, the instant it happened, and a
+   * sentence naming both. Null only when nothing could be priced at all.
+   * Optional so an older client's payload still parses.
+   */
+  quote: MarketQuote.nullable().optional(),
   triggerPrice: z.number().nullable(),
   invalidation: z.number().nullable(),
   /** 'pick' — the desk argued for it. 'manual' — you added it by hand. */

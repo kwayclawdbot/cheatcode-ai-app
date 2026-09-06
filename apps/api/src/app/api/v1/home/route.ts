@@ -27,7 +27,7 @@ import {
 } from '@shared/api';
 import { authed, ok, parseQuery, type Ctx } from '@/lib/http';
 import { serviceClient } from '@/lib/db';
-import { marketBlock, quoteFromSnapshot } from '@/lib/market';
+import { quoteFor } from '@/lib/market/live';
 import { assembleContext } from '@/lib/kai/context';
 import { derivedEnvelope } from '@/lib/kai/objects';
 import { getOrCreateBriefing } from '@/lib/kai/briefing';
@@ -124,7 +124,7 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
           : s.state === 'ready'
             ? 'Conditions met — your move'
             : 'Watching',
-      quote: quoteFromSnapshot(s.symbol, s.quote_snapshot),
+      quote: quoteFor(s),
     }));
 
   // Round 4: Home is the Kai conversation workspace, so it names the
@@ -136,7 +136,10 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
   return ok(
     HomeRound4Response.parse({
       mode,
-      market: marketBlock(),
+      // Live already: `assembleContext` priced every setup on this screen in
+      // one call and asked the exchange what session it is. Nothing here pays
+      // a second time.
+      market: kctx.marketBlock,
       opening_line: openingLine({
         name: kctx.profile.display_name,
         briefing: (briefingResult.briefing?.payload as BriefingPayload | undefined) ?? null,

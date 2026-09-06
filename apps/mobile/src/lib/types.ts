@@ -7,11 +7,27 @@
 export type Freshness = 'live' | 'delayed' | 'stale' | 'closed' | 'unknown';
 
 /**
- * Why a price is not live. `entitlement` = the plan only permits delayed data;
- * round-2 rule: that renders as "Delayed 15m", never "Stale", and never
- * disables an action.
+ * Why a price is not live.
+ *
+ * THE FIRST FOUR ARE THE SERVER'S. They are exactly `DelayReason` in
+ * packages/shared/api.ts, and this list had drifted off it: `market_closed` —
+ * the reason behind every price shown at night, at the weekend and on a
+ * holiday, which is most of the hours in a week — was MISSING here, so the
+ * commonest case in the app fell through every branch and rendered as a bare
+ * "Delayed". `feed`, `session` and `unknown` are legacy strings no server
+ * sends any more; they are kept only so an old cached payload still narrows.
+ *
+ * `entitlement` = the plan only permits delayed data; round-2 rule: that
+ * renders as "Delayed 15m", never "Stale", and never disables an action.
  */
-export type DelayReason = 'entitlement' | 'feed' | 'feed_gap' | 'session' | 'seed' | 'unknown';
+export type DelayReason =
+  | 'entitlement'
+  | 'feed_gap'
+  | 'market_closed'
+  | 'seed'
+  | 'feed'
+  | 'session'
+  | 'unknown';
 
 export type Quote = {
   symbol?: string;

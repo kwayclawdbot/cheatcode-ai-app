@@ -33,7 +33,7 @@
  */
 import type { AlsoWatchingRow, HomePriority, OpenPositionRow, PlainAction, Quote } from '@shared/api';
 import { STATE_ACTION_LABEL } from '@shared/api';
-import { quoteFromSnapshot } from '../market';
+import { quoteFor } from '../market/live';
 import { derivedEnvelope } from '../kai/objects';
 import type { SetupRow } from '../kai/context';
 import {
@@ -179,7 +179,7 @@ export function choosePriority(input: PriorityInputs): HomePriority | null {
 
 function fromSetup(row: SetupRow, userId: string): HomePriority {
   const state = String(row.state);
-  const quote = quoteFromSnapshot(row.symbol, row.quote_snapshot) as Quote;
+  const quote = quoteFor(row) as Quote;
 
   return {
     kind: 'setup',
@@ -246,7 +246,7 @@ export function alsoWatching(input: {
             : state === 'forming'
               ? 'Confirmation building'
               : 'Watching',
-      quote: quoteFromSnapshot(s.symbol, s.quote_snapshot) as Quote,
+      quote: quoteFor(s) as Quote,
       route: `/symbol/${s.symbol}?tab=overview&setup=${s.id}`,
     });
   }

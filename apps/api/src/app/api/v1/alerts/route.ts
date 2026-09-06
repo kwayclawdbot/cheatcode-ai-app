@@ -89,9 +89,13 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
     // the card above it never quote two different prices for one symbol.
     const snap = await resolveQuotes(symbols, { preferIntraday: true });
     for (const quote of snap.quotes) {
+      // `label_plain` already says the freshness AND the time it is from —
+      // "Live · 3:59 PM ET" or "Market closed · last close Sep 5, 4:00 PM ET".
+      // A bare "delayed" left the user doing arithmetic to work out whether
+      // the number was a minute old or a weekend old.
       priceBy.set(
         quote.symbol,
-        quote.price === null ? 'no current price' : `now $${quote.price} · ${quote.freshness}`
+        quote.price === null ? 'no current price' : `now $${quote.price} · ${quote.label_plain}`
       );
     }
   }
@@ -233,7 +237,7 @@ export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
 
   if (max !== null && used >= max) {
     throw entitlementRequired(
-      `You have ${used} watches running, which is the limit on the free plan. Pause one, or move up to Premium for as many as you want.`
+      `You have ${used} watches running, which is as many as your plan allows at once. Pause or close one and you can arm another straight away.`
     );
   }
 

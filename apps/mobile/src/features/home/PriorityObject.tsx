@@ -46,6 +46,7 @@ export function PriorityObject({ priority, candles, testID = 'home-priority' }: 
             <FreshnessMark
               freshness={priority.quote.freshness ?? 'unknown'}
               delayReason={priority.quote.delay_reason}
+              at={priority.quote.source_ts}
               size={10}
               testID="priority-freshness"
             />

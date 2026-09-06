@@ -43,7 +43,7 @@ import { requireTradePanel } from '@/lib/entitlements';
 import { ApiError } from '@/lib/errors';
 import { ensureInstrument } from '@/lib/market/instruments';
 import { serviceClient } from '@/lib/db';
-import { marketBlock } from '@/lib/market';
+import { liveMarketBlock } from '@/lib/market/live';
 import { normalizeTimeframe, resolveQuote } from '@/lib/market/polygon';
 import { getCompanyProfile } from '@/lib/market/profile';
 import { loadProfile, loadRiskPolicy, type SetupRow } from '@/lib/kai/context';
@@ -384,7 +384,7 @@ export const GET = authedParams<{ symbol: string }>(
           room_id: roomId,
         },
         quote,
-        market: marketBlock(new Date(), quote.freshness),
+        market: await liveMarketBlock(quote.freshness),
         chart_config: {
           timeframe,
           requested_timeframe: requestedTimeframe,

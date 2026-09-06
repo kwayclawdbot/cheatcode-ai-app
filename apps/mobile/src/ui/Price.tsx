@@ -49,6 +49,7 @@ export function Price({
       <FreshnessMark
         freshness={quote.freshness ?? 'unknown'}
         delayReason={quote.delay_reason}
+        at={quote.source_ts}
         size={markSize}
       />
     </View>
@@ -75,6 +76,7 @@ export function PriceRow({
       <FreshnessMark
         freshness={quote?.freshness ?? 'unknown'}
         delayReason={quote?.delay_reason}
+        at={quote?.source_ts}
         size={10}
       />
     </View>

@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { color } from './tokens';
 import { T } from './Text';
 import type { DelayReason } from '../lib/types';
+import { whenPlain } from '../lib/when';
 
 export type Freshness = 'live' | 'delayed' | 'stale' | 'closed' | 'unknown';
 
@@ -41,19 +42,42 @@ export function FreshnessDot({ freshness, size = 6 }: { freshness: Freshness; si
  * price is not live, the server sends freshness 'delayed' with
  * delay_reason:'entitlement'. That must read as "Delayed 15m" — never as
  * stale — and it must never disable an action.
+ *
+ * `at` is the instant the price happened. When it is known the word is
+ * followed by the time, because "Delayed" alone cannot separate a 15:59 print
+ * from a Friday close and the user should never have to work that out. The
+ * word still stands on its own when no timestamp came with the quote — an
+ * unlabelled time would be worse than none.
  */
-export function resolveFreshness(freshness: Freshness | undefined, reason?: DelayReason | null): {
-  freshness: Freshness; label: string;
-} {
-  if (reason === 'entitlement') return { freshness: 'delayed', label: 'Delayed 15m' };
+export function resolveFreshness(
+  freshness: Freshness | undefined,
+  reason?: DelayReason | null,
+  at?: string | null
+): { freshness: Freshness; label: string } {
+  const when = whenPlain(at);
+  const stamp = (base: string) => (when ? `${base} · ${when}` : base);
+  if (reason === 'seed') return { freshness: freshness ?? 'delayed', label: stamp('Sample data') };
+  if (reason === 'entitlement') return { freshness: 'delayed', label: stamp('Delayed 15m') };
+  if (reason === 'market_closed') return { freshness: freshness ?? 'delayed', label: stamp('Market closed') };
   const f = freshness ?? 'unknown';
-  return { freshness: f, label: SPEC[f].label };
+  // A stale mark names the last real print rather than the failure, because
+  // "last seen 2:14 PM" is the fact and "Stale" is only the verdict on it.
+  if (f === 'stale' && when) return { freshness: f, label: `No new data · last ${when}` };
+  return { freshness: f, label: stamp(SPEC[f].label) };
 }
 
 export function FreshnessMark({
-  freshness, label, size = 11, testID, delayReason,
-}: { freshness: Freshness; label?: string; size?: number; testID?: string; delayReason?: DelayReason | null }) {
-  const resolved = resolveFreshness(freshness, delayReason);
+  freshness, label, size = 11, testID, delayReason, at,
+}: {
+  freshness: Freshness;
+  label?: string;
+  size?: number;
+  testID?: string;
+  delayReason?: DelayReason | null;
+  /** The quote's `source_ts` — the instant the price actually happened. */
+  at?: string | null;
+}) {
+  const resolved = resolveFreshness(freshness, delayReason, at);
   const s = SPEC[resolved.freshness];
   const text = label ?? resolved.label;
   return (

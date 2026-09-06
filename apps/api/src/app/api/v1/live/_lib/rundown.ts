@@ -29,7 +29,7 @@ import {
 import type { SetupRow } from '@/lib/kai/context';
 import { getCandles, CANDLE_TIMEFRAMES, type CandleTimeframe } from '@/lib/market/polygon';
 import { computeTechnicals } from '@/lib/market/technicals';
-import { quoteFromSnapshot } from '@/lib/market';
+import { attachLiveQuotes, quoteFor } from '@/lib/market/live';
 
 export type RundownCandidate = {
   source: 'setup' | 'request' | 'winner' | 'watchlist';
@@ -111,10 +111,15 @@ async function readySetups(limit: number): Promise<RundownCandidate[]> {
     return [];
   }
 
+  const rows = (data ?? []) as unknown as (SetupRow & { created_at: string })[];
+  // One market call for the whole rundown. The show quotes prices out loud, so
+  // a frozen snapshot here becomes a spoken claim about a number that moved.
+  await attachLiveQuotes(rows);
+
   const out: RundownCandidate[] = [];
-  for (const raw of (data ?? []) as unknown as (SetupRow & { created_at: string })[]) {
+  for (const raw of rows) {
     const lv = setupLevels(raw);
-    const q = quoteFromSnapshot(raw.symbol, raw.quote_snapshot);
+    const q = quoteFor(raw);
     const confirmations = buildConfirmations(raw, q.price);
     // Size is needed only so `scenarios()` can say what a win and a loss are
     // worth. The show has no user and therefore no risk policy, so it is sized

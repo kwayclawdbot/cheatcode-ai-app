@@ -7,7 +7,7 @@
  */
 import { BriefingPayload, type AppMode, type KaiObjectEnvelope } from '@shared/api';
 import { log } from '../log';
-import { marketBlock, marketDate } from '../market';
+import { marketDate } from '../market';
 import { buildSystemPrompt } from './system-prompt';
 import { completeOnce, anthropicConfigured, parseFenced } from './stream';
 import { findCachedObject, persistKaiObject } from './objects';
@@ -48,7 +48,10 @@ export async function getOrCreateBriefing(
     mode,
   });
 
-  const mb = marketBlock();
+  // The session the context was assembled against — the exchange's own answer
+  // when we could reach it. Asking the clock a second time here could disagree
+  // with the prices two lines above it.
+  const mb = ctx.marketBlock;
   const instruction = `Write this user's morning report for ${market_date}.
 
 CONTEXT

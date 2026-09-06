@@ -61,7 +61,7 @@ export function SetupObject({
         {/* Non-negotiable: no price on screen without its freshness. It sits in
             the header so the artboard's single-line risk row is preserved. */}
         <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-          <FreshnessMark freshness={fresh} delayReason={setup.quote?.delay_reason} testID={`freshness-${setup.symbol}`} />
+          <FreshnessMark freshness={fresh} delayReason={setup.quote?.delay_reason} at={setup.quote?.source_ts} testID={`freshness-${setup.symbol}`} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: st.c }} />
             <T size={11} c={st.c}>{setup.state_label ?? st.label}</T>

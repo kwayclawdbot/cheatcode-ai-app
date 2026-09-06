@@ -24,7 +24,7 @@ import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { CandlesQuery, CandlesResponse } from '@shared/api';
 import { authed, ok, parseQuery, type Ctx } from '@/lib/http';
-import { marketBlock } from '@/lib/market';
+import { liveMarketBlock } from '@/lib/market/live';
 import {
   CANDLE_TIMEFRAMES,
   TF_DEFAULT_SPAN_DAYS,
@@ -70,7 +70,7 @@ export const GET = authed(async (req: NextRequest, _ctx: Ctx) => {
       source: result.source,
       freshness,
       delay_reason,
-      market: marketBlock(new Date(), freshness),
+      market: await liveMarketBlock(freshness),
       degraded: result.degraded || !polygonConfigured(),
       degraded_reason: polygonConfigured()
         ? result.degraded_reason

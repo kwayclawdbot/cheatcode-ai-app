@@ -16,7 +16,7 @@ import type { NextRequest } from 'next/server';
 import { SnapshotQuery, SnapshotResponse } from '@shared/api';
 import { authed, ok, parseQuery, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
-import { marketBlock } from '@/lib/market';
+import { liveMarketBlock } from '@/lib/market/live';
 import { polygonConfigured, resolveQuotes } from '@/lib/market/polygon';
 
 export const dynamic = 'force-dynamic';
@@ -47,7 +47,7 @@ export const GET = authed(async (req: NextRequest, _ctx: Ctx) => {
   return ok(
     SnapshotResponse.parse({
       quotes: snap.quotes,
-      market: marketBlock(new Date(), worst),
+      market: await liveMarketBlock(worst),
       degraded: snap.degraded || !polygonConfigured(),
       degraded_reason: polygonConfigured() ? snap.degraded_reason : 'Live market data is not connected yet.',
     })

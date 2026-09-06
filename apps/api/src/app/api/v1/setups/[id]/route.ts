@@ -14,7 +14,7 @@ import { SetupDetailQuery, SetupDetailResponse, type MarketQuote } from '@shared
 import { authedParams, ok, parseQuery, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
 import { serviceClient } from '@/lib/db';
-import { marketBlock } from '@/lib/market';
+import { liveMarketBlock } from '@/lib/market/live';
 import { getQuote, buildQuote, polygonConfigured } from '@/lib/market/polygon';
 import { loadProfile, loadRiskPolicy, setupsByIds, type SetupRow } from '@/lib/kai/context';
 import { gradedSetupFromRow } from '@/lib/kai/objects';
@@ -187,7 +187,7 @@ export const GET = authedParams<{ id: string }>(async (req: NextRequest, ctx: Ct
           }
         : null,
       discussion_room_id: ((roomRow.data as Record<string, unknown> | null)?.discussion_room_id as string) ?? null,
-      market: marketBlock(new Date(), quote.freshness),
+      market: await liveMarketBlock(quote.freshness),
       degraded: quoteResult.degraded,
       degraded_reason: quoteResult.degraded
         ? 'This price is the last one we stored, not a live one.'
