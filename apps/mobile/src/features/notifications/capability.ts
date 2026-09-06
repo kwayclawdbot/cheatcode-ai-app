@@ -11,10 +11,17 @@
  *
  * The four:
  *
- *   expo_go            Expo Go REMOVED remote push in SDK 53, and SDK 54 is
- *                      what this app runs. The owner's whole test loop is Expo
- *                      Go, so this is the case that will actually be hit, and
- *                      it must say so plainly rather than pretend.
+ *   expo_go            Expo Go removed remote push ON ANDROID from SDK 53.
+ *                      Expo's own words, SDK 53 changelog: "Push notifications
+ *                      are no longer supported in Expo Go for Android... We
+ *                      still support push notifications in Expo Go for iOS
+ *                      because we are able to automatically configure it for
+ *                      you when using EAS." The SDK 57 reference repeats it:
+ *                      "unavailable in Expo Go on Android from SDK 53".
+ *                      So this blocker is ANDROID ONLY. iOS in Expo Go is a
+ *                      supported push target, and it is the owner's whole test
+ *                      loop, so gating it here was the reason his phone had
+ *                      never buzzed.
  *   insecure_context   Web push requires a secure context. `localhost` counts;
  *                      the LAN IP over plain http does NOT — there is no
  *                      `navigator.serviceWorker` there at all — which is
@@ -136,7 +143,10 @@ export function deviceLabel(): string {
 export function pushEnvironment(vapidPublicKey?: string | null): PushEnvironment {
   if (Platform.OS !== 'web') {
     const platform = nativePlatform();
-    if (isExpoGo()) {
+    // ANDROID ONLY. Expo Go on iOS still carries push, because Expo signs and
+    // configures it themselves; on Android they stopped in SDK 53 and only an
+    // installed build can carry it.
+    if (isExpoGo() && Platform.OS === 'android') {
       return {
         transport: 'expo',
         platform,
@@ -144,7 +154,7 @@ export function pushEnvironment(vapidPublicKey?: string | null): PushEnvironment
           reason: 'expo_go',
           title: 'Notifications need the installed app',
           plain:
-            'This is the Expo Go preview, and Expo Go stopped carrying push notifications in SDK 53. Everything still lands in your inbox here. The buzz starts working in the installed build.',
+            'This is the Expo Go preview, and on Android Expo Go stopped carrying push notifications in SDK 53. Everything still lands in your inbox here. The buzz starts working in the installed build.',
         },
       };
     }

@@ -54,6 +54,12 @@
     "experiments": {
       "typedRoutes": false,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "61370ec9-7b21-44cf-a0e0-17bee385009f"
+      }
+    },
+    "owner": "kwaytrades"
   }
 }

@@ -1,12 +1,21 @@
 /**
  * NATIVE PUSH — permission, token, channel, registration.
  *
- * ⚠ THIS PATH IS WRITTEN AND CANNOT BE PROVEN THIS ROUND. There are no APNs or
- * FCM credentials and no development build, and Expo Go has not carried remote
- * push since SDK 53. Every function here therefore ends in an honest answer
- * rather than an exception, and `pushEnvironment()` refuses to let the UI reach
- * them at all in Expo Go. Do not read a green screen as proof native push
- * works — see the ops checklist in the round-5 docs.
+ * WHAT CHANGED, 2026-09-06. This file used to refuse every Expo Go client. That
+ * was right for Android and wrong for iOS, and iOS is the only client the owner
+ * uses. Expo's SDK 53 changelog: "Push notifications are no longer supported in
+ * Expo Go for Android... We still support push notifications in Expo Go for iOS
+ * because we are able to automatically configure it for you when using EAS."
+ * The SDK 57 reference says the same: "unavailable in Expo Go on Android from
+ * SDK 53." So iOS in Expo Go is a supported push target and is now allowed
+ * through; Android in Expo Go is still refused, in words.
+ *
+ * The "when using EAS" half is why `app.json` now carries
+ * `extra.eas.projectId` — `getExpoPushTokenAsync` will not mint a token
+ * without one, and the token is attributed to that project. No APNs key of our
+ * own is involved on this path: inside Expo Go the APNs certificate is Expo's,
+ * attached to their own app. A DEVELOPMENT OR STORE BUILD IS A DIFFERENT
+ * STORY — that build is our bundle id, and it needs our own credentials.
  *
  * `expo-notifications` is loaded with a guarded `require`, never a top-level
  * import. The web build must never evaluate a native notifications module just
@@ -88,12 +97,13 @@ export async function registerNative(): Promise<NativeRegisterResult> {
   if (!N) {
     return { ok: false, reason: 'failed', plain: 'Notifications are not available in this build.' };
   }
-  if (isExpoGo()) {
+  // Android only — see the header. iOS in Expo Go carries push and falls through.
+  if (isExpoGo() && Platform.OS === 'android') {
     return {
       ok: false,
       reason: 'expo_go',
       plain:
-        'Notifications need the installed app; this is the Expo Go preview, which stopped carrying them in SDK 53.',
+        'Notifications need the installed app; on Android, Expo Go stopped carrying them in SDK 53.',
     };
   }
   const projectId = easProjectId();
