@@ -271,6 +271,21 @@ function storyFor(o: {
 }
 
 /**
+ * THE REPLAY LABEL, ON THE CARD ITSELF.
+ *
+ * A replay is the live loop re-run over cached tape from a past session. The
+ * numbers in it are real and the alert really did qualify — but it was never
+ * delivered to anybody at the time, and a card that does not say so is claiming
+ * a history it does not have. `is_replay` in the row's jsonb is enough for a
+ * query and nowhere near enough for a person, so the sentence goes at the FRONT
+ * of the story, where it is read before the numbers rather than after them.
+ */
+const REPLAY_PREFIX =
+  'This is a rehearsal, not an alert anyone was sent. The engine was re-run over stored tape '
+  + 'from that session to check it behaves the same way forward as it did in the measurement. '
+  + 'The numbers below are real; the delivery was not.';
+
+/**
  * A `setups` row, or a refusal.
  *
  * The refusal is deliberate and it is loud: a malformed record is a producer
@@ -398,7 +413,9 @@ export function setupFromUoaRecord(record: Record<string, unknown>): UoaSetupRow
       escalated_from_watchlist: record.escalated_from_watchlist === true,
     },
 
-    thesis_plain: storyFor({ company, ticker, direction, filters }),
+    thesis_plain: isReplay
+      ? `${REPLAY_PREFIX} ${storyFor({ company, ticker, direction, filters })}`
+      : storyFor({ company, ticker, direction, filters }),
     // The engine's own one-line summary, kept verbatim as the technical read.
     thesis_technical: typeof record.alert_text === 'string' ? record.alert_text : null,
 
