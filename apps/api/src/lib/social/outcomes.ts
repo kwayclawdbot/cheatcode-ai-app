@@ -93,8 +93,8 @@ export function wasWon(outcome: 'target' | 'stop' | 'closed' | 'expired', pct: n
 /**
  * A CALL WITH NO LEVELS SCORES NOTHING, and neither does a trade with none.
  * 0038 makes this a generated column on `community_calls` (`scoreable`) so a
- * route cannot set it by hand; a `trade_shares` row has no such column, so the
- * same rule is applied here before `award_points` is ever called. Without an
+ * route cannot set it by hand. A POSITION has no such column, so `points.ts`
+ * applies the same rule here before `award_points` is ever called. Without an
  * entry and at least one side there is nothing to check a price against, and
  * scoring it would be scoring a sentence.
  */

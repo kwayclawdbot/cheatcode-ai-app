@@ -30,7 +30,7 @@ export const dynamic = 'force-dynamic';
 
 export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
   const db = serviceClient();
-  const [profile, risk, ent, account, notifPrefs, counts, adherence, staffRole, credits] = await Promise.all([
+  const [profile, risk, ent, account, notifPrefs, sharing, counts, adherence, staffRole, credits] = await Promise.all([
     loadProfile(ctx.user.id),
     loadRiskPolicy(ctx.user.id),
     loadEntitlements(ctx.user.id),
@@ -47,6 +47,9 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
       .select('per_mode,quiet_hours,push_enabled,categories')
       .eq('user_id', ctx.user.id)
       .maybeSingle(),
+    // The sharing switch (0038 §2). Read separately because `loadProfile`
+    // does not select it — that row belongs to the Kai context lane.
+    db.from('profiles').select('share_trades').eq('user_id', ctx.user.id).maybeSingle(),
     countBlock(ctx.user.id),
     ruleAdherence(ctx.user.id),
     loadStaffRole(ctx.user.id),
@@ -119,6 +122,10 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
         // switches, and every category is on.
         push_enabled: np ? np.push_enabled !== false : true,
         notification_categories: (np?.categories as Record<string, boolean>) ?? {},
+        // ALWAYS SENT, never left to the schema default. It defaults to `false`
+        // in the contract, so an omitted field would tell somebody who has
+        // sharing ON that it is off, on the one screen where they check.
+        share_trades: (sharing.data as Record<string, unknown> | null)?.share_trades === true,
       },
       broker: { connected: false, plain: 'None — add a broker (later release).' },
       dev_tools: env('DEV_TOOLS') === '1',

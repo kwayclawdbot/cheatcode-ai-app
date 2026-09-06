@@ -35,7 +35,7 @@ import { log } from '../log';
 import { getSnapshot } from '../market/polygon';
 import { CALL_COLUMNS, toCallRow, type CallRow } from './calls';
 import { legHit, resultPct } from './outcomes';
-import { awardAndAnnounce } from './shares';
+import { awardAndAnnounce } from './points';
 
 /**
  * How many open calls one pass will look at. Well above anything this app will

@@ -45,6 +45,7 @@ import { ORDER_COLUMNS, applyFill, cancelSiblings, revalueAccount } from './engi
 import { rpcApplyPaperTick, type TickAttention } from './adapter';
 import { armedAlertSymbols, evaluateArmedAlerts } from '../round4/alert-tick';
 import { sweepCircles } from '../round4/circles';
+import { scoreKaiTradeOnClose } from '../social/points';
 import { resolveShareOnClose } from '../social/shares';
 
 const RESTING: string[] = ['accepted', 'submitted', 'partially_filled'];
@@ -187,12 +188,10 @@ export async function runPaperTick(opts: {
           requestId: opts.requestId,
         });
         // A fired bracket is the one exit that KNOWS how it ended, which is why
-        // the outcome is passed in rather than inferred from the percent. If
-        // this position was shared, the share is stamped `target` or `stop`
-        // here, and a Kai-originated trade is scored. It cannot fail the tick:
-        // `resolveShareOnClose` swallows everything and does nothing at all
-        // when the position turns out not to be fully closed.
-        await closeShareForLeg(userId, fired.position_id, leg, Number(fired.price), opts.requestId);
+        // the outcome is passed in rather than inferred from the percent. It
+        // cannot fail the tick: both halves swallow everything and do nothing
+        // at all when the position turns out not to be fully closed.
+        await settleClosedPosition(userId, fired.position_id, leg, Number(fired.price), opts.requestId);
       }
 
       // `alert_assisted` legs did NOT execute. They become Attention.
@@ -288,7 +287,7 @@ export async function runPaperTick(opts: {
           positionId: result.positionId,
           requestId: opts.requestId,
         });
-        await closeShareForLeg(userId, result.positionId, role, decision.price, opts.requestId);
+        await settleClosedPosition(userId, result.positionId, role, decision.price, opts.requestId);
       }
     }
   }
@@ -354,18 +353,24 @@ async function writeMark(positionId: string, mark: Mark): Promise<boolean> {
 }
 
 /**
- * A bracket leg fired, so the trade behind it is over. If the member chose to
- * show that trade, stamp its outcome on the share; if it came from one of Kai's
- * alerts, score it (0038 + 0039).
+ * A bracket leg fired, so the trade behind it is over. Two INDEPENDENT things
+ * follow, and the independence is deliberate:
+ *
+ *   the share   if the member chose to show this trade, stamp `target`/`stop`
+ *               on it. Visibility only.
+ *   the points  if the trade came from one of Kai's alerts and had levels,
+ *               score it — whether or not it was ever shared. A member with
+ *               sharing switched off earns the same as one with it on; see the
+ *               header of `lib/social/points.ts` for why these were separated.
  *
  * WRAPPED, LIKE `notify()`. This runs inside the tick, which moves real
  * positions on a schedule; a broken social lane must be able to do nothing
- * worse than leave a share saying `open`. `resolveShareOnClose` already
- * swallows its own failures — this catch is the second belt, because the tick
- * is the one loop in this app where one thrown row would stop every remaining
- * user's positions from being marked.
+ * worse than leave a share saying `open`. Both helpers already swallow their
+ * own failures — this catch is the second belt, because the tick is the one
+ * loop in this app where one thrown row would stop every remaining user's
+ * positions from being marked.
  */
-async function closeShareForLeg(
+async function settleClosedPosition(
   userId: string,
   positionId: string | null,
   leg: 'stop' | 'target',
@@ -375,8 +380,9 @@ async function closeShareForLeg(
   if (!positionId) return;
   try {
     await resolveShareOnClose({ userId, positionId, leg, exitPrice: price, requestId });
+    await scoreKaiTradeOnClose({ userId, positionId, leg, exitPrice: price, requestId });
   } catch (e) {
-    log('warn', requestId, 'social.tick_share_close_threw', {
+    log('warn', requestId, 'social.tick_settle_threw', {
       position_id: positionId,
       message: e instanceof Error ? e.message : String(e),
     });

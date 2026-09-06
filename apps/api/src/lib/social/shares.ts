@@ -41,6 +41,14 @@
  * account.
  *
  * =====================================================================
+ * THIS FILE DOES NOT SCORE ANYTHING
+ * =====================================================================
+ * Sharing governs VISIBILITY. Points are the RECORD, they live in `points.ts`,
+ * and they are keyed on the position rather than on a share — so a member with
+ * sharing switched off earns exactly the same points as one with it on. See
+ * that file's header for why the two were separated.
+ *
+ * =====================================================================
  * A SHARE MUST NEVER BE ABLE TO FAIL A FILL
  * =====================================================================
  * `shareOnFill` and `resolveShareOnClose` are called from the middle of an
@@ -51,12 +59,10 @@
 import type { SharedTrade, SocialAuthor } from '@shared/api';
 import { serviceClient } from '../db';
 import { log } from '../log';
-import { callRpc } from '../rpc';
 import { agePlain } from '../moderation';
 import { loadAuthor, mentionFor } from './authors';
-import { pointsConfig } from './belts';
-import { fanOutToFollowers, notifyBeltEarned } from './fanout';
-import { coherentLevels, hasLevels, outcomeLabel, resultPct, round2, wasWon } from './outcomes';
+import { fanOutToFollowers } from './fanout';
+import { coherentLevels, outcomeLabel, resultPct, round2 } from './outcomes';
 
 export const SHARE_COLUMNS =
   'id,user_id,position_id,symbol,direction,entry,stop,target,opened_at,closed_at,outcome,result_pct,created_at';
@@ -351,9 +357,7 @@ function pick(primary: unknown, fallback: unknown): number | null {
  * the first half would report a result the trade had not reached yet.
  *
  * IDEMPOTENT: a share that already carries a `closed_at` is left alone, so a
- * repeated tick cannot rewrite an outcome or pay for it twice. `award_points`
- * is idempotent on its own account too (0039's `unique (source, ref_id)`), so
- * this is belt and braces rather than the only guard.
+ * repeated tick cannot rewrite an outcome that has already been published.
  */
 export async function resolveShareOnClose(opts: {
   userId: string;
@@ -403,167 +407,25 @@ export async function resolveShareOnClose(opts: {
     }
     log('info', opts.requestId, 'social.share_closed', { share_id: row.id, outcome, result_pct: pct });
 
-    await scoreKaiTrade({ ...opts, share: { ...row, outcome, result_pct: pct } });
+    /**
+     * NO POINTS ARE AWARDED HERE, AND THAT IS DELIBERATE.
+     *
+     * Scoring a Kai trade used to hang off this function, which meant it only
+     * ever happened for members who had switched sharing ON — and
+     * `profiles.share_trades` defaults to FALSE. That made the board reachable
+     * only by making your positions public, which is a privacy tax on a switch
+     * we shipped off on purpose, and it punished the cautious member the ladder
+     * exists to reward.
+     *
+     * So: SHARING GOVERNS VISIBILITY, POINTS ARE THE RECORD. The award lives in
+     * `points.ts` — which does not import this file — and is keyed on the
+     * POSITION rather than on the share. The coupling looks natural because
+     * both happen at the same instant off the same position; it is not one.
+     */
   } catch (e) {
     log('warn', opts.requestId, 'social.resolve_share_threw', {
       position_id: opts.positionId,
       message: e instanceof Error ? e.message : String(e),
     });
   }
-}
-
-/**
- * SIX POINTS FOR TAKING KAI'S READ AND HAVING IT WORK, TWO OFF IF IT DID NOT.
- * Less than a member's own call, because the read was Kai's (0039 §1, asserted
- * in §8(b) so it can never be re-tuned the other way round).
- *
- * TWO THINGS HAVE TO BE TRUE and both are checked here rather than in SQL:
- *
- *   1. THE TRADE CAME FROM THE HOUSE. A position the member found themselves is
- *      their own business and scoring it would make the board a record of who
- *      trades most. `origin_setup_id` is set by the fallback fill path;
- *      0020's RPC carries the setup through `origin_plan_id` → `trade_plans`,
- *      and stamps `positions.origin` — so all three are read before we conclude
- *      the trade was not Kai's.
- *   2. IT HAD LEVELS. A trade with no stop and no target could not have been
- *      wrong in any defined way, so it cannot be right in one either.
- *
- * `ref_id` IS THE SHARE, which has a consequence worth naming out loud: a
- * member who never turned sharing on has no `trade_shares` row and therefore
- * scores nothing on Kai's alerts. That is the design 0039 asks for — the ledger
- * points at a shared object — and it means the board is a record of trades
- * people were willing to show.
- */
-async function scoreKaiTrade(opts: {
-  userId: string;
-  positionId: string;
-  requestId: string;
-  share: ShareRow;
-}): Promise<void> {
-  const share = opts.share;
-  if (!hasLevels(share.entry, share.stop, share.target)) {
-    log('info', opts.requestId, 'social.points_skipped_no_levels', { share_id: share.id });
-    return;
-  }
-
-  const db = serviceClient();
-  const posRes = await db
-    .from('positions')
-    .select('origin_setup_id,origin_plan_id,origin')
-    .eq('id', opts.positionId)
-    .eq('user_id', opts.userId)
-    .maybeSingle();
-  const pos = (posRes.data as Record<string, unknown> | null) ?? {};
-
-  let fromKai = Boolean(pos.origin_setup_id);
-  if (!fromKai) {
-    const origin = (pos.origin as Record<string, unknown>) ?? {};
-    fromKai = Boolean(origin.setup_id || origin.alert_id);
-  }
-  if (!fromKai && pos.origin_plan_id) {
-    const planRes = await db
-      .from('trade_plans')
-      .select('setup_id')
-      .eq('id', String(pos.origin_plan_id))
-      .maybeSingle();
-    fromKai = Boolean((planRes.data as Record<string, unknown> | null)?.setup_id);
-  }
-  if (!fromKai) return;
-
-  // `share` here is the row as this close just left it, so `outcome` is one of
-  // target / stop / closed and never 'open'. A target leg is a win, a stop leg
-  // is a loss, and a close the member made by hand is decided by the percent.
-  const won = wasWon(share.outcome === 'open' ? 'closed' : share.outcome, share.result_pct);
-  await awardAndAnnounce({
-    userId: opts.userId,
-    source: 'kai_trade',
-    refId: share.id,
-    won,
-    requestId: opts.requestId,
-  });
-}
-
-/* ------------------------------------------------------------------ */
-/* Points                                                               */
-/* ------------------------------------------------------------------ */
-
-export type AwardResult = {
-  awarded: boolean;
-  points?: number;
-  total_points?: number;
-  belt?: string;
-  belt_changed?: boolean;
-  reason?: string;
-};
-
-/**
- * The one call that writes points, plus the one notification that follows it.
- *
- * `award_points` computes its own multiplier, refuses to pay twice, and reports
- * whether the belt moved — so the caller never asks a second question to find
- * out (0039 §4). Everything here is best-effort: a resolution that scores is
- * still a resolution if the notification fails.
- */
-export async function awardAndAnnounce(opts: {
-  userId: string;
-  source: 'community_call' | 'kai_trade';
-  refId: string;
-  won: boolean;
-  resolvedAt?: string | null;
-  requestId: string;
-}): Promise<AwardResult> {
-  const rpc = await callRpc<Record<string, unknown>>(
-    'award_points',
-    {
-      p_user_id: opts.userId,
-      p_source: opts.source,
-      p_ref_id: opts.refId,
-      p_won: opts.won,
-      p_resolved_at: opts.resolvedAt ?? new Date().toISOString(),
-    },
-    opts.requestId
-  );
-  if (!rpc.ok) {
-    log('warn', opts.requestId, 'social.award_failed', { source: opts.source, ref_id: opts.refId });
-    return { awarded: false, reason: 'unavailable' };
-  }
-
-  const data = (rpc.data ?? {}) as Record<string, unknown>;
-  const result: AwardResult = {
-    awarded: data.awarded === true,
-    points: data.points === undefined ? undefined : Number(data.points),
-    total_points: data.total_points === undefined ? undefined : Number(data.total_points),
-    belt: data.belt === undefined ? undefined : String(data.belt),
-    belt_changed: data.belt_changed === true,
-    reason: data.reason === undefined ? undefined : String(data.reason),
-  };
-
-  if (!result.awarded) return result;
-  log('info', opts.requestId, 'social.points_awarded', {
-    source: opts.source,
-    ref_id: opts.refId,
-    won: opts.won,
-    points: result.points,
-    belt: result.belt,
-    belt_changed: result.belt_changed,
-  });
-
-  if (result.belt_changed && result.belt) {
-    try {
-      const cfg = await pointsConfig(opts.requestId);
-      const label = cfg?.belts.find((b) => b.key === result.belt)?.label ?? result.belt;
-      await notifyBeltEarned({
-        userId: opts.userId,
-        belt: result.belt,
-        label,
-        totalPoints: Math.round(result.total_points ?? 0),
-        requestId: opts.requestId,
-      });
-    } catch (e) {
-      log('warn', opts.requestId, 'social.belt_notify_threw', {
-        message: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }
-  return result;
 }

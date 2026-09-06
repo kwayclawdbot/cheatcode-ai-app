@@ -37,10 +37,13 @@
  * through the one helper that joins `profiles.share_trades` — so a member who
  * switched sharing off shows no trades here to anybody, including somebody who
  * saw them yesterday.
+ *
+ * THE RECORD IS NOT GATED ON SHARING. `rankings` is a member's own points and
+ * belt; `shared_trades` is what they chose to show. Somebody with sharing off
+ * still has a record and still ranks — see `lib/social/points.ts`.
  */
 import type { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { CommunityCall, ContributorResponse, FollowState, SharedTrade, SocialRecord } from '@shared/api';
+import { ContributorResponse } from '@shared/api';
 import { authedParams, ok, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
 import { serviceClient } from '@/lib/db';
@@ -55,25 +58,6 @@ export const dynamic = 'force-dynamic';
 const RECENT = 10;
 /** A profile is a sample of somebody's record, not their whole history. */
 const RECENT_SOCIAL = 20;
-
-/**
- * The response, extended on top of the shared contract.
- *
- * `ContributorResponse.rankings` is still typed `z.null()` in
- * `packages/shared/api.ts`, which this lane does not own — so the field is
- * replaced here with the real record rather than left lying. `.omit()` before
- * `.extend()` because a zod object cannot widen a field in place, and because
- * doing it in two visible steps says out loud that a type is being changed.
- * When the shared contract carries `SocialRecord` itself this whole block can
- * be deleted and the import used directly.
- */
-const ContributorSocialResponse = ContributorResponse.omit({ rankings: true }).extend({
-  /** Null when the member has never resolved anything. Never a fake zero row. */
-  rankings: SocialRecord.nullable(),
-  follow: FollowState,
-  shared_trades: z.array(SharedTrade),
-  calls: z.array(CommunityCall),
-});
 
 export const GET = authedParams<{ user_id: string }>(
   async (_req: NextRequest, ctx: Ctx & { params: { user_id: string } }) => {
@@ -142,7 +126,7 @@ export const GET = authedParams<{ user_id: string }>(
     const labels = (p.role_labels as string[]) ?? [];
 
     return ok(
-      ContributorSocialResponse.parse({
+      ContributorResponse.parse({
         user_id: String(p.user_id),
         handle: (p.handle as string) ?? null,
         display_name: (p.display_name as string) ?? null,

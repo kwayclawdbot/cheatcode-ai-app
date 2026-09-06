@@ -43,6 +43,7 @@ import {
 } from './engine';
 import { toOrderEventRows, toOrderRow } from './shape';
 import { ExecutionRpcError, plainForRpcError, rpcSubmitPaperOrder, type PaperFill } from './adapter';
+import { scoreKaiTradeOnClose } from '../social/points';
 import { resolveShareOnClose, shareOnFill } from '../social/shares';
 
 export async function submitOrder(opts: {
@@ -356,16 +357,20 @@ async function submitWithoutRpc(opts: {
  *                 show it (`orders.share_trade`, else `profiles.share_trades`),
  *                 and tell their followers. Levels only; the quantity never
  *                 leaves this file's world.
- * CLOSING SIDE  → stamp the outcome on the share, if there is one, and score it
- *                 when the trade came from one of Kai's alerts.
+ * CLOSING SIDE  → two INDEPENDENT things, and the independence is the point:
+ *                 stamp the outcome on the share IF there is one, and score the
+ *                 trade if it came from one of Kai's alerts. The second does
+ *                 not check the first. Sharing decides who can SEE a trade;
+ *                 points are the member's own record, and a member with sharing
+ *                 off earns the same as a member with it on.
  *
- * A SHARE OR A POINT MUST NEVER BE ABLE TO FAIL A FILL. Both helpers swallow
- * everything internally and this wrapper catches anyway, exactly the way
- * `notify()` is wrapped from the middle of an order path — see the header of
- * `lib/notify.ts`. The worst a broken social lane may do to somebody's trade is
- * leave a row unwritten.
+ * A SHARE OR A POINT MUST NEVER BE ABLE TO FAIL A FILL. All three helpers
+ * swallow everything internally and this wrapper catches anyway, exactly the
+ * way `notify()` is wrapped from the middle of an order path — see the header
+ * of `lib/notify.ts`. The worst a broken social lane may do to somebody's trade
+ * is leave a row unwritten.
  *
- * `resolveShareOnClose` checks for itself that the position is really closed,
+ * Both close helpers check for themselves that the position is really closed,
  * so a partial exit passes through here and does nothing.
  */
 async function mirrorToSocial(opts: {
@@ -392,11 +397,18 @@ async function mirrorToSocial(opts: {
     // submitted on its own leaves us the position the booking landed on.
     const positionId = opts.closeOfPositionId ?? opts.positionId;
     if (!positionId || opts.exitPrice === null || !Number.isFinite(opts.exitPrice)) return;
+    // No bracket leg fired: the member decided. The percent decides whether that
+    // was a win, and flat is not one.
     await resolveShareOnClose({
       userId: opts.userId,
       positionId,
-      // No bracket leg fired: the member decided. The percent decides whether
-      // that was a win, and flat is not one.
+      leg: null,
+      exitPrice: opts.exitPrice,
+      requestId: opts.requestId,
+    });
+    await scoreKaiTradeOnClose({
+      userId: opts.userId,
+      positionId,
       leg: null,
       exitPrice: opts.exitPrice,
       requestId: opts.requestId,
