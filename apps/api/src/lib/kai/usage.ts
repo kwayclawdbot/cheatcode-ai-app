@@ -43,7 +43,20 @@ export type UsageFeature =
   | 'room'
   | 'alert_draft'
   | 'alert_action'
-  | 'conversation_title';
+  | 'conversation_title'
+  /**
+   * `scripts/kai-markup-proof.mts` only. It has been passing this since the
+   * chart-markup lane landed and the union never learned it, so `npm run
+   * typecheck` has been failing at HEAD on that one line.
+   *
+   * ADDED RATHER THAN SWAPPED FOR AN EXISTING LABEL, which was the smaller
+   * diff and the wrong one: this value is written to `kai_model_usage` and that
+   * table is what spend is attributed from. Filing proof runs under
+   * `chart_answer` would quietly mix test spend into a real feature's numbers,
+   * and the next person reading the ledger would have no way to tell them
+   * apart. A proof that costs credits should say so in its own name.
+   */
+  | 'chart_markup_proof';
 
 export type UsageMeta = {
   feature: UsageFeature;

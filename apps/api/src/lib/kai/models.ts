@@ -113,6 +113,11 @@ export const FEATURE_MODEL_DEFAULTS: Record<UsageFeature, string> = {
   alert_draft: SONNET_5,
   alert_action: SONNET_5,
   conversation_title: SONNET_5,
+  // `scripts/kai-markup-proof.mts`. It reaches the model through `completeOnce`
+  // with no tools, so it belongs with the group above for the same measured
+  // reason — and a proof that runs on a different model from the thing it is
+  // proving is not proving that thing.
+  chart_markup_proof: SONNET_5,
 };
 
 /** `chart_answer` -> `KAI_MODEL_CHART_ANSWER`. */

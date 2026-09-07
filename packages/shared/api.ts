@@ -1884,6 +1884,16 @@ export type LeaderboardResponse = z.infer<typeof LeaderboardResponse>;
 export const CreateCommunityCallBody = z.object({
   symbol: z.string().min(1).max(10),
   direction: z.enum(['long', 'short']),
+  /**
+   * The desk to publish to, which decides the room the call lands in (0040).
+   *
+   * OPTIONAL, AND THE FALLBACK IS THE AUTHOR'S `primary_mode` — but it has to
+   * be HERE rather than inferred, because `parseBody` strips keys the schema
+   * does not name. Without this field a member who chose "Swing" in the
+   * composer would silently publish to whatever their profile happens to be set
+   * to, and the only clue would be the call turning up in the wrong room.
+   */
+  mode: AppMode.optional(),
   entry: z.number().positive().nullable().optional(),
   stop: z.number().positive().nullable().optional(),
   target: z.number().positive().nullable().optional(),
