@@ -116,8 +116,30 @@ export type FeedResult = {
   degraded_reason: string | null;
 };
 
-/** Every card the user has, across all three tabs. Filter after, not before. */
-export async function loadAlertCards(opts: { userId: string; requestId?: string }): Promise<FeedResult> {
+/**
+ * Every card the user has, across all three tabs. Filter after, not before.
+ *
+ * `scopeToMode` — the Alerts board is ONE MODE'S BOARD, and the board says so.
+ *
+ * The two families the product sends are written in a fixed mode: the swing
+ * scanner writes `swing`, the options-flow engine writes `day_trade`. Merged
+ * without a check, a person in Day Trade mode opens Alerts and reads a list of
+ * swing picks, which is not the question they asked. So the Alerts route passes
+ * `scopeToMode: true` and gets back only the live sent alerts that match the
+ * mode the user is actually in.
+ *
+ * IT IS OPT-IN BECAUSE THE OTHER CALLERS ARE ASKING SOMETHING ELSE. The symbol
+ * page and the Trade Portal call this function to answer "what do we already
+ * know about this one ticker" — and a swing pick on the ticker you are day
+ * trading is still something we know. Narrowing them to the user's mode would
+ * make a card the app has quietly go missing on the screen that exists to show
+ * it, so the default stays off and only the board turns it on.
+ */
+export async function loadAlertCards(opts: {
+  userId: string;
+  requestId?: string;
+  scopeToMode?: boolean;
+}): Promise<FeedResult> {
   const db = serviceClient();
   const userId = opts.userId;
 
@@ -210,11 +232,24 @@ export async function loadAlertCards(opts: { userId: string; requestId?: string 
   // because that engine was never measured short. This one fires long and
   // short on the same filter and was measured on both, so a bearish alert is
   // an ordinary card. It carries no exit advice either way.
-  const morningLive = [
+  const sentLive = [
     ...((liveMorning.data ?? []) as unknown as SetupRow[]),
     ...uoa.live,
   ];
   const morningResolved = [...resolvedMorning, ...uoa.resolved];
+
+  // Drop the sent alerts that belong to the mode the user is not in, and do it
+  // HERE — before the symbol set below is built. A dropped card still costs a
+  // quote and a company profile if it is filtered later on, and those are paid
+  // market-data requests spent on rows nobody will see.
+  //
+  // ONLY THIS LIST. The user's own alerts, the setups they follow, their plans
+  // and their positions are their objects, not the product's, and they are not
+  // mode-scoped: hiding a swing position because the app is in Day Trade would
+  // be losing the user's own data, not filtering a feed. History is untouched
+  // too, for the reason written above `HISTORY_FAMILIES` — the record is the
+  // whole record, or it is not a record.
+  const morningLive = opts.scopeToMode ? sentLive.filter((s) => s.mode === mode) : sentLive;
 
   // Symbols we need quotes and profiles for.
   const symbols = new Set<string>();

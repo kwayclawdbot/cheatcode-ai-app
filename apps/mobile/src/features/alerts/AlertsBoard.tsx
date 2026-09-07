@@ -162,9 +162,14 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
           list.map((a) => <StandardAlertCard key={a.id} alert={a} />)
         ) : (
           <AlertsEmpty
+            // Both tabs take the server's sentence when there is one. The
+            // server is the half that knows which mode the board is in, and an
+            // empty Active tab means something different in Day Trade than it
+            // does in Swing. The strings below are the fallback for an offline
+            // or fixture render, not a second opinion.
             copy={
               tab === 'active'
-                ? "Nothing needs a decision right now. Kai moves an alert here the moment a verified event happens — no alert is better than a made-up one."
+                ? (data?.empty_copy ?? "Nothing needs a decision right now. Kai moves an alert here the moment a verified event happens — no alert is better than a made-up one.")
                 : (data?.empty_copy ?? "Kai isn't monitoring anything for you yet. Tell him what to watch below, in your own words.")
             }
             offers={offers}

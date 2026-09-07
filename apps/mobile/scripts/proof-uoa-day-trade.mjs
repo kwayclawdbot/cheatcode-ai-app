@@ -68,10 +68,15 @@ await shot('01-board');
 
 /* ── the card itself ──────────────────────────────────────────────── */
 //
-// EVERY ASSERTION IS SCOPED TO THIS ONE CARD, not to the page. The board also
-// carries swing cards, and those legitimately have grades, stops and targets —
-// a whole-page regex for "no target" would pass or fail on somebody else's
-// card and prove nothing about this one.
+// EVERY ASSERTION IS SCOPED TO THIS ONE CARD, not to the page.
+//
+// The reason used to be that the board also carried swing cards, and those
+// legitimately have grades, stops and targets, so a whole-page regex for "no
+// target" would pass or fail on somebody else's card. The board is now filtered
+// to the mode the user is in, so a day-trade account no longer sees a swing
+// pick at all. The scoping stays anyway: this account can own alerts and
+// positions of its own, History is still every mode, and an assertion about
+// THIS card should be read off THIS card either way.
 console.log('\nthe card');
 const card = page.locator('[data-testid="alert-card-SYNTH"]').first();
 note(await card.count() > 0, 'the day-trade alert is on the board');

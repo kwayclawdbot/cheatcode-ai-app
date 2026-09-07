@@ -132,7 +132,17 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
   // ---- round 4: alerts as complete trade objects (spec §1-§5) ----------
   // The three round-3 sections are still computed above and still returned;
   // `cards` is the new shape and `tab` is what the app actually renders.
-  const feed = await loadAlertCards({ userId: ctx.user.id, requestId: ctx.requestId });
+  //
+  // `scopeToMode` is on here and nowhere else. This screen is the board for the
+  // mode the user is in, so a swing pick has no business on it while the app is
+  // in Day Trade. The symbol page and the Trade Portal leave it off on purpose —
+  // they are answering "what do we know about this ticker", not "what is my
+  // board today".
+  const feed = await loadAlertCards({
+    userId: ctx.user.id,
+    requestId: ctx.requestId,
+    scopeToMode: true,
+  });
   const tab: AlertTab = q.tab ?? 'active';
   const TAB_PLAIN: Record<AlertTab, string> = {
     active: 'Something happened that may need a decision.',
@@ -172,9 +182,19 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
         plain: TAB_PLAIN[key],
       })),
       cards,
+      // An empty Active tab is not a broken screen, and in Day Trade it is not
+      // even unusual: the options-flow engine is a selective filter that only
+      // finds something it is willing to send on a minority of sessions, so
+      // most mornings there is genuinely nothing to say. The copy has to sound
+      // like a working engine that has not seen anything yet, not like a feed
+      // that failed to load — and it can only sound that way if it knows which
+      // mode the person is in, which is why it is written here rather than in
+      // the app.
       card_empty_copy:
         tab === 'active'
-          ? 'Nothing needs a decision right now. That is a real answer, not an empty screen.'
+          ? profile.primary_mode === 'day_trade'
+            ? 'No day-trade alerts today. The engine watches the tape from the opening bell.'
+            : 'Nothing needs a decision right now. That is a real answer, not an empty screen.'
           : tab === 'watching'
             ? 'I am not watching anything for you yet. Follow a setup or tell me a condition and it lands here.'
             : 'Nothing has finished yet.',
