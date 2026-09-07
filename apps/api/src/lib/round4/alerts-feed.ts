@@ -118,6 +118,16 @@ export type FeedResult = {
   counts: Record<AlertTab, number>;
   degraded: boolean;
   degraded_reason: string | null;
+  /**
+   * The mode this feed was read in — reported whether or not `scopeToMode` was
+   * on, because it is the mode the caller would have been filtered by and a
+   * caller that did not filter still wants to say which board it is answering.
+   *
+   * It is returned rather than re-read by the caller so the answer cannot drift
+   * from the filter: whoever echoes this to the app is echoing the value that
+   * actually narrowed the rows, not a second read of the same column.
+   */
+  mode: AppMode;
 };
 
 /**
@@ -552,6 +562,7 @@ export async function loadAlertCards(opts: {
     counts,
     degraded: snap.degraded || positions.degraded,
     degraded_reason: snap.degraded_reason ?? positions.degraded_reason,
+    mode,
   };
 }
 

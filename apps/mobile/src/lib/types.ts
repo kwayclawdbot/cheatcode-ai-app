@@ -970,6 +970,17 @@ export type AlertsRound4 = {
   history: AlertCard[];
   counts: { active: number; watching: number; history: number };
   empty_copy?: string | null;
+  /**
+   * WHICH MODE'S BOARD THESE CARDS ARE — sent by the server, which is the half
+   * that filtered them.
+   *
+   * The board is one mode's board and the mode can change while a request is
+   * out. This field is how a payload says which question it answered, so a
+   * reply about swing cannot be drawn on a Day Trade board just because it
+   * arrived second. Null on an older API build, which the hook reads as "this
+   * build cannot tell me" and falls back to the mode it asked in.
+   */
+  mode?: GoalMode | null;
 };
 
 /** Conversations drawer (prototype "Home" board). */

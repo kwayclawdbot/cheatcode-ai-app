@@ -3,6 +3,13 @@
  *
  *   1. "the daytrade alerts is showing swing trades"
  *   2. "the community trade alerts dont show anywhere in app when generated"
+ *   3. "when it's switched to daytrade it continues showing swings" — the same
+ *      complaint again eight hours later, and NOT the same bug. (1) was the
+ *      server merging both families into one board and was fixed there. (3) is
+ *      the app never re-asking: the board had no idea the mode was part of its
+ *      question, so the switch wrote the new mode, the header redrew, and the
+ *      list underneath kept the old answer. Section [3b] is the one that fails
+ *      on that, and it can only fail on an already-open board — see its note.
  *
  * Both of these are invisible in fixtures mode, which is exactly why they
  * shipped. In fixtures the room's messages are a hard-coded list, the publish
@@ -162,6 +169,29 @@ const settled = async (page) => {
   await page.waitForTimeout(1500);
 };
 const bodyText = async (page) => (await page.locator('body').innerText()).replace(/\s+/g, ' ');
+
+/**
+ * An alerts board that has finished loading — waited on, not slept through.
+ *
+ * `/api/v1/alerts` takes five to nine seconds against a local Next dev server
+ * talking to the hosted database and a quote provider, and Active costs two of
+ * them. Every fixed wait in this file was written against a faster stack, and a
+ * wait that expires early photographs the spinner and then reports the board as
+ * empty — a failure about the very thing being proved, caused by the stopwatch.
+ * The tab rail is the honest signal: it renders only once there are cards to
+ * count, so it is what the board being READY actually means.
+ */
+const boardReady = async (page) => {
+  await page.locator('[data-testid="alerts-tabs"]').waitFor({ timeout: 90_000 }).catch(() => {});
+  await page.waitForTimeout(600);
+};
+
+/** What the board's own mode chip says right now — '' while it is loading. */
+const chipSays = async (page) => {
+  const chip = page.locator('[data-testid="alerts-mode-chip"]').first();
+  if (!(await chip.count())) return '';
+  return (await chip.innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+};
 const shot = async (page, name) => {
   const root = page.locator('#root');
   await ((await root.count()) ? root : page).screenshot({ path: path.join(OUT, `modecalls-${name}.png`) });
@@ -210,7 +240,7 @@ try {
   const alex = await signIn(people.alex);
   await alex.page.goto(`${BASE}/alerts`, { waitUntil: 'domcontentloaded' });
   await alex.page.locator('[data-testid="screen-alerts"]').waitFor({ timeout: 90_000 });
-  await alex.page.waitForTimeout(6000);
+  await boardReady(alex.page);
   await shot(alex.page, '01-day-trade-active');
   {
     ok('a day-trade account lands on the alerts board', await has(alex.page, 'screen-alerts'));
@@ -325,7 +355,8 @@ try {
   const blake = await signIn(people.blake);
   await blake.page.goto(`${BASE}/alerts`, { waitUntil: 'domcontentloaded' });
   await blake.page.locator('[data-testid="screen-alerts"]').waitFor({ timeout: 90_000 });
-  await blake.page.waitForTimeout(6000);
+  await boardReady(blake.page);
+  await blake.page.locator('[data-testid^="alert-card-"]').first().waitFor({ timeout: 60_000 }).catch(() => {});
   await shot(blake.page, '07-swing-active');
   {
     const feed = await feedFor(blake.page, 'active');
@@ -335,6 +366,158 @@ try {
     ok('and every card on it is a swing card', cards.every((c) => c.identity?.mode === 'swing'), modes);
     const drawn = await blake.page.locator('[data-testid^="alert-card-"]').count();
     ok('the cards are actually drawn on screen', drawn > 0, { drawn });
+  }
+
+  /*
+   * [3b] THE SWITCH ITSELF — the owner's bug, which section [1] could not see.
+   *
+   * Section [1] proves a day-trade account that OPENS the board gets day-trade
+   * cards. It signs in fresh, so the first request it ever makes is already in
+   * the right mode and a board that never re-asks looks identical to one that
+   * does. The owner's report is about the other path: he was on the board, in
+   * Swing, reading swing cards, and he changed the mode. The screen kept the
+   * cards.
+   *
+   * That is why this section switches on an ALREADY-MOUNTED board with swing
+   * cards visibly on it, and asserts by NAME that not one of those exact cards
+   * survives the switch — not merely that the count changed, which an empty
+   * board and a stuck board can both satisfy.
+   *
+   * It also switches BACK, and then switches again, because the first fix that
+   * suggests itself is a one-shot effect and a one-shot effect passes a single
+   * toggle.
+   */
+  console.log('\n[3b] switching Swing → Day Trade on a board that is already open');
+  {
+    const cardIds = async (page) =>
+      page.$$eval('[data-testid^="alert-card-"]', (els) => els.map((e) => e.getAttribute('data-testid')));
+    /** Open the chip's sheet and pick a mode, the way a person does. */
+    const switchTo = async (page, m) => {
+      await page.locator('[data-testid="alerts-mode-chip"]').first().click();
+      await page.locator('[data-testid="sheet-mode"]').waitFor({ timeout: 20_000 });
+      await page.locator(`[data-testid="mode-option-${m}"]`).first().click();
+    };
+
+    /**
+     * SWITCH, AND WATCH THE WHOLE WAY ACROSS.
+     *
+     * `PUT /mode` is a round trip and `/alerts` is another five to nine seconds
+     * behind it, so the press and the new board are seconds apart. Anything
+     * that reads the screen in between is reading the mode the person just
+     * left — which is how the first version of this section reported cards as
+     * "still there" that were only still there because nothing had changed yet.
+     *
+     * So: press, then poll until the chip itself says the new mode, and from
+     * that first tick onward watch for any of `forbidden` appearing. Returns
+     * the offender, or null. `settled` says the new board really arrived rather
+     * than the loop running out of patience.
+     */
+    const switchAndWatch = async (page, m, want, forbidden) => {
+      await switchTo(page, m);
+      let leak = null;
+      let arrived = false;
+      let clean = 0;
+      for (let i = 0; i < 240 && !leak; i++) {
+        const label = await chipSays(page);
+        if (want.test(label)) arrived = true;
+        if (arrived) {
+          const now = await cardIds(page);
+          leak = now.find((id) => forbidden.includes(id)) ?? null;
+          if (!leak && label) clean += 1;
+          if (clean > 25) break;
+        }
+        await page.waitForTimeout(150);
+      }
+      return { leak, arrived };
+    };
+
+    const swingCards = await cardIds(blake.page);
+    ok('Blake has named swing cards to lose', swingCards.length > 0, swingCards);
+
+    /*
+     * THE RACE, CAUGHT IN THE ACT — and measured from the right moment.
+     *
+     * The window that matters opens when the app IS in Day Trade, not when the
+     * button was pressed: `PUT /mode` is a round trip, and swing cards on a
+     * board that still says Swing are simply the mode that has not changed yet.
+     * So the chip is the clock. From the first tick it reads Day Trade, not one
+     * swing card may be on screen — through the loading state and out the other
+     * side. Polled at 150ms rather than sampled once after a sleep, because a
+     * single look can step straight over the frame it came to find.
+     */
+    const first = await switchAndWatch(blake.page, 'day_trade', /day/i, swingCards);
+    ok('the switch actually took — the board says Day Trade', first.arrived);
+    ok('NOT ONE swing card survives the switch, at any point during it', !first.leak, { leaked: first.leak, swingCards });
+
+    await boardReady(blake.page);
+    await shot(blake.page, '07b-switched-to-day-trade');
+    {
+      const t = await bodyText(blake.page);
+      const after = await cardIds(blake.page);
+      ok('and none of them are there once it has settled either', !after.some((id) => swingCards.includes(id)), after);
+      const feed = await feedFor(blake.page, 'active');
+      ok('the board re-asked, and it asked as a day trader', feed.body?.mode === 'day_trade', feed.body?.mode);
+      ok(
+        'every card the server now offers is a day-trade card',
+        (feed.body?.cards ?? []).every((c) => c.identity?.mode === 'day_trade'),
+        [...new Set((feed.body?.cards ?? []).map((c) => c.identity?.mode))],
+      );
+      // The engine fires on a minority of sessions, so an empty board is the
+      // ordinary answer here — and it has to read as an answer.
+      if ((feed.body?.cards ?? []).length === 0) {
+        ok('an empty board after the switch says so in day-trade words', /No day-trade alerts today/i.test(t), t.slice(0, 300));
+        ok('and never as a spinner that stopped', !/went wrong|failed|error/i.test(t));
+      }
+    }
+
+    console.log('  · and back again, twice, because a one-shot effect passes one toggle');
+    for (const round of [1, 2]) {
+      await switchTo(blake.page, 'swing');
+      await blake.page.waitForFunction(
+        () => /swing/i.test(document.querySelector('[data-testid="alerts-mode-chip"]')?.textContent ?? ''),
+        null, { timeout: 90_000 },
+      ).catch(() => {});
+      await boardReady(blake.page);
+      await blake.page.locator('[data-testid^="alert-card-"]').first()
+        .waitFor({ timeout: 60_000 }).catch(() => {});
+      const back = await cardIds(blake.page);
+      ok(`round ${round}: switching back brings the swing cards back`, back.length > 0, back);
+      ok(`round ${round}: and the board says Swing again`, /swing/i.test(await chipSays(blake.page)));
+
+      const again = await switchAndWatch(blake.page, 'day_trade', /day/i, back);
+      ok(`round ${round}: the switch took again`, again.arrived);
+      ok(`round ${round}: and Day Trade drops them again`, !again.leak, { leaked: again.leak, back });
+    }
+
+    /*
+     * [3c] COLD START. Blake's profile is day_trade now, so a full reload is a
+     * fresh app opening in day-trade mode. The app reads the mode from a profile
+     * it has to fetch, and until that lands it renders the DEFAULT — swing. If
+     * the board draws whatever comes back while the mode is still resolving,
+     * this is where a swing card appears for a moment on a day trader's screen.
+     */
+    console.log('\n[3c] cold start with a day-trade profile');
+    await blake.page.reload({ waitUntil: 'domcontentloaded' });
+    await blake.page.locator('[data-testid="screen-alerts"]').waitFor({ timeout: 90_000 });
+    let coldLeak = null;
+    let settledTicks = 0;
+    for (let i = 0; i < 240 && !coldLeak; i++) {
+      const now = await cardIds(blake.page);
+      coldLeak = now.find((id) => swingCards.includes(id)) ?? null;
+      // The app opens on the DEFAULT mode until the profile lands, so the
+      // window being watched here is the whole way from first paint to a board
+      // that has been drawing Day Trade for a few seconds.
+      if (!coldLeak && /day/i.test(await chipSays(blake.page))) settledTicks += 1;
+      if (settledTicks > 25) break;
+      await blake.page.waitForTimeout(150);
+    }
+    ok('a cold start in Day Trade never flashes a swing card', !coldLeak, { coldLeak, swingCards });
+    ok('and it settles on the Day Trade board', settledTicks > 0);
+    await shot(blake.page, '07c-cold-start-day-trade');
+
+    // Leave Blake where the rest of this proof expects him.
+    await switchTo(blake.page, 'swing');
+    await boardReady(blake.page);
   }
 
   /*

@@ -182,6 +182,13 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
         plain: TAB_PLAIN[key],
       })),
       cards,
+      // WHICH BOARD THIS IS. `feed.mode` is the value that narrowed the rows a
+      // few lines above, not a second read of the profile, so the label on the
+      // answer and the filter behind it cannot disagree. The app refuses to
+      // draw a payload whose mode is not the mode it is showing, which is what
+      // stops a swing reply that arrives late from landing on a Day Trade
+      // board — see `useAlertsRound4`.
+      mode: feed.mode,
       // An empty Active tab is not a broken screen, and in Day Trade it is not
       // even unusual: the options-flow engine is a selective filter that only
       // finds something it is willing to send on a minority of sessions, so
@@ -192,7 +199,7 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
       // the app.
       card_empty_copy:
         tab === 'active'
-          ? profile.primary_mode === 'day_trade'
+          ? feed.mode === 'day_trade'
             ? 'No day-trade alerts today. The engine watches the tape from the opening bell.'
             : 'Nothing needs a decision right now. That is a real answer, not an empty screen.'
           : tab === 'watching'

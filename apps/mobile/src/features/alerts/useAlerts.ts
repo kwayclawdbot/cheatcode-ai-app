@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { useResource } from '../../lib/useResource';
 import {
@@ -8,7 +8,7 @@ import {
 import { mergeAlertsTab } from '../../lib/adapters';
 import type {
   AlertBoardTab, AlertDetail, AlertDraftPreview, AlertLifecycle, AlertMonitoring, AlertsRound4,
-  AlertsSimple, AlertTab,
+  AlertsSimple, AlertTab, GoalMode,
 } from '../../lib/types';
 
 /** GET /alerts, grouped into the five lifecycle sections. */
@@ -171,7 +171,7 @@ export function useAlertsSimple() {
  * a third meaning for a word the database already defines, for the sake of one
  * request. `history` still costs exactly one.
  */
-export function useAlertsRound4(fixture: 'default' | 'empty' = 'default') {
+export function useAlertsRound4(mode: GoalMode, fixture: 'default' | 'empty' = 'default') {
   const offline = !api.available();
   // Fixtures preview only — lets the owner and Playwright see the quiet day.
   const seed = fixture === 'empty' ? fixtureAlertsRound4Empty : fixtureAlertsRound4;
@@ -180,6 +180,33 @@ export function useAlertsRound4(fixture: 'default' | 'empty' = 'default') {
   const [loading, setLoading] = useState(!offline);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+
+  /**
+   * THE MODE THE HELD CARDS ARE ABOUT, adjusted during render rather than in an
+   * effect.
+   *
+   * An effect runs AFTER the browser has painted, so clearing the old mode's
+   * cards there would show them for one frame on the new mode's board — which
+   * is the bug, briefly, rather than the fix. Setting state during render is
+   * React's own answer to "this state is stale for the props I was just given":
+   * it re-renders immediately, before anything is committed to the screen, so
+   * the day-trade board's first paint is a spinner and never a swing card.
+   */
+  const [shownMode, setShownMode] = useState<GoalMode>(mode);
+  if (shownMode !== mode) {
+    setShownMode(mode);
+    setData(offline ? seed : null);
+    setLoading(!offline);
+    setError(null);
+  }
+
+  /**
+   * REQUEST IDENTITY. `alive` alone says "a newer effect run exists"; it cannot
+   * say which mode the reply in hand is about, so it depends on the effect
+   * having re-run for the right reason. This ref is the fact itself: every
+   * request is stamped, and only the newest stamp may write.
+   */
+  const seqRef = useRef(0);
 
   /**
    * Which of the server's buckets this board tab needs. `community` needs none
@@ -193,10 +220,28 @@ export function useAlertsRound4(fixture: 'default' | 'empty' = 'default') {
     if (offline) { setData(seed); setLoading(false); return; }
     if (!wanted.length) { setLoading(false); return; }
     let alive = true;
+    const seq = ++seqRef.current;
     setLoading(true);
     Promise.all(wanted.map((t) => api.alertsRound4(t).then((incoming) => ({ t, incoming }))))
       .then((answers) => {
-        if (!alive) return;
+        if (!alive || seq !== seqRef.current) return;
+        /*
+         * THE SERVER SAYS WHICH BOARD IT ANSWERED, AND WE BELIEVE IT OVER THE
+         * ORDER THE PROMISES RESOLVED IN.
+         *
+         * `/alerts` is scoped by the profile row, not by anything in the
+         * request, so a reply sent before the mode changed is a perfectly valid
+         * answer to a question nobody is asking any more. `payload.mode` is the
+         * mode that actually filtered those rows; if it is not the mode on
+         * screen, the cards are dropped and the board stays on its loading
+         * state until the request that belongs to it comes back.
+         *
+         * A build that does not send the field yet answers `null`, which is
+         * read as "this server cannot tell me" — the stamp above is then the
+         * only guard, which is where this code already was.
+         */
+        const wrongMode = answers.find(({ incoming }) => incoming.mode && incoming.mode !== mode);
+        if (wrongMode) return;
         setData((prev) => answers.reduce(
           (acc: AlertsRound4 | null, { t, incoming }) => (acc ? mergeAlertsTab(acc, incoming, t) : incoming),
           prev,
@@ -204,19 +249,34 @@ export function useAlertsRound4(fixture: 'default' | 'empty' = 'default') {
         setError(null);
       })
       .catch((e: unknown) => {
-        if (!alive) return;
+        if (!alive || seq !== seqRef.current) return;
         setError(e instanceof ApiError && e.code === 'NOT_FOUND'
           ? "That part of the service isn't live yet."
           : e instanceof Error ? e.message : 'Something went wrong. Please try again.');
       })
-      .finally(() => { if (alive) setLoading(false); });
+      .finally(() => { if (alive && seq === seqRef.current) setLoading(false); });
     return () => { alive = false; };
     // `wanted` is derived from `tab` and rebuilt every render; `tab` is the dep.
+    // `mode` is a dep because the board is ONE MODE'S BOARD and the server
+    // scopes it by the profile — switching the mode has to re-ask, and before
+    // this line it did not, which is how a day trader read a list of swing
+    // picks until he changed tab.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offline, seed, tab, tick]);
+  }, [offline, seed, tab, tick, mode]);
+
+  /**
+   * NEVER HAND BACK THE OTHER MODE'S CARDS. Every path above already refuses to
+   * store them, and this is the line that makes that a property of the hook
+   * instead of a property of five correct branches: if what is held is not
+   * about the mode being displayed, the board is given nothing and draws its
+   * loading state.
+   */
+  const forShownMode = data && (!data.mode || data.mode === mode) ? data : null;
 
   return {
-    data, loading, error, tab, setTab,
+    data: forShownMode,
+    loading: loading || (!!data && !forShownMode),
+    error, tab, setTab,
     isFixture: offline,
     reload: () => setTick((t) => t + 1),
   };
