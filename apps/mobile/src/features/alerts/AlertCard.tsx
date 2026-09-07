@@ -265,6 +265,41 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
         </View>
       </View>
 
+      {/*
+        THE CONTRACT IS THE TRADE, so it is not behind the fold.
+        (owner, 7 Sept: "the daytrade alerts and cards are supposed to be
+        options based")
+
+        This section used to sit inside `open`, with everything else the card
+        keeps back. That is right for a swing card, where the contract is an
+        OPTIONAL way to express a stock idea — the eyebrow said as much: "if you
+        trade this with options". It is wrong for the unusual-options-flow
+        family, where there is no stock idea underneath. That card has no grade,
+        no stop and no target precisely because the contract is the whole of
+        what was found, and folding the one object it carries out of sight left
+        a day trader looking at a headline and a dotted ring.
+
+        Only the options family is affected, and not by a mode check: the swing
+        scanner writes no `recommended_options` at all, so `contracts.length` is
+        already the question "is this a contract-led card". A check on the mode
+        would be a second answer to that, free to disagree with the data.
+      */}
+      {contracts.length ? (
+        <View testID={`contracts-${alert.symbol}`} style={{ gap: 7 }}>
+          <Eyebrow c={color.muted}>THE CONTRACT THE FLOW BOUGHT</Eyebrow>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+            {contracts.map((c, i) => (
+              <ContractCard
+                key={`${c.strike}-${c.expiry}-${c.type}-${i}`}
+                c={c}
+                grow={contracts.length === 1}
+                testID={`contract-${alert.symbol}-${i}`}
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       {open ? (
         <>
           {/*
@@ -365,27 +400,6 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
                   <T size={11} c={color.text} style={{ flex: 1 }}>{holdPlan}</T>
                 </View>
               ) : null}
-            </View>
-          ) : null}
-
-          {/*
-            The contracts, as objects rather than a chain or a sentence. No
-            contract data → no section at all; an empty options row would read
-            as "there is nothing worth trading here", which is a different claim.
-          */}
-          {contracts.length ? (
-            <View testID={`contracts-${alert.symbol}`} style={{ gap: 7, paddingTop: 10, borderTopWidth: 0.5, borderTopColor: alpha.ivory10 }}>
-              <Eyebrow c={color.muted}>IF YOU TRADE THIS WITH OPTIONS</Eyebrow>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-                {contracts.map((c, i) => (
-                  <ContractCard
-                    key={`${c.strike}-${c.expiry}-${c.type}-${i}`}
-                    c={c}
-                    grow={contracts.length === 1}
-                    testID={`contract-${alert.symbol}-${i}`}
-                  />
-                ))}
-              </View>
             </View>
           ) : null}
 

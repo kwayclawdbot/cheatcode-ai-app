@@ -1083,6 +1083,12 @@ export function buildCard(input: BuildCardInput): AlertCard {
   const { primary, secondary } = primaryActionFor(input);
   const dir = directionLabel(setup?.intent ?? (input.position?.direction === 'short' ? 'sell_short' : 'buy_to_open'));
   const resolvedOutcome = outcomeOf(setup, input.state);
+  /*
+   * Read ONCE, because two things now depend on it: the contracts the card
+   * carries, and the instrument its identity line claims. Calling the function
+   * twice would let those two drift apart on a row the parser half-rejects.
+   */
+  const contracts = recommendedOptionsOf(setup);
 
   return {
     id: input.id,
@@ -1100,13 +1106,24 @@ export function buildCard(input: BuildCardInput): AlertCard {
       mode: input.mode,
       mode_label: MODE_LABEL[input.mode],
       direction: dir.direction,
-      instrument: 'equity',
+      /*
+       * WHAT THE ALERT IS ACTUALLY ABOUT. This was the string 'equity' for
+       * every card, including the ones whose entire content is an options
+       * contract — so a day-trade card read "Meta Platforms · Day Trade ·
+       * Short · equity" above a put. The identity line was contradicting the
+       * body of its own card.
+       *
+       * The contracts decide it, not the mode: the swing scanner writes none,
+       * the options-flow engine always writes one, and reading the data means
+       * this line cannot disagree with what is drawn underneath it.
+       */
+      instrument: contracts?.length ? 'options' : 'equity',
     },
 
     grade,
     score_components: components,
     family_performance: familyPerformanceOf(setup),
-    recommended_options: recommendedOptionsOf(setup),
+    recommended_options: contracts,
     scores: barScoresOf(setup),
 
     state: input.state,

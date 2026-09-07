@@ -127,6 +127,73 @@ async function createPerson(p) {
   console.log(`  · ${p.email} → ${p.mode} (${p.id})`);
 }
 
+/*
+ * A LIVE DAY-TRADE ALERT, ON PURPOSE, FOR THE LENGTH OF THIS RUN.
+ *
+ * The options-flow engine's four labelled cards are REHEARSALS, and a rehearsal
+ * is forced to `expired` at ingest so it can never reach Active. That is the
+ * right rule and it leaves a hole in the proof: without a live row there is no
+ * Active day-trade card anywhere to check the shape of, and "the board is
+ * empty" would quietly stand in for "the card is right".
+ *
+ * So one is made here from the real MRNA rehearsal — the same contract, the
+ * same absent grade, the same absent stop — with the state and the dates of
+ * something the engine found this morning, and it is deleted in the `finally`
+ * with the accounts. It is written with the service role because `setups` is
+ * the product's own table and no user has a door into it.
+ */
+const tempSetup = { id: null };
+async function createLiveDayTradeSetup() {
+  const rows = await j(await fetch(
+    `${SUPABASE}/rest/v1/setups?quote_snapshot->>origin=eq.uw_uoa_daytrade&symbol=eq.MRNA&select=*&limit=1`,
+    { headers: svc },
+  ));
+  const seedRow = Array.isArray(rows) ? rows[0] : null;
+  if (!seedRow) { console.log('  · no MRNA rehearsal to clone — skipping the live day-trade card'); return; }
+
+  /*
+   * AN ALLOWLIST, NOT A COPY. Several columns on `setups` are GENERATED —
+   * `peak_price` and the contract-peak figures are computed from the tracking
+   * rows — and Postgres refuses an insert that names one at all, even with the
+   * value it would have produced itself. Spreading the source row therefore
+   * fails on a column this proof has no opinion about. These are the fields
+   * that decide what the card IS; everything else is either derived or is the
+   * record of what happened to it, which has not happened yet.
+   */
+  const now = new Date();
+  const row = {};
+  for (const k of [
+    'symbol', 'mode', 'intent', 'catalyst', 'entry_condition', 'invalidation', 'stop', 'targets',
+    'thesis_plain', 'thesis_technical', 'score', 'score_components', 'quote_snapshot',
+    'contract_ticker', 'contract_expiry', 'contract_cost', 'contract_basis',
+  ]) if (seedRow[k] !== undefined) row[k] = seedRow[k];
+  row.state = 'ready';
+  row.created_at = now.toISOString();
+  row.updated_at = now.toISOString();
+  row.valid_until = new Date(now.getTime() + 6 * 3600_000).toISOString();
+  // A rehearsal announces itself in its own thesis and in two flags. This row
+  // is standing in for a live alert, so it must not claim to be a rehearsal —
+  // and it must not claim to be a real one either, hence the marker below.
+  row.score_components = { ...(seedRow.score_components ?? {}), is_replay: false, live_family: true };
+  row.quote_snapshot = { ...(seedRow.quote_snapshot ?? {}), is_replay: false, proof_temp: true };
+  row.thesis_plain = 'Proof run. Unusual options flow printed on Moderna and the engine named the contract it bought.';
+  row.thesis_technical = row.thesis_plain;
+
+  const made = await j(await fetch(`${SUPABASE}/rest/v1/setups`, {
+    method: 'POST', headers: { ...svc, Prefer: 'return=representation' }, body: JSON.stringify(row),
+  }));
+  const created = Array.isArray(made) ? made[0] : made;
+  if (!created?.id) { console.log(`  · could not seed a live day-trade setup: ${JSON.stringify(made).slice(0, 300)}`); return; }
+  tempSetup.id = created.id;
+  console.log(`  · live day-trade setup ${created.symbol} (${created.id})`);
+}
+
+async function deleteLiveDayTradeSetup() {
+  if (!tempSetup.id) return;
+  const r = await fetch(`${SUPABASE}/rest/v1/setups?id=eq.${tempSetup.id}`, { method: 'DELETE', headers: svc });
+  console.log(`  · deleted the live day-trade setup → ${r.status}`);
+}
+
 async function deletePerson(p) {
   if (!p.id) return;
   const r = await fetch(`${SUPABASE}/auth/v1/admin/users/${p.id}`, { method: 'DELETE', headers: svc });
@@ -223,6 +290,7 @@ try {
   console.log('\n[0] two throwaway accounts on the hosted database');
   await createPerson(people.alex);
   await createPerson(people.blake);
+  await createLiveDayTradeSetup();
 
   // Blake follows Alex. Written with the service role, because `follows` is RLS
   // with zero policies and the app has no client-write path to it either — the
@@ -261,8 +329,39 @@ try {
       { count: cards.length, modes }
     );
 
-    // There are no live day-trade setups today, so the honest answer is an
-    // empty board that says which engine is watching and when it looks.
+    /*
+     * THE ACTIVE CARD LEADS WITH ITS CONTRACT (owner, 7 Sept).
+     *
+     * The contract used to sit inside the card's expanded section, next to the
+     * levels and the story — right for a swing card, where options are an
+     * optional way to express a stock idea, and wrong here, where the contract
+     * IS the idea. A day trader opening this board saw a headline over a
+     * dotted grade ring and had to tap to find the only object on the card.
+     *
+     * So the assertion is deliberately made WITHOUT touching the expander: the
+     * contract must be on screen as the board draws it.
+     */
+    const live = cards.filter((c) => (c.recommended_options ?? []).length);
+    ok('there is a live day-trade card to check the shape of', live.length > 0, { cards: cards.length });
+    for (const c of live) {
+      const sym = c.identity?.symbol;
+      ok(`${sym}: its contract is drawn without expanding the card`, await has(alex.page, `contracts-${sym}`));
+      ok(`${sym}: with the contract itself, not a summary of one`, await has(alex.page, `contract-${sym}-0`));
+      ok(`${sym}: and the card says options, not equity`, c.identity?.instrument === 'options', c.identity?.instrument);
+      const card = alex.page.locator(`[data-testid="alert-card-${sym}"]`).first();
+      const t = (await card.innerText().catch(() => '')).replace(/\s+/g, ' ');
+      ok(`${sym}: the strike and the side are on it`, /\b(Call|Put)\b/.test(t), t.slice(0, 300));
+      ok(`${sym}: no letter grade`, /No grade/i.test(t), t.slice(0, 300));
+      ok(`${sym}: no stop invented for a contract that has none`, !/\bStop\b/i.test(t), t.slice(0, 300));
+      ok(`${sym}: and no target either`, !/\bTarget\b/i.test(t), t.slice(0, 300));
+      // The swing card's grading bars have no meaning for a single measurement.
+      ok(`${sym}: it is scored on flow, not on trend and R:R`,
+        (await alex.page.locator(`[data-testid="bar-trend-${sym}"]`).count()) === 0
+        && (await alex.page.locator(`[data-testid="bar-rr-${sym}"]`).count()) === 0);
+    }
+    await shot(alex.page, '01b-day-trade-card-shape');
+
+    // Kept for the ordinary morning, when the engine has found nothing.
     if (cards.length === 0) {
       const t = await bodyText(alex.page);
       ok('an empty Day Trade board says so in day-trade words', /No day-trade alerts today/i.test(t), t.slice(0, 300));
@@ -279,8 +378,54 @@ try {
     ok('History still carries the swing back-catalogue', modes.has('swing'), [...modes]);
     ok('History still carries the day-trade records', modes.has('day_trade'), [...modes]);
     await alex.page.locator('[data-testid="alerts-tab-history"]').first().click().catch(() => {});
-    await alex.page.waitForTimeout(3000);
+    await alex.page.locator('[data-testid^="alert-history-"]').first().waitFor({ timeout: 60_000 }).catch(() => {});
+    await alex.page.waitForTimeout(1500);
     await shot(alex.page, '02-day-trade-history');
+
+    /*
+     * [1c] AND THE DAY-TRADE RECORDS ARE OPTIONS RECORDS (owner, 7 Sept:
+     * "the daytrade alerts and cards are supposed to be options based").
+     *
+     * Filtering the board by mode is only half of getting this family right.
+     * The other half is SHAPE: these four are the labelled rehearsals the
+     * options-flow engine wrote, and each one is a contract, a cost and a peak
+     * — no letter grade, because a single measurement does not earn one, and no
+     * stop or target, because nothing behind this card ever computed a risk
+     * plan. A row that drew those anyway would be inventing a plan for a
+     * contract it does not have, which is worse than mis-filtering: the cards
+     * would be the right ones, saying something untrue.
+     */
+    const REPLAYS = ['META', 'SPCX', 'WDC', 'MRNA'];
+    const dayTradeCards = cards.filter((c) => c.identity?.mode === 'day_trade');
+    const withContracts = dayTradeCards.filter((c) => (c.recommended_options ?? []).length);
+    ok(
+      'the four labelled rehearsals are in the day-trade record',
+      REPLAYS.every((s) => withContracts.some((c) => c.identity?.symbol === s)),
+      { got: withContracts.map((c) => c.identity?.symbol) },
+    );
+    for (const c of withContracts) {
+      const sym = c.identity?.symbol;
+      const contract = (c.recommended_options ?? [])[0] ?? {};
+      ok(`${sym}: the payload carries a contract, not a stock plan`,
+        !!contract.strike && /^(call|put)$/.test(contract.type ?? '') && !!contract.expiry,
+        contract);
+      // An options card is not an equity card and must not say it is.
+      ok(`${sym}: and calls itself options, not equity`, c.identity?.instrument === 'options', c.identity?.instrument);
+      ok(`${sym}: no letter grade — one measurement earns none`,
+        !c.grade?.display || c.grade.display === '—', c.grade);
+      ok(`${sym}: no stop and no target invented for it`,
+        !c.plan?.stop && !(c.plan?.targets ?? []).length, c.plan);
+    }
+    // Drawn, not merely served. The History row renders one compact contract.
+    for (const sym of REPLAYS) {
+      ok(`${sym}: the contract line is on the screen`, await has(alex.page, `contract-${sym}`));
+      ok(`${sym}: and no grade chip is drawn beside it`,
+        (await alex.page.locator(`[data-testid="alert-history-${sym}"] [data-testid="grade-chip"]`).count()) === 0);
+    }
+    const histText = await bodyText(alex.page);
+    ok('a rehearsal says it is one', /Rehearsal, not an alert anyone was sent/i.test(histText));
+    ok('and the record never shows a stop or a target for this family',
+      !/\bStop\b/i.test(histText) && !/\bTarget\b/i.test(histText), histText.slice(0, 300));
   }
 
   /* ── 2. publishing a call, and finding it again ─────────────────── */
@@ -605,6 +750,7 @@ try {
   console.error(e);
 } finally {
   console.log('\n[9] cleaning up');
+  await deleteLiveDayTradeSetup();
   await deletePerson(people.alex);
   await deletePerson(people.blake);
   await browser.close();
