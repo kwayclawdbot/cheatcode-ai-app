@@ -1,0 +1,105 @@
+/*
+ * global.css — the CSS entry point Metro hands to uniwind.
+ * ============================================================================
+ *
+ * This file is deliberately thin. It does three things and nothing else:
+ *
+ *   1. pulls in Tailwind v4's theme and utilities — but NOT its preflight,
+ *   2. pulls in uniwind's own variants and safe-area utilities,
+ *   3. pulls in `src/ui/theme.generated.css`, the house palette.
+ *
+ * There are no colour values in here. The palette lives in `src/ui/tokens.ts`
+ * and reaches CSS only through `scripts/gen-theme.mts`. If you came here to
+ * change a colour, you are in the wrong file — see the header of that script.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY TAILWIND IS IMPORTED IN PIECES (the preflight decision)
+ * ---------------------------------------------------------------------------
+ * The documented setup is a single `@import 'tailwindcss';`. That one line is
+ * a bundle of three separate files:
+ *
+ *     tailwindcss/theme.css       the design-token defaults      -> layer theme
+ *     tailwindcss/preflight.css   the global DOM reset           -> layer base
+ *     tailwindcss/utilities.css   the utility classes            -> layer utilities
+ *
+ * We take the first and the third and leave the second on the shelf.
+ *
+ * Preflight is a *document-wide* reset: `*, ::before, ::after { margin: 0;
+ * padding: 0; border: 0 solid; box-sizing: border-box }`, plus `img, svg,
+ * video, canvas { display: block }`, `ol, ul, menu { list-style: none }`,
+ * `button { background-color: transparent; border-radius: 0 }`, and a few dozen
+ * more. It is written to normalise a hand-authored HTML document.
+ *
+ * This is not a hand-authored HTML document. On web, every screen in this app
+ * is rendered by react-native-web, which ships its own reset and emits its own
+ * atomic classes for every `<View>` and `<Text>`. Two global resets stacked on
+ * one document do not compose — they race, and the winner is decided by layer
+ * order and specificity rather than by anyone's intent. Three concrete ways
+ * that goes wrong here:
+ *
+ *   - `svg { display: block }` moves every react-native-svg drawing in the app.
+ *     Icons.tsx, KaiOrb, MiniChart, Progress, the grade medallions — all svg,
+ *     all currently laid out as inline elements by RNW's own rules.
+ *   - `* { border: 0 solid }` resets the border WIDTH on every element. RNW
+ *     writes borders as inline atomic classes, but anything that inherited a
+ *     UA default — and every gluestack surface that sets only a border colour —
+ *     silently loses its hairline. The hairline ladder is the whole visual
+ *     structure of the dark UI.
+ *   - `button { background-color: transparent }` and the `font: inherit` block
+ *     land on the real <button> elements RNW emits for Pressable on web.
+ *
+ * None of that is hypothetical breakage in some future screen: the web build is
+ * live, and `apps/mobile/proof/*.png` is a captured pixel record of ~60 screens
+ * that were signed off as correct. Adding preflight would shift an unknown
+ * subset of them, and the failure mode is silent — nothing errors, things just
+ * move. That is exactly the risk the additive-build rule exists to prevent, so
+ * the chrome layer goes in WITHOUT touching the global reset. Existing screens
+ * cannot move, because nothing global changed.
+ *
+ * The cost of skipping preflight is close to zero for what we actually use it
+ * for. gluestack-ui v5 components are React Native components: they render on
+ * iOS and Android, where there is no DOM and no preflight at all. A component
+ * that is required to look right on native therefore cannot be depending on a
+ * browser reset in the first place — it has to carry its own box model in its
+ * className. So the chrome layer is already preflight-independent by
+ * construction, and on web it inherits RNW's reset like everything else.
+ *
+ * If a future component genuinely needs a base-layer rule, add it to `@layer
+ * base` at the bottom of this file, scoped to that component. Do not restore
+ * the blanket import.
+ *
+ * ---------------------------------------------------------------------------
+ * IMPORT ORDER — this is load-bearing
+ * ---------------------------------------------------------------------------
+ * Tailwind merges `@theme` blocks by last-one-wins, so the order below is what
+ * decides which palette survives:
+ *
+ *   theme.css      Tailwind's defaults (--color-red-500, --spacing, ...).
+ *                  Sets the floor. We override a small part of it.
+ *   uniwind        variants (ios/android/web/native, light/dark), the safe-area
+ *                  utilities, and a small `@theme` that blanks
+ *                  `--color-background` so a host app can define it.
+ *   theme.generated.css
+ *                  the house palette. LAST on purpose — it defines
+ *                  `--color-background` and friends, and would be blanked again
+ *                  if uniwind were imported after it.
+ *   utilities.css  last of all, because utilities have to be able to beat
+ *                  anything the theme layer put down.
+ */
+
+/*
+ * The layer order, declared up front.
+ *
+ * `@import 'tailwindcss'` normally does this for us. Importing the parts
+ * individually means we own it: without this statement the layers would be
+ * ordered by first appearance, and `base` would end up after `utilities` —
+ * meaning any base rule we ever add would beat every utility class. A layer
+ * statement is one of the few things allowed to precede `@import`.
+ */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+/* NO `@import 'tailwindcss/preflight.css'` — see the long note above. */
+@import 'uniwind';
+@import './src/ui/theme.generated.css';
+@import 'tailwindcss/utilities.css' layer(utilities);

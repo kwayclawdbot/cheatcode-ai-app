@@ -36,4 +36,37 @@ config.resolver.extraNodeModules = {
   '@shared': path.resolve(repoRoot, 'packages', 'shared'),
 };
 
-module.exports = config;
+/**
+ * uniwind — Tailwind classNames for the gluestack chrome layer.
+ *
+ * `withUniwindConfig` WRAPS the config assembled above rather than replacing
+ * it: it adds a transformer that compiles `global.css` and rewrites `className`
+ * into styles. Everything set before this line — the `html` asset extension,
+ * the `packages/shared` watch folder, the `@shared` alias — is preserved,
+ * which is why the wrap is the last thing that happens in this file and not
+ * the first.
+ *
+ * `cssEntryFile` is the single stylesheet uniwind compiles. See global.css for
+ * what it pulls in and, more importantly, what it deliberately does not
+ * (Tailwind's preflight is left out so the live web build cannot shift).
+ *
+ * `dtsFile` is generated, not authored: uniwind writes the union of every class
+ * name it knows about into `uniwind-types.d.ts` so a typo in a className is a
+ * type error rather than a class that silently does nothing. It is gitignored
+ * and regenerates on the next Metro start.
+ *
+ * `extraThemes: ['dark']` — the app is dark-only (app.json pins
+ * `userInterfaceStyle: "dark"`), but gluestack's components are written with
+ * `dark:` prefixed classes throughout. Without the dark theme registered, every
+ * one of those prefixes resolves to nothing and the chrome renders in
+ * gluestack's light defaults on a black page. theme.generated.css mirrors the
+ * house palette into `.dark` for exactly this reason: both themes exist, and
+ * both are the same single palette from tokens.ts.
+ */
+const { withUniwindConfig } = require('uniwind/metro');
+
+module.exports = withUniwindConfig(config, {
+  cssEntryFile: './global.css',
+  dtsFile: './uniwind-types.d.ts',
+  extraThemes: ['dark'],
+});

@@ -42,3 +42,6 @@ example
 /ios
 /android
 .env
+
+# uniwind — generated className type union, rewritten on every Metro start
+uniwind-types.d.ts
