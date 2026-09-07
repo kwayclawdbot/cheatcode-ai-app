@@ -4210,6 +4210,20 @@ export const ChartCommandName = z.enum([
    * been looked at, and the frame carries several annotations rather than one.
    */
   'mark_pattern',
+  /**
+   * AN OFFER TO CHANGE THE CHART, NEVER THE CHANGE ITSELF.
+   *
+   * A conversation drifts: the chart is on TSLA and the question becomes about
+   * AMKR. Kai answering about a symbol the user cannot see is the same failure
+   * as narrating a level that is not drawn — the words are about something that
+   * is not in front of them. So he can put the symbol up as a CARD in the reply,
+   * and tapping it swaps the chart.
+   *
+   * It carries no price of its own and it moves nothing on its own. The user
+   * taps; the chart changes. An assistant that silently navigated away from the
+   * chart somebody was reading would be worse than one that stayed quiet.
+   */
+  'show_symbol',
 ]);
 export type ChartCommandName = z.infer<typeof ChartCommandName>;
 
@@ -5433,6 +5447,92 @@ export const AdminTranscriptResponse = z.object({
   plain: z.string(),
 });
 export type AdminTranscriptResponse = z.infer<typeof AdminTranscriptResponse>;
+
+/* ---- rooms: the picture on a room --------------------------------- */
+
+/**
+ * `RoomAvatar` gives a room its picture from three places, in order: an image an
+ * admin chose, else the company logo when the room is about a ticker, else the
+ * room's initial on a tinted disc. Case 1 had no way to happen — `image_url`
+ * lives in the room's jsonb `config` bag and nothing in the product ever wrote
+ * it. These types are that missing hand.
+ *
+ * Deliberately NOT on this row: which of the three cases a room currently
+ * renders. The rule for "is this name a ticker or just a short word" lives in
+ * `apps/mobile/src/ui/RoomAvatar.tsx`, and it is the rule the member actually
+ * sees. Computing it a second time on the server would create two answers to
+ * one question, and they would eventually disagree — so the server ships the
+ * facts (`name`, `image_url`) and the client applies the rule it already owns.
+ */
+export const AdminRoomRow = z.object({
+  id: z.string(),
+  /** 'ticker' | 'topic' | … — the room's kind, straight off the row. */
+  type: z.string(),
+  slug: z.string().nullable(),
+  name: z.string(),
+  /**
+   * `rooms.config.image_url`. Null means nobody has chosen one, which is a
+   * legitimate permanent answer — the room falls back to a logo or an initial.
+   * It is never a broken image.
+   */
+  image_url: z.string().nullable(),
+  plain: z.string(),
+});
+export type AdminRoomRow = z.infer<typeof AdminRoomRow>;
+
+export const AdminRoomsQuery = z.object({
+  /** Matches name or slug. */
+  q: z.string().max(120).optional(),
+  /** Narrow to rooms that do / don't have a chosen picture. */
+  has_image: z.enum(['yes', 'no']).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z.string().max(200).optional(),
+});
+export type AdminRoomsQuery = z.infer<typeof AdminRoomsQuery>;
+
+export const AdminRoomsResponse = z.object({
+  rooms: z.array(AdminRoomRow),
+  next_cursor: z.string().nullable(),
+  totals: z.object({
+    all: z.number(),
+    with_image: z.number(),
+    without_image: z.number(),
+  }),
+  plain: z.string(),
+});
+export type AdminRoomsResponse = z.infer<typeof AdminRoomsResponse>;
+
+/**
+ * Set or clear the picture on one room.
+ *
+ * `null` CLEARS it — it is not "no change". Clearing is a real operator action
+ * (a picture was wrong, or a room should go back to wearing its company logo),
+ * so it has to be expressible; there is no separate delete endpoint.
+ *
+ * The URL must be one of ours. A room picture is shown to every member of the
+ * room, so an arbitrary external URL would be both a tracking pixel and a
+ * dependency on someone else's uptime — the handler enforces that this is a
+ * `/api/v1/media/:id` stable URL produced by our own upload endpoint.
+ */
+export const AdminSetRoomAvatarRequest = z.object({
+  /**
+   * Plain string, deliberately — not `z.url()`. "Is this a well-formed URL" is
+   * not the question that protects anything here; "is this one of OUR media
+   * URLs" is, and only the handler can answer it (it has to check the origin
+   * and that the asset exists). A generic URL check would pass every tracking
+   * pixel on the internet while producing a worse message than the real one.
+   * Every other URL field in this contract is a bare string for the same
+   * reason.
+   */
+  image_url: z.string().max(2000).nullable(),
+});
+export type AdminSetRoomAvatarRequest = z.infer<typeof AdminSetRoomAvatarRequest>;
+
+export const AdminRoomAvatarResponse = z.object({
+  room: AdminRoomRow,
+  plain: z.string(),
+});
+export type AdminRoomAvatarResponse = z.infer<typeof AdminRoomAvatarResponse>;
 
 /* ---- invites ------------------------------------------------------ */
 

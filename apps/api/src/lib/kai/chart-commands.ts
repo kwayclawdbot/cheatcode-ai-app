@@ -1536,6 +1536,37 @@ export async function executeChartCommand(
       case 'mark_zone':
         return await markZone(ctx, String(args.zone ?? args.level ?? args.name ?? ''), say);
 
+      /**
+       * OFFER A DIFFERENT SYMBOL. The chart does not move.
+       *
+       * The one command whose whole point is that it changes nothing: it puts a
+       * card in the reply and waits. Two rules make it safe. The SYMBOL IS
+       * VALIDATED as a ticker rather than taken as prose, so a sentence cannot
+       * become a navigation; and offering the symbol already on screen is
+       * refused, because a card saying "view the chart you are looking at" is
+       * the assistant not knowing where it is.
+       */
+      case 'show_symbol': {
+        const raw = String(args.symbol ?? args.ticker ?? args.name ?? '').trim().toUpperCase();
+        if (!/^[A-Z][A-Z.\-]{0,11}$/.test(raw)) return null;
+        if (raw === ctx.symbol.toUpperCase()) return null;
+        return {
+          type: 'chart_command',
+          command: 'show_symbol',
+          payload: {
+            symbol: raw,
+            // A hook, when the model gave one. Never a price — this command has
+            // resolved nothing off any bar and must not look as though it has.
+            hook: typeof args.hook === 'string' ? args.hook.slice(0, 120) : null,
+            from: ctx.symbol,
+            proposal: true,
+          },
+          annotations: [],
+          narration: say(`If you want ${raw} on the chart, it is one tap — I have put it in the reply.`),
+          provenance: `An offer to open ${raw}. Nothing changed on the ${ctx.symbol} chart.`,
+        };
+      }
+
       case 'mark_pattern': {
         const key = String(args.pattern ?? args.name ?? args.level ?? '');
         const found = await markPattern(ctx, key, say);
@@ -2048,6 +2079,13 @@ Rules, and they are strict:
   No trendline, fib grid or anchored average resolves on this chart right now,
   so do not offer to draw one.`
   }
+- IF THE ANSWER IS ABOUT A DIFFERENT SYMBOL, OFFER IT:
+  \`{"command":"show_symbol","args":{"symbol":"AMKR","hook":"the one you asked about"}}\`.
+  Use it when the user asks about a ticker that is NOT ${ctx.symbol} — a card
+  appears in your reply and one tap puts that chart up. It changes nothing by
+  itself, so say "if you want it on the chart" rather than "here it is". Never
+  offer ${ctx.symbol}; it is already on screen. Answer the question in words
+  either way — the card is how they SEE it, not a substitute for telling them.
 - alert_from_level and prepare_trade PROPOSE. They do not arm a watch and they
   do not place an order. Say so.
 - Community levels are labelled as the room's opinion, never as your analysis.

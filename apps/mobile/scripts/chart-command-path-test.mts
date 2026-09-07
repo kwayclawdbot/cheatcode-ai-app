@@ -107,6 +107,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   mark_level: { level: 'prior_day_high' },
   mark_zone: { zone: 'prior_day' },
   mark_pattern: { pattern: 'fvg' },
+  show_symbol: { symbol: 'AMKR', hook: 'the one you asked about' },
   set_timeframe: { timeframe: '1h' },
   show_invalidation: {},
   mark_plan: {},
@@ -202,6 +203,30 @@ ok('and both are zones, not levels',
   [...(frames.mark_zone?.annotations ?? []), ...(frames.mark_pattern?.annotations ?? [])].map((a) => (a as { kind: string }).kind));
 
 /* ------------------------------------------------------------------ */
+section('An offer to change the chart is an offer, not a change');
+
+{
+  const frame = await executeChartCommand(ctx, { command: 'show_symbol' as never, args: { symbol: 'amkr', hook: 'the one you asked about' } }, 'path-test');
+  ok('the server makes the offer', frame !== null);
+  ok('with the symbol normalised', (frame as never as { payload: Record<string, unknown> })?.payload.symbol === 'AMKR');
+  ok('and nothing drawn', ((frame as never as { annotations: unknown[] })?.annotations ?? []).length === 0);
+
+  const cmd = readCommand(frame);
+  ok('the gate lets it through', cmd !== null);
+  const planned = cmd ? planCommand(cmd, { symbol: 'PATH' } as never, []) : null;
+  ok('the planner turns it into an offer', planned?.offer?.symbol === 'AMKR', planned?.offer);
+  ok('and NOT into a route — the chart is not taken out from under anyone',
+    planned?.route === null, planned?.route);
+  ok('nothing is marked by it', (planned?.upsert.length ?? 1) === 0);
+
+  // The symbol already on screen is not an offer worth making.
+  const same = await executeChartCommand(ctx, { command: 'show_symbol' as never, args: { symbol: 'PATH' } }, 'path-test');
+  ok('offering the chart you are already looking at is refused', same === null);
+  // And prose cannot become navigation.
+  const prose = await executeChartCommand(ctx, { command: 'show_symbol' as never, args: { symbol: 'what about the gaps' } }, 'path-test');
+  ok('a sentence is not a ticker', prose === null);
+}
+
 section('A refusal is still heard');
 
 {

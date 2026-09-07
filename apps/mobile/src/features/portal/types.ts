@@ -96,7 +96,7 @@ export type Annotation = {
 
 export type ChartCommandName =
   | 'mark_level' | 'set_timeframe' | 'show_invalidation' | 'mark_plan'
-  | 'zoom_trigger' | 'compare_prior' | 'highlight_community' | 'mark_zone' | 'mark_pattern'
+  | 'zoom_trigger' | 'compare_prior' | 'highlight_community' | 'mark_zone' | 'mark_pattern' | 'show_symbol'
   | 'annotation_remove' | 'annotation_explain' | 'alert_from_level' | 'prepare_trade'
   // v2 (LIVE-1): the camera is a first-class command, so Kai can say "look
   // over here" instead of narrating a level that is 400 bars off screen.
@@ -114,7 +114,7 @@ export const CHART_COMMAND_NAMES: ChartCommandName[] = [
   // the client — the chart sits still while Kai says he drew something, which is
   // the exact failure this whole lane exists to remove. It has now fallen behind
   // twice. Anything added to `ChartCommandName` belongs here in the same edit.
-  'mark_zone', 'mark_pattern',
+  'mark_zone', 'mark_pattern', 'show_symbol',
 ];
 
 export type ChartCommand = {

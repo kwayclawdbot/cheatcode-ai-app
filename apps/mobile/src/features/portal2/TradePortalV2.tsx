@@ -53,6 +53,8 @@ import { planCommand, useKaiPortal } from '../portal/useKaiPortal';
 import type { PortalCommandResult } from '../portal/useKaiPortal';
 import { rememberSymbol } from '../portal/last-symbol';
 import { visibleAnnotations } from '../portal/visible-annotations';
+import { SymbolOfferCard } from '../portal/SymbolOfferCard';
+import type { SymbolOffer } from '../portal/plan-command';
 import type { Annotation, ChartCommand, PortalTimeframe } from '../portal/types';
 import { TradeLocked } from './TradeLocked';
 import { Spine, SpineFooter } from './Spine';
@@ -184,6 +186,28 @@ export default function TradePortalV2() {
    */
   const [readAsked, setReadAsked] = useState(false);
   useEffect(() => { setReadAsked(false); }, [symbol]);
+
+  /**
+   * The symbol Kai has offered to put up, if any. One at a time: a reply that
+   * mentioned three tickers should leave one card, not a stack of them, and the
+   * newest is the one the conversation is on.
+   */
+  const [offer, setOffer] = useState<SymbolOffer | null>(null);
+  useEffect(() => { setOffer(null); }, [symbol]);
+
+  /**
+   * `?sim=offer` puts Kai's symbol card up without a model call.
+   *
+   * The same device `?sim=readfail` already uses, and for the same reason: a
+   * state nobody has looked at is a state nobody has designed. It matters more
+   * than usual here because the model that would normally emit this command
+   * cannot be reached at all right now — the Anthropic key is out of credit — so
+   * without a switch the card would ship having been rendered by no one.
+   */
+  const simOffer = String(params.sim ?? '') === 'offer';
+  useEffect(() => {
+    if (simOffer) setOffer({ symbol: 'AMKR', hook: 'the one you asked about' });
+  }, [simOffer, symbol]);
   const reveal = useCallback((ids: string[]) => {
     if (!ids.length) return;
     setRevealed((prev) => {
@@ -206,6 +230,7 @@ export default function TradePortalV2() {
     if (p.timeframe) setTf(p.timeframe);
     if (p.focusTs) setFocusTs(p.focusTs);
     if (p.upsert.length) setHideAnnotations(false);
+    if (p.offer) setOffer(p.offer);
 
     const handle = activeChart();
     const commit = () => {
@@ -487,6 +512,25 @@ export default function TradePortalV2() {
         <KaiPanel turns={turns} symbol={data.symbol} />
 
         {/*
+          Kai's offer to change the chart, under his reply where he made it.
+          It never moves anything on its own — see `plan-command`'s case.
+        */}
+        {offer ? (
+          <SymbolOfferCard
+            symbol={offer.symbol}
+            hook={offer.hook}
+            onDismiss={() => setOffer(null)}
+            onOpen={(s) => {
+              setOffer(null);
+              rememberSymbol(s);
+              // The same swap the search does, for the same reason: replace, so
+              // Back still means "out of Trade" rather than "the last ticker".
+              router.replace(`/trade/${encodeURIComponent(s)}` as never);
+            }}
+          />
+        ) : null}
+
+        {/*
           NO SECOND COPY OF THE SAME SENTENCE. The panel above is the transcript
           and it already carries the failure in Kai's own words. `status` exists
           for the ONE surface that cannot show a transcript — the full-screen
@@ -620,9 +664,22 @@ export default function TradePortalV2() {
         onClose={() => setSwitcherOpen(false)}
         watchlist={data.drawers.watchlist}
         recent={data.drawers.recent}
+        holding={data.drawers.positions.map((p) => ({ symbol: p.symbol, name: null }))}
+        watching={data.drawers.open_orders.map((o) => ({ symbol: o.symbol, name: null }))}
         onPick={(s) => {
           setSwitcherOpen(false);
           rememberSymbol(s);
+          /**
+           * A REPLACE, NOT A PUSH, AND THAT IS THE WHOLE "in place" QUESTION.
+           *
+           * `/trade/[symbol]` is this same screen with a different parameter, so
+           * replacing swaps the chart, the levels, the plan and the Kai thread
+           * together and leaves the back button where it was. A push would stack
+           * a second Trade section on top of the first and make Back mean "the
+           * previous ticker", which is how you end up eleven charts deep and
+           * cannot get out. Nothing else re-mounts: to the person holding it,
+           * the chart changed.
+           */
           router.replace(`/trade/${encodeURIComponent(s)}` as never);
         }}
       />

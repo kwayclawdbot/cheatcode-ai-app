@@ -78,6 +78,9 @@ const num = (v: unknown): number | null =>
  * focus timestamp, and the sentence to narrate. Everything is derived from the
  * portal payload — no price is created here.
  */
+/** An offer to open a different chart, for the card in Kai's reply. */
+export type SymbolOffer = { symbol: string; hook: string | null };
+
 export function planCommand(c: ChartCommand, p: TradePortal | null, existing: Annotation[]): {
   upsert: Annotation[];
   remove: string[];
@@ -85,9 +88,11 @@ export function planCommand(c: ChartCommand, p: TradePortal | null, existing: An
   focusTs: string | null;
   compare: boolean;
   route: string | null;
+  /** Set only by `show_symbol`. The screen renders a card; it does not navigate. */
+  offer: SymbolOffer | null;
   narration: string;
 } | null {
-  const empty = { upsert: [] as Annotation[], remove: [] as string[], timeframe: null, focusTs: null, compare: false, route: null };
+  const empty = { upsert: [] as Annotation[], remove: [] as string[], timeframe: null, focusTs: null, compare: false, route: null, offer: null };
   const sym = p?.symbol ?? '';
   const now = new Date().toISOString();
   const mk = (
@@ -313,6 +318,28 @@ export function planCommand(c: ChartCommand, p: TradePortal | null, existing: An
     case 'mark_zone':
     case 'mark_pattern':
       return { ...empty, narration: c.narration ?? '' };
+
+    /**
+     * THE OFFER, AND IT IS DELIBERATELY NOT A `route`.
+     *
+     * `alert_from_level` and `prepare_trade` set `route`, and the screen pushes
+     * it — which is right for those, because the user asked for the thing. Here
+     * nobody asked to leave the chart: the conversation merely drifted onto
+     * another ticker. Routing on Kai's say-so would take the chart out from
+     * under somebody mid-read. So this returns an OFFER, the screen renders it
+     * as a card, and the navigation happens on a tap or not at all.
+     */
+    case 'show_symbol': {
+      const symbol = String(c.payload.symbol ?? '').trim().toUpperCase();
+      if (!/^[A-Z][A-Z.-]{0,11}$/.test(symbol)) return null;
+      // Offering the chart already on screen is the assistant losing its place.
+      if (p?.symbol && symbol === p.symbol.toUpperCase()) return null;
+      return {
+        ...empty,
+        offer: { symbol, hook: typeof c.payload.hook === 'string' ? c.payload.hook : null },
+        narration: c.narration ?? `${symbol} is one tap away if you want it on the chart.`,
+      };
+    }
 
     case 'zoom_range':
       return { ...empty, narration: c.narration ?? '' };

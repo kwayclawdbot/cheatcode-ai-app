@@ -17,6 +17,7 @@ import { KaiOrb } from '../../ui/KaiOrb';
 import { Button } from '../../ui/Button';
 import { FreshnessMark } from '../../ui/FreshnessMark';
 import { Search } from '../../ui/Icons';
+import { TickerMark } from '../../ui/Ticker';
 import { alpha, color, gradient, gradientAngle, radius } from '../../ui/tokens';
 import { family } from '../../ui/fonts';
 import { PaperChip } from '../trade/components';
@@ -87,14 +88,42 @@ export function PortalTopBar({
         >
           <Back />
         </Pressable>
+        {/*
+          THE TICKER IS THE SEARCH FIELD, at the owner's word: "the trade tab
+          should have a ticker search bar at top where the current ticker
+          dropdown shows.. when it's clicked user should be able to change the
+          chart to a different ticker."
+
+          It was a symbol with a chevron beside it, which says "there is a menu
+          here" and not "you can look something up" — and the sheet behind it has
+          been a full search all along, focused, with the watchlist above the
+          results. Only the door was mislabelled. It is now shaped like the thing
+          it opens: a field, with the search glyph, carrying the symbol you are
+          on as its value rather than as a heading. One tap, exactly as before.
+
+          A REAL TextInput WOULD BE WRONG HERE. Typing has to happen in the
+          sheet, where the results are; a field in the header that focused in
+          place would put the keyboard over the chart and the matches under it.
+          So this is a button that looks like a field — the affordance the eye
+          wants, the behaviour the screen needs.
+        */}
         <Pressable
           testID="ticker-switcher"
-          accessibilityRole="button"
-          accessibilityLabel={`${symbol}${name ? `, ${name}` : ''}. Switch symbol`}
+          accessibilityRole="search"
+          accessibilityLabel={`${symbol}${name ? `, ${name}` : ''}. Search for a different symbol`}
+          accessibilityHint="Opens search. Pick a symbol and the chart changes to it."
           onPress={onSwitchTicker}
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 32 }}
+          style={{
+            flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34,
+            paddingLeft: 10, paddingRight: 12, borderRadius: radius.pill,
+            borderWidth: 0.5, borderColor: alpha.ivory12, backgroundColor: alpha.ivory06,
+          }}
         >
-          <T size={16} weight="bold">{symbol}</T>
+          <Search size={13} color={color.muted} />
+          <T size={15} weight="bold">{symbol}</T>
+          <T size={11.5} c={color.dim} numberOfLines={1} style={{ flex: 1 }}>
+            {name ?? 'Search'}
+          </T>
           <Chevron />
         </Pressable>
         <PaperChip label={paper ? 'Paper' : 'Live'} testID="portal-paper-chip" />
@@ -304,13 +333,24 @@ export function AnnotationSheet({
 /* ------------------------------------------------------------------ */
 
 export function TickerSwitcherSheet({
-  visible, onClose, onPick, watchlist, recent, onAskKai,
+  visible, onClose, onPick, watchlist, recent, holding = [], watching = [], onAskKai,
 }: {
   visible: boolean;
   onClose: () => void;
   onPick: (symbol: string) => void;
   watchlist: { symbol: string; name: string | null }[];
   recent: { symbol: string; name: string | null }[];
+  /**
+   * WHAT YOU HAVE MONEY IN, and what you have asked to be told about.
+   *
+   * These go above everything, ahead of the watchlist and well ahead of a cold
+   * search result, because a list of symbols is not a neutral list: the one you
+   * are holding is the one you are most likely to want, and making somebody
+   * type four letters to reach a position they already own is the search box
+   * being about the database rather than about them.
+   */
+  holding?: { symbol: string; name: string | null }[];
+  watching?: { symbol: string; name: string | null }[];
   /** Defaults to the ask bus, which the portal's Kai thread is listening on. */
   onAskKai?: (question: string) => void;
 }) {
@@ -337,14 +377,28 @@ export function TickerSwitcherSheet({
     return () => { alive = false; clearTimeout(t); };
   }, [q]);
 
-  const local = [...watchlist, ...recent].filter(
+  /**
+   * ORDER IS THE ANSWER TO "which of these did you mean". Holding first, then
+   * what you are being alerted on, then the watchlist, then wherever you have
+   * just been — each one a weaker claim on your attention than the last, and all
+   * of them stronger than a symbol the search engine matched on a prefix.
+   */
+  const withWhy = (list: { symbol: string; name: string | null }[], why: string | null) =>
+    list.map((s) => ({ symbol: s.symbol, name: s.name, why }));
+  const local = [
+    ...withWhy(holding, 'Holding'),
+    ...withWhy(watching, 'Alert'),
+    ...withWhy(watchlist, null),
+    ...withWhy(recent, null),
+  ].filter(
     (s, i, arr) => arr.findIndex((x) => x.symbol === s.symbol) === i
       && (!q.trim() || s.symbol.includes(q.trim().toUpperCase()) || (s.name ?? '').toLowerCase().includes(q.trim().toLowerCase())),
   );
   const remote = hits.filter((h): h is Extract<SearchResult, { kind: 'instrument' }> => h.kind === 'instrument')
     .filter((h) => !local.some((l) => l.symbol === h.symbol));
 
-  const rows = [...local, ...remote.map((r) => ({ symbol: r.symbol, name: r.name }))];
+  const rows: { symbol: string; name: string | null; why?: string | null }[] =
+    [...local, ...remote.map((r) => ({ symbol: r.symbol, name: r.name, why: null }))];
 
   const term = q.trim();
   const searching = term.length > 0 && !hits.length && api.available();
@@ -395,10 +449,15 @@ export function TickerSwitcherSheet({
             accessibilityRole="button"
             accessibilityLabel={`Open ${s.symbol}`}
             onPress={() => onPick(s.symbol)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 46, borderBottomWidth: 0.5, borderBottomColor: alpha.ivory08 }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, borderBottomWidth: 0.5, borderBottomColor: alpha.ivory08 }}
           >
-            <T size={14} weight="bold" style={{ width: 62 }}>{s.symbol}</T>
+            {/* A ticker always appears with its mark, everywhere in this app. */}
+            <TickerMark symbol={s.symbol} size={26} />
+            <T size={14} weight="bold" style={{ width: 58 }}>{s.symbol}</T>
             <T size={12} c={color.muted} numberOfLines={1} style={{ flex: 1 }}>{s.name ?? ''}</T>
+            {s.why ? (
+              <T size={10.5} c={color.dim} numberOfLines={1}>{s.why}</T>
+            ) : null}
           </Pressable>
         )) : (
           <T size={12.5} c={color.muted} style={{ paddingVertical: 14 }}>
