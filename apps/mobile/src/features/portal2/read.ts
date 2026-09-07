@@ -177,8 +177,17 @@ export function readPortal(p: TradePortal): TradeRead {
   // "a A− setup" is the kind of sentence that makes a person stop trusting the
   // writing, and the writing is how the grade is explained.
   const article = grade && /^[AEF]/i.test(grade) ? 'an' : 'a';
+  /**
+   * `rr` ARRIVES AS A WHOLE SENTENCE, PUNCTUATION INCLUDED.
+   *
+   * The server sends "3 to 1 — you stand to make 3 times what you would lose if
+   * the level fails." and this template then added its own full stop, so every
+   * graded headline on both the Trade portal and the ticker page ended in "..".
+   * Trimming the trailing stop before the join keeps one sentence with one end.
+   */
+  const rr = alert?.rr?.trim().replace(/\.+$/, '') || null;
   const headline = gradeable
-    ? `${symbol} is ${article} ${grade} setup${alert?.rr ? ` at ${alert.rr}` : ''}${hasPlan ? '.' : ', but there is no complete plan attached to it yet.'}`
+    ? `${symbol} is ${article} ${grade} setup${rr ? ` at ${rr}` : ''}${hasPlan ? '.' : ', but there is no complete plan attached to it yet.'}`
     : NO_SETUP_HEADLINE(symbol);
 
   const blocked = hasPlan
