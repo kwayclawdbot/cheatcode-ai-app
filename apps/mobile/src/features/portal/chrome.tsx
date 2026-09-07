@@ -7,8 +7,8 @@
  * retired when the Trade section became one spine, and they were removed with
  * it — nothing rendered them any more.
  */
-import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, TextInput, View, ScrollView } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Keyboard, Platform, Pressable, TextInput, View, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 import { T, Num } from '../../ui/Text';
@@ -358,14 +358,75 @@ export function TickerSwitcherSheet({
   const [hits, setHits] = useState<SearchResult[]>([]);
   const input = useRef<TextInput | null>(null);
 
+  /**
+   * THE SHEET TAKES THE KEYBOARD, AND TAKES IT OFF WHOEVER HAD IT.
+   *
+   * REPORTED: "the search bar on trade doesn't type in the bar — it types in the
+   * chat to Kai." Two separate faults, and either one alone produces it.
+   *
+   *   NOTHING EVER BLURRED THE COMPOSER. The Trade screen has a Kai composer
+   *   pinned to the bottom, and it is the only other text field on it. Tap the
+   *   composer, then tap the search pill, and the composer still holds DOM
+   *   focus: a React Native `Modal` renders over the screen but does not take
+   *   focus from what had it, and the content behind it is not inert. Every
+   *   keystroke kept going to the chat, which is exactly what was reported.
+   *
+   *   AND THE FOCUS ATTEMPT WAS A SINGLE GUESS. One `setTimeout(60)` racing the
+   *   modal's mount, with nothing checking whether it worked. When it fired
+   *   early — which it does on web, and on native while the sheet is still
+   *   animating — `focus()` hit an unattached node and silently did nothing.
+   *   There was no second attempt, so a race lost once was lost for good.
+   *
+   * So: blur first, then ask REPEATEDLY until the field actually reports itself
+   * focused. `isFocused()` is the check that turns "we called focus" into "the
+   * field has the keyboard", and it is the difference between this working and
+   * this working on the machine it was written on.
+   */
   useEffect(() => {
     if (!visible) { setQ(''); setHits([]); return; }
-    // The sheet IS the search field: it opens focused with the keyboard up, so
-    // tapping search in the top bar costs one tap, not two. The frame of delay
-    // is the modal's own mount — focusing before it is on screen does nothing.
-    const t = setTimeout(() => input.current?.focus(), 60);
-    return () => clearTimeout(t);
+
+    // Whatever had the keyboard gives it up. On this screen that is the Kai
+    // composer; `Keyboard.dismiss` is the native half of the same sentence.
+    if (Platform.OS === 'web') {
+      const active = (globalThis as { document?: { activeElement?: { blur?: () => void } } }).document?.activeElement;
+      if (active && typeof active.blur === 'function') active.blur();
+    } else {
+      Keyboard.dismiss();
+    }
+
+    let tries = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const grab = () => {
+      tries += 1;
+      input.current?.focus();
+      // Half a second of trying, in 40ms steps. Longer than any sheet animation
+      // and short enough that a person who starts typing immediately still
+      // lands in the right field.
+      if (!input.current?.isFocused?.() && tries < 12) timer = setTimeout(grab, 40);
+    };
+    timer = setTimeout(grab, 30);
+    return () => { if (timer) clearTimeout(timer); };
   }, [visible]);
+
+  /**
+   * CLOSING MUST NOT HAND THE KEYBOARD BACK TO THE CHAT.
+   *
+   * Blurring the search field on the way out leaves focus on nothing, which is
+   * the right resting state: dismissing a search you did not want should not
+   * open a chat you did not ask for.
+   */
+  /** Choosing a symbol also gives the keyboard up — the chart is about to change. */
+  const pick = useCallback((sym: string) => {
+    input.current?.blur();
+    if (Platform.OS !== 'web') Keyboard.dismiss();
+    onPick(sym);
+  }, [onPick]);
+
+  const close = useCallback(() => {
+    input.current?.blur();
+    if (Platform.OS !== 'web') Keyboard.dismiss();
+    onClose();
+  }, [onClose]);
 
   useEffect(() => {
     const term = q.trim();
@@ -408,12 +469,12 @@ export function TickerSwitcherSheet({
   const ask = () => {
     if (!term) return;
     const asked = question?.kind === 'kai_question' && question.text ? question.text : `What should I know about ${term}?`;
-    onClose();
+    close();
     (onAskKai ?? publishAsk)(asked);
   };
 
   return (
-    <Sheet visible={visible} onClose={onClose} title="Open a symbol" testID="ticker-switcher-sheet">
+    <Sheet visible={visible} onClose={close} title="Open a symbol" testID="ticker-switcher-sheet">
       <View
         style={{
           flexDirection: 'row', alignItems: 'center', gap: 10, height: 46, paddingHorizontal: 14,
@@ -432,7 +493,7 @@ export function TickerSwitcherSheet({
           returnKeyType="go"
           onSubmitEditing={() => {
             const exact = rows.find((r) => r.symbol === term.toUpperCase()) ?? rows[0];
-            if (exact) onPick(exact.symbol);
+            if (exact) pick(exact.symbol);
             else ask();
           }}
           placeholder="Symbol, company, or ask Kai"
@@ -448,7 +509,7 @@ export function TickerSwitcherSheet({
             testID={`switch-to-${s.symbol}`}
             accessibilityRole="button"
             accessibilityLabel={`Open ${s.symbol}`}
-            onPress={() => onPick(s.symbol)}
+            onPress={() => pick(s.symbol)}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, borderBottomWidth: 0.5, borderBottomColor: alpha.ivory08 }}
           >
             {/* A ticker always appears with its mark, everywhere in this app. */}

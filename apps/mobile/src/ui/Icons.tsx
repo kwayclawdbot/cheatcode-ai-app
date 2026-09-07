@@ -113,6 +113,20 @@ export const Search = ({ size = 15, color: c = color.muted, strokeWidth = 2 }: I
   </S>
 );
 
+/**
+ * The drawing tools, on the chart's edge.
+ *
+ * A pencil rather than a pen or a cursor, because the thing behind it is
+ * freehand marking-up rather than editing or selecting — and because that is the
+ * word the owner used for it.
+ */
+export const Pencil = ({ size = 14, color: c = color.muted, strokeWidth = 2 }: IconProps) => (
+  <S size={size}>
+    <Path d="M4 20h4L20 8l-4-4L4 16v4z" stroke={c} strokeWidth={strokeWidth} />
+    <Path d="M14 6l4 4" stroke={c} strokeWidth={strokeWidth} />
+  </S>
+);
+
 export const Plus = ({ size = 13, color: c = color.muted, strokeWidth = 2 }: IconProps) => (
   <S size={size}><Path d="M12 5v14M5 12h14" stroke={c} strokeWidth={strokeWidth} /></S>
 );

@@ -77,10 +77,17 @@ export function DrawTray({
     <View
       testID={testID}
       pointerEvents="box-none"
+      /**
+       * ANCHORED TO THE PENCIL WHEN THERE IS ONE, so the tools read as coming
+       * OUT of the thing that was tapped rather than appearing in the middle of
+       * the plot. It also keeps them in the one corner of the chart with nothing
+       * in it — floating at 28% put them straight on top of the entry and
+       * trigger chips, which is the clutter this whole pass is about.
+       */
       style={{
         position: 'absolute',
-        left: left + 10,
-        top: '28%',
+        left: left + 8,
+        ...(bottom ? { bottom, flexDirection: 'column-reverse' } : { top: '28%' }),
         gap: 6,
       }}
     >

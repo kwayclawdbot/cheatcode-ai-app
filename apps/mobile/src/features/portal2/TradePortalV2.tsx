@@ -28,15 +28,16 @@
  * PAPER ONLY. See `venues.ts` for the seam a brokerage would slot into.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '../../ui/Screen';
 import { T, Eyebrow } from '../../ui/Text';
 import { Composer } from '../../ui/Composer';
+import { KeyboardDock } from '../../ui/KeyboardDock';
 import { ObjectCard } from '../../ui/Panel';
 import { Button } from '../../ui/Button';
 import { ScreenLoading } from '../../ui/Loading';
-import { color, radius } from '../../ui/tokens';
+import { alpha, color, radius } from '../../ui/tokens';
 import { useSession } from '../../lib/session';
 import { env } from '../../lib/env';
 import type { GoalMode } from '../../lib/types';
@@ -54,6 +55,9 @@ import type { PortalCommandResult } from '../portal/useKaiPortal';
 import { rememberSymbol } from '../portal/last-symbol';
 import { visibleAnnotations } from '../portal/visible-annotations';
 import { SymbolOfferCard } from '../portal/SymbolOfferCard';
+import { DrawTray, type DrawToolName } from '../chart/DrawTray';
+import type { DraftAnnotation } from '../chart/ChartView';
+import { Pencil } from '../../ui/Icons';
 import type { SymbolOffer } from '../portal/plan-command';
 import type { Annotation, ChartCommand, PortalTimeframe } from '../portal/types';
 import { TradeLocked } from './TradeLocked';
@@ -204,6 +208,24 @@ export default function TradePortalV2() {
    * cannot be reached at all right now — the Anthropic key is out of credit — so
    * without a switch the card would ship having been rendered by no one.
    */
+  /**
+   * THE PENCIL, AND WHETHER THE TRAY IS OUT.
+   *
+   * "pencil glyph for sure." The tools were built on the full-screen stage and
+   * lost their door when Expand was removed; this is the door, on the chart
+   * itself, where the drawing happens.
+   *
+   * IT IS QUIET BY DEFAULT AND HAS TO BE. The chart was just made to open clean,
+   * and a permanent tool palette over it would put the clutter straight back in
+   * a different shape. So it is one glyph at the weight of the Auto chip, in the
+   * one corner of the plot with nothing in it, and the tray only exists while
+   * you are actually drawing.
+   */
+  const [drawOpen, setDrawOpen] = useState(false);
+  const [tool, setTool] = useState<DrawToolName>(null);
+  const [drawSel, setDrawSel] = useState<{ id: string | null; provenance: string | null }>({ id: null, provenance: null });
+  useEffect(() => { setDrawOpen(false); setTool(null); }, [symbol]);
+
   const simOffer = String(params.sim ?? '') === 'offer';
   useEffect(() => {
     if (simOffer) setOffer({ symbol: 'AMKR', hook: 'the one you asked about' });
@@ -404,6 +426,7 @@ export default function TradePortalV2() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={{ display: chartHidden ? 'none' : 'flex' }}>
+        <View>
         <ChartView
           testID="portal-chart"
           ref={chart}
@@ -418,7 +441,92 @@ export default function TradePortalV2() {
           onSelectAnnotation={setInspecting}
           onTimeframeChange={setTf}
           height={chartHeight}
+          onDrawCreated={(d: DraftAnnotation) => {
+            reveal([d.id]);
+            void createUserAnnotation({
+              id: d.id,
+              symbol: data.symbol,
+              timeframe: tf ?? data.chart.timeframe,
+              kind: d.kind as Annotation['kind'],
+              price: d.price,
+              price2: d.price2,
+              ts_from: isoOf(d.ts_from),
+              ts_to: isoOf(d.ts_to),
+              text: d.text,
+              reason: 'You drew this one.',
+              provenance: 'user',
+              status: 'valid',
+              source_alert_id: null,
+              source_setup_id: null,
+              source_plan_id: null,
+              created_at: null,
+              updated_at: null,
+            });
+          }}
+          onDrawChanged={(d: DraftAnnotation) => {
+            const existing = annotations.find((a) => a.id === d.id);
+            if (!existing) return;
+            updateUserAnnotation({
+              ...existing,
+              price: d.price, price2: d.price2,
+              ts_from: isoOf(d.ts_from), ts_to: isoOf(d.ts_to),
+            });
+          }}
+          onDrawDeleted={(id) => setAnnotationStatus(id, 'deleted')}
+          onDrawSelected={(sel) => setDrawSel({ id: sel.id, provenance: sel.provenance })}
+          // The page puts the tool away after one shape, and the tray goes with
+          // it: the pencil is a door, not a mode you have to remember to leave.
+          onDrawTool={(t) => { setTool(t); if (!t) setDrawOpen(false); }}
+          onDrawLongPress={() => chart.current?.deleteSelectedDrawing?.()}
         />
+
+        {/*
+          THE PENCIL. Bottom-left of the plot — the timeframe rail is top-left
+          and the Auto chip is bottom-right, so this is the one corner with
+          nothing in it, and it is at their weight rather than louder.
+
+          It goes away while Kai is narrating, exactly as the tray did on the
+          stage: when he is working the chart there is nothing to do but watch,
+          and a control sitting there invites a tap that would interrupt him.
+        */}
+        {!streaming && !chartHidden ? (
+          <Pressable
+            testID="chart-pencil"
+            accessibilityRole="button"
+            accessibilityState={{ selected: drawOpen }}
+            accessibilityLabel={drawOpen ? 'Close the drawing tools' : 'Draw on the chart'}
+            accessibilityHint="Level, trendline or zone. What you draw is yours and stays on the chart."
+            hitSlop={10}
+            onPress={() => {
+              const next = !drawOpen;
+              setDrawOpen(next);
+              if (!next) { setTool(null); chart.current?.setDrawTool?.(null); }
+            }}
+            style={({ pressed }: { pressed: boolean }) => ({
+              position: 'absolute', left: 8, bottom: 26,
+              width: 28, height: 28, alignItems: 'center', justifyContent: 'center',
+              borderRadius: radius.sm,
+              borderWidth: 0.5,
+              borderColor: drawOpen ? `${color.volt}66` : alpha.ivory12,
+              backgroundColor: drawOpen ? `${color.volt}1A` : alpha.surface75,
+              transform: [{ scale: pressed ? 0.94 : 1 }],
+            })}
+          >
+            <Pencil size={14} color={drawOpen ? color.volt : color.muted} />
+          </Pressable>
+        ) : null}
+
+        {drawOpen && !streaming ? (
+          <DrawTray
+            tool={tool}
+            onPick={(t) => { setTool(t); chart.current?.setDrawTool?.(t); }}
+            canDelete={drawSel.id !== null && drawSel.provenance === 'user'}
+            onDelete={() => chart.current?.deleteSelectedDrawing?.()}
+            // Directly above the pencil, stacking upward out of it.
+            bottom={60}
+          />
+        ) : null}
+        </View>
         </View>
 
         {beat === 'look' ? (
@@ -631,14 +739,16 @@ export default function TradePortalV2() {
         onDrawDelete={(id) => setAnnotationStatus(id, 'deleted')}
       />
 
-      <View style={{ paddingHorizontal: 16, paddingBottom: 12, paddingTop: 2 }}>
+      {/* Docked so asking Kai about the chart does not put the composer under
+          the keyboard, and so the bar clears the home indicator otherwise. */}
+      <KeyboardDock floor={12} style={{ paddingHorizontal: 16, paddingTop: 2 }}>
         <Composer
           testID="portal-composer"
           placeholder={`Ask Kai about ${data.symbol}…`}
           disabled={streaming}
           onSend={(text) => { void send(text); }}
         />
-      </View>
+      </KeyboardDock>
 
       <AnnotationSheet
         annotation={inspecting}
