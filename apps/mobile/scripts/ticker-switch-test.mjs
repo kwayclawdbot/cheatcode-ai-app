@@ -195,6 +195,37 @@ section('The pencil is the door to drawing');
   await page.screenshot({ path: 'proof/chart-pencil-drawn.png' });
 }
 
+/* ------------------------------------------------------------------ */
+section('Full screen, with Kai still one tap away');
+
+{
+  await open('/trade/TSLA');
+  ok('an expand glyph sits beside the pencil', await has('chart-expand'));
+  await tap('chart-expand', 2000);
+  ok('it opens the chart full screen', await has('stage-chart'));
+  ok('with an obvious way out', await has('stage-close'));
+  ok('and Kai beside it', await has('stage-kai'));
+  ok('the conversation is NOT in the way until asked for', !(await has('stage-kai-sheet')));
+  await page.screenshot({ path: 'proof/chart-fullscreen.png' });
+
+  await tap('stage-kai', 1200);
+  ok('asking for Kai opens the conversation', await has('stage-kai-sheet'));
+  ok('WITHOUT leaving full screen — the chart is still mounted', await has('stage-chart'));
+  ok('and it can be typed into there', await has('stage-composer'));
+  await page.screenshot({ path: 'proof/chart-fullscreen-kai.png' });
+
+  // A chart is wider than it is tall, and sideways is where people read one.
+  await page.setViewportSize({ width: 932, height: 430 });
+  await page.waitForTimeout(1600);
+  ok('it still works turned sideways', (await has('stage-chart')) && (await has('stage-kai')));
+  await page.screenshot({ path: 'proof/chart-fullscreen-landscape.png' });
+  await page.setViewportSize({ width: 430, height: 932 });
+  await page.waitForTimeout(1000);
+
+  await tap('stage-close', 1600);
+  ok('Done returns to the portal', !(await has('stage-chart')) && (await has('portal-chart')));
+}
+
 await browser.close();
 console.log(`\n${fail === 0 ? 'PASS' : 'FAIL'} — ${pass} passed, ${fail} failed`);
 console.log('NOTE: the model choosing to EMIT show_symbol is unverified — the Anthropic key is out of credit.');

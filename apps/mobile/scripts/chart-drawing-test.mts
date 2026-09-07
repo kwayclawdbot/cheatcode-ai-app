@@ -402,6 +402,66 @@ section('Kai marking up the gaps');
   await ctx.close();
 }
 
+/* ------------------------------------------------------------------ */
+/* 6. Editing what you drew: move, reshape, and the bin                 */
+/* ------------------------------------------------------------------ */
+
+section('A drawing can be moved, reshaped and thrown away');
+
+{
+  const { ctx, page, cdp } = await openChart(browser, false);
+
+  // Draw a trendline to edit.
+  await page.evaluate(`window.postMessage({type:'draw.setTool',id:50,payload:{tool:'trendline'}},'*')`);
+  await page.waitForTimeout(120);
+  await clear(page);
+  await drag(page, cdp, false, [220, 300], [620, 170]);
+  let out = await msgs(page);
+  const made = out.find((m) => m.type === 'draw.created')?.payload?.annotation as Record<string, unknown>;
+  ok('a trendline to work on', made?.kind === 'trendline', made?.kind);
+
+  // It is selected on creation, so its handles are live. Grab the far end and
+  // move it: this is RESHAPING, which is the half that never persisted.
+  await clear(page);
+  await drag(page, cdp, false, [620, 170], [620, 300]);
+  out = await msgs(page);
+  const changed = out.find((m) => m.type === 'draw.changed')?.payload?.annotation as Record<string, unknown>;
+  ok('dragging an endpoint reports a change', Boolean(changed), out.map((m) => m.type));
+  ok('and the change is in the SECOND price, not the first',
+    typeof changed?.price2 === 'number' && changed!.price2 !== made!.price2,
+    { before: made?.price2, after: changed?.price2 });
+  ok('while the anchored end stayed put', changed?.price === made?.price, { before: made?.price, after: changed?.price });
+
+  /**
+   * THE BIN, ON THE DRAWING ITSELF — above and outside its right-hand end.
+   *
+   * It has to clear the endpoint handle's grab radius, and it did not: every
+   * tap on it was read as the start of a drag, so the drawing could not be
+   * deleted at all. That is what this asserts, and it is why the bin is checked
+   * before the handles rather than after.
+   */
+  await clear(page);
+  await tap(page, cdp, false, [620 + 22, 300 - 22]);
+  out = await msgs(page);
+  const deletedByBin = out.some((m) => m.type === 'draw.deleted');
+  ok('tapping the bin on the drawing removes it', deletedByBin, out.map((m) => m.type));
+
+  // And tapping empty chart clears the selection rather than leaving handles
+  // floating on something you have stopped working on.
+  await page.evaluate(`window.postMessage({type:'draw.setTool',id:51,payload:{tool:'level'}},'*')`);
+  await page.waitForTimeout(120);
+  await tap(page, cdp, false, [400, 200]);
+  await page.waitForTimeout(200);
+  await clear(page);
+  await tap(page, cdp, false, [300, 420]);
+  out = await msgs(page);
+  const cleared = out.filter((m) => m.type === 'draw.selected').pop();
+  ok('tapping empty chart deselects', cleared?.payload?.id === null || cleared === undefined, cleared?.payload);
+
+  await page.screenshot({ path: 'proof/chart-edit.png' });
+  await ctx.close();
+}
+
 await browser.close();
 console.log(`\n${fail === 0 ? 'PASS' : 'FAIL'} — ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

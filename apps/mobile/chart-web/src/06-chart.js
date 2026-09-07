@@ -351,6 +351,13 @@ Chart.prototype._bindTaps = function () {
       lastTap = 0;
       return;
     }
+    // The bin on the selected drawing. Belongs to the drawing, not to the
+    // chart, so it goes to the tool that owns selection rather than to the host.
+    if (id === TRASH_ID) {
+      self.draw.deleteSelected();
+      lastTap = 0;
+      return;
+    }
     if (id) {
       self.annotations.flash(id, 1);
       post({ type: 'annotationTap', payload: { id: id } });

@@ -1500,6 +1500,16 @@ export const RoomJoinResponse = z.object({
 });
 export type RoomJoinResponse = z.infer<typeof RoomJoinResponse>;
 
+/**
+ * The ladder. Ordered white → black; `belt_for()` in 0039 is the authority.
+ *
+ * Declared here rather than down in the social section because `MessageAuthor`
+ * below needs it and a zod schema is evaluated in file order — see the note
+ * left behind at the old site for the full reason.
+ */
+export const Belt = z.enum(['white', 'blue', 'purple', 'brown', 'black']);
+export type Belt = z.infer<typeof Belt>;
+
 export const MessageAuthor = z.object({
   user_id: z.string(),
   handle: z.string().nullable(),
@@ -1507,6 +1517,24 @@ export const MessageAuthor = z.object({
   avatar_url: z.string().nullable(),
   role_labels: z.array(z.string()),
   route: z.string(),
+  /**
+   * The rung this member is on, which is what colours their name in a room.
+   *
+   * IT IS THE SAME BELT `SocialAuthor` CARRIES, from the same place — the
+   * high-water mark in `user_points.belt` (0039 §3), read by one batched
+   * helper (`beltsFor` in lib/social/authors.ts) that both author loaders call.
+   * A second derivation would let the same person wear one belt on a call card
+   * and another on the message that call arrived in, and nothing would fail.
+   *
+   * NULLABLE AND OPTIONAL, AND THE TWO ABSENCES MEAN DIFFERENT THINGS.
+   * Optional: a phone talking to an API build from before this field existed
+   * gets no key at all and draws the name the colour it has always been.
+   * Null: the server is deliberately saying "this author has no rank" — Kai is
+   * not a member, and neither is an account that has been deleted. Neither of
+   * those may be defaulted to white, because white is a rung somebody stands
+   * on and not a blank.
+   */
+  belt: Belt.nullable().optional(),
 });
 export type MessageAuthor = z.infer<typeof MessageAuthor>;
 
@@ -1719,9 +1747,17 @@ export type MessageQuote = z.infer<typeof MessageQuote>;
  * section, the table it came from is wrong, not this file.
  * ======================================================================== */
 
-/** The ladder. Ordered white → black; `belt_for()` in 0039 is the authority. */
-export const Belt = z.enum(['white', 'blue', 'purple', 'brown', 'black']);
-export type Belt = z.infer<typeof Belt>;
+/**
+ * `Belt` USED TO BE DECLARED HERE and is now declared above `MessageAuthor`.
+ *
+ * It moved because a message author carries a belt too, and `MessageAuthor` is
+ * defined several hundred lines earlier in this file. A zod schema is a value,
+ * not a type — `z.object({ belt: Belt })` reads `Belt` while this module is
+ * evaluating, so a reference from up there to a `const` declared down here is a
+ * temporal-dead-zone crash at import time, not a compile error anyone would see
+ * in review. The declaration therefore sits above its first use, and this note
+ * stays where readers of the social section will look for it.
+ */
 
 export const BeltBlock = z.object({
   key: Belt,
@@ -3998,6 +4034,22 @@ export const AlertsRound4Response = AlertsV5Response.extend({
   tabs: z.array(AlertTabChip),
   cards: z.array(AlertCard),
   card_empty_copy: z.string(),
+  /**
+   * WHICH MODE'S BOARD THIS IS — the mode the cards were actually filtered by,
+   * not a mode the caller asked for.
+   *
+   * The board is mode-scoped on the server (`scopeToMode`), and the app reads
+   * the mode from its own copy of the profile. Those two are the same row, but
+   * they are not the same clock: a reply can arrive after the person has
+   * already switched. Without this field a payload is indistinguishable from
+   * any other, and the only thing standing between a swing card and a Day Trade
+   * board is the order two promises happened to resolve in.
+   *
+   * With it, the app can say "this answer is about swing" and refuse to draw it
+   * on a day-trade board. It is a fact about the response, so it is stated by
+   * the half that knows it.
+   */
+  mode: AppMode,
 });
 export type AlertsRound4Response = z.infer<typeof AlertsRound4Response>;
 
@@ -4153,6 +4205,18 @@ export const PatchAnnotationRequest = z
     status: z.enum(['valid', 'hidden', 'deleted']).optional(),
     text: z.string().max(400).nullable().optional(),
     price: z.number().nullable().optional(),
+    /**
+     * THE REST OF THE GEOMETRY, so a drawing can be RESHAPED and not only moved.
+     *
+     * `price` alone was enough while the only editable mark was a horizontal
+     * level. A trendline has two ends and two times, and a zone has two edges:
+     * dragging either of those handles produced a change the client showed and
+     * the server never heard about, so it survived until the next reload and
+     * then silently went back. Geometry is geometry — all four travel together.
+     */
+    price2: z.number().nullable().optional(),
+    ts_from: z.string().nullable().optional(),
+    ts_to: z.string().nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'Nothing to change on that mark.' });
 export type PatchAnnotationRequest = z.infer<typeof PatchAnnotationRequest>;

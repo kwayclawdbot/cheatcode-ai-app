@@ -23,6 +23,9 @@ export const PATCH = authedParams<{ id: string }>(
       status: body.status,
       text: body.text,
       price: body.price,
+      price2: body.price2,
+      ts_from: body.ts_from,
+      ts_to: body.ts_to,
     });
 
     await emitUserEvent(

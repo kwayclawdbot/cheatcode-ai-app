@@ -57,7 +57,7 @@ import { visibleAnnotations } from '../portal/visible-annotations';
 import { SymbolOfferCard } from '../portal/SymbolOfferCard';
 import { DrawTray, type DrawToolName } from '../chart/DrawTray';
 import type { DraftAnnotation } from '../chart/ChartView';
-import { Pencil } from '../../ui/Icons';
+import { Expand, Pencil } from '../../ui/Icons';
 import type { SymbolOffer } from '../portal/plan-command';
 import type { Annotation, ChartCommand, PortalTimeframe } from '../portal/types';
 import { TradeLocked } from './TradeLocked';
@@ -516,6 +516,33 @@ export default function TradePortalV2() {
           </Pressable>
         ) : null}
 
+        {/*
+          FULL SCREEN. A second small glyph in the same corner as the pencil,
+          at the same weight — the OLD "Expand" was a full-width button under
+          the chart and was removed as clutter, so this earns its place by
+          costing 28 points in a corner that was empty.
+        */}
+        {!streaming && !chartHidden ? (
+          <Pressable
+            testID="chart-expand"
+            accessibilityRole="button"
+            accessibilityLabel="Open the chart full screen"
+            accessibilityHint="Turn the phone sideways for a wider view. Kai is still one tap away."
+            hitSlop={10}
+            onPress={() => setStageOpen(true)}
+            style={({ pressed }: { pressed: boolean }) => ({
+              position: 'absolute', left: 8, bottom: 60,
+              width: 28, height: 28, alignItems: 'center', justifyContent: 'center',
+              borderRadius: radius.sm,
+              borderWidth: 0.5, borderColor: alpha.ivory12,
+              backgroundColor: alpha.surface75,
+              transform: [{ scale: pressed ? 0.94 : 1 }],
+            })}
+          >
+            <Expand size={13} color={color.muted} />
+          </Pressable>
+        ) : null}
+
         {drawOpen && !streaming ? (
           <DrawTray
             tool={tool}
@@ -523,7 +550,7 @@ export default function TradePortalV2() {
             canDelete={drawSel.id !== null && drawSel.provenance === 'user'}
             onDelete={() => chart.current?.deleteSelectedDrawing?.()}
             // Directly above the pencil, stacking upward out of it.
-            bottom={60}
+            bottom={94}
           />
         ) : null}
         </View>
@@ -697,6 +724,24 @@ export default function TradePortalV2() {
         caption={answer?.text ?? null}
         notice={status?.text ?? null}
         noticeTone={status?.tone ?? null}
+        /**
+         * The conversation, handed to the stage so it can be opened OVER the
+         * chart. Same turns, same composer as the portal below — it is one
+         * thread, shown in a second place, rather than a second Kai.
+         */
+        kaiSheet={(
+          <>
+            <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
+              <KaiPanel turns={turns} symbol={data.symbol} />
+            </ScrollView>
+            <Composer
+              testID="stage-composer"
+              placeholder={`Ask Kai about ${data.symbol}…`}
+              disabled={streaming}
+              onSend={(text) => { void send(text); }}
+            />
+          </>
+        )}
         /**
          * DRAWING BY HAND. The chart page reports geometry in bar timestamps
          * because that is the clock it is holding; the annotations API stores

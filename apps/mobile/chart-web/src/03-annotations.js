@@ -1206,14 +1206,57 @@ AnnotationLayer.prototype._draw = function (target) {
           pts.push([W * 0.5, toY(sa.price)]);
         }
         ctx.globalAlpha = 1;
+        var maxX = -Infinity, minY = Infinity;
         for (var pi = 0; pi < pts.length; pi++) {
           var hx = pts[pi][0], hy = pts[pi][1];
           if (hx == null || hy == null) continue;
+          if (hx > maxX) maxX = hx;
+          if (hy < minY) minY = hy;
           ctx.fillStyle = TOKENS.bg;
           ctx.beginPath(); ctx.arc(hx, hy, 5.5, 0, Math.PI * 2); ctx.fill();
           ctx.strokeStyle = TOKENS.volt;
           ctx.lineWidth = 1.6;
           ctx.beginPath(); ctx.arc(hx, hy, 5.5, 0, Math.PI * 2); ctx.stroke();
+        }
+
+        /**
+         * THE TRASH, AT THE DRAWING'S TOP-RIGHT CORNER.
+         *
+         * On the SHAPE rather than in the chrome, because that is what the
+         * owner asked for and because it is the honest place for it: a delete
+         * button in a toolbar deletes "the selection", which you then have to
+         * go and check, while one sitting on the corner of the line can only
+         * mean this line. It only exists while something of yours is selected,
+         * so it is never a button hunting for a target.
+         *
+         * A LEVEL HAS NO CORNER, so it takes the right-hand end of its own rule
+         * — clear of the price tag, which is the only other thing out there.
+         */
+        // Far enough out that it clears a handle's sixteen-pixel grab radius —
+        // a bin you have to aim carefully at to avoid dragging the shape is a
+        // bin that gets used by accident and avoided on purpose.
+        var tx = sa.kind === 'trendline' || sa.kind === 'zone' ? Math.min(maxX + 22, W - 54) : W - 54;
+        var ty = isFinite(minY) ? minY - 22 : toY(sa.price);
+        if (ty != null && isFinite(tx)) {
+          ty = Math.max(12, Math.min(H - 12, ty));
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = TOKENS.bg;
+          ctx.beginPath(); ctx.arc(tx, ty, 9, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = TOKENS.red;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.arc(tx, ty, 9, 0, Math.PI * 2); ctx.stroke();
+          // A bin: lid, body, one line down the middle. At nine pixels a literal
+          // bin reads as a smudge, so it is the gesture of one.
+          ctx.strokeStyle = TOKENS.red;
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          ctx.moveTo(tx - 4, ty - 2.5); ctx.lineTo(tx + 4, ty - 2.5);
+          ctx.moveTo(tx - 2.8, ty - 2.5); ctx.lineTo(tx - 2.3, ty + 4);
+          ctx.lineTo(tx + 2.3, ty + 4); ctx.lineTo(tx + 2.8, ty - 2.5);
+          ctx.moveTo(tx - 1.3, ty - 2.5); ctx.lineTo(tx - 1.1, ty - 4.2);
+          ctx.lineTo(tx + 1.1, ty - 4.2); ctx.lineTo(tx + 1.3, ty - 2.5);
+          ctx.stroke();
+          hit.push({ id: TRASH_ID, x: tx - 15, y: ty - 15, w: 30, h: 30 });
         }
       }
     }
@@ -1253,6 +1296,8 @@ AnnotationLayer.prototype._draw = function (target) {
 
 /** The tap target the overflow chip claims. Not an annotation; the host checks for it. */
 var OVERFLOW_ID = '__levels_overflow__';
+/** The trash on the selected drawing. Same trick: a hit target that is not a mark. */
+var TRASH_ID = '__delete_selected__';
 
 /** The left label plus the price tag hanging on the right edge. */
 AnnotationLayer.prototype._chipAndTag = function (ctx, a, col, y, W, chip, base, hit, dead, extra) {

@@ -1474,7 +1474,14 @@ export const portalApi = {
   },
 
   /** Hide, delete or retitle one annotation. The user owns every Kai line. */
-  patchAnnotation: async (id: string, patch: { status?: AnnotationStatus; text?: string; price?: number | null }): Promise<void> => {
+  patchAnnotation: async (
+    id: string,
+    patch: {
+      status?: AnnotationStatus; text?: string;
+      price?: number | null; price2?: number | null;
+      ts_from?: string | null; ts_to?: string | null;
+    },
+  ): Promise<void> => {
     if (!live()) return;
     await request<unknown>(`/annotations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) });
   },

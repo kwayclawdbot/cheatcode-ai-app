@@ -107,7 +107,12 @@ export function usePortal(
     setAnnotations((prev) => prev.map((x) => (x.id === a.id ? a : x)));
     // A draft that has not been saved yet has nothing to PATCH.
     if (a.id.startsWith('draft:') || a.id.startsWith('local:')) return;
-    void portalApi.patchAnnotation(a.id, { price: a.price }).catch(() => { /* local state is what the user sees */ });
+    // ALL FOUR NUMBERS, not just the price. A trendline has two ends and a zone
+    // has two edges; sending only `price` meant a reshape looked right until the
+    // next reload and then quietly undid itself.
+    void portalApi.patchAnnotation(a.id, {
+      price: a.price, price2: a.price2, ts_from: a.ts_from, ts_to: a.ts_to,
+    }).catch(() => { /* local state is what the user sees */ });
   }, []);
 
   return {

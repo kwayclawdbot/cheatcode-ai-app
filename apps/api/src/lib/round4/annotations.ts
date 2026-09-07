@@ -331,7 +331,14 @@ export function ephemeralAnnotation(a: NewAnnotation & { id?: string }): Annotat
 export async function patchAnnotation(
   userId: string,
   id: string,
-  patch: { status?: AnnotationStatus; text?: string | null; price?: number | null }
+  patch: {
+    status?: AnnotationStatus;
+    text?: string | null;
+    price?: number | null;
+    price2?: number | null;
+    ts_from?: string | null;
+    ts_to?: string | null;
+  }
 ): Promise<AnnotationRow> {
   if (!(await hasAnnotationsTable())) throw new ApiError('NOT_FOUND', ANNOTATIONS_ABSENT_PLAIN);
   const db = serviceClient();
@@ -339,6 +346,10 @@ export async function patchAnnotation(
   if (patch.status !== undefined) body.status = patch.status;
   if (patch.text !== undefined) body.text = patch.text;
   if (patch.price !== undefined) body.price = patch.price;
+  // Reshaping, not just moving: a trendline's far end and a zone's other edge.
+  if (patch.price2 !== undefined) body.price2 = patch.price2;
+  if (patch.ts_from !== undefined) body.ts_from = patch.ts_from;
+  if (patch.ts_to !== undefined) body.ts_to = patch.ts_to;
 
   const { data, error } = await db
     .from('chart_annotations')

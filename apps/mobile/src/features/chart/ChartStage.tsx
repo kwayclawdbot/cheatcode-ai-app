@@ -28,7 +28,7 @@
  * leaves the chart to read it.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Modal, Platform, Pressable, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Modal, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChartView } from './ChartView';
 import type { DraftAnnotation } from './ChartView';
@@ -39,6 +39,7 @@ import type { Annotation, PortalTimeframe } from '../portal/types';
 import type { Candle } from '../../lib/types';
 import { T, Num } from '../../ui/Text';
 import { alpha, color, radius } from '../../ui/tokens';
+import { Pencil } from '../../ui/Icons';
 
 export type ChartStageProps = {
   open: boolean;
@@ -85,6 +86,16 @@ export type ChartStageProps = {
    * DRAWING BY HAND. Omit them and the tray does not appear — a chart with no
    * way to save what you draw should not offer to let you draw it.
    */
+  /**
+   * KAI, WITHOUT LEAVING THE CHART.
+   *
+   * The stage is the chart at the size you actually want to read it at, and the
+   * old answer to "ask him something" was to close it — which is the app taking
+   * the chart away to talk about the chart. Given this, a button appears beside
+   * Done and the conversation arrives as a sheet OVER the stage.
+   */
+  kaiSheet?: React.ReactNode;
+
   onDrawCreate?: (a: DraftAnnotation) => void;
   onDrawChange?: (a: DraftAnnotation) => void;
   onDrawDelete?: (id: string) => void;
@@ -166,6 +177,10 @@ function LowerThird({
 
 export function ChartStage(props: ChartStageProps) {
   const { open, onClose, live = false, caption, notice, noticeTone } = props;
+  const [kaiOpen, setKaiOpen] = useState(false);
+  const [trayOpen, setTrayOpen] = useState(false);
+  useEffect(() => { if (!open) setTrayOpen(false); }, [open]);
+  useEffect(() => { if (!open) setKaiOpen(false); }, [open]);
   const [tool, setTool] = useState<DrawToolName>(null);
   const [selected, setSelected] = useState<{ id: string | null; provenance: string | null }>({ id: null, provenance: null });
   const canDraw = Boolean(props.onDrawCreate);
@@ -273,6 +288,40 @@ export function ChartStage(props: ChartStageProps) {
           be tapped.
         */}
         {canDraw && !live ? (
+          <Pressable
+            testID="stage-pencil"
+            accessibilityRole="button"
+            accessibilityState={{ selected: trayOpen }}
+            accessibilityLabel={trayOpen ? 'Close the drawing tools' : 'Draw on the chart'}
+            hitSlop={10}
+            onPress={() => {
+              const next = !trayOpen;
+              setTrayOpen(next);
+              if (!next) { setTool(null); chart.current?.setDrawTool?.(null); }
+            }}
+            style={({ pressed }) => ({
+              position: 'absolute',
+              left: (landscape ? Math.max(insets.left, 8) : 0) + 12,
+              bottom: insets.bottom + 18,
+              width: 30, height: 30, alignItems: 'center', justifyContent: 'center',
+              borderRadius: radius.sm,
+              borderWidth: 0.5,
+              borderColor: trayOpen ? `${color.volt}66` : alpha.ivory12,
+              backgroundColor: trayOpen ? `${color.volt}1A` : alpha.surface75,
+              transform: [{ scale: pressed ? 0.94 : 1 }],
+            })}
+          >
+            <Pencil size={15} color={trayOpen ? color.volt : color.muted} />
+          </Pressable>
+        ) : null}
+
+        {/*
+          THE TOOLS, BEHIND THE SAME DOOR AS ON THE PORTAL. They used to be
+          permanently out here, which was tolerable while the stage was a
+          separate place you went to draw and is wrong now that the chart is
+          meant to rest clean wherever you are looking at it.
+        */}
+        {canDraw && !live && trayOpen ? (
           <DrawTray
             tool={tool}
             onPick={(t) => {
@@ -282,7 +331,43 @@ export function ChartStage(props: ChartStageProps) {
             canDelete={selected.id !== null && selected.provenance === 'user'}
             onDelete={() => chart.current?.deleteSelectedDrawing?.()}
             left={landscape ? Math.max(insets.left, 8) : 0}
+            bottom={insets.bottom + 54}
           />
+        ) : null}
+
+        {/*
+          KAI, OVER THE CHART RATHER THAN INSTEAD OF IT.
+
+          A panel along the bottom, not a full-screen modal: the whole point is
+          that the chart stays visible while you talk about it, so it takes the
+          lower half and the chart keeps the rest. Tapping the scrim above it
+          puts it away — the chart is what you came back to.
+        */}
+        {kaiOpen && props.kaiSheet ? (
+          <View style={StyleSheet.absoluteFill} testID="stage-kai-sheet">
+            <Pressable
+              accessibilityLabel="Close the conversation"
+              onPress={() => setKaiOpen(false)}
+              style={{ flex: 1 }}
+            />
+            <View
+              style={{
+                maxHeight: '62%',
+                backgroundColor: color.surface2,
+                borderTopLeftRadius: radius.xxxl,
+                borderTopRightRadius: radius.xxxl,
+                borderTopWidth: 0.5,
+                borderColor: alpha.ivory16,
+                paddingHorizontal: 16,
+                paddingTop: 12,
+                paddingBottom: Math.max(insets.bottom, 14),
+                gap: 10,
+              }}
+            >
+              <View style={{ alignSelf: 'center', width: 38, height: 4, borderRadius: 2, backgroundColor: alpha.ivory16 }} />
+              {props.kaiSheet}
+            </View>
+          </View>
         ) : null}
 
         {/* ---- the header, floating ---- */}
@@ -299,6 +384,10 @@ export function ChartStage(props: ChartStageProps) {
             flexDirection: 'row',
             alignItems: 'center',
             gap: 10,
+            // A scrim, because the chart's own timeframe rail lives at the top
+            // left and the two were legible only by luck. Not a bar — the chart
+            // still runs underneath it.
+            backgroundColor: alpha.bg82,
             opacity: chrome,
             transform: [{ translateY: chrome.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
           }}
@@ -308,6 +397,28 @@ export function ChartStage(props: ChartStageProps) {
             <Num size={13} c={color.cyan}>{props.lastPrice.toFixed(2)}</Num>
           ) : null}
           <View style={{ flex: 1 }} />
+          {props.kaiSheet ? (
+            <Pressable
+              onPress={() => setKaiOpen(true)}
+              hitSlop={12}
+              testID="stage-kai"
+              accessibilityRole="button"
+              accessibilityLabel="Ask Kai about this chart"
+              accessibilityHint="Opens the conversation over the chart. The chart stays full screen."
+              style={{
+                paddingHorizontal: 13,
+                paddingVertical: 7,
+                borderRadius: radius.pill,
+                // Violet, because it is Kai. It sits beside Done at the same
+                // weight — a peer action, not a promotion.
+                backgroundColor: alpha.violet14,
+                borderWidth: 0.5,
+                borderColor: alpha.violet50,
+              }}
+            >
+              <T size={12} weight="semibold" c={color.violetLight}>Ask Kai</T>
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={closeStage}
             hitSlop={12}

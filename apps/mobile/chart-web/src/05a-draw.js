@@ -239,6 +239,19 @@ DrawTool.prototype._down = function (e) {
 
   // --- editing an existing drawing ---
   if (!this.tool) {
+    /**
+     * A BUTTON BEATS A PROXIMITY GRAB, and it has to be checked first.
+     *
+     * The bin sits near the drawing's own corner, which on a trendline is right
+     * beside an endpoint handle — and a handle grabs anything within sixteen
+     * pixels. Checked in the other order, every tap on the bin was read as the
+     * start of a drag and the drawing could not be deleted at all. An explicit
+     * control the user aimed at always wins over something they were merely
+     * near.
+     */
+    var onChrome = this.c.annotations.hitTest(pt.x, pt.y);
+    if (onChrome === TRASH_ID || onChrome === OVERFLOW_ID) return;
+
     var sel = this._find(this.selectedId);
     var hs = this._handles(sel);
     for (var i = 0; i < hs.length; i++) {
@@ -248,6 +261,11 @@ DrawTool.prototype._down = function (e) {
         return;
       }
     }
+    /**
+     * TAP AWAY TO DESELECT. `_hitOwn` answers null anywhere off one of your own
+     * drawings, so tapping empty chart clears the handles and the bin with them
+     * — the selection is not a mode you have to find your way out of.
+     */
     var own = this._hitOwn(pt);
     this.select(own ? own.id : null);
     // A long press on your own drawing offers to remove it. It is the gesture a

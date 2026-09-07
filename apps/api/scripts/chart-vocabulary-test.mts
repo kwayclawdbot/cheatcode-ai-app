@@ -622,6 +622,53 @@ const flat = await executeChartCommand(flatCtx, { command: 'mark_zone', args: { 
 ok('a zone whose edges are the same price is drawn as a level instead', flat === null || flat.payload.kind !== 'zone', flat?.payload);
 
 /* ------------------------------------------------------------------ */
+section("Kai can see what the user drew");
+
+/**
+ * "kai should also be aware of what's drawn by user on chart at the moment."
+ *
+ * He could read every level the engine computed and had no idea what the person
+ * in front of him had drawn, so "what do you think of my trendline?" was a
+ * question about something invisible to him. The marks now ride in the chart
+ * context — attributed, capped, and one short line each, because this is in
+ * every prompt for the symbol.
+ */
+const drawn: ChartContext = {
+  ...bare,
+  userMarks: [
+    { what: 'Trendline', price: 128.4, price2: 133.1, when: '2026-05-11' },
+    { what: 'My level', price: 130, price2: null, when: null },
+  ],
+};
+
+const withDrawings = chartCommandProtocol({
+  symbol: 'TEST', timeframe: 'D',
+  available: availableLevels(drawn),
+  userMarks: drawn.userMarks,
+});
+ok('the prompt tells Kai the user has drawn', /drawn on this chart/i.test(withDrawings));
+ok('and names each mark', withDrawings.includes('Trendline') && withDrawings.includes('My level'), null);
+ok('with the prices they drew at', withDrawings.includes('128.4') && withDrawings.includes('130'));
+ok(
+  'and instructs him to call them THEIRS, not his analysis',
+  /your trendline|their marks|THEIR marks/i.test(withDrawings) && /never present one as something you measured/i.test(withDrawings),
+);
+ok(
+  'a chart nobody has drawn on says so plainly rather than saying nothing',
+  /drawn nothing on this chart/i.test(chartCommandProtocol({ symbol: 'TEST', timeframe: 'D', available: [] })),
+);
+ok(
+  'and the marks are capped, because this rides in every prompt',
+  (() => {
+    // The loader slices to twelve; this asserts the contract that there IS a cap
+    // rather than the number, which is a tuning decision.
+    const many = Array.from({ length: 30 }, (_, i) => ({ what: `Mark ${i}`, price: i, price2: null, when: null }));
+    const text = chartCommandProtocol({ symbol: 'TEST', timeframe: 'D', available: [], userMarks: many.slice(0, 12) });
+    return text.split('Mark ').length - 1 === 12;
+  })(),
+);
+
+/* ------------------------------------------------------------------ */
 section('Drawings');
 
 const drawings = availableDrawings(bare);

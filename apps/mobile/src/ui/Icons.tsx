@@ -127,6 +127,17 @@ export const Pencil = ({ size = 14, color: c = color.muted, strokeWidth = 2 }: I
   </S>
 );
 
+/**
+ * Full screen. Four corners pushing outward — the one glyph everybody already
+ * reads as "make this bigger", and small enough to sit beside the pencil at the
+ * weight of the chart's other corner controls.
+ */
+export const Expand = ({ size = 14, color: c = color.muted, strokeWidth = 2 }: IconProps) => (
+  <S size={size}>
+    <Path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6" stroke={c} strokeWidth={strokeWidth} />
+  </S>
+);
+
 export const Plus = ({ size = 13, color: c = color.muted, strokeWidth = 2 }: IconProps) => (
   <S size={size}><Path d="M12 5v14M5 12h14" stroke={c} strokeWidth={strokeWidth} /></S>
 );

@@ -273,6 +273,21 @@ export type ChartContext = {
   /** A fib grid over the swing the algorithm measured. */
   fib?: FibGrid | null;
   /**
+   * WHAT THE USER HAS DRAWN ON THIS CHART, IN THEIR OWN HAND.
+   *
+   * Kai could read every level the engine computed and had no idea what the
+   * person in front of him had put on the chart himself — so "what do you think
+   * of my trendline?" was a question about something he could not see. These are
+   * theirs, attributed as theirs, and they are the one part of the chart context
+   * he must never claim as his own analysis.
+   *
+   * COMPACT ON PURPOSE. One short line each and capped, because this rides in
+   * every prompt for the symbol and a chart somebody has drawn on twenty times
+   * should not cost twenty lines of context on every turn.
+   */
+  userMarks?: { what: string; price: number | null; price2: number | null; when: string | null }[];
+
+  /**
    * The daily series itself, for anchored VWAP.
    *
    * An anchored VWAP is the only thing here that cannot be precomputed: it
@@ -1970,6 +1985,8 @@ export function chartCommandProtocol(ctx: {
   symbol: string;
   timeframe: string;
   available: string[];
+  /** What the user has drawn on this chart by hand. Theirs, never yours. */
+  userMarks?: { what: string; price: number | null; price2: number | null; when: string | null }[];
   /** The drawings that resolve right now: `trendline:uptrend`, `fib`, and so on. */
   drawings?: string[];
   /** The CURVES that resolve right now: `ema21`, `bollinger20`. Drawn as lines, never as levels. */
@@ -2089,6 +2106,16 @@ Rules, and they are strict:
 - alert_from_level and prepare_trade PROPOSE. They do not arm a watch and they
   do not place an order. Say so.
 - Community levels are labelled as the room's opinion, never as your analysis.
+${
+  (ctx.userMarks ?? []).length
+    ? `- THE USER HAS DRAWN ON THIS CHART, and these are theirs, not yours:
+  ${(ctx.userMarks ?? []).map((m) => `${m.what}${m.price == null ? '' : ` at $${m.price}`}${m.price2 == null ? '' : ` to $${m.price2}`}${m.when ? ` from ${m.when}` : ''}`).join('; ')}.
+  Talk about them as THEIR marks — "your trendline", "the level you drew". You
+  may say what price is doing relative to one and you may disagree with it, but
+  never present one as something you measured. They are not graded and they are
+  not evidence for a setup.`
+    : '- The user has drawn nothing on this chart yet.'
+}
 
 IF YOU SAY IT, YOU DRAW IT — AND IF YOU CANNOT DRAW IT, DO NOT SAY IT.
 This is the one failure that makes the whole feature look broken: you say "I

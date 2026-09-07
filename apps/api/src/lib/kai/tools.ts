@@ -285,6 +285,20 @@ async function readChartLevels(input: Record<string, unknown>, ctx: ToolCtx): Pr
       'A band (Bollinger, Trend Clouds) draws all of its edges from one mark; never ask for them separately. ' +
       'The indicator is CheatCode Trend Clouds — never say "SuperTrend".',
     indicators_that_need_their_own_panel: refusedIndicators(),
+    /**
+     * WHAT THEY DREW, ATTRIBUTED TO THEM.
+     *
+     * Separate from `levels` and named so it cannot be confused with the
+     * engine's own measurements: these are somebody's hand-drawn marks, they
+     * carry no grade and no analysis, and Kai discussing one must talk about it
+     * as THEIRS. It is also the only way "what do you think of my trendline?"
+     * has an answer at all.
+     */
+    your_drawings: chart.userMarks ?? [],
+    your_drawings_note:
+      'These are marks the USER drew on the chart by hand. They are not measurements and not your analysis — ' +
+      'refer to them as theirs ("your trendline", "the level you drew"). You may say what price is doing ' +
+      'relative to one, and you may disagree with it, but never present one as something you found.',
     zones_available: availableZones(chart),
     zones_note:
       'A zone shades an AREA rather than a price, with mark_zone. Every zone above is built from two levels in the list, ' +

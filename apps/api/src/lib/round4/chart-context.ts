@@ -10,6 +10,7 @@
  * If a level is not in here, Kai cannot draw it. That is the design.
  */
 import { serviceClient } from '../db';
+import { listAnnotations } from './annotations';
 import { getCandles, lastTradingDate, prevTradingDate } from '../market/polygon';
 import { computeTechnicals } from '../market/technicals';
 import { computeFib, computeIntradayLevels, computeKeyLevels, findTrendlines } from '../market/key-levels';
@@ -152,6 +153,28 @@ export async function loadChartContext(userId: string, stamp: ChartStamp | null 
   const roomId = (setup as unknown as { discussion_room_id?: string } | null)?.discussion_room_id ?? null;
   const communityLevel = roomId ? await mostMentionedLevel(roomId) : null;
 
+  /**
+   * THE MARKS THE USER DREW THEMSELVES.
+   *
+   * Read here rather than anywhere else because this function is what every
+   * Kai surface calls to find out what is on a chart, and "what the person
+   * drew" is as much a fact about the chart as where the previous day's high
+   * is. Failing to read them is not worth failing the whole context over — a
+   * chart Kai can discuss without knowing about your trendline is much better
+   * than no chart at all — so this degrades to an empty list.
+   */
+  const userMarks = await listAnnotations({ userId, symbol })
+    .then((r) => r.annotations
+      .filter((a) => a.provenance === 'user' && a.status === 'valid')
+      .slice(0, 12)
+      .map((a) => ({
+        what: a.text || a.kind,
+        price: a.price,
+        price2: a.price2,
+        when: a.ts_from ? a.ts_from.slice(0, 10) : null,
+      })))
+    .catch(() => []);
+
   const lastDate = lastTradingDate();
   // The window the stored bars cover. Shapes need a time as well as a price —
   // a box has to span something and a ring has to sit on a bar — and these are
@@ -186,6 +209,7 @@ export async function loadChartContext(userId: string, stamp: ChartStamp | null 
     // The full window, for anchored VWAP — the one computation that cannot be
     // done in advance, because it depends on which bar Kai names as the anchor.
     dailyBars: daily,
+    userMarks,
   };
 }
 
