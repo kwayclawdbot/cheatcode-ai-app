@@ -53,9 +53,23 @@ const PASSWORD = 'paper-money-first';
 
 mkdirSync(OUT, { recursive: true });
 
-/* ── the service-role client, read from the API's own prod env ─────── */
+/* ── the service-role client, read from the API's own env ──────────────
+ * DEFAULTS TO `.env.prod` because that is what this proof was written for,
+ * but the file is overridable — and it has to be, because the two halves of
+ * this script talk to Supabase through DIFFERENT doors. The accounts are
+ * created here with the service role, and they are signed in over there by the
+ * browser using whatever `EXPO_PUBLIC_SUPABASE_URL` the app was started with.
+ * Point those at two different databases and the account exists in one while
+ * the sign-in is attempted against the other, which fails as "not signed in"
+ * and looks like a broken login rather than a mismatched environment. It cost
+ * a debugging round to work that out from the symptom.
+ *
+ *   PROOF_ENV_FILE=../api/.env.local  → run the whole thing against a local
+ *   stack and leave the hosted database completely untouched.
+ */
+const ENV_FILE = process.env.PROOF_ENV_FILE ?? '../api/.env.prod';
 const env = Object.fromEntries(
-  readFileSync(path.resolve(ROOT, '../api/.env.prod'), 'utf8')
+  readFileSync(path.resolve(ROOT, ENV_FILE), 'utf8')
     .split('\n')
     .filter((l) => l.trim() && !l.trim().startsWith('#') && l.includes('='))
     .map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()])
@@ -63,7 +77,7 @@ const env = Object.fromEntries(
 const SUPABASE = env.SUPABASE_URL;
 const SERVICE = env.SUPABASE_SERVICE_ROLE_KEY;
 if (!SUPABASE || !SERVICE) {
-  console.error('apps/api/.env.prod is missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.');
+  console.error(`${ENV_FILE} is missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.`);
   process.exit(1);
 }
 const svc = { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' };
