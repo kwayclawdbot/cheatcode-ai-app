@@ -109,6 +109,15 @@ const num = (v: unknown): number | null => {
 const obj = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+/** A string the producer actually wrote, or null. Never "" and never "undefined". */
+const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v : null);
+/** A list of strings the producer actually wrote, or null. Never []. */
+const textList = (v: unknown): string[] | null => {
+  const out = arr(v).filter((x): x is string => typeof x === 'string' && !!x.trim());
+  return out.length ? out : null;
+};
+/** "760" — a count the way a person writes it. */
+const count = (v: number | null): string => Math.round(v ?? 0).toLocaleString('en-US');
 
 /** "$196,070" — money the way a person writes it, never "196070.0". */
 function money(v: number | null): string | null {
@@ -166,44 +175,285 @@ export function optionsActivityScore(filters: Record<string, unknown>): number |
  * because "the flow bought something you would struggle to get out of" is
  * information the reader wants and hiding it would flatter the alert.
  */
+export type ContractFloorCheck = {
+  label: string;
+  value: string;
+  requirement: string;
+  passes: boolean;
+};
+
+/**
+ * THE COMPOSITE, TAKEN APART.
+ *
+ * `clears_liquidity_floor` is one boolean standing in for four separate tests,
+ * and a card that shows only the boolean is asking the reader to trust it. So
+ * every test is shown with the number it was given and the bar it was held to,
+ * and the boolean becomes a summary of things a person can check rather than a
+ * verdict they have to take on faith.
+ *
+ * The bars come from the engine's own `liquidity_floor_applied` — never typed
+ * again here, because a bar written twice is a bar that will eventually be two
+ * different bars.
+ *
+ * THE SPREAD TEST IS AN OR, and the requirement text says so. A penny-wide
+ * market on a 30-cent option is 3% and a nickel-wide one is 17%, so the engine
+ * passes a contract on EITHER allowance; showing only the percentage would mark
+ * a contract failed that the engine passed.
+ *
+ * A minimum of zero is not a test. It renders "no minimum" and passes, because
+ * drawing "0 minimum · passed" implies a bar was cleared when none was set.
+ */
+function floorChecksFrom(
+  floorRaw: unknown,
+  m: {
+    volume: number | null;
+    openInterest: number | null;
+    bid: number | null;
+    spreadPct: number | null;
+    spreadDollars: number | null;
+  },
+): ContractFloorCheck[] | null {
+  const floor = obj(floorRaw);
+  if (!Object.keys(floor).length) return null;
+  const checks: ContractFloorCheck[] = [];
+
+  const minVolume = num(floor.min_volume_today);
+  if (minVolume !== null && m.volume !== null) {
+    checks.push({
+      label: 'Volume today',
+      value: count(m.volume),
+      requirement: minVolume === 0 ? 'no minimum' : `${count(minVolume)} minimum`,
+      passes: minVolume === 0 ? true : m.volume >= minVolume,
+    });
+  }
+
+  const minOpenInterest = num(floor.min_open_interest);
+  if (minOpenInterest !== null && m.openInterest !== null) {
+    checks.push({
+      label: 'Open interest',
+      value: count(m.openInterest),
+      requirement: minOpenInterest === 0 ? 'no minimum' : `${count(minOpenInterest)} minimum`,
+      passes: minOpenInterest === 0 ? true : m.openInterest >= minOpenInterest,
+    });
+  }
+
+  const minBid = num(floor.min_bid);
+  if (minBid !== null && m.bid !== null) {
+    checks.push({
+      label: 'Bid',
+      value: `$${m.bid.toFixed(2)}`,
+      requirement: `$${minBid.toFixed(2)} minimum`,
+      passes: m.bid >= minBid,
+    });
+  }
+
+  const maxSpreadPct = num(floor.max_spread_as_share_of_mid);
+  const maxSpreadDollars = num(floor.or_max_spread_in_dollars);
+  const measured: string[] = [];
+  if (m.spreadPct !== null) measured.push(`${(m.spreadPct * 100).toFixed(1)}% of mid`);
+  if (m.spreadDollars !== null) measured.push(`$${m.spreadDollars.toFixed(2)}`);
+  const allowed: string[] = [];
+  if (maxSpreadPct !== null) allowed.push(`${(maxSpreadPct * 100).toFixed(0)}% of mid`);
+  if (maxSpreadDollars !== null) allowed.push(`$${maxSpreadDollars.toFixed(2)}`);
+  if (measured.length && allowed.length) {
+    const withinPct = maxSpreadPct !== null && m.spreadPct !== null && m.spreadPct <= maxSpreadPct;
+    const withinDollars =
+      maxSpreadDollars !== null && m.spreadDollars !== null && m.spreadDollars <= maxSpreadDollars;
+    checks.push({
+      label: 'Spread',
+      value: measured.join(' · '),
+      requirement: allowed.join(' or '),
+      passes: withinPct || withinDollars,
+    });
+  }
+
+  return checks.length ? checks : null;
+}
+
+/**
+ * DID THE VOLUME-OVER-OPEN-INTEREST MULTIPLE ACTUALLY COUNT?
+ *
+ * The engine does not credit the multiple when the open interest it is measured
+ * against is too thin to mean anything — a 15x on 48 open contracts is not the
+ * event a 15x on 5,000 is, and at 0-2 days to expiry a strike is nearly always
+ * in the thin case. When that happens the contract qualifies on its own average
+ * daily volume instead, and the engine says so in `spike_evidence`.
+ *
+ * A card that draws "15.8x" against a "14x bar" without that is showing a pass
+ * the engine did not award. So the flag travels with the number, and it is read
+ * from what the engine wrote rather than re-derived from the open interest here.
+ */
+function volumeOiCredited(contract: Record<string, unknown>): boolean | null {
+  const base = text(contract.open_interest_base);
+  const evidence = text(contract.spike_evidence);
+  if (base === null && evidence === null) return null;
+  if (evidence !== null && evidence.toLowerCase().includes('not credited')) return false;
+  if (base !== null && base.toLowerCase().startsWith('thin')) return false;
+  return true;
+}
+
 export function contractsFrom(record: Record<string, unknown>): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
+  const filters = obj(record.filters_at_fire);
+  const thresholds = obj(record.thresholds);
+  const volumeOiThreshold = num(thresholds.min_volume_oi);
+
+  // `contracts[]` is the print-level evidence: the multiple, the spike wording,
+  // the implied volatility, the premium. `flow_contract_check[]` is the same
+  // contract put through the liquidity floor. They are matched on the option
+  // symbol, which is the only key that means the same thing in both.
+  const bySymbol = new Map<string, Record<string, unknown>>();
+  for (const raw of arr(filters.contracts)) {
+    const c = obj(raw);
+    const sym = text(c.option_symbol);
+    if (sym && !bySymbol.has(sym)) bySymbol.set(sym, c);
+  }
 
   const suggestion = obj(obj(obj(record.suggested_contract).suggestion).base);
   if (suggestion.option_symbol) {
+    const bid = num(suggestion.bid);
+    const ask = num(suggestion.ask);
+    const volume = num(suggestion.volume_today);
+    const openInterest = num(suggestion.open_interest);
+    const spreadPct = num(suggestion.spread_pct_of_mid);
+    const spreadDollars = num(suggestion.spread_dollars);
     out.push({
       label: 'Named by the engine',
       type: String(suggestion.type ?? '').toLowerCase().startsWith('p') ? 'put' : 'call',
       strike: String(suggestion.strike ?? ''),
       expiry: shortDate(String(suggestion.expiry ?? '')) ?? String(suggestion.expiry ?? ''),
       dte: num(suggestion.days_to_expiry),
-      cost: num(suggestion.ask) !== null ? num(suggestion.ask)!.toFixed(2) : null,
+      cost: ask !== null ? ask.toFixed(2) : null,
       liquidity: 'good',
+
+      option_symbol: text(suggestion.option_symbol),
+
+      underlying_price: num(suggestion.underlying_price) ?? num(filters.underlying_price),
+      otm_pct: num(suggestion.percent_out_of_the_money),
+
+      bid,
+      ask,
+      spread_pct_of_mid: spreadPct,
+      spread_dollars: spreadDollars,
+      cost_per_contract: num(suggestion.cost_per_contract_at_the_ask),
+
+      iv: num(suggestion.implied_volatility),
+      // Rank and percentile come from Unusual Whales' own read of the contract,
+      // which is only asked for the contract the FLOW bought. Unmeasured here.
+      iv_rank: null,
+      iv_percentile: null,
+
+      volume,
+      open_interest: openInterest,
+      // The multiple is a property of the print that fired the alert, not of a
+      // contract picked off the chain afterwards. It was never measured for
+      // this one, so it stays absent rather than being borrowed from the flow.
+      volume_oi_multiple: null,
+      volume_oi_threshold: volumeOiThreshold,
+      volume_oi_credited: null,
+      volume_vs_own_adv: null,
+      spike_evidence: null,
+      premium: null,
+      ask_side_share: null,
+      sweeps: null,
+      blocks: null,
+
+      // It is here at all only because it cleared the floor — nothing under it
+      // is ever named. The checks are still itemised so that is visible.
+      clears_liquidity_floor: true,
+      floor_checks: floorChecksFrom(obj(record.suggested_contract).liquidity_floor, {
+        volume,
+        openInterest,
+        bid,
+        spreadPct,
+        spreadDollars,
+      }),
+      liquidity_failures: null,
     });
   }
 
-  // The contract the flow bought. Only the first — a name that printed nine
-  // times bought the SAME contract nine times, and nine identical cards is a
-  // rendering of the loop, not of the trade.
+  // The contract(s) the flow bought. More than one can appear — a name that
+  // printed four times across the session may have bought four different
+  // strikes, and collapsing those to one hides where the money actually went.
+  // Repeats of the SAME symbol are still dropped, because nine identical cards
+  // is a rendering of the loop rather than of the trade, and the list is capped
+  // so a busy name cannot turn the card into a chain table.
+  const seen = new Set<string>();
   for (const raw of arr(record.flow_contract_check)) {
+    if (seen.size >= 3) break;
     const c = obj(raw);
     const sym = String(c.option_symbol ?? '');
-    if (!sym) continue;
+    if (!sym || seen.has(sym)) continue;
     const strike = num(c.strike);
     const expiry = String(c.expiry ?? '');
     if (strike === null || !expiry) continue;
+    seen.add(sym);
+
+    const source = bySymbol.get(sym) ?? {};
+    const secondOpinion = obj(c.second_opinion);
+    const bid = num(c.bid_at_alert);
+    const ask = num(c.ask_at_alert);
+    const volume = num(c.volume_on_the_day);
+    const openInterest = num(c.open_interest);
+    const spreadPct = num(c.spread_pct_of_mid);
+    const spreadDollars = num(c.spread_dollars);
+    const hasSweep = source.has_sweep;
+    const hasFloor = source.has_floor;
+
     out.push({
       label: 'The contract the flow bought',
       type: sym.replace(/\d+$/, '').slice(-1).toUpperCase() === 'P' ? 'put' : 'call',
       strike: String(strike),
       expiry: shortDate(expiry) ?? expiry,
       dte: num(c.days_to_expiry),
-      cost: num(c.ask_at_alert) !== null ? num(c.ask_at_alert)!.toFixed(2) : null,
+      cost: ask !== null ? ask.toFixed(2) : null,
       // The engine's own hard floor, passed through as it decided it. Never
       // re-judged here: this file does not get a second opinion on liquidity.
       liquidity: c.clears_the_liquidity_floor === true ? 'good' : 'thin',
+
+      option_symbol: sym,
+
+      underlying_price: num(filters.underlying_price) ?? num(source.underlying_price),
+      otm_pct: num(source.otm_pct) ?? num(c.percent_out_of_the_money),
+
+      bid,
+      ask,
+      spread_pct_of_mid: spreadPct,
+      spread_dollars: spreadDollars,
+      cost_per_contract: num(c.cost_per_contract_at_the_ask),
+
+      // A decimal, as the engine wrote it: 2.1525 is 215%.
+      iv: num(source.iv_at_alert),
+      iv_rank: num(secondOpinion.iv_rank_0_100),
+      iv_percentile: num(secondOpinion.iv_percentile_0_100),
+
+      volume,
+      open_interest: openInterest,
+      volume_oi_multiple: num(source.volume_oi_multiple),
+      volume_oi_threshold: volumeOiThreshold,
+      volume_oi_credited: Object.keys(source).length ? volumeOiCredited(source) : null,
+      volume_vs_own_adv: num(source.volume_vs_own_adv),
+      // The engine's own plain-English line, verbatim. It is the sentence that
+      // says which of the two spike tests this contract actually passed.
+      spike_evidence: text(source.spike_evidence),
+      premium: num(source.total_premium),
+      ask_side_share: num(source.ask_side_share),
+      // The engine counts a qualifying print as one sweep or one block, and
+      // this row IS one qualifying print. Absent when the producer said nothing.
+      sweeps: typeof hasSweep === 'boolean' ? (hasSweep ? 1 : 0) : null,
+      blocks: typeof hasFloor === 'boolean' ? (hasFloor ? 1 : 0) : null,
+
+      clears_liquidity_floor:
+        typeof c.clears_the_liquidity_floor === 'boolean' ? c.clears_the_liquidity_floor : null,
+      floor_checks: floorChecksFrom(c.liquidity_floor_applied, {
+        volume,
+        openInterest,
+        bid,
+        spreadPct,
+        spreadDollars,
+      }),
+      liquidity_failures: textList(c.liquidity_failures),
     });
-    break;
   }
 
   return out;
@@ -396,6 +646,15 @@ export function setupFromUoaRecord(record: Record<string, unknown>): UoaSetupRow
         sector: filters.sector ?? null,
         next_earnings_date: filters.next_earnings_date ?? null,
         days_to_earnings: num(filters.days_to_earnings),
+        // THE BARS THE NUMBERS ABOVE WERE MEASURED AGAINST, straight from the
+        // engine. A 15.8x multiple means nothing without the bar it is being
+        // held to, and the bar is the day-trade tier's own measured percentile
+        // rather than a round number — so it travels with the alert instead of
+        // being written down again on the drawing side, where the two would
+        // drift and the card would start framing the multiple against a bar
+        // nothing was ever tested on. Null for a record written before the
+        // engine shipped it: absent, never a guessed default.
+        thresholds: Object.keys(obj(record.thresholds)).length ? obj(record.thresholds) : null,
       },
 
       // The latency, which is the honest measure of a live engine. Kept because

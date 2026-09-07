@@ -3891,6 +3891,23 @@ export type AlertScores = z.infer<typeof AlertScores>;
  * The ticker is NEVER repeated inside this object — the card it sits in already
  * carries the mark.
  */
+/**
+ * One leg of a composite the card takes apart: the measured number, the bar it
+ * was held to, and whether it cleared. `requirement` is prose because a bar is
+ * not always a number — an OR of two allowances ("10% of mid or $0.05") and an
+ * absent one ("no minimum") both have to be sayable.
+ */
+export const AlertContractFloorCheck = z.object({
+  /** "Volume today", "Open interest", "Bid", "Spread". */
+  label: z.string(),
+  /** The measurement, already readable: "760", "16.4% of mid · $0.85". */
+  value: z.string(),
+  /** The bar, already readable: "400 minimum", "10% of mid or $0.05". */
+  requirement: z.string(),
+  passes: z.boolean(),
+});
+export type AlertContractFloorCheck = z.infer<typeof AlertContractFloorCheck>;
+
 export const AlertOptionContract = z.object({
   /** Optional role, e.g. "The contract the flow bought". NEVER the ticker. */
   label: z.string().nullable().default(null),
@@ -3903,6 +3920,68 @@ export const AlertOptionContract = z.object({
   /** Premium per share at the ask, e.g. "5.00". The card adds the $. */
   cost: z.string().nullable().default(null),
   liquidity: z.enum(['good', 'thin']).nullable().default(null),
+
+  /**
+   * EVERYTHING BELOW IS OPTIONAL AND NULL WHEN IT WAS NOT MEASURED, and the
+   * card's standing rule applies to all of it: nothing unmeasured gets drawn.
+   * Null is "the engine did not look", never zero and never a dash — the two
+   * must not render the same way. Additive: a payload written before these
+   * fields still parses, which is why every one carries a default.
+   */
+
+  /** "MRNA260821C00120000". The machine-readable identity of the contract. */
+  option_symbol: z.string().nullable().default(null),
+
+  // ── the strike rail ──
+  /** What the shares were trading at when the flow printed. */
+  underlying_price: z.number().nullable().default(null),
+  /** How far the strike sat from that price, in percent: 3.9 is 3.9%. */
+  otm_pct: z.number().nullable().default(null),
+
+  // ── the price ──
+  bid: z.number().nullable().default(null),
+  ask: z.number().nullable().default(null),
+  /** A share, not a percentage: 0.1643 is 16.43% of the middle of the market. */
+  spread_pct_of_mid: z.number().nullable().default(null),
+  spread_dollars: z.number().nullable().default(null),
+  /** What one contract costs at the offer, in dollars: 560 is $560. */
+  cost_per_contract: z.number().nullable().default(null),
+
+  // ── volatility ──
+  /** A decimal, as the engine wrote it: 2.1525 is 215%. */
+  iv: z.number().nullable().default(null),
+  iv_rank: z.number().nullable().default(null),
+  iv_percentile: z.number().nullable().default(null),
+
+  // ── print strength, with its parts visible ──
+  volume: z.number().nullable().default(null),
+  open_interest: z.number().nullable().default(null),
+  volume_oi_multiple: z.number().nullable().default(null),
+  /** The engine's own bar for that multiple, so it can be framed honestly. */
+  volume_oi_threshold: z.number().nullable().default(null),
+  /**
+   * FALSE when the engine refused to credit the multiple because the open
+   * interest it was measured against was too thin to mean anything — in which
+   * case the contract qualified on its own average daily volume instead, and
+   * `spike_evidence` says so. Drawing the multiple as a pass without this would
+   * claim a test the engine did not award.
+   */
+  volume_oi_credited: z.boolean().nullable().default(null),
+  volume_vs_own_adv: z.number().nullable().default(null),
+  /** The engine's plain-English line about the spike, verbatim. */
+  spike_evidence: z.string().nullable().default(null),
+  premium: z.number().nullable().default(null),
+  /** A share: 0.9972 is 99.72% paid at the offer. */
+  ask_side_share: z.number().nullable().default(null),
+  sweeps: z.number().nullable().default(null),
+  blocks: z.number().nullable().default(null),
+
+  // ── tradability: the composite AND its parts ──
+  clears_liquidity_floor: z.boolean().nullable().default(null),
+  /** The floor taken apart, so the boolean above is checkable rather than trusted. */
+  floor_checks: z.array(AlertContractFloorCheck).nullable().default(null),
+  /** The engine's own words for each test the contract failed. */
+  liquidity_failures: z.array(z.string()).nullable().default(null),
 });
 export type AlertOptionContract = z.infer<typeof AlertOptionContract>;
 
