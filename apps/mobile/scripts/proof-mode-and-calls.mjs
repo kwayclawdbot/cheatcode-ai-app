@@ -5,9 +5,9 @@
  *   2. "the community trade alerts dont show anywhere in app when generated"
  *
  * Both of these are invisible in fixtures mode, which is exactly why they
- * shipped. In fixtures the Following feed is a hard-coded non-empty list, the
- * publish takes a local code path that never touches the API, and the alerts
- * board is a canned payload with no modes in it. So this proof runs the app
+ * shipped. In fixtures the room's messages are a hard-coded list, the publish
+ * takes a local code path that never touches the API, and the alerts board is
+ * a canned payload with no modes in it. So this proof runs the app
  * against the REAL hosted database with REAL accounts, and every assertion
  * below is about a row that actually exists.
  *
@@ -24,8 +24,11 @@
  *         the call.
  *   BLAKE primary_mode = swing, and follows Alex. Proves the OTHER side of the
  *         filter — that swing mode still has its cards, so "filtered" did not
- *         quietly become "empty for everyone" — and that Alex's call reaches a
- *         follower's Following feed.
+ *         quietly become "empty for everyone" — and that Alex's call reaches
+ *         the day-trade room's conversation, where a reader will actually
+ *         come across it. The Rooms/Following toggle came out on 7 Sept and
+ *         the Following feed is no longer a destination; following now decides
+ *         who gets TOLD, and the room is where the call is READ.
  *
  * THE OWNER'S OWN LOGIN IS NOT USED. It is his account, on a live database,
  * with a real record attached to it. Two throwaway accounts prove the same
@@ -315,29 +318,78 @@ try {
     ok('the cards are actually drawn on screen', drawn > 0, { drawn });
   }
 
-  console.log('\n[4] Blake sees Alex\'s call in Following');
-  await blake.page.goto(`${BASE}/community?feed=following`, { waitUntil: 'domcontentloaded' });
+  /*
+   * [4] WHERE THE CALL ACTUALLY LANDS NOW (owner, 7 Sept).
+   *
+   * This section used to open `/community?feed=following` and assert Blake saw
+   * the call in a feed of the people he follows. That destination is gone: the
+   * Rooms/Following toggle came out and a call is delivered into the room's own
+   * conversation, as a message carrying its own card. So the assertion is not
+   * deleted, it is moved to the place the call now has to reach — which is the
+   * harder claim, because it involves the server writing a message row and the
+   * room's ordinary five-second poll picking it up with no realtime stack.
+   *
+   * Blake reads SWING by default and the call was published for the DAY TRADE
+   * desk, so he has to change rooms to see it. That is the point of the rail,
+   * and it is also the proof that `mode` on the call decided which room it
+   * landed in rather than the call being sprayed at all three.
+   */
+  console.log('\n[4] Blake sees Alex\'s call in the day-trade room chat');
+  await blake.page.goto(`${BASE}/community`, { waitUntil: 'domcontentloaded' });
   await blake.page.locator('[data-testid="screen-community"]').waitFor({ timeout: 90_000 });
   await blake.page.waitForTimeout(7000);
-  await shot(blake.page, '08-following-feed');
   {
-    ok('the Following feed is on screen, not Rooms', await has(blake.page, 'following-feed'), await bodyText(blake.page).then((t) => t.slice(0, 300)));
+    ok('Community is the rooms — there is no feed switch', !(await has(blake.page, 'community-feed')));
+    ok('and no Following feed as a destination', !(await has(blake.page, 'following-feed')));
+    ok('the room rail is on screen', await has(blake.page, 'room-rail'));
+    // The door that used to live in the Following feed's empty state. It needs
+    // a signed-in id to build a profile route, so this is the only kind of run
+    // that can prove it is there.
+    ok('and "Your calls" survived the feed it used to live in', await has(blake.page, 'community-my-calls'));
+    ok(
+      'Follow is still on an author line in the room — following lost a page, not the graph',
+      (await blake.page.locator('[data-testid^="club-follow-"]').count()) > 0,
+    );
+
+    const dayTrade = blake.page.locator('[data-testid="room-day-trade"]').first();
+    if (await dayTrade.count()) {
+      // Not `settled()` — that one waits for a contributor profile. This is a
+      // room changing under an already-mounted tab, so what is waited on is the
+      // next poll bringing the room's messages back.
+      await dayTrade.click();
+      await blake.page.waitForTimeout(8000);
+    }
+    await shot(blake.page, '08-call-in-room-chat');
+
     const t = await bodyText(blake.page);
-    ok('a follower sees the call', t.includes(CALL.symbol), t.slice(0, 500));
+    ok(
+      'the call is drawn as a card in the conversation',
+      (await blake.page.locator('[data-testid^="club-message-call-"]').count()) > 0,
+      t.slice(0, 500),
+    );
+    ok('a follower reading the room sees the call', t.includes(CALL.symbol), t.slice(0, 500));
     ok('with the author on it', t.includes(people.alex.handle), t.slice(0, 500));
-    ok('and it is not the empty state', !/not following anybody yet/i.test(t));
+    ok('and it says COMMUNITY TRADE, so it is never mistaken for a house alert', /COMMUNITY TRADE/i.test(t));
   }
 
-  console.log('\n[4b] and the in-session redirect actually switches the feed');
+  /*
+   * [4b] THE ORPHANED ADDRESS LEADS SOMEWHERE HONEST.
+   *
+   * This used to assert that `?feed=following` was honoured on an already
+   * mounted tab — a real bug at the time, because the tab read the param once
+   * at mount and ignored every later change. Nothing reads the param now, so
+   * the assertion is reversed: the address must resolve to the rooms rather
+   * than to a blank screen or to a feed kept alive only for old links.
+   */
+  console.log('\n[4b] and the retired ?feed=following address lands on the rooms');
   {
-    // The Community tab is already mounted here, which is the exact condition
-    // the composer's redirect hit and the bug that swallowed it.
     await blake.page.goto(`${BASE}/community`, { waitUntil: 'domcontentloaded' });
     await blake.page.waitForTimeout(4000);
     await blake.page.evaluate(() => window.history.pushState({}, '', '/community?feed=following'));
     await blake.page.waitForTimeout(3000);
-    const t = await bodyText(blake.page);
-    ok('?feed=following is honoured on an already-mounted tab', /following/i.test(t));
+    ok('no Following feed comes back', !(await has(blake.page, 'following-feed')));
+    ok('the rooms are still what is on screen', await has(blake.page, 'room-rail'));
+    ok('and the room composer is still there', await has(blake.page, 'club-composer'));
   }
 } catch (e) {
   failures.push(`threw: ${e instanceof Error ? e.message : String(e)}`);

@@ -25,6 +25,7 @@ import { EMPTY_REACTIONS, trimQuote } from '../features/community/types';
 import {
   fixtureAssist, fixtureContributor, fixtureMessages, fixtureRooms, fixtureThread,
 } from '../features/community/fixtures';
+import { adaptCommunityCall } from './adapters';
 import type { ClosedPosition, Debrief } from '../features/debrief/types';
 import { fixtureClosedPositions, fixtureDebriefs } from '../features/debrief/fixtures';
 
@@ -411,6 +412,12 @@ function mapMessage(raw: any, kaiObjects?: Record<string, any>): RoomMessage {
     structured_idea: structured,
     position_disclosure: mapDisclosure(raw.position_disclosure),
     kai_object: mapKaiObject(objRaw),
+    // The member's call, when the server resolved one off
+    // `refs.community_call_id`. Carried through the same way `kai_object` is,
+    // because it is the same kind of thing: an object riding an ordinary text
+    // message. A client that gets no `community_call` still renders the body,
+    // which is a readable sentence about the trade rather than an empty bubble.
+    community_call: raw.community_call ? adaptCommunityCall(raw.community_call) : null,
     deleted: raw.deleted === true || raw.deleted_at != null,
     is_claim:
       raw.flags?.claim === true ||
@@ -706,6 +713,7 @@ export const communityApi = {
       structured_idea: payload.structured_idea ?? null,
       position_disclosure: payload.position_disclosure ?? null,
       kai_object: null,
+      community_call: null,
       deleted: false,
       is_claim: !!payload.structured_idea,
       reactions: EMPTY_REACTIONS,

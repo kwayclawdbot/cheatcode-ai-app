@@ -19,6 +19,7 @@ import type { MessageMedia, ReactionKind, RoomMessage } from '../types';
 import { MediaStrip, QuoteBlock, ReactionBar, ThreadLine } from './Social';
 import { PostBody } from './PostBody';
 import { FollowButton } from '../../social/FollowButton';
+import { CommunityCallCard } from '../../social/CommunityCallCard';
 
 /**
  * The feed's body.
@@ -192,7 +193,26 @@ export function ClubMessage({
                 />
               </View>
             ) : null}
-            {message.body ? (
+            {/*
+              A MEMBER'S CALL, IN THE CONVERSATION.
+
+              `ClubMessage` and `MessageRow` are separate components with
+              separate bodies, so this had to be added twice or a call would
+              render as a card in a room and as a bare sentence on the club
+              feed — the same drift that produced two `$TICKER` treatments
+              before `PostBody` was extracted.
+
+              The card replaces the body rather than joining it: the sentence
+              the message arrived with describes the same trade, and drawing
+              both says the idea twice. Nesting is legal here because the
+              wrapper above deliberately carries no `accessibilityRole`, so on
+              web it is a div and not a <button> — see the comment on it.
+            */}
+            {message.community_call ? (
+              <View style={{ marginTop: 6 }} testID={`club-message-call-${message.id}`}>
+                <CommunityCallCard call={message.community_call} compact />
+              </View>
+            ) : message.body ? (
               <View style={{ marginTop: 2 }}>
                 <ClubBody text={message.body} onTicker={onTicker} />
               </View>

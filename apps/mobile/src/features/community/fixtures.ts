@@ -10,6 +10,7 @@ import type {
   Author, ContributorProfile, KaiRoomObject, MessageMedia, Room, RoomMessage, RoomSetup,
 } from './types';
 import { EMPTY_REACTIONS } from './types';
+import { fixtureCommunityCalls } from '../../lib/fixtures';
 
 const KAI: Author = {
   user_id: 'kai', display_name: 'Kai', handle: null, avatar_url: null, initial: 'K',
@@ -26,6 +27,16 @@ const SAM: Author = {
 const MARCUS: Author = {
   user_id: 'u-marcus', display_name: 'Marcus T.', handle: 'marcus', avatar_url: null, initial: 'M',
   role_labels: ['Moderator'], is_kai: false, author_deleted: false,
+};
+/**
+ * The author of the call that lands in the room below. She is the same person
+ * as `fixtureSocialAuthors.priya` — one member, written twice because the room
+ * and the social layer describe an author differently (role labels here, a belt
+ * there) — so the ids match and a tap through to the profile finds her.
+ */
+const PRIYA: Author = {
+  user_id: 'user-priya', display_name: 'Priya Raman', handle: 'priya_r', avatar_url: null,
+  initial: 'P', role_labels: [], is_kai: false, author_deleted: false,
 };
 
 const META_SETUP: RoomSetup = {
@@ -143,7 +154,7 @@ export const fixtureMessages: RoomMessage[] = [
     author: JORDAN, body: '$META reclaimed VWAP on strong volume. Watching 501 for the entry.',
     refs: { symbol: 'META', levels: [501] }, structured_idea: null,
     position_disclosure: { holds: true, symbol: 'META', label: 'Holds META' },
-    kai_object: null, deleted: false, is_claim: true,
+    kai_object: null, community_call: null, deleted: false, is_claim: true,
     // `watching` is here on purpose: it is one of the two kinds nobody can give
     // any more, and the bar has to keep drawing counts that already exist.
     reactions: { counts: { agree: 14, fire: 6, watching: 9 }, mine: ['agree'] }, reply_count: 3,
@@ -153,12 +164,12 @@ export const fixtureMessages: RoomMessage[] = [
     id: 'm-2', room_id: 'room-meta', seq: 5, kind: 'text', created_at: '2026-08-26T13:41:00Z', time_label: 'Today at 9:41',
     author: SAM, body: 'Is that volume real or just the open? @Kai verify',
     refs: null, structured_idea: null, position_disclosure: null,
-    kai_object: null, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, quote: null, media: [], author_deleted: false,
+    kai_object: null, community_call: null, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, quote: null, media: [], author_deleted: false,
   },
   {
     id: 'm-3', room_id: 'room-meta', seq: 6, kind: 'kai_object', created_at: '2026-08-26T13:41:30Z', time_label: 'Today at 9:41',
     author: KAI, body: null, refs: { symbol: 'META' }, structured_idea: null,
-    position_disclosure: null, kai_object: VERIFICATION, deleted: false, is_claim: false,
+    position_disclosure: null, kai_object: VERIFICATION, community_call: null, deleted: false, is_claim: false,
     reactions: { counts: { useful: 21 }, mine: [] }, reply_count: 0,
     parent_id: null, quote: null, media: [], author_deleted: false,
   },
@@ -166,7 +177,7 @@ export const fixtureMessages: RoomMessage[] = [
     id: 'm-4', room_id: 'room-meta', seq: 7, kind: 'text', created_at: '2026-08-26T13:44:00Z', time_label: 'Today at 9:44',
     author: MARCUS, body: 'Reminder: nothing here is advice, and no one posts fills without the plan that produced them.',
     refs: null, structured_idea: null, position_disclosure: null,
-    kai_object: null, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, quote: null, media: [], author_deleted: false,
+    kai_object: null, community_call: null, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, quote: null, media: [], author_deleted: false,
   },
   {
     id: 'm-5', room_id: 'room-meta', seq: 8, kind: 'position_update', created_at: '2026-08-26T13:47:00Z', time_label: 'Today at 9:47',
@@ -174,12 +185,48 @@ export const fixtureMessages: RoomMessage[] = [
     body: 'Took the entry at 504.10 on the hold. Stop stays at 460 — risk $58.',
     refs: { symbol: 'META' }, structured_idea: null,
     position_disclosure: { holds: true, symbol: 'META', label: 'Holds META' },
-    kai_object: null, deleted: false, is_claim: true, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, quote: null, media: [], author_deleted: false,
+    kai_object: null, community_call: null, deleted: false, is_claim: true, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, quote: null, media: [], author_deleted: false,
   },
   {
     id: 'm-6', room_id: 'room-meta', seq: 9, kind: 'kai_object', created_at: '2026-08-26T13:49:00Z', time_label: 'Today at 9:49',
     author: KAI, body: null, refs: { symbol: 'META' }, structured_idea: null,
-    position_disclosure: null, kai_object: SUMMARY, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, quote: null, media: [], author_deleted: false,
+    position_disclosure: null, kai_object: SUMMARY, community_call: null, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, quote: null, media: [], author_deleted: false,
+  },
+  /**
+   * A MEMBER'S CALL, ARRIVING AS A MESSAGE.
+   *
+   * This is the whole point of the restructure in one fixture. The call is not
+   * a parallel feed and it is not a link: it is an ordinary `text` message with
+   * a real `seq`, carrying a resolved `community_call`, which is why the room's
+   * existing five-second `after_seq` poll delivers it with nothing new
+   * subscribed to.
+   *
+   * It keeps a BODY as well as the object, deliberately, for the same reason
+   * the migration chose `refs` over a new message kind: a client that does not
+   * understand the field still renders a readable sentence about the trade
+   * instead of an empty bubble. Anything that DOES understand it draws the card
+   * and never both.
+   *
+   * `id` matches `fixtureCommunityCalls[0].message_id`, so the receipt on the
+   * call and the message it became agree — a call pointing at a message that is
+   * not there is exactly the degraded state that field exists to make visible.
+   */
+  {
+    id: 'm-call', room_id: 'room-day-trade', seq: 10, kind: 'text',
+    created_at: '2026-09-06T13:38:00Z', time_label: 'Today at 9:38',
+    author: PRIYA,
+    body: 'Published a call — META long, entry 504, stop 496.5, target 522.',
+    refs: { symbol: 'META', community_call_id: 'call-1' },
+    structured_idea: null, position_disclosure: null,
+    kai_object: null, community_call: fixtureCommunityCalls[0],
+    // NOT a claim, and the adapter agrees: `is_claim` is derived from
+    // `refs.levels`, structured fields or an explicit flag, and a call carries
+    // none of those — its levels live on the call, not in the message. An
+    // "Unverified" chip under a card that already says "Community trade, not
+    // advice" would be two disclaimers arguing about the same sentence.
+    deleted: false, is_claim: false,
+    reactions: { counts: { agree: 5, fire: 2 }, mine: [] }, reply_count: 1,
+    parent_id: null, quote: null, media: [], author_deleted: false,
   },
 ];
 
@@ -216,7 +263,7 @@ export function fixtureThread(parentId: string): RoomMessage[] {
       id: `${parentId}-c1`, room_id: 'room-meta', seq: 101, kind: 'text',
       created_at: '2026-08-26T13:42:00Z', time_label: 'Today at 9:42',
       author: SAM, body: 'What is your invalidation on that? 501 is thin on the daily.',
-      refs: null, structured_idea: null, position_disclosure: null, kai_object: null,
+      refs: null, structured_idea: null, position_disclosure: null, kai_object: null, community_call: null,
       deleted: false, is_claim: false,
       reactions: { counts: { agree: 3, useful: 1 }, mine: [] },
       reply_count: 0, parent_id: parentId, quote: null, media: [], author_deleted: false,
@@ -225,7 +272,7 @@ export function fixtureThread(parentId: string): RoomMessage[] {
       id: `${parentId}-c2`, room_id: 'room-meta', seq: 102, kind: 'text',
       created_at: '2026-08-26T13:43:00Z', time_label: 'Today at 9:43',
       author: MARCUS, body: null,
-      refs: null, structured_idea: null, position_disclosure: null, kai_object: null,
+      refs: null, structured_idea: null, position_disclosure: null, kai_object: null, community_call: null,
       deleted: true, is_claim: false,
       reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: parentId, quote: null,
       media: [], author_deleted: false,
@@ -234,7 +281,7 @@ export function fixtureThread(parentId: string): RoomMessage[] {
       id: `${parentId}-c3`, room_id: 'room-meta', seq: 103, kind: 'text',
       created_at: '2026-08-26T13:45:00Z', time_label: 'Today at 9:45',
       author: JORDAN, body: 'Below 495 the whole reason for being in it is gone. Stop is there, not at 501.',
-      refs: { levels: [495, 501] }, structured_idea: null, position_disclosure: null, kai_object: null,
+      refs: { levels: [495, 501] }, structured_idea: null, position_disclosure: null, kai_object: null, community_call: null,
       deleted: false, is_claim: true,
       reactions: { counts: { agree: 6, chart_up: 4, watching: 2 }, mine: ['agree'] },
       reply_count: 0, parent_id: parentId, quote: quoteOfC1, media: [], author_deleted: false,
@@ -243,7 +290,7 @@ export function fixtureThread(parentId: string): RoomMessage[] {
       id: `${parentId}-c4`, room_id: 'room-meta', seq: 104, kind: 'text',
       created_at: '2026-08-26T13:46:00Z', time_label: 'Today at 9:46',
       author: SAM, body: 'That is clearer, thanks. Same read on $NVDA into the print?',
-      refs: null, structured_idea: null, position_disclosure: null, kai_object: null,
+      refs: null, structured_idea: null, position_disclosure: null, kai_object: null, community_call: null,
       deleted: false, is_claim: false,
       reactions: { counts: { hundred: 2 }, mine: [] },
       reply_count: 0, parent_id: parentId,

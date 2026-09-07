@@ -42,23 +42,43 @@ import type { CommunityCall } from '../../lib/types';
  * The OUTCOME, once there is one, is a word and a percentage move. It is not a
  * grade wearing a different hat: "Hit target" is a fact about what the price
  * did, and it says nothing about whether the idea was any good.
+ *
+ * ── TWO DENSITIES, ONE CARD ─────────────────────────────────────────────
+ * A call is now a MESSAGE — it arrives in the room's conversation with a real
+ * `seq`, which is what lets the existing five-second poll deliver it. So the
+ * same card has to sit in a chat stream as well as on a profile, and `compact`
+ * is that second density rather than a second component. One card means the
+ * two cannot drift, which is exactly the drift that produced two different
+ * `$TICKER` treatments before `PostBody` was extracted.
+ *
+ * What compact drops is the AUTHORSHIP BLOCK, and only that. In a room the
+ * message row above the card already carries the avatar, the name, the handle
+ * and the time; repeating them inside the card would say the member's name
+ * twice in two different weights, three lines apart. What survives is the part
+ * that carries the meaning — the volt gradient, the volt border, and the
+ * COMMUNITY TRADE eyebrow — because those are what say "a person wrote this,
+ * not Kai", and that sentence is the whole reason the card exists.
  */
 
 const DIRECTION_LABEL = { long: 'Long', short: 'Short' } as const;
 
-function LevelCell({ label, value, c, bg, border, testID }: {
-  label: string; value: string; c: string; bg: string; border: string; testID?: string;
+function LevelCell({ label, value, c, bg, border, compact, testID }: {
+  label: string; value: string; c: string; bg: string; border: string;
+  compact?: boolean; testID?: string;
 }) {
   return (
     <View
       testID={testID}
       style={{
-        flex: 1, paddingVertical: 7, paddingHorizontal: 3, borderRadius: 10,
+        flex: 1, paddingVertical: compact ? 5 : 7, paddingHorizontal: 3,
+        borderRadius: compact ? 8 : 10,
         backgroundColor: bg, borderWidth: 0.5, borderColor: border, alignItems: 'center',
       }}
     >
       <T size={8.5} c={color.muted}>{label}</T>
-      <Num size={12} weight="semibold" c={c} style={{ marginTop: 2 }}>{value}</Num>
+      <Num size={compact ? 11 : 12} weight="semibold" c={c} style={{ marginTop: compact ? 1 : 2 }}>
+        {value}
+      </Num>
     </View>
   );
 }
@@ -75,7 +95,7 @@ function outcomeTone(call: CommunityCall): string {
 }
 
 export function CommunityCallCard({
-  call, onFollowChanged, showFollow = false, onWithdraw, testID,
+  call, onFollowChanged, showFollow = false, onWithdraw, compact = false, testID,
 }: {
   call: CommunityCall;
   /** Draws the follow control in the author line. Off on your own cards. */
@@ -83,6 +103,12 @@ export function CommunityCallCard({
   onFollowChanged?: (following: boolean) => void;
   /** Present only on your OWN open call. Withdrawing is not deleting. */
   onWithdraw?: () => void;
+  /**
+   * The chat density. The card loses its authorship block — the message row it
+   * sits in already named the author — and tightens. It keeps the volt, the
+   * border and the COMMUNITY TRADE eyebrow, because those are the card.
+   */
+  compact?: boolean;
   testID?: string;
 }) {
   const router = useRouter();
@@ -93,6 +119,25 @@ export function CommunityCallCard({
   const resolved = call.status !== 'open';
   const tone = outcomeTone(call);
 
+  /** The outcome, once there is one. Same object at both densities. */
+  const outcome = resolved ? (
+    <View
+      testID={`call-outcome-${call.id}`}
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7,
+        borderWidth: 0.5, borderColor: `${tone}66`,
+      }}
+    >
+      <T size={10.5} weight="semibold" c={tone}>{call.outcome_label ?? call.status}</T>
+      {call.result_pct != null ? (
+        <Num size={10.5} weight="semibold" c={tone}>
+          {`${call.result_pct > 0 ? '+' : ''}${call.result_pct.toFixed(1)}%`}
+        </Num>
+      ) : null}
+    </View>
+  ) : null;
+
   return (
     <LinearGradient
       testID={testID ?? `community-call-${call.id}`}
@@ -100,16 +145,33 @@ export function CommunityCallCard({
       start={gradientAngle.start}
       end={gradientAngle.end}
       style={{
-        borderRadius: radius.xxxl, borderWidth: 0.5, borderColor: alpha.volt50,
-        padding: 15, gap: 11,
+        borderRadius: compact ? radius.xxl : radius.xxxl,
+        borderWidth: 0.5, borderColor: alpha.volt50,
+        padding: compact ? 11 : 15, gap: compact ? 8 : 11,
       }}
     >
+      {/*
+        IN CHAT, THE EYEBROW IS THE WHOLE AUTHORSHIP STATEMENT. The row above
+        this card carries the avatar, the name, the handle and the time, so the
+        block below would repeat every one of them. What cannot be dropped is
+        the word: without COMMUNITY TRADE in volt, a bordered card in a stream
+        of plain messages reads as something the house published.
+      */}
+      {compact ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Eyebrow c={color.volt}>COMMUNITY TRADE</Eyebrow>
+          <View style={{ flex: 1 }} />
+          {outcome}
+        </View>
+      ) : null}
+
       {/*
         THE AUTHORSHIP BLOCK — the volt mirror of Kai's violet one.
         The follow control sits INSIDE this block but OUTSIDE the name's own
         pressable: on web react-native renders accessibilityRole="button" as a
         real <button>, and one cannot contain another.
       */}
+      {compact ? null : (
       <LinearGradient
         colors={[alpha.volt18, alpha.volt05]}
         start={gradientAngle.start}
@@ -153,10 +215,11 @@ export function CommunityCallCard({
           />
         ) : null}
       </LinearGradient>
+      )}
 
       {/* The instrument. Never plain text — the mark, then the symbol. */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <TickerMark symbol={call.symbol} size={30} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 8 : 10 }}>
+        <TickerMark symbol={call.symbol} size={compact ? 24 : 30} />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${call.symbol}, open the ticker`}
@@ -164,39 +227,25 @@ export function CommunityCallCard({
           style={{ flex: 1, minWidth: 0 }}
           testID={`call-ticker-${call.id}`}
         >
-          <T size={16} weight="bold">{call.symbol}</T>
+          <T size={compact ? 14 : 16} weight="bold">{call.symbol}</T>
           <T size={10} c={color.muted}>
             {DIRECTION_LABEL[call.direction]}
             {call.scoreable ? ' · counts toward their record' : ' · no levels, so it cannot score'}
           </T>
         </Pressable>
 
-        {resolved ? (
-          <View
-            testID={`call-outcome-${call.id}`}
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 6,
-              paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7,
-              borderWidth: 0.5, borderColor: `${tone}66`,
-            }}
-          >
-            <T size={10.5} weight="semibold" c={tone}>{call.outcome_label ?? call.status}</T>
-            {call.result_pct != null ? (
-              <Num size={10.5} weight="semibold" c={tone}>
-                {`${call.result_pct > 0 ? '+' : ''}${call.result_pct.toFixed(1)}%`}
-              </Num>
-            ) : null}
-          </View>
-        ) : null}
+        {/* At the chat density the outcome has already been drawn beside the
+            eyebrow, where there is room for it. */}
+        {compact ? null : outcome}
       </View>
 
       {/* ONLY THE LEVELS THAT EXIST. Same colours as the house card, because a
           stop is a stop whoever wrote it: entry cyan, stop red, target green. */}
       {hasLevels ? (
         <View style={{ flexDirection: 'row', gap: 6 }} testID={`call-levels-${call.id}`}>
-          {entry ? <LevelCell label="Entry" value={entry} c={color.cyan} bg={color.cyanTint} border={alpha.cyan40} testID={`call-entry-${call.id}`} /> : null}
-          {stop ? <LevelCell label="Stop" value={stop} c={color.red} bg={color.redTint} border={alpha.red40} testID={`call-stop-${call.id}`} /> : null}
-          {target ? <LevelCell label="Target" value={target} c={color.green} bg={color.greenTint} border={alpha.green40} testID={`call-target-${call.id}`} /> : null}
+          {entry ? <LevelCell label="Entry" value={entry} c={color.cyan} bg={color.cyanTint} border={alpha.cyan40} compact={compact} testID={`call-entry-${call.id}`} /> : null}
+          {stop ? <LevelCell label="Stop" value={stop} c={color.red} bg={color.redTint} border={alpha.red40} compact={compact} testID={`call-stop-${call.id}`} /> : null}
+          {target ? <LevelCell label="Target" value={target} c={color.green} bg={color.greenTint} border={alpha.green40} compact={compact} testID={`call-target-${call.id}`} /> : null}
         </View>
       ) : null}
 
@@ -204,13 +253,15 @@ export function CommunityCallCard({
       {call.thesis ? (
         <PostBody
           text={call.thesis}
-          size={13}
+          size={compact ? 12.5 : 13}
           onTicker={(s) => router.push(`/symbol/${encodeURIComponent(s)}` as never)}
           testID={`call-thesis-${call.id}`}
         />
       ) : null}
 
-      {onWithdraw && call.status === 'open' ? (
+      {/* Withdrawing belongs where you are reading your own record, not in the
+          middle of somebody else's conversation. */}
+      {!compact && onWithdraw && call.status === 'open' ? (
         <Pressable
           testID={`call-withdraw-${call.id}`}
           accessibilityRole="button"
@@ -227,7 +278,9 @@ export function CommunityCallCard({
         </Pressable>
       ) : null}
 
-      <T size={10} c={color.dim} testID={`call-not-advice-${call.id}`}>
+      {/* The one quiet line, at both densities. A card small enough to sit in a
+          chat stream is not a card small enough to stop saying this. */}
+      <T size={compact ? 9.5 : 10} c={color.dim} testID={`call-not-advice-${call.id}`}>
         {NOT_ADVICE_COMMUNITY_CALL}
       </T>
     </LinearGradient>

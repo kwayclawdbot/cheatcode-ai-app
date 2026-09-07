@@ -1346,6 +1346,19 @@ export type CommunityCall = {
   stop: number | null;
   target: number | null;
   thesis: string;
+  /**
+   * The desk this call was made for (migration 0040). It decides which core
+   * room the call posts into and which desk's board carries it. It is the
+   * authority; the room is derived from it, never stored beside it.
+   */
+  mode: GoalMode;
+  /**
+   * The room message this call became, when it reached one. Nullable on
+   * purpose: a chat post can fail — slow mode, a ban, a bad minute — and a
+   * call with no message is a degraded state worth being able to see, not a
+   * reason to lose the member's call.
+   */
+  message_id: string | null;
   /** Entry plus a stop or a target. Only these can ever score. */
   scoreable: boolean;
   status: CommunityCallStatus;

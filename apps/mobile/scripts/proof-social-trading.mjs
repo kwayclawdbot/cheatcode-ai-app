@@ -5,19 +5,28 @@
  *   EXPO_PUBLIC_FIXTURES=1 npx expo start --web --port 8099
  *   PROOF_BASE=http://localhost:8099 node scripts/proof-social-trading.mjs
  *
- * It walks composer -> published community call -> Following feed -> the board,
- * and asserts the things a screenshot cannot prove on its own:
+ * It walks composer -> the call in the room's conversation -> the profile ->
+ * the board, and asserts the things a screenshot cannot prove on its own:
  *
  *   · THE CARD IS THE MEMBER'S, NOT KAI'S. A community call carries the
- *     eyebrow "COMMUNITY TRADE" and the author's avatar in a volt authorship
- *     block. It must NOT carry a grade, a score, a score bar or a medallion —
- *     nothing graded it, and a letter on somebody's own idea would be the app
- *     claiming an opinion it does not have. This is the single most valuable
- *     assertion in the file, because the failure is silent: a card that grows
- *     a grade still renders perfectly.
+ *     eyebrow "COMMUNITY TRADE" in volt. It must NOT carry a grade, a score, a
+ *     score bar or a medallion — nothing graded it, and a letter on somebody's
+ *     own idea would be the app claiming an opinion it does not have. This is
+ *     the single most valuable assertion in the file, because the failure is
+ *     silent: a card that grows a grade still renders perfectly.
  *
- *   · THE BELT IS ON IT. Small, hairline, volt-family — and present, because a
- *     belt that only appears on a profile is a belt nobody sees.
+ *   · THE CALL IS IN THE CHAT, AND THERE IS NO SECOND FEED (owner, 7 Sept).
+ *     The Rooms/Following toggle is gone. Community IS the rooms, a published
+ *     call arrives in the conversation as a message carrying its own card, and
+ *     `?feed=following` no longer names a destination — it is a param nothing
+ *     reads, and the rooms are what comes back. These assertions replace the
+ *     old ones about the segmented control and the Following feed; the old
+ *     truth is now a bug, so it is asserted ABSENT rather than deleted.
+ *
+ *   · THE BELT IS ON IT. Small, hairline, volt-family — and present on the
+ *     full-size card, because a belt that only appears on a profile is a belt
+ *     nobody sees. The compact card in chat does not repeat it: the message row
+ *     above already names the author once.
  *
  *   · THE INCENTIVE LINE CHANGES WHILE YOU TYPE. "An entry plus a stop or a
  *     target is what makes a call count" becomes "This one counts" the moment
@@ -27,6 +36,10 @@
  *   · A SNAKE_CASE REFUSAL NEVER REACHES A PERSON. Typing a stop above the
  *     entry on a long produces an English sentence, not `stop_not_below_entry`.
  *
+ *   · THE FOLLOW GRAPH SURVIVED THE FEED. Follow is still on the profile and
+ *     still on an author line in the room. Following governs who gets told; it
+ *     no longer has a page, which is not the same as being removed.
+ *
  *   · THE BOARD LEADS WITH ACCURACY, and says how points work in words.
  *
  *   · THERE IS NO MONEY ANYWHERE. No P/L, no returns, no account size on any
@@ -34,7 +47,8 @@
  *
  * WHAT THIS CANNOT PROVE: that the server writes the row. Fixtures mode has no
  * API, so `Publish it` takes the local path — what is proven here is the
- * composer, the card, the two feeds and the board, not the round trip.
+ * composer, the card in the room, the profile and the board, not the round
+ * trip. `proof-mode-and-calls.mjs` does that half against the real database.
  */
 import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
@@ -137,29 +151,181 @@ await page.locator('[data-testid="sheet-call-published"] >> text=Back to the clu
 await page.waitForTimeout(2200);
 
 /* ================================================================== */
-/* 2. THE PUBLISHED CARD, IN THE FOLLOWING FEED                        */
+/* 2. THE PUBLISHED CALL, IN THE ROOM'S CONVERSATION                   */
 /* ================================================================== */
-console.log('\nsocial-trading / the community call card');
+console.log('\nsocial-trading / the call inside the room chat');
+await go('/community');
+note(await has('screen-community'), 'the Community tab opened');
+
+/* -- 2a. THE TOGGLE IS GONE, AND COMMUNITY IS THE ROOMS ------------- */
+// Asserted absent rather than deleted: the toggle shipped, and a proof that
+// simply stopped mentioning it would not notice it coming back.
+note(!(await has('community-feed')), 'there is no Rooms/Following switch on the tab any more');
+note(!(await has('following-feed')), 'and no Following feed as a destination');
+note(await has('room-rail'), 'what the tab shows is the rooms — the rail naming which one you are reading');
+note(await has('club-composer'), 'and the room composer, because this screen is always a room now');
+await shot('05-community-rooms');
+
+/* -- 2b. AND THE ORPHANED PARAM LEADS NOWHERE ------------------------ */
+// `?feed=following` was a real address. Nothing reads it now, so the honest
+// outcome is the rooms — never a blank screen, and never a feed that survived
+// only for old links.
 await go('/community?feed=following');
-note(await has('community-feed'), 'the Community tab carries a feed switch');
-note(await has('following-feed'), 'and the Following feed renders');
-await shot('05-following-feed');
+note(!(await has('following-feed')), '?feed=following no longer opens a separate feed');
+note(await has('room-rail'), 'it lands on the rooms, which is what the tab is');
+
+/* -- 2c. THE CALL IS A MESSAGE, DRAWN AS A CARD --------------------- */
+await go('/community');
+const chatCall = page.locator('[data-testid^="club-message-call-"]').first();
+note(await chatCall.count() > 0, "a member's call renders inside the room stream, not in a feed of its own");
+// The room is a scroll view inside a fixed-height screen, so `fullPage`
+// photographs the top of the conversation and nothing else. Scroll the card
+// into view first, or the screenshot proves the tab and not the thing.
+if (await chatCall.count()) {
+  await chatCall.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(700);
+}
+await shot('11-call-in-room-chat');
 
 const card = page.locator('[data-testid^="community-call-"]').first();
-note(await card.count() > 0, 'a member call is drawn as a card');
+note(await card.count() > 0, 'and what is drawn in the stream is the community call card');
 
 if (await card.count()) {
   const body = (await card.innerText()).replace(/\s+/g, ' ');
 
-  /* -- 2a. it is the member's, and it says so ------------------------- */
+  /* -- 2d. it is the member's, and it says so ------------------------- */
   note(/COMMUNITY TRADE/.test(body), 'its eyebrow is COMMUNITY TRADE — not a house-alert eyebrow');
-  note(/Community trade, not advice\./.test(body), 'it carries the one quiet not-advice line');
+  note(/Community trade, not advice\./.test(body), 'it carries the one quiet not-advice line, even at chat density');
   note(
     (body.match(/not advice|not investment advice/gi) ?? []).length === 1,
     'exactly one disclaimer line on the card, not a paragraph',
   );
 
-  /* -- 2b. THE BELT ---------------------------------------------------- */
+  /* -- 2e. IT IS NOT GRADED. The assertion that matters. -------------- */
+  note(!/\bNo grade\b/i.test(body), 'no "No grade" ring — the card never raises the question');
+  note(!/\bGrade\b/i.test(body), 'the word "grade" appears nowhere on it');
+  note(
+    await page.locator('[data-testid^="medallion-"]').count() === 0,
+    'no grade medallion anywhere in the room',
+  );
+  note(
+    await page.locator('[data-testid^="bars-"]').count() === 0,
+    'and no score bars — nothing scored it, so nothing is drawn',
+  );
+
+  /* -- 2f. levels, and only the ones that exist ----------------------- */
+  const levels = page.locator('[data-testid^="call-levels-"]').first();
+  if (await levels.count()) {
+    const lv = (await levels.innerText()).replace(/\s+/g, ' ');
+    note(/Entry/.test(lv), 'a call with an entry shows the Entry cell');
+    note(!/—/.test(lv), 'and no level cell is a dash standing in for a number that does not exist');
+  }
+
+  /* -- 2g. the ticker is never plain text ----------------------------- */
+  note(
+    await page.locator('[data-testid^="ticker-mark-"]').count() > 0,
+    'the symbol on the card carries its mark',
+  );
+
+  /* -- 2h. THE NAME IS SAID ONCE ------------------------------------- */
+  // The message row already carries the avatar, the name, the handle and the
+  // time. The compact card drops its own authorship block so the reader is not
+  // told who wrote it twice, three lines apart.
+  note(
+    !(await chatCall.locator('[data-testid^="community-call-author-"]').count()),
+    'the card in chat drops its authorship block — the message row named them once already',
+  );
+  note(
+    !(await chatCall.locator('[data-testid^="call-belt-"]').count()),
+    'and does not repeat the belt inside the message',
+  );
+}
+
+/* -- 2i. no money on the card ---------------------------------------- */
+// SCOPED TO THE CARD, deliberately. This used to be asserted across the whole
+// Following feed, where every word on screen was drawn by the app. A room is
+// not that: members type, and one of them saying "risk $58" in a sentence is
+// their words, not a number the app has decided to print. What must never
+// carry money is the object the app draws, which is the card.
+if (await card.count()) {
+  const cardText = (await card.innerText()).replace(/\s+/g, ' ');
+  note(!NO_MONEY.test(cardText), `no P/L, no size, no dollars on the call card ("${cardText.slice(0, 70)}…")`);
+}
+
+/* -- 2j. and there is still a door to your own calls ----------------- */
+// "Your calls" used to live in the Following feed's empty state, and was the
+// only route in the app to the thing you had just published. The feed went;
+// the door could not go with it. It needs a signed-in id to build a profile
+// route, and fixtures mode has no session — `/contributor/` with nothing after
+// it is a broken screen, so its absence here is the correct behaviour and its
+// PRESENCE is proved with a real account in proof-mode-and-calls.mjs.
+note(await has('community-publish-call'), 'the tab offers to publish a call');
+note(
+  !(await has('community-my-calls')),
+  'and "Your calls" is correctly withheld with no session — it never links to a profile that has no id',
+);
+
+/* ================================================================== */
+/* 2l. THE OTHER MESSAGE COMPONENT                                     */
+/* ================================================================== */
+/*
+ * `ClubMessage` (the tab, above) and `MessageRow` (the room screen and the
+ * thread) are separate components with separate bodies. The card had to be
+ * added to both or a call would be an object on one surface and a bare
+ * sentence on the other — the same drift that produced two `$TICKER`
+ * treatments before `PostBody` was extracted. So it is asserted twice.
+ */
+console.log('\nsocial-trading / the same call, in the room screen');
+await go('/room/room-day-trade');
+note(await has('screen-room') || await has('room-day-trade') || (await text()).length > 0, 'the room screen opened');
+const roomCall = page.locator('[data-testid^="message-call-"]').first();
+note(await roomCall.count() > 0, 'MessageRow draws the call as a card too, not as a sentence');
+if (await roomCall.count()) {
+  await roomCall.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(700);
+  const rc = (await roomCall.innerText()).replace(/\s+/g, ' ');
+  note(/COMMUNITY TRADE/.test(rc), 'with the same COMMUNITY TRADE eyebrow');
+  note(!/\bGrade\b/i.test(rc), 'and still nothing graded on it');
+}
+await shot('12-call-in-room-screen');
+
+/*
+ * NO BUTTON INSIDE A BUTTON. This is the rule the card's placement exists to
+ * obey: react-native-web renders accessibilityRole="button" as a real
+ * <button>, and one cannot legally contain another. The failure is silent in
+ * development and breaks the inner control's clicks, so it is checked in the
+ * DOM rather than trusted to a code comment.
+ */
+const nested = await page.evaluate(
+  () => [...document.querySelectorAll('button')].filter((b) => b.querySelector('button')).length,
+);
+note(nested === 0, `no nested <button> anywhere on the room screen (${nested} found)`);
+
+/*
+ * -- 2k. THE FOLLOW GRAPH SURVIVED THE FEED -------------------------
+ * The author-line control is drawn only when a session says the author is
+ * somebody else, so it cannot appear in fixtures mode and its absence here
+ * proves nothing either way. What CAN be proved offline is that the component
+ * and its route still exist — asserted on the profile below, where Follow is
+ * unconditional — and the two-account run proves the room's own copy.
+ */
+
+/* ================================================================== */
+/* 2k. THE PROFILE — where Follow replaced Save, and where a member's  */
+/*     own record lives now that the Following feed does not           */
+/* ================================================================== */
+console.log('\nsocial-trading / the contributor profile');
+await go('/contributor/u-jordan');
+note(await has('screen-contributor'), 'the profile opened');
+await shot('10-contributor');
+
+/* -- the FULL card, at the density that carries the whole author line - */
+const fullCard = page.locator('[data-testid^="community-call-"]').first();
+if (await fullCard.count()) {
+  note(
+    await fullCard.locator('[data-testid^="community-call-author-"]').count() > 0,
+    'on a profile the card keeps its volt authorship block — nothing above it named the author',
+  );
   const belt = page.locator('[data-testid^="call-belt-"]').first();
   note(await belt.count() > 0, 'the author line carries a belt chip');
   if (await belt.count()) {
@@ -170,61 +336,17 @@ if (await card.count()) {
     // that has taken over the row.
     note(!!box && box.height <= 22, `drawn small — ${box ? Math.round(box.height) : 0}px tall, not a trophy`);
   }
-
-  /* -- 2c. IT IS NOT GRADED. The assertion that matters. -------------- */
-  note(!/\bNo grade\b/i.test(body), 'no "No grade" ring — the card never raises the question');
-  note(!/\bGrade\b/i.test(body), 'the word "grade" appears nowhere on it');
-  note(
-    await page.locator('[data-testid^="medallion-"]').count() === 0,
-    'no grade medallion anywhere in the Following feed',
-  );
-  note(
-    await page.locator('[data-testid^="bars-"]').count() === 0,
-    'and no score bars — nothing scored it, so nothing is drawn',
-  );
-
-  /* -- 2d. levels, and only the ones that exist ----------------------- */
-  const levels = page.locator('[data-testid^="call-levels-"]').first();
-  if (await levels.count()) {
-    const lv = (await levels.innerText()).replace(/\s+/g, ' ');
-    note(/Entry/.test(lv), 'a call with an entry shows the Entry cell');
-    note(!/—/.test(lv), 'and no level cell is a dash standing in for a number that does not exist');
-  }
-
-  /* -- 2e. the ticker is never plain text ----------------------------- */
-  note(
-    await page.locator('[data-testid^="ticker-mark-"]').count() > 0,
-    'every symbol on the feed carries its mark',
-  );
 }
 
-/* -- 2f. a shared trade is a row, not a card ------------------------- */
+/* -- a shared trade is a row, not a card. It used to be asserted on the
+      Following feed; the profile is where a shared trade lives now. ---- */
 const trade = page.locator('[data-testid^="shared-trade-"]').first();
-note(await trade.count() > 0, 'the feed also renders shared trades');
+note(await trade.count() > 0, 'the profile renders the trades they chose to show');
 if (await trade.count()) {
   const t = (await trade.innerText()).replace(/\s+/g, ' ');
   note(/Entry/.test(t), 'a shared trade shows its levels');
   note(!NO_MONEY.test(t), `and no size, no dollars, no P/L on it ("${t.slice(0, 74)}…")`);
 }
-
-const feedText = await text();
-note(!/\$\s?\d/.test(feedText), 'nothing in the Following feed prints a dollar figure');
-
-/* -- 2g. the two empty states are different -------------------------- */
-// Both cannot be shown from one fixture, so what is asserted is that the two
-// have separate identities in the DOM rather than one shared "Nothing here".
-note(
-  !(await has('following-empty-nobody')) || !(await has('following-empty-quiet')),
-  'the two empty states are distinct elements, never both at once',
-);
-
-/* ================================================================== */
-/* 2h. THE PROFILE — where Follow replaced Save                        */
-/* ================================================================== */
-console.log('\nsocial-trading / the contributor profile');
-await go('/contributor/u-jordan');
-note(await has('screen-contributor'), 'the profile opened');
-await shot('10-contributor');
 
 const profile = await text();
 note(await has('follow-contributor'), 'it offers Follow');

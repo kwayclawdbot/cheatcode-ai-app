@@ -7,6 +7,7 @@
  * format. Enum values follow the Postgres enums in
  * supabase/migrations/0001_extensions_enums.sql.
  */
+import type { CommunityCall } from '../../lib/types';
 
 export type RoomType = 'core' | 'setup' | 'announcement';
 export type MemberRole = 'member' | 'moderator' | 'educator' | 'expert';
@@ -191,6 +192,18 @@ export type RoomMessage = {
   structured_idea: StructuredIdea | null;
   position_disclosure: PositionDisclosure | null;
   kai_object: KaiRoomObject | null;
+  /**
+   * The member's call this message carries, resolved by the server from
+   * `refs.community_call_id`.
+   *
+   * IT SITS BESIDE `kai_object` BECAUSE IT IS THE SAME SPECIES OF THING: a
+   * first-class object carried by an otherwise ordinary `text` message. When it
+   * is present the room draws the volt COMMUNITY TRADE card instead of the
+   * body, and because the call arrives as a real message with a real `seq`, the
+   * five-second `after_seq` poll already delivers it — there is no second
+   * realtime stack anywhere in this feature.
+   */
+  community_call: CommunityCall | null;
   deleted: boolean;
   /**
    * A market claim from a member. Renders "Unverified" until a

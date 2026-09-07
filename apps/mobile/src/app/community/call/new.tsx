@@ -175,6 +175,11 @@ export default function NewCommunityCall() {
     stop,
     target,
     thesis: thesis.trim(),
+    // The desk this will be stamped with, and the post it has not become yet.
+    // The preview is a call that has not been written, so its message receipt
+    // is null — which is exactly what the card should be able to render.
+    mode: 'day_trade',
+    message_id: null,
     scoreable,
     status: 'open',
     result_pct: null,

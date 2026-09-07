@@ -195,6 +195,12 @@ export function usePublishCall() {
           stop: body.stop ?? null,
           target: body.target ?? null,
           thesis: body.thesis,
+          // The desk the server will stamp. `CreateCommunityCallBody` does not
+          // carry one yet, so offline this is the default the contract itself
+          // defaults to rather than a guess of our own. Offline there is also
+          // no room to post into, so the message receipt stays honestly empty.
+          mode: 'day_trade',
+          message_id: null,
           scoreable: body.entry != null && (body.stop != null || body.target != null),
           status: 'open',
           result_pct: null,

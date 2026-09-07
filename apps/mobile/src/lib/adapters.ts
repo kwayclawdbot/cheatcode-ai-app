@@ -2154,6 +2154,15 @@ export function adaptCommunityCall(v: unknown, i = 0): CommunityCall {
     stop,
     target,
     thesis: r4str(c.thesis ?? c.body),
+    // The desk, defaulted the way the contract defaults it, so a payload from
+    // an API build older than 0040 still produces a call that renders.
+    mode: (() => {
+      const m = r4str(c.mode);
+      return m === 'day_trade' || m === 'swing' || m === 'invest' ? m : 'day_trade';
+    })(),
+    // The post it became. A call that never reached a room keeps its null
+    // rather than borrowing an id from somewhere.
+    message_id: r4nul(c.message_id),
     // `scoreable` is generated in 0038. It is recomputed here only when the
     // payload does not carry it — never overridden, because the database's
     // answer is the one the points were actually awarded against.

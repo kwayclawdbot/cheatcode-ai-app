@@ -8,6 +8,7 @@ import type { MessageMedia, ReactionKind, RoomMessage } from '../types';
 import { MediaStrip, QuoteBlock, ReactionBar, ThreadLine } from './Social';
 import { PostBody } from './PostBody';
 import { FollowButton } from '../../social/FollowButton';
+import { CommunityCallCard } from '../../social/CommunityCallCard';
 
 /**
  * One message in a room (V3-C1 / S81).
@@ -131,8 +132,33 @@ export function MessageRow({
           ) : null}
         </View>
 
-        {/* The body is the tap target for selection so the row never nests a
-            button inside a button (web renders both as <button>). */}
+        {/*
+          A MEMBER'S CALL IS THE BODY, WHEN THERE IS ONE.
+
+          A call reaches the room as an ordinary `text` message carrying a
+          resolved `community_call`, which is why the existing five-second
+          `after_seq` poll delivers it with nothing new subscribed to. So the
+          card is drawn in place of the words — the body it arrived with is a
+          sentence describing the same trade, and printing both would say the
+          idea twice.
+
+          IT SITS OUTSIDE THE SELECTION PRESSABLE, exactly as MediaStrip does
+          below and for the same reason: the card contains its own buttons (the
+          author, the ticker, a $cashtag in the thesis), and on web
+          react-native renders accessibilityRole="button" as a real <button>,
+          which cannot legally contain another one. The cost is that a call
+          cannot be long-pressed for the moderation sheet from this row; it can
+          still be reacted to, replied to and opened as a thread, and the club
+          feed's row — whose wrapper deliberately carries no button role — does
+          offer the actions.
+        */}
+        {!m.deleted && m.community_call ? (
+          <View style={{ marginTop: 4 }} testID={`message-call-${m.id}`}>
+            <CommunityCallCard call={m.community_call} compact />
+          </View>
+        ) : (
+        /* The body is the tap target for selection so the row never nests a
+           button inside a button (web renders both as <button>). */
         <Pressable
           testID={`message-${m.id}`}
           accessibilityRole="button"
@@ -168,6 +194,7 @@ export function MessageRow({
             </>
           )}
         </Pressable>
+        )}
 
         {/* Pictures sit OUTSIDE the selection Pressable: tapping a photo opens
             the photo, and nesting a pressable inside a pressable makes that

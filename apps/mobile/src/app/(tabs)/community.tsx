@@ -35,10 +35,7 @@ import type { Circle, CircleTtl } from '../../features/circles/types';
 import type { MessageReactions, ReactionKind, Room, RoomMessage } from '../../features/community/types';
 import { ModeSegmented } from '../../features/home';
 import { DEFAULT_MODE } from '../../features/nav/second-tab';
-import { Segmented } from '../../ui/Segmented';
-import {
-  BeltUpSheet, CommunityCallCard, PREVIEW_BELT, SharedTradeRow, useBeltUp, useFollowFeed,
-} from '../../features/social';
+import { BeltUpSheet, PREVIEW_BELT, useBeltUp } from '../../features/social';
 import type { GoalMode } from '../../lib/types';
 
 const MODE_ORDER = ['day_trade', 'swing', 'invest'];
@@ -62,28 +59,26 @@ const MembersIcon = () => (
 );
 
 /**
- * The two feeds this tab carries.
+ * THE ROOMS/FOLLOWING TOGGLE IS GONE, AND COMMUNITY IS THE ROOMS AGAIN
+ * (owner, 7 Sept).
  *
- * ROOMS is what the club has always been: three mode rooms, everybody in them.
- * FOLLOWING is the other half of a social layer — the people you chose, and
- * only them. They are the same tab because they answer the same question
- * ("what is the club saying") at two different widths, and splitting them into
- * separate tabs would make the narrow one look like a second-class room.
+ * The toggle offered two answers to one question and made the reader choose
+ * before they had read anything. Worse, the thing it was protecting — a
+ * member's published call — had no way of reaching the conversation at all: it
+ * lived only in a feed you had to go and switch to. A call now arrives IN the
+ * room as a message carrying its own card, which is where people already are,
+ * so the second destination stopped being worth a control.
  *
- * It is a `Segmented`, the app's existing in-object view switch, rather than
- * anything new: this is a view of one screen, which is exactly what that
- * control already means everywhere else in the app.
+ * FOLLOWING ITSELF IS NOT GONE. It never was a page; it is a graph. The follow
+ * button is still on every author line and every profile, the counts are still
+ * on profiles, and publishing a call still fans out to everybody who follows
+ * you — following now governs who gets told, which is what it was always
+ * actually for. What it no longer has is a tab of its own.
  */
-type FeedKey = 'rooms' | 'following';
-
-const FEEDS: { key: FeedKey; label: string }[] = [
-  { key: 'rooms', label: 'Rooms' },
-  { key: 'following', label: 'Following' },
-];
 
 export default function Community() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ feed?: string; belt?: string }>();
+  const params = useLocalSearchParams<{ belt?: string }>();
   const { profile, session } = useSession();
   /** The one global mode, read the same way every other screen reads it. */
   const mode = (profile?.primary_mode as GoalMode) ?? DEFAULT_MODE;
@@ -114,26 +109,6 @@ export default function Community() {
   const [beltPreview, setBeltPreview] = useState<typeof PREVIEW_BELT | null>(
     params.belt === '1' ? PREVIEW_BELT : null,
   );
-
-  /**
-   * Which feed is on screen. `?feed=following` picks the Following half.
-   *
-   * THE PARAM IS WATCHED, NOT READ ONCE. A `useState` initializer runs the
-   * first time this component mounts and never again, and this is a TAB — it
-   * is already mounted long before anything links into it. So a
-   * `router.replace('/community?feed=following')` from somewhere else in the
-   * app changed the address bar, re-rendered this screen, and left the reader
-   * looking at Rooms, which is the feed they were already on. Nothing errored
-   * and nothing was missing; the app simply ignored where it had been asked to
-   * go. The effect below makes the param mean what it says every time it
-   * changes, while leaving the segmented control free the rest of the time.
-   */
-  const [feed, setFeed] = useState<FeedKey>(params.feed === 'following' ? 'following' : 'rooms');
-  useEffect(() => {
-    if (params.feed === 'following') setFeed('following');
-    else if (params.feed === 'rooms') setFeed('rooms');
-  }, [params.feed]);
-  const following = useFollowFeed();
 
   const [roomId, setRoomId] = useState<string | null>(null);
   const [messages, setMessages] = useState<RoomMessage[]>([]);
@@ -410,12 +385,12 @@ export default function Community() {
         </Pressable>
       </View>
 
-      {/* WHICH FEED, AND THE TWO SOCIAL ACTIONS.
-          It sits above the scroll view rather than inside it because it is
-          chrome for the screen, not content in it — scrolling away the control
-          that says which feed you are reading is how people get lost. */}
+      {/* THE THREE SOCIAL ACTIONS. No feed switch above them any more: this
+          screen is the rooms, and a call published from here lands in one of
+          them. "Your calls" is the door the old Following feed's empty state
+          used to be — the only route to what you published yourself — and it
+          could not leave with the feed. */}
       <View style={{ paddingHorizontal: 16, paddingTop: 10, gap: 9 }}>
-        <Segmented options={FEEDS} value={feed} onChange={setFeed} testID="community-feed" />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <Pressable
             testID="community-publish-call"
@@ -433,6 +408,23 @@ export default function Community() {
             <T size={11.5} weight="semibold" c={color.volt}>Publish a call</T>
           </Pressable>
           <View style={{ flex: 1 }} />
+          {/* Quiet outline, not volt: volt is the action being offered, and
+              reading your own record is not the one this screen is asking
+              for. Absent until the session has an id, because
+              `/contributor/` with nothing after it is a broken screen. */}
+          {myUserId ? (
+            <Pressable
+              testID="community-my-calls"
+              accessibilityRole="button"
+              accessibilityLabel="Your calls"
+              accessibilityHint="Everything you have published, on your own profile."
+              onPress={() => router.push(`/contributor/${myUserId}` as never)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
+            >
+              <T size={11.5} weight="semibold" c={color.muted}>Your calls</T>
+            </Pressable>
+          ) : null}
           <Pressable
             testID="community-board"
             accessibilityRole="button"
@@ -458,19 +450,12 @@ export default function Community() {
             onRefresh={async () => {
               setRefreshing(true);
               await load();
-              following.reload();
               setRefreshing(false);
             }}
           />
         }
       >
-        {feed === 'following' ? (
-          <FollowingFeed
-            feed={following}
-            myUserId={myUserId}
-            onPublish={() => router.push('/community/call/new' as never)}
-          />
-        ) : loading ? (
+        {loading ? (
           <View style={{ paddingVertical: 40, alignItems: 'center' }}>
             <ActivityIndicator color={color.violet} />
           </View>
@@ -606,10 +591,8 @@ export default function Community() {
         )}
       </ScrollView>
 
-      {/* The composer posts INTO A ROOM, so it is not drawn over a feed that
-          has no room to post into. The Following feed's own action is
-          "Publish a call", which is above and is a different act. */}
-      {feed === 'rooms' ? (
+      {/* The composer posts INTO A ROOM, and this screen is always a room now,
+          so it is always drawn. */}
       <View style={{ paddingHorizontal: 16, paddingBottom: 8, paddingTop: 4, gap: 8 }}>
         {postNotice ? (
           <Pressable
@@ -635,7 +618,6 @@ export default function Community() {
           onRemoveAttachment={media.remove}
         />
       </View>
-      ) : null}
 
       <CreateCircleSheet
         visible={createOpen}
@@ -678,142 +660,5 @@ export default function Community() {
         onKeep={async (t, reason) => afterModeration(await moderationApi.keepMessage(t.messageId, reason))}
       />
     </Screen>
-  );
-}
-
-/**
- * THE FOLLOWING FEED — calls and shared trades from the people you chose.
- *
- * TWO EMPTY STATES, AND THEY ARE NOT THE SAME SCREEN. "You follow nobody" is a
- * thing the reader can fix in one tap and the offer is to go and find people.
- * "Nobody you follow has posted" is a quiet day and there is nothing to fix —
- * the offer there is to publish something yourself. Collapsing the two into one
- * "Nothing here" would make a quiet day look like a broken feature, and a
- * broken feature look like a quiet day.
- *
- * Newest first, and the two object types keep their different weights: a call
- * is a volt card because somebody is making an argument, a shared trade is a
- * plain row because it is a record.
- *
- * YOUR OWN CALLS ARE NOT IN THIS FEED, AND THE EMPTY STATE SAYS WHERE THEY
- * ARE. Following means the people you chose; the database will not even let
- * you follow yourself (`follows_not_self`, migration 0038), so a call you just
- * published can never appear here. Before the "Your calls" offer below there
- * was no route to your own profile anywhere in the app, so somebody who
- * published a call and landed on an empty Following feed had no way to reach
- * the thing they had just written and reasonably concluded it had not saved.
- */
-function FollowingFeed({
-  feed, myUserId, onPublish,
-}: {
-  feed: ReturnType<typeof useFollowFeed>;
-  /** Null before the session has loaded — the offer is simply not drawn. */
-  myUserId: string | null;
-  onPublish: () => void;
-}) {
-  const router = useRouter();
-
-  if (feed.loading && !feed.data) {
-    return (
-      <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-        <ActivityIndicator color={color.violet} />
-      </View>
-    );
-  }
-
-  if (feed.error) {
-    return (
-      <View style={{ padding: 16 }} testID="following-error">
-        <T size={13} lh={19} c={color.muted}>{feed.error}</T>
-      </View>
-    );
-  }
-
-  const data = feed.data;
-
-  if (!data || !data.items.length) {
-    const nobody = data?.follows_nobody ?? true;
-    return (
-      <View
-        testID={nobody ? 'following-empty-nobody' : 'following-empty-quiet'}
-        style={{ paddingHorizontal: 16, paddingVertical: 26, gap: 8 }}
-      >
-        <T size={14.5} weight="semibold">
-          {nobody ? 'You are not following anybody yet.' : 'Nobody you follow has posted yet.'}
-        </T>
-        <T size={12.5} lh={18.5} c={color.muted}>
-          {data?.empty_plain
-            ?? (nobody
-              ? 'Follow a few members and this becomes their calls and their trades, newest first. Tap a name in the rooms to see what they have published.'
-              : 'A quiet day on your list. You could be the one who posts.')}
-        </T>
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-          <Pressable
-            testID="following-empty-action"
-            accessibilityRole="button"
-            accessibilityLabel={nobody ? 'Read the rooms' : 'Publish a call'}
-            onPress={nobody ? () => router.push('/community' as never) : onPublish}
-            style={({ pressed }) => ({
-              height: 38, paddingHorizontal: 15, borderRadius: radius.pill,
-              alignItems: 'center', justifyContent: 'center',
-              borderWidth: 1, borderColor: alpha.volt55, backgroundColor: alpha.volt10,
-              transform: [{ scale: pressed ? 0.97 : 1 }],
-            })}
-          >
-            <T size={12.5} weight="semibold" c={color.volt}>
-              {nobody ? 'Read the rooms' : 'Publish a call'}
-            </T>
-          </Pressable>
-          {/* THE WAY BACK TO YOUR OWN CALLS. This feed is the people you
-              chose and never you, so without this there is no door from here
-              to the thing you published a minute ago. Quiet outline, not
-              volt: volt is the action you are being offered, and reading your
-              own record is not the one this screen is asking for. */}
-          {myUserId ? (
-            <Pressable
-              testID="following-empty-mine"
-              accessibilityRole="button"
-              accessibilityLabel="Your calls"
-              onPress={() => router.push(`/contributor/${myUserId}` as never)}
-              style={({ pressed }) => ({
-                height: 38, paddingHorizontal: 15, borderRadius: radius.pill,
-                alignItems: 'center', justifyContent: 'center',
-                borderWidth: 0.5, borderColor: alpha.ivory24,
-                opacity: pressed ? 0.75 : 1,
-              })}
-            >
-              <T size={12.5} weight="semibold" c={color.muted}>Your calls</T>
-            </Pressable>
-          ) : null}
-          <Pressable
-            testID="following-empty-board"
-            accessibilityRole="button"
-            accessibilityLabel="The board"
-            onPress={() => router.push('/leaderboard' as never)}
-            style={({ pressed }) => ({
-              height: 38, paddingHorizontal: 15, borderRadius: radius.pill,
-              alignItems: 'center', justifyContent: 'center',
-              borderWidth: 0.5, borderColor: alpha.ivory24,
-              opacity: pressed ? 0.75 : 1,
-            })}
-          >
-            <T size={12.5} weight="semibold" c={color.muted}>The board</T>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={{ paddingHorizontal: 16, paddingTop: 10, gap: 12 }} testID="following-feed">
-      {data.items.map((item) => (
-        item.kind === 'call'
-          ? <CommunityCallCard key={`call-${item.call.id}`} call={item.call} showFollow />
-          : <SharedTradeRow key={`trade-${item.trade.id}`} trade={item.trade} />
-      ))}
-      {feed.isFixture ? (
-        <T size={10} c={color.dim} align="center">Example feed — the service is not connected here.</T>
-      ) : null}
-    </View>
   );
 }
