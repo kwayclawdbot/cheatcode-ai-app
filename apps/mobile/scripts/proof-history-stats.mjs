@@ -134,10 +134,10 @@ if (await meta.count()) {
   const t = await flat(meta);
   console.log(`  · ${t}`);
   note(/rehearsal, not an alert anyone was sent/i.test(t), 'it says it was a rehearsal');
-  note(/CALLED \$609/.test(t), 'the call price');
+  note(/CALLED \$610\.11/.test(t), 'the call price');
   note(/HELD Intraday/.test(t), 'and that it was an intraday call');
   note(await meta.locator('[data-testid="contract-META"]').count() > 0, 'the contract is drawn');
-  note(/607\.5/.test(t) && /Put/.test(t) && /Aug 12/.test(t) && /5\.25/.test(t),
+  note(/607\.5/.test(t) && /Put/.test(t) && /Aug 12/.test(t) && /5\.00/.test(t),
     'strike, side, expiry and what was paid — as numerals, on one line');
   /*
     THE HISTORY ROW DID NOT BECOME A CARD.

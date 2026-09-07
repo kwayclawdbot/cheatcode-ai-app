@@ -294,13 +294,23 @@ function Runway({ dte, tone }: { dte: number; tone: string }) {
   );
 }
 
-/** What an implied-volatility rank means, said the way a person would say it. */
+/**
+ * What an implied-volatility rank means, said the way a person would say it.
+ *
+ * The whole sentence is returned, not a fragment slotted behind a fixed
+ * "Implied volatility is …" opener, because the SUBJECT changes with the
+ * reading. At the ends of the range the finding is about what the contract
+ * costs, and volatility is not a thing that can be expensive or cheap — it is
+ * what you are buying, the option is what you pay. So the extremes talk about
+ * options and the middle readings, which really are statements about where the
+ * volatility itself sits in its own year, keep saying so.
+ */
 function rankSentence(rank: number): string {
-  if (rank >= 97) return 'as expensive as it has been all year';
-  if (rank >= 80) return 'near the top of its own year';
-  if (rank >= 55) return 'above the middle of its own year';
-  if (rank >= 30) return 'around the middle of its own year';
-  return 'cheap by its own standards';
+  if (rank >= 97) return 'Options are as expensive as they have been all year.';
+  if (rank >= 80) return 'Implied volatility is near the top of its own year.';
+  if (rank >= 55) return 'Implied volatility is above the middle of its own year.';
+  if (rank >= 30) return 'Implied volatility is around the middle of its own year.';
+  return 'Options are cheap by their own standards.';
 }
 
 /**
@@ -463,6 +473,19 @@ function VerdictStrip({ c, symbol }: { c: AlertOptionContract; symbol: string })
   const clears = c.clears_liquidity_floor;
   const checks = c.floor_checks ?? [];
   const passed = checks.filter((k) => k.passes).length;
+  const missed = checks.length > 0 && passed < checks.length;
+
+  /* The tally is words, not "3/4". A fraction on a card is a grade, and this is
+     not one — the score out of 100 is the only ratio the spec allows on screen.
+     It also reads wrong out loud: a member does not say "three over four", they
+     say three of the four checks came back clear. When every check clears there
+     is no count worth carrying, because the verdict line beside it has already
+     said the contract trades fine, so the strip just confirms the checks ran. */
+  const tally = !checks.length
+    ? null
+    : missed
+      ? `${passed} of ${checks.length} clear`
+      : 'all clear';
 
   let word: string | null = null;
   let tone: string = color.text;
@@ -487,8 +510,8 @@ function VerdictStrip({ c, symbol }: { c: AlertOptionContract; symbol: string })
     >
       <T size={9.5} weight="bold" c={color.dim} ls={0.7}>TRADABILITY</T>
       <T size={11.5} weight="semibold" c={tone} style={{ flex: 1 }}>{word}</T>
-      {checks.length ? (
-        <T size={10.5} c={color.dim}>{`${passed}/${checks.length}`}</T>
+      {tally ? (
+        <T size={10.5} c={missed ? color.gold : color.dim}>{tally}</T>
       ) : null}
     </View>
   );
@@ -553,7 +576,7 @@ function Evidence({ c, symbol }: { c: AlertOptionContract; symbol: string }) {
     <View style={{ gap: 10, paddingTop: 9, borderTopWidth: 0.5, borderTopColor: alpha.ivory08 }}>
       {rank != null ? (
         <T size={11} c={rank >= 80 ? color.gold : color.dim} lh={16}>
-          {`Implied volatility is ${rankSentence(rank)}.`}
+          {rankSentence(rank)}
         </T>
       ) : null}
 
