@@ -28,6 +28,7 @@ import { Screen } from '../../ui/Screen';
 import { T } from '../../ui/Text';
 import { ObjectCard } from '../../ui/Panel';
 import { Composer } from '../../ui/Composer';
+import { KeyboardDock } from '../../ui/KeyboardDock';
 import { useAttachments } from '../../features/media/useAttachments';
 import { KaiOrb } from '../../ui/KaiOrb';
 import { alpha, color, radius } from '../../ui/tokens';
@@ -378,13 +379,24 @@ export default function Community() {
               </>
             ) : null}
             <T size={10.5} c={color.dim} testID="club-presence">{presence}</T>
-            {/* What is actually keeping this feed fresh, in its own words. It
-                says "Refreshing every 5s" when it is polling, and only ever
-                says Live when a realtime channel really is open. */}
-            {transportLabel(freshness) ? (
+            {/*
+              "REFRESHING EVERY 5S" IS GONE. The mechanism is untouched — the
+              poll still runs and `useFreshness` still reports it — but the
+              label was the app narrating its own plumbing. Nobody reading a
+              room needs to be told the interval, and it sat in the header of
+              every room all day saying the same six words.
+
+              LIVE SURVIVES, because that one is not plumbing: it is the
+              difference between a conversation arriving as it is typed and a
+              conversation arriving up to five seconds late, and that changes
+              whether you wait before replying. It appears only when a realtime
+              channel really is open, which is what made the polling half say
+              nothing worth the space.
+            */}
+            {freshness === 'realtime' ? (
               <>
                 <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: color.dim }} />
-                <T size={10.5} c={freshness === 'realtime' ? color.volt : color.dim} testID="club-freshness">
+                <T size={10.5} c={color.volt} testID="club-freshness">
                   {transportLabel(freshness)}
                 </T>
               </>
@@ -436,22 +448,17 @@ export default function Community() {
           could not leave with the feed. */}
       <View style={{ paddingHorizontal: 16, paddingTop: 10, gap: 9 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Pressable
-            testID="community-publish-call"
-            accessibilityRole="button"
-            accessibilityLabel="Publish a call"
-            accessibilityHint="Your own trade idea, with your name on it."
-            onPress={() => router.push('/community/call/new' as never)}
-            style={({ pressed }) => ({
-              height: 30, paddingHorizontal: 13, borderRadius: radius.pill,
-              alignItems: 'center', justifyContent: 'center',
-              borderWidth: 1, borderColor: alpha.volt55, backgroundColor: alpha.volt10,
-              transform: [{ scale: pressed ? 0.97 : 1 }],
-            })}
-          >
-            <T size={11.5} weight="semibold" c={color.volt}>Publish a call</T>
-          </Pressable>
-          <View style={{ flex: 1 }} />
+          {/*
+            PUBLISH A CALL MOVED INTO THE COMPOSER'S PLUS.
+
+            It was the loudest thing on this screen — the only volt-filled
+            control above the rooms — and it asked for the rarest action on it.
+            Publishing now lives in the + beside the message box, next to Add a
+            picture and Post an idea, which is where somebody already is when
+            they have something to say. That path exists on this screen and in
+            every room, so nothing is reachable only from a place that no longer
+            has a button.
+          */}
           {/* Quiet outline, not volt: volt is the action being offered, and
               reading your own record is not the one this screen is asking
               for. Absent until the session has an id, because
@@ -609,8 +616,9 @@ export default function Community() {
       </ScrollView>
 
       {/* The composer posts INTO A ROOM, and this screen is always a room now,
-          so it is always drawn. */}
-      <View style={{ paddingHorizontal: 16, paddingBottom: 8, paddingTop: 4, gap: 8 }}>
+          so it is always drawn. The dock keeps it above the keyboard rather than
+          under it, which is where it used to land. */}
+      <KeyboardDock floor={8} safeArea={false} style={{ paddingHorizontal: 16, paddingTop: 4, gap: 8 }}>
         {postNotice ? (
           <Pressable
             testID="club-post-notice"
@@ -634,7 +642,7 @@ export default function Community() {
           onAttach={() => { void media.pick(); }}
           onRemoveAttachment={media.remove}
         />
-      </View>
+      </KeyboardDock>
 
       <CreateCircleSheet
         visible={createOpen}

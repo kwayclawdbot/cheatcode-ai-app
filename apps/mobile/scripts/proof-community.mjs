@@ -8,9 +8,12 @@
  * Shoots `proof/community-*.png` at 390x844 and asserts the things a
  * screenshot cannot show on its own:
  *
- *   · the board says HOW FRESH it is, and says "Refreshing every 5s" rather
- *     than "Live" when it is polling — a label that claims live while it polls
- *     is the small lie that stops people trusting the big numbers;
+ *   · the board never claims to be Live while it is polling — a label that
+ *     claims live while it polls is the small lie that stops people trusting
+ *     the big numbers. It used to say "Refreshing every 5s" out loud; since
+ *     7 Sept the polling state is silent (the interval was plumbing narrated
+ *     in every room's header all day) and only Live is ever printed, so the
+ *     rule is now "silent or Live", never a third thing;
  *   · press and hold a post and something real happens: Report for a member,
  *     Remove / Mute / Leave it up for staff, and a reason is REQUIRED for all
  *     of them;

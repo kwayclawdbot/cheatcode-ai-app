@@ -10,9 +10,8 @@ import { ScreenLoading } from '../../ui/Loading';
 import { Num } from '../../ui/Text';
 import { alpha, color, radius } from '../../ui/tokens';
 import { env } from '../../lib/env';
-import { AlertComposer } from './AlertsSimple';
 import { AlertsEmpty, HistoryAlertRow, StandardAlertCard } from './AlertCard';
-import { useAlertActions, useAlertBuilder, useAlertsRound4 } from './useAlerts';
+import { useAlertActions, useAlertsRound4 } from './useAlerts';
 import { ModeControl } from '../home/ModeSheet';
 import { secondTab } from '../nav/second-tab';
 import { Avatar } from '../community/ui/Chrome';
@@ -28,7 +27,8 @@ import { NOT_ADVICE_ALERTS } from '../legal/disclaimers';
  * fractions), expandable evidence and ONE state-driven primary action that
  * routes into the Trade Portal with the alert context
  * (`/trade/[symbol]?alert=&ctx=alert`). There is no alert-detail destination
- * between the card and the portal. The natural-language composer stays.
+ * between the card and the portal. The natural-language composer has moved to
+ * `/alert/new`, reached by the plus in this board's header (owner, 7 Sept).
  *
  * This is the Day Trade and Swing face of the second tab. In Invest mode the
  * same tab draws the research desk instead, so the mode chip sits in the
@@ -165,7 +165,6 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
     env.FIXTURES && params.fixture === 'empty' ? 'empty' : 'default',
   );
   const actions = useAlertActions(reload);
-  const builder = useAlertBuilder();
   const second = secondTab(mode);
   /** This desk's member calls. A separate route, never folded into `/alerts`. */
   const calls = useDeskCalls(mode);
@@ -206,12 +205,6 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
     );
   }
 
-  const activate = async () => {
-    if (!builder.preview) return;
-    await actions.activate(builder.preview.alert_id);
-    builder.clear();
-  };
-
   /**
    * A quiet day has to lead somewhere. Each offer below is a route that
    * already exists — Kai on Home, the other tab, a company page, a member's
@@ -242,7 +235,30 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
       <View style={{ paddingTop: 8, paddingHorizontal: 16, paddingBottom: 6, gap: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <T size={28} weight="bold">{second.title}</T>
-          <ModeControl mode={mode} testID="alerts-mode-chip" />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {/*
+              Where the natural-language bar went. `/alert/new` is the same
+              builder on its own screen, and it was reachable from a company
+              page and a plan but not from the board that is about alerts.
+            */}
+            <Pressable
+              testID="alerts-new"
+              accessibilityRole="button"
+              accessibilityLabel="New alert"
+              accessibilityHint="Describe what to watch and Kai reads it back before anything is set."
+              onPress={() => router.push('/alert/new' as never)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={({ pressed }) => ({
+                width: 30, height: 30, borderRadius: radius.pill,
+                alignItems: 'center', justifyContent: 'center',
+                borderWidth: 0.5, borderColor: alpha.ivory24,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <T size={16} weight="regular" c={color.muted}>+</T>
+            </Pressable>
+            <ModeControl mode={mode} testID="alerts-mode-chip" />
+          </View>
         </View>
         <T size={11} lh={16} c={color.dim} testID="alerts-mode-note">{second.note}</T>
         <StateTabs value={tab} onChange={setTab} counts={counts} />
@@ -301,47 +317,40 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
         {isFixture ? <T size={10} c={color.dim} align="center">Sample alerts — the alerts service is not connected here.</T> : null}
       </ScrollView>
 
-      {/* NL composer preview → activate, in place */}
-      {builder.preview ? (
-        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-          <ObjectCard tone="kai" r={radius.xl} style={{ padding: 14, gap: 10 }} testID="alert-preview">
-            <T size={13.5} lh={20}>{builder.preview.summary_plain}</T>
-            {builder.preview.structured.length ? (
-              <View style={{ gap: 4 }}>
-                {builder.preview.structured.map((s) => (
-                  <View key={s.label} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <T size={11} c={color.muted}>{s.label}</T>
-                    <Num size={11} weight="regular" c={color.cyan}>{s.value}</Num>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Button
-                testID="alert-activate"
-                label="Watch this"
-                kind="volt"
-                height={42}
-                style={{ flex: 1 }}
-                loading={actions.busyId === builder.preview.alert_id}
-                onPress={() => { void activate(); }}
-              />
-              <Button testID="alert-discard" label="Not that" kind="outline" height={42} full={false} onPress={builder.clear} />
-            </View>
-          </ObjectCard>
-        </View>
-      ) : null}
+      {/*
+        THE PREVIEW THAT BELONGED TO THE BAR WENT WITH IT.
 
-      {builder.error ? (
-        <T size={11} c={color.red} align="center" style={{ paddingHorizontal: 16, paddingBottom: 6 }}>{builder.error}</T>
-      ) : null}
+        `useAlertBuilder`'s preview card and its error line were only ever
+        reachable through the natural-language bar removed below: nothing else
+        on this board calls `builder.build()`, so with the bar gone the card
+        could not be made to appear by any sequence of taps. Leaving it would
+        have left forty lines of UI that reads as live and is not, which is the
+        kind of thing that gets "fixed" by somebody months from now who cannot
+        work out why it never shows. `/alert/new` has the same read-it-back step
+        on its own screen, where it is reachable.
+      */}
 
       <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-        <AlertComposer onBuild={(t) => { void builder.build(t); }} pending={builder.pending} />
         {/*
-          AN ALERT IS THE THING MOST EASILY MISTAKEN FOR A CALL, so the line
-          goes here rather than only in Account. Wording is a DRAFT pending the
-          owner's legal review; see `features/legal/disclaimers.ts`.
+          THE "TELL ME WHEN TSLA DROPS BELOW 170…" BAR IS GONE FROM HERE.
+
+          It was a violet Kai bar pinned above the disclaimer on every one of
+          the three tabs, so it sat under the board whether you were reading
+          alerts, member calls or history — a permanent input for a thing most
+          visits are not there to do.
+
+          THE CAPABILITY DID NOT GO WITH IT. That bar built an alert out of a
+          sentence, and the same builder is a whole screen at `/alert/new`
+          ("New alert — Tell Kai what to watch"), which was already reachable
+          from a company page and from a plan. What it was NOT reachable from
+          was this board, which is the one place somebody thinking about alerts
+          actually is — so the header now carries a plus that goes there. The
+          bar became a button, and the button is one line instead of a
+          46pt gradient with its own text field.
+
+          THE DISCLAIMER STAYS. It is about the alerts on the board, not about
+          the composer that used to sit above it, and it is the one line here
+          that is not clutter.
         */}
         <T size={9.5} lh={14} c={color.dim} align="center" style={{ marginTop: 8 }} testID="alerts-not-advice">
           {NOT_ADVICE_ALERTS}

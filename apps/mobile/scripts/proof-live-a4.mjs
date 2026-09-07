@@ -221,14 +221,19 @@ const main = async () => {
   // against a REAL alert this user owns, not a fixture.
   if (!(await page.locator('[data-testid^="alert-card-"]').count())) {
     console.log('  · no cards yet — creating one through the NL composer');
+    // The composer is no longer on this board — it moved to `/alert/new`,
+    // behind the plus in the header (owner, 7 Sept). Same builder, one tap
+    // further away, so this setup step opens it rather than typing in place.
+    const plus = page.locator('[data-testid="alerts-new"]').last();
+    if (await plus.count()) { await plus.click(); await page.waitForTimeout(2500); }
     const input = page.locator('[data-testid="alert-nl-input"]').last();
     if (await input.count()) {
       await input.fill('Tell me when META breaks above 504');
-      await page.locator('[data-testid="alert-nl-read"]').last().click();
+      await page.locator('[data-testid="cta-read-it"]').last().click();
       await page.waitForTimeout(4000);
       await shot(page, 'live-a4-12b-alerts-composer-preview');
       await readText(page, '[data-testid="alert-preview"]', 'what Kai understood');
-      const activate = page.locator('[data-testid="alert-activate"]').last();
+      const activate = page.locator('[data-testid="cta-activate"]').last();
       if (await activate.count()) {
         await activate.click();
         await page.waitForTimeout(6000);

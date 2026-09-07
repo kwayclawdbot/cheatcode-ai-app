@@ -11,6 +11,7 @@ import { RichText } from '../../ui/RichText';
 import { SetupObject } from '../../ui/SetupObject';
 import { ObjectCard } from '../../ui/Panel';
 import { Composer } from '../../ui/Composer';
+import { KeyboardDock } from '../../ui/KeyboardDock';
 import { color, radius } from '../../ui/tokens';
 import {
   AlsoWatching, ConversationsDrawer, Wakeup, useConversations, useHomeV5, useWakeup,
@@ -302,9 +303,10 @@ export default function Home() {
         {error && thread.kind !== 'today' ? <T size={11} c={color.muted} align="center">{error}</T> : null}
       </ScrollView>
 
-      {/* The composer never moves. The preview note sits with it, not with Kai —
-          it is a fact about this build, not something Kai is telling you. */}
-      <View style={{ paddingTop: 10, paddingHorizontal: 16, paddingBottom: 6, gap: 8 }}>
+      {/* The composer rides the keyboard up instead of being buried under it —
+          KeyboardDock is what does that. The preview note sits with it, not with
+          Kai — it is a fact about this build, not something Kai is telling you. */}
+      <KeyboardDock floor={6} safeArea={false} style={{ paddingTop: 10, paddingHorizontal: 16, gap: 8 }}>
         {/*
           THE ONLY PLACE CREDITS APPEAR IN THE CONVERSATION, and only near the
           end of one. It draws at 80% consumed or once Kai has stopped, and is
@@ -318,7 +320,7 @@ export default function Home() {
         />
         {isFixture ? <T size={10} c={color.dim} align="center">Sample data — the service is not connected here.</T> : null}
         <Composer placeholder="Message Kai…" onSend={send} disabled={streaming} />
-      </View>
+      </KeyboardDock>
 
       <ConversationsDrawer
         visible={threadsOpen}

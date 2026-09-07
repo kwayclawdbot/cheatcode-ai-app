@@ -224,15 +224,24 @@ const main = async () => {
   await shot(page, 'live-a2-15-alerts-history');
   await softTap(page, 'screen-alerts', 'filter-attention', 'Attention filter');
 
-  // ---- 6. the inline NL composer creates a real alert
+  // ---- 6. the NL composer creates a real alert
   //         (POST /alerts/draft → POST /alerts)
-  console.log('[6] natural-language composer');
-  await on(page, 'screen-alerts', 'alert-nl-input').fill(`Tell me when ${openSymbol} drops below 480`);
-  await tap(page, 'screen-alerts', 'alert-nl-read');
+  //
+  // IT IS NO LONGER INLINE ON THE BOARD. The violet "Tell me when TSLA drops
+  // below 170…" bar sat above the disclaimer on all three tabs and came off on
+  // 7 Sept (owner). The builder it fed is a whole screen at `/alert/new`, and
+  // the board's header gained a plus that goes there — so this step now walks
+  // the route a person walks, which also proves the new door actually leads
+  // somewhere rather than just asserting the old bar is gone.
+  console.log('[6] natural-language composer, via the board’s + ');
+  await tap(page, 'screen-alerts', 'alerts-new');
+  await page.waitForTimeout(2500);
+  await on(page, 'screen-alert-new', 'alert-nl-input').fill(`Tell me when ${openSymbol} drops below 480`);
+  await tap(page, 'screen-alert-new', 'cta-read-it');
   await page.waitForTimeout(8000);
   await shot(page, 'live-a2-16-alerts-composer-preview');
-  await readText(page, '[data-testid="screen-alerts"] [data-testid="alert-preview"]', 'preview');
-  if (await softTap(page, 'screen-alerts', 'alert-activate', 'activate alert')) {
+  await readText(page, '[data-testid="screen-alert-new"] [data-testid="alert-preview"]', 'preview');
+  if (await softTap(page, 'screen-alert-new', 'cta-activate', 'activate alert')) {
     await page.waitForTimeout(4000);
     await shot(page, 'live-a2-17-alerts-after-activate');
   }

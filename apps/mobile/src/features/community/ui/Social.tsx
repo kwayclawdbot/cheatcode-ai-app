@@ -59,7 +59,7 @@ const toneFill = (r: ReactionDef) => (r.tone === 'market' ? alpha.cyan10 : alpha
  * fades, it just stops springing out of the button, because that spring is the
  * part that makes somebody with vestibular sensitivity feel it.
  */
-function useReducedMotion(): boolean {
+export function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -296,9 +296,34 @@ export function ReactionBar({
           opacity: disabled ? 0.5 : pressed ? 0.75 : 1,
         })}
       >
-        <T size={10.5} weight={anyMine ? 'semibold' : 'regular'} c={anyMine ? color.volt : color.dim}>
-          Like
-        </T>
+        {/*
+          GREY UNTIL YOU HAVE SAID SOMETHING, THEN YOUR OWN WORD FOR IT.
+
+          Unreacted it is the word "Like" set in `color.dim` on a plain ivory
+          hairline — deliberately the quietest thing in the row, because under a
+          feed of posts this button repeats more than any other object on the
+          screen and a lit control on every one of them is the clutter the row
+          was just cleared of.
+
+          Reacted, it stops saying "Like" and SHOWS WHAT YOU GAVE. The word is
+          a prompt and is only useful before you have answered it; afterwards
+          the honest label is the emoji itself, which is also the fastest way to
+          read your own state back at a glance. Somebody with more than one
+          reaction gets the first and a count, rather than a row of emoji that
+          would grow the button every time they tapped again — the pills below
+          already carry the full picture, and this button only has to answer
+          "have I reacted, and with what".
+        */}
+        {anyMine ? (
+          <>
+            <T size={11}>{reactionDef(reactions.mine[0])?.emoji ?? '👍'}</T>
+            {reactions.mine.length > 1 ? (
+              <Num size={10} weight="medium" c={color.volt}>{`+${reactions.mine.length - 1}`}</Num>
+            ) : null}
+          </>
+        ) : (
+          <T size={10.5} c={color.dim}>Like</T>
+        )}
       </Pressable>
 
       {onReply ? (
@@ -570,11 +595,26 @@ function Frame({
 /* ------------------------------------------------------------------ */
 
 /**
- * A rule and a sentence, not a button in a box.
+ * A rule and a sentence, not a button in a box — AND ONLY WHEN THERE IS A
+ * CONVERSATION TO POINT AT.
  *
- * It says the real number when there is one and "Comment" when there is not,
- * so a post with no comments still offers the way in without pretending there
- * is a conversation waiting.
+ * This used to say "Comment" when the count was zero, which put a prompt under
+ * every single post in the room. Read one at a time it is an invitation; read
+ * as a feed it is the same grey word repeating down the whole screen, and it
+ * was the first thing the owner asked to be rid of.
+ *
+ * The rule it now follows is the one `ReactionBar` above already states for
+ * reaction pills, in almost these words: a thing at zero is not a quiet outline
+ * waiting to be filled in, it is ABSENT. That law was written for six emoji
+ * kinds and simply never applied to the thread line beside them, which is why
+ * the pills were clean and this was not.
+ *
+ * Nothing is lost by going. The way to start a thread is REPLY, which sits in
+ * the row above, quotes the post and is present on every surface this line
+ * appears on. The way into an existing thread is this line, which appears the
+ * moment there is an existing thread. What disappears is only the offer to be
+ * the first to comment — and a post whose answer is worth writing does not
+ * need to ask.
  */
 export function ThreadLine({
   count,
@@ -585,7 +625,8 @@ export function ThreadLine({
   onPress: () => void;
   testID?: string;
 }) {
-  const label = count === 0 ? 'Comment' : count === 1 ? '1 comment' : `${count} comments`;
+  if (count <= 0) return null;
+  const label = count === 1 ? '1 comment' : `${count} comments`;
   return (
     <Pressable
       testID={testID ?? 'thread-line'}
@@ -602,9 +643,7 @@ export function ThreadLine({
       })}
     >
       <View style={{ width: 14, height: 0.5, backgroundColor: alpha.ivory24 }} />
-      <T size={11} weight={count > 0 ? 'semibold' : 'regular'} c={count > 0 ? color.text : color.muted}>
-        {label}
-      </T>
+      <T size={11} weight="semibold" c={color.text}>{label}</T>
     </Pressable>
   );
 }

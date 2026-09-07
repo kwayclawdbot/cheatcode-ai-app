@@ -264,7 +264,22 @@ if (await card.count()) {
 // route, and fixtures mode has no session — `/contributor/` with nothing after
 // it is a broken screen, so its absence here is the correct behaviour and its
 // PRESENCE is proved with a real account in proof-mode-and-calls.mjs.
-note(await has('community-publish-call'), 'the tab offers to publish a call');
+/**
+ * PUBLISHING MOVED INTO THE COMPOSER'S PLUS (owner, 7 Sept).
+ *
+ * This used to assert a volt "Publish a call" button above the rooms. That
+ * button is gone — it was the loudest control on the screen and it asked for
+ * the rarest action on it — so asserting its presence would now be asserting
+ * the bug. What has to stay true is that the CAPABILITY did not go with the
+ * button, and the honest way to say that is to check the door it moved to
+ * rather than to delete the check: the composer's + opens onto "Publish a
+ * call", on this screen and in every room.
+ */
+await page.locator('[data-testid="composer-plus"]').first().click();
+await page.waitForTimeout(600);
+note(await has('composer-action-call'), 'the + menu is where publishing a call now lives');
+await page.keyboard.press('Escape');
+await page.waitForTimeout(400);
 note(
   !(await has('community-my-calls')),
   'and "Your calls" is correctly withheld with no session — it never links to a profile that has no id',

@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T } from '../../ui/Text';
+import { useKeyboardHeight } from '../../ui/KeyboardDock';
 import { KaiOrb } from '../../ui/KaiOrb';
 import { KaiBubble, UserBubble, TypingDots } from '../../ui/Bubble';
 import { RichText } from '../../ui/RichText';
@@ -127,8 +128,26 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
   }, [context.id, context.symbol, removeItem, pushNotice, router, send]);
 
   const title = kaiSheetTitle(context);
-  // Artboard: sheet top edge at 47% of the frame.
-  const sheetHeight = Math.round(height * 0.53);
+  /**
+   * Artboard: sheet top edge at 47% of the frame — UNLESS THE KEYBOARD IS UP.
+   *
+   * This sheet has a fixed height, and `KeyboardAvoidingView` lifts its child
+   * rather than resizing it. Lifting a panel that is 53% of the screen by a
+   * ~336pt keyboard pushes the drag handle and the "Kai · about META" title
+   * clean off the top of the display on any phone where the keyboard is taller
+   * than 47% of the screen — which is most of them. The composer was reachable
+   * and you could no longer see whose conversation you were in.
+   *
+   * So it SHRINKS instead: never taller than the space actually left above the
+   * keyboard, less a little air so it does not sit flush against the status
+   * bar. The inner thread is already `flex: 1`, so the messages give up the
+   * height and the header and composer keep theirs.
+   */
+  const keyboardHeight = useKeyboardHeight();
+  const sheetHeight = Math.min(
+    Math.round(height * 0.53),
+    height - keyboardHeight - Math.max(insets.top, 24) - 12,
+  );
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={closeKaiSheet} statusBarTranslucent>
@@ -141,7 +160,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
           // that is the whole point of answering in place (audit §5).
           style={{ flex: 1, backgroundColor: alpha.black22 }}
         />
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
           <LinearGradient
             testID="kai-sheet"
             // The artboard reaches near-opacity with backdrop-blur, which RN
@@ -253,7 +272,9 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
               })}
             </ScrollView>
 
-            <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: Math.max(insets.bottom, 22) }}>
+            {/* The home indicator is under the keyboard while it is up, so the
+                floor collapses with it — same rule as `KeyboardDock`. */}
+            <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: keyboardHeight > 0 ? 10 : Math.max(insets.bottom, 22) }}>
               <Composer
                 testID="kai-sheet-composer"
                 placeholder={kaiSheetPlaceholder(context)}

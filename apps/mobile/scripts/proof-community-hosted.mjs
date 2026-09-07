@@ -106,12 +106,22 @@ await shot('board');
   note(!/\d+ online/.test(presence), `the header does not invent presence: "${presence}"`);
   const fresh = await has('club-freshness');
   const label = fresh ? await page.locator('[data-testid="club-freshness"]').innerText() : '(none)';
-  note(fresh, `the board says how fresh it is: "${label}"`);
-  // The one that caught the real bug. Supabase accepts a postgres_changes
-  // subscription to a table that is not in the publication, so SUBSCRIBED used
-  // to be read as "Live" while nothing would ever arrive — and polling had
-  // already been switched off. The label has to match what is actually running.
-  note(/Refreshing every 5s/.test(label), 'and says it is polling, because it is');
+  /**
+   * "REFRESHING EVERY 5S" NO LONGER RENDERS (owner, 7 Sept): the interval was
+   * the app narrating its own plumbing in the header of every room, all day.
+   * LIVE still renders, because that one changes what you do — a conversation
+   * arriving as it is typed is different from one arriving five seconds late.
+   *
+   * SO THE ASSERTION IS INVERTED, NOT DELETED. The bug this block caught is
+   * still the bug worth catching: Supabase accepts a postgres_changes
+   * subscription to a table that is not in the publication, so SUBSCRIBED was
+   * read as "Live" while nothing would ever arrive. Claiming Live falsely is
+   * exactly as wrong as it was before — what changed is that the honest
+   * polling state is now SILENT rather than labelled, so the check is that the
+   * label is either absent or says Live, and never says anything else.
+   */
+  note(!fresh || /Live/i.test(label), `freshness is silent while polling, and only ever claims Live: "${label}"`);
+  note(!/Refreshing every 5s/.test(t), 'the interval is no longer narrated in the header');
   // The old copy. It said the same thing to every room on every day and named
   // none of them; the replacement names the room and says what to do about it.
   note(!/Nothing has been posted here today/.test(t), 'the old blanket empty-state copy is gone');

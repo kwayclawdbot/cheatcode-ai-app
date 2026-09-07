@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal, Pressable, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { alpha, color, radius } from './tokens';
+import { KeyboardDock } from './KeyboardDock';
 import { T } from './Text';
 
 /**
@@ -17,7 +17,6 @@ export function Sheet({
   children: React.ReactNode;
   testID?: string;
 }) {
-  const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable
@@ -36,13 +35,20 @@ export function Sheet({
             borderColor: alpha.ivory16,
             paddingHorizontal: 20,
             paddingTop: 14,
-            paddingBottom: Math.max(insets.bottom, 22),
-            gap: 12,
           }}
         >
-          <View style={{ alignSelf: 'center', width: 38, height: 4, borderRadius: 2, backgroundColor: alpha.ivory16 }} />
-          {title ? <T size={17} weight="bold">{title}</T> : null}
-          {children}
+          {/*
+            The dock is INSIDE the panel, not around it: several sheets hold a
+            text field, and the panel's own surface has to keep filling the space
+            behind the keyboard rather than floating above it. Being inside also
+            leaves the backdrop's tap-to-dismiss intact — the panel Pressable
+            still swallows every touch that lands on the padding.
+          */}
+          <KeyboardDock floor={22} style={{ gap: 12 }}>
+            <View style={{ alignSelf: 'center', width: 38, height: 4, borderRadius: 2, backgroundColor: alpha.ivory16 }} />
+            {title ? <T size={17} weight="bold">{title}</T> : null}
+            {children}
+          </KeyboardDock>
         </Pressable>
       </Pressable>
     </Modal>

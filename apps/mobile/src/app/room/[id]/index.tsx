@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, ScrollView, ActivityIndicator } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Wash } from '../../../ui/Wash';
+import { KeyboardDock } from '../../../ui/KeyboardDock';
 import { T } from '../../../ui/Text';
 import { ObjectCard } from '../../../ui/Panel';
 import { color, radius, alpha } from '../../../ui/tokens';
@@ -14,6 +14,7 @@ import {
   CatchUpPill, NewMessagesRule, PinnedStrip, RoomStateNote, Sheet, SheetRow, StackHeader, SentimentBar,
 } from '../../../features/community/ui/Chrome';
 import { MessageRow } from '../../../features/community/ui/Message';
+import { MessageListSkeleton } from '../../../features/community/ui/Skeleton';
 import { KaiObjectView } from '../../../features/community/ui/KaiObjects';
 import { CasePair, PinnedSetup } from '../../../features/community/ui/PinnedSetup';
 import { RoomComposer } from '../../../features/community/ui/RoomComposer';
@@ -83,7 +84,6 @@ export default function RoomScreen() {
   /** Whose posts are somebody else's — the only thing the follow control needs. */
   const { session } = useSession();
   const myUserId = session?.user?.id ?? null;
-  const insets = useSafeAreaInsets();
   const scroller = useRef<ScrollView | null>(null);
 
   const [room, setRoom] = useState<Room | null>(null);
@@ -350,10 +350,17 @@ export default function RoomScreen() {
         rightLabel="Room options"
       />
 
+      {/*
+        A SKELETON, NOT A SPINNER. The spinner that was here was centred in an
+        otherwise empty room: it said something was happening and nothing about
+        what, drew the same picture whether the room held one post or two
+        hundred, and threw the whole screen away and rebuilt it when the answer
+        landed. The skeleton stands in the messages' own place, so the list
+        arrives into the space it was already occupying instead of replacing a
+        blank.
+      */}
       {loading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={color.violet} />
-        </View>
+        <MessageListSkeleton testID="room-loading" />
       ) : (
         <ScrollView
           ref={scroller}
@@ -445,40 +452,41 @@ export default function RoomScreen() {
         </ScrollView>
       )}
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: Math.max(insets.bottom, 14) }}>
-          {selectedMessage ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 8 }}>
-              <View style={{ width: 3, height: 22, borderRadius: 2, backgroundColor: color.violet }} />
-              <T size={11} c={color.violetLight} numberOfLines={1} style={{ flex: 1 }}>
-                Selected: {selectedMessage.author.display_name} — {selectedMessage.body ?? 'a Kai object'}
-              </T>
-            </View>
-          ) : null}
-          {media.notice ? (
-            <View style={{ paddingBottom: 8 }}>
-              <T size={11} c={color.gold}>{media.notice}</T>
-            </View>
-          ) : null}
-          <RoomComposer
-            roomLabel={room?.type === 'setup' ? `${room.setup?.symbol ?? room.name} room` : `# ${room?.name ?? 'room'}`}
-            onSend={send}
-            onKai={() => setKaiSheet(true)}
-            onStructured={() => router.push(`/room/${roomId}/compose`)}
-            // The + menu's Kai row runs ONE command — the catch-up summary —
-            // through the same `runKai` the sheet uses, so a refusal arrives in
-            // the service's own words in the same place as every other one.
-            // Nothing is fired without a tap: this call costs credits.
-            onAskKai={() => { void runKai('summarize'); }}
-            callSymbol={room?.setup?.symbol ?? null}
-            disabled={!!room?.config.posting_restricted}
-            disabledReason={room?.config.posting_restricted ? 'Posting is restricted in this room right now. You can still read and ask Kai.' : null}
-            attachments={media.attachments}
-            onAttach={() => { void media.pick(); }}
-            onRemoveAttachment={media.remove}
-          />
-        </View>
-      </KeyboardAvoidingView>
+      {/* One dock instead of the old KeyboardAvoidingView + safe-area pair: the
+          14pt floor now collapses while the keyboard is up, so the bar sits on
+          the keys rather than a home indicator that is no longer visible. */}
+      <KeyboardDock floor={14} style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+        {selectedMessage ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 8 }}>
+            <View style={{ width: 3, height: 22, borderRadius: 2, backgroundColor: color.violet }} />
+            <T size={11} c={color.violetLight} numberOfLines={1} style={{ flex: 1 }}>
+              Selected: {selectedMessage.author.display_name} — {selectedMessage.body ?? 'a Kai object'}
+            </T>
+          </View>
+        ) : null}
+        {media.notice ? (
+          <View style={{ paddingBottom: 8 }}>
+            <T size={11} c={color.gold}>{media.notice}</T>
+          </View>
+        ) : null}
+        <RoomComposer
+          roomLabel={room?.type === 'setup' ? `${room.setup?.symbol ?? room.name} room` : `# ${room?.name ?? 'room'}`}
+          onSend={send}
+          onKai={() => setKaiSheet(true)}
+          onStructured={() => router.push(`/room/${roomId}/compose`)}
+          // The + menu's Kai row runs ONE command — the catch-up summary —
+          // through the same `runKai` the sheet uses, so a refusal arrives in
+          // the service's own words in the same place as every other one.
+          // Nothing is fired without a tap: this call costs credits.
+          onAskKai={() => { void runKai('summarize'); }}
+          callSymbol={room?.setup?.symbol ?? null}
+          disabled={!!room?.config.posting_restricted}
+          disabledReason={room?.config.posting_restricted ? 'Posting is restricted in this room right now. You can still read and ask Kai.' : null}
+          attachments={media.attachments}
+          onAttach={() => { void media.pick(); }}
+          onRemoveAttachment={media.remove}
+        />
+      </KeyboardDock>
 
       <Sheet
         testID="kai-sheet"

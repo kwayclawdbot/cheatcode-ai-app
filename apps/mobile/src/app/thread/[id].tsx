@@ -20,10 +20,10 @@
  * non-sequitur unless you can see that something was removed.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { ActivityIndicator, ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Wash } from '../../ui/Wash';
+import { KeyboardDock } from '../../ui/KeyboardDock';
 import { T } from '../../ui/Text';
 import { ObjectCard } from '../../ui/Panel';
 import { alpha, color, radius } from '../../ui/tokens';
@@ -78,7 +78,6 @@ export default function ThreadScreen() {
   const { id, quote: quoteParam } = useLocalSearchParams<{ id: string; quote?: string }>();
   const messageId = String(id ?? '');
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const media = useAttachments();
 
   const [parent, setParent] = useState<RoomMessage | null>(null);
@@ -260,36 +259,37 @@ export default function ThreadScreen() {
       )}
 
       {parent && !unreachable ? (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: Math.max(insets.bottom, 14) }}>
-            {media.notice ? (
-              <View style={{ paddingBottom: 8 }}>
-                <T size={11} c={color.gold}>{media.notice}</T>
-              </View>
-            ) : null}
-            <RoomComposer
-              roomLabel="this post"
-              placeholder={answeringAComment ? 'Write your reply…' : 'Add a comment…'}
-              onSend={send}
-              // Kai and the structured composer belong to the room, not to a
-              // comment. Both are one tap away on the post itself.
-              onKai={() => router.back()}
-              onStructured={() => router.back()}
-              quote={target ? quoteOf(target) : null}
-              quoteLabel={
-                answeringAComment
-                  ? `Replying to ${target!.author.handle ? `@${target!.author.handle}` : target!.author.display_name}`
-                  : `Replying to ${parent.author.display_name}'s post`
-              }
-              // Clearing goes back to answering the POST, which is what this
-              // screen is for. There is no "quote nothing" state to fall into.
-              onClearQuote={answeringAComment ? () => setReplyTo(null) : undefined}
-              attachments={media.attachments}
-              onAttach={() => { void media.pick(); }}
-              onRemoveAttachment={media.remove}
-            />
-          </View>
-        </KeyboardAvoidingView>
+        /* One dock instead of the old KeyboardAvoidingView + safe-area pair: the
+           14pt floor now collapses while the keyboard is up, so the reply box
+           sits on the keys instead of a home indicator nobody can see. */
+        <KeyboardDock floor={14} style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+          {media.notice ? (
+            <View style={{ paddingBottom: 8 }}>
+              <T size={11} c={color.gold}>{media.notice}</T>
+            </View>
+          ) : null}
+          <RoomComposer
+            roomLabel="this post"
+            placeholder={answeringAComment ? 'Write your reply…' : 'Add a comment…'}
+            onSend={send}
+            // Kai and the structured composer belong to the room, not to a
+            // comment. Both are one tap away on the post itself.
+            onKai={() => router.back()}
+            onStructured={() => router.back()}
+            quote={target ? quoteOf(target) : null}
+            quoteLabel={
+              answeringAComment
+                ? `Replying to ${target!.author.handle ? `@${target!.author.handle}` : target!.author.display_name}`
+                : `Replying to ${parent.author.display_name}'s post`
+            }
+            // Clearing goes back to answering the POST, which is what this
+            // screen is for. There is no "quote nothing" state to fall into.
+            onClearQuote={answeringAComment ? () => setReplyTo(null) : undefined}
+            attachments={media.attachments}
+            onAttach={() => { void media.pick(); }}
+            onRemoveAttachment={media.remove}
+          />
+        </KeyboardDock>
       ) : null}
     </View>
   );

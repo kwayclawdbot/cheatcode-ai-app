@@ -132,9 +132,14 @@ async function captureApp(browser) {
   await settle(page, 500);                 await shot(page, '30-alerts-history');
   await page.getByTestId('filter-attention').click();
   await settle(page, 400);
+  // The NL bar left this board on 7 Sept (owner) for `/alert/new`, reached by
+  // the plus in the header. Same builder, same shot, one tap further in.
+  await page.getByTestId('alerts-new').click();
+  await settle(page, 900);
   await page.getByTestId('alert-nl-input').fill('Tell me when TSLA drops below 170');
-  await page.getByTestId('alert-nl-read').click();
+  await page.getByTestId('cta-read-it').click();
   await settle(page, 900);                 await shot(page, '31-alerts-composer-preview');
+  await open(page, '/alerts');             await settle(page, 600);
   await page.getByTestId('attention-ask-kai').click();
   await settle(page, 800);                 await shot(page, '32-alerts-kai-sheet');
   await page.getByTestId('kai-sheet-close').click();

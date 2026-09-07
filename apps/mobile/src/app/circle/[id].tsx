@@ -15,6 +15,7 @@ import { Screen } from '../../ui/Screen';
 import { T, Num } from '../../ui/Text';
 import { ObjectCard } from '../../ui/Panel';
 import { Composer } from '../../ui/Composer';
+import { KeyboardDock } from '../../ui/KeyboardDock';
 import { KaiOrb } from '../../ui/KaiOrb';
 import { Check } from '../../ui/Icons';
 import { ScreenLoading } from '../../ui/Loading';
@@ -425,7 +426,9 @@ export default function CircleRoom() {
         ) : null}
       </ScrollView>
 
-      <View style={{ paddingHorizontal: 16, paddingBottom: 10, paddingTop: 4, gap: 8 }}>
+      {/* Docked so the keyboard lifts the composer instead of covering it, and
+          so the bar clears the home indicator when the keyboard is down. */}
+      <KeyboardDock floor={10} style={{ paddingHorizontal: 16, paddingTop: 4, gap: 8 }}>
         {postNotice ? (
           <Pressable
             testID="circle-post-notice"
@@ -454,7 +457,7 @@ export default function CircleRoom() {
               });
           }}
         />
-      </View>
+      </KeyboardDock>
 
       <MessageActionsSheet
         visible={!!actionTarget}
