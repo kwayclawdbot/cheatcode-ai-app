@@ -52,6 +52,7 @@ import { usePortal, usePortalCandles } from '../portal/usePortal';
 import { planCommand, useKaiPortal } from '../portal/useKaiPortal';
 import type { PortalCommandResult } from '../portal/useKaiPortal';
 import { rememberSymbol } from '../portal/last-symbol';
+import { visibleAnnotations } from '../portal/visible-annotations';
 import type { Annotation, ChartCommand, PortalTimeframe } from '../portal/types';
 import { TradeLocked } from './TradeLocked';
 import { Spine, SpineFooter } from './Spine';
@@ -149,10 +150,55 @@ export default function TradePortalV2() {
   const activeChart = () => (stageOpen ? stageChart.current ?? chart.current : chart.current);
 
   /**
+   * WHAT HAS BEEN SUMMONED ONTO THE CHART THIS VISIT.
+   *
+   * The chart opens with what this trade is about and nothing else (see
+   * `visible-annotations.ts`). Everything else — the shelves, the averages, the
+   * zones, every level Kai marked in some earlier conversation — is still in
+   * `annotations`, still in the rail, still tappable; it simply is not on the
+   * canvas until something puts it there. This is the set of things that have
+   * been put there.
+   *
+   * IT IS KEYED TO THE SYMBOL. Walking to a different ticker is a different
+   * chart and starts clean again, which is also what makes the reveal legible
+   * the second time you ask for a read.
+   */
+  const [revealed, setRevealed] = useState<Set<string>>(() => new Set());
+  useEffect(() => { setRevealed(new Set()); }, [symbol]);
+
+  /**
+   * WHETHER THE READ HAS ALREADY BEEN ASKED FOR ON THIS CHART.
+   *
+   * "The 'What's the read' button should be there when first loading screen but
+   * not after." It is an OPENING move: the one thing worth offering somebody who
+   * has just landed on a chart and has not decided anything yet. Once they have
+   * had the read it is a button that says the thing they are already looking at,
+   * and the spine above is a permanent, better route back to it.
+   *
+   * THE RESET BOUNDARY IS THE SYMBOL, AND THE VISIT. Walking to a different
+   * ticker is a different question and offers itself again; leaving the screen
+   * and coming back unmounts this component, so a fresh visit starts fresh
+   * without needing anything remembered. Nothing is persisted across sessions —
+   * a button that stayed hidden for a week because you pressed it once would be
+   * a worse bug than the one being fixed.
+   */
+  const [readAsked, setReadAsked] = useState(false);
+  useEffect(() => { setReadAsked(false); }, [symbol]);
+  const reveal = useCallback((ids: string[]) => {
+    if (!ids.length) return;
+    setRevealed((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+  }, []);
+
+  /**
    * One chart command → the chart performs it, and Kai says what he did.
    * Lifted from the v1 portal unchanged, including the rule that React state is
    * committed AFTER the choreography so levels do not snap into existence before
-   * Kai's pointer reaches them.
+   * Kai's pointer reaches them — which is what makes a read REVEAL its levels
+   * one at a time rather than arriving as a set.
    */
   const applyCommand = useCallback((c: ChartCommand): PortalCommandResult | null => {
     const p = planCommand(c, data, annotations);
@@ -165,6 +211,10 @@ export default function TradePortalV2() {
     const commit = () => {
       p.upsert.forEach(upsertAnnotation);
       p.remove.forEach((id) => setAnnotationStatus(id, 'deleted'));
+      // A mark Kai just drew is a mark that has been summoned. Without this the
+      // choreography would stage it onto the canvas and the next render — which
+      // sends the visible set — would take it straight back off.
+      reveal(p.upsert.map((a) => a.id));
     };
     let done: Promise<unknown> = Promise.resolve();
     if (handle) {
@@ -199,6 +249,15 @@ export default function TradePortalV2() {
     onCommand: applyCommand,
   });
 
+  /**
+   * WHAT THE CANVAS ACTUALLY GETS. `annotations` stays the whole set — the rail,
+   * the count and the inspector all read it — and only the chart is narrowed.
+   */
+  const onChart = useMemo(
+    () => visibleAnnotations(annotations, data, revealed),
+    [annotations, data, revealed],
+  );
+
   const read = useMemo(() => (data ? readPortal(data) : null), [data]);
   const take = useTake(read, data);
   /**
@@ -224,7 +283,12 @@ export default function TradePortalV2() {
     : read?.interpretation ? 'ready' : loading ? 'loading' : 'failed';
 
   const askKai = useCallback(
-    (q: string, opts?: { expectMarks?: boolean; working?: string }) => { void send(q, opts); },
+    (q: string, opts?: { expectMarks?: boolean; working?: string }) => {
+      // However the read was asked for — the footer, the composer, a marked-up
+      // answer — it has now been had, and the opening offer retires.
+      setReadAsked(true);
+      void send(q, opts);
+    },
     [send],
   );
 
@@ -322,7 +386,7 @@ export default function TradePortalV2() {
           timeframe={tf ?? data.chart.timeframe}
           timeframes={data.chart.timeframes}
           candles={candles}
-          annotations={annotations}
+          annotations={onChart}
           hideAnnotations={hideAnnotations}
           focusTs={focusTs}
           lastPrice={data.quote?.price ?? null}
@@ -336,20 +400,12 @@ export default function TradePortalV2() {
           <LookBeat
             symbol={data.symbol}
             markedCount={markedCount}
+            onChartCount={onChart.length}
             levelsOpen={levelsOpen}
             annotations={annotations}
             exact={exact}
-            streaming={streaming}
             onToggleLevels={() => setLevelsOpen((v) => !v)}
-            onInspect={setInspecting}
-            onReadChart={() => {
-              setStageOpen(true);
-              askKai(READ_QUESTION(data.symbol), {
-                expectMarks: true,
-                working: `Kai is reading the ${data.symbol} chart…`,
-              });
-            }}
-            onExpand={() => setStageOpen(true)}
+            onInspect={(a) => { reveal([a.id]); setInspecting(a); }}
           />
         ) : null}
 
@@ -442,10 +498,10 @@ export default function TradePortalV2() {
         {data.is_fixture ? <PortalNotice text="Example data — no account is connected on this build." /> : null}
       </ScrollView>
 
-      {beat === 'look' ? (
+      {beat === 'look' && !readAsked ? (
         <SpineFooter
           label="What’s the read?"
-          onPress={() => setBeat('decide')}
+          onPress={() => { setReadAsked(true); setBeat('decide'); }}
           testID="spine-next-decide"
         />
       ) : null}
@@ -458,6 +514,18 @@ export default function TradePortalV2() {
         />
       ) : null}
 
+      {/*
+        NOTHING OPENS THIS RIGHT NOW, AND THAT IS A REPORTED CONSEQUENCE RATHER
+        THAN AN OVERSIGHT.
+
+        "Expand" was the only way in, and it was removed at the owner's word.
+        The stage is where the hand-drawing tools live (the level, trendline and
+        zone tray), so those are currently unreachable from the portal. It is
+        left mounted and wired because re-opening it is one call — whichever
+        surface he decides drawing belongs on — and because deleting it would
+        throw away a feature he asked for two rounds ago over a sentence about
+        two buttons. Flagged for his call; no replacement chrome invented here.
+      */}
       <ChartStage
         open={stageOpen}
         onClose={() => setStageOpen(false)}
@@ -466,7 +534,7 @@ export default function TradePortalV2() {
         timeframe={tf ?? data.chart.timeframe}
         timeframes={data.chart.timeframes}
         candles={candles}
-        annotations={hideAnnotations ? [] : annotations}
+        annotations={hideAnnotations ? [] : onChart}
         hideAnnotations={hideAnnotations}
         focusTs={focusTs}
         lastPrice={data.quote?.price ?? null}
@@ -484,6 +552,7 @@ export default function TradePortalV2() {
          * neither side has to know about the other's units.
          */
         onDrawCreate={(d) => {
+          reveal([d.id]);
           void createUserAnnotation({
             id: d.id,
             symbol: data.symbol,
@@ -566,24 +635,35 @@ export default function TradePortalV2() {
 /* ------------------------------------------------------------------ */
 
 function LookBeat({
-  symbol, markedCount, levelsOpen, annotations, exact, streaming,
-  onToggleLevels, onInspect, onReadChart, onExpand,
+  symbol, markedCount, onChartCount, levelsOpen, annotations, exact,
+  onToggleLevels, onInspect,
 }: {
   symbol: string;
   markedCount: number;
+  /** How many of them are actually drawn right now. */
+  onChartCount: number;
   levelsOpen: boolean;
   annotations: Annotation[];
   exact: boolean;
-  streaming: boolean;
   onToggleLevels: () => void;
   onInspect: (a: Annotation) => void;
-  onReadChart: () => void;
-  onExpand: () => void;
 }) {
+  /**
+   * THE TWO BUTTONS THAT SAT HERE ARE GONE, at the owner's word: "the kai read
+   * this chart button and expand don't need to be there". Kai is asked through
+   * the composer at the foot of the screen, which is where every other question
+   * to him is asked, so a second dedicated button for one phrasing of one
+   * question was chrome the screen was carrying for no one.
+   */
   return (
     <View style={{ gap: 12 }} testID="beat-look">
-      {/* The chart's index, folded away by default. Beat one is the chart; the
-          list of what is on it is one tap, not a permanent second column. */}
+      {/*
+        The chart's index — and now genuinely an index rather than a legend,
+        because most of what it lists is deliberately not on the canvas. It says
+        BOTH numbers when they differ: "12 marks" printed over a chart showing
+        two would read as a bug, and the honest line is what makes the quiet
+        chart legible instead of suspicious. Tapping any of them puts it back.
+      */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <T
           size={12.5}
@@ -591,40 +671,23 @@ function LookBeat({
           onPress={onToggleLevels}
           testID="look-levels-toggle"
           accessibilityRole="button"
-          accessibilityLabel={`${markedCount} levels marked. ${levelsOpen ? 'Hide' : 'Show'} the list.`}
+          accessibilityLabel={
+            markedCount === 0
+              ? `Nothing marked on ${symbol} yet.`
+              : `${onChartCount} of ${markedCount} marks on the chart. ${levelsOpen ? 'Hide' : 'Show'} the list. Tap any of them to put it back on the chart.`
+          }
           style={{ flex: 1 }}
         >
           {markedCount === 0
             ? `Nothing marked on ${symbol} yet.`
-            : `${markedCount} level${markedCount === 1 ? '' : 's'} marked · ${levelsOpen ? 'hide' : 'show'}`}
+            : onChartCount === markedCount
+              ? `${markedCount} mark${markedCount === 1 ? '' : 's'} on the chart \u00b7 ${levelsOpen ? 'hide' : 'show'}`
+              : `${onChartCount} on the chart \u00b7 ${markedCount} saved \u00b7 ${levelsOpen ? 'hide' : 'show'}`}
         </T>
         {!exact ? <T size={11.5} c={color.gold} testID="look-coarser">Coarser bars</T> : null}
       </View>
 
       {levelsOpen ? <AnnotationRail annotations={annotations} onSelect={onInspect} /> : null}
-
-      <View style={{ flexDirection: 'row', gap: 9 }}>
-        <Button
-          label="Kai, read this chart"
-          kind="kai"
-          height={42}
-          full={false}
-          disabled={streaming}
-          testID="look-read-chart"
-          accessibilityHint={`Kai walks you through the ${symbol} chart, marking what he talks about.`}
-          onPress={onReadChart}
-        />
-        <Button
-          label="Expand"
-          kind="outline"
-          height={42}
-          full={false}
-          testID="look-expand"
-          accessibilityHint="Opens the chart full screen. Turn the phone sideways for a wider view."
-          onPress={onExpand}
-        />
-      </View>
-
     </View>
   );
 }

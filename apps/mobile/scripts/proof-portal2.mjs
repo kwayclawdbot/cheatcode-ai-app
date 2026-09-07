@@ -110,7 +110,12 @@ const tap = async (page, testid, ms = 900) => {
   await must(page, 'portal2-spine', 'the spine is the navigation');
   await must(page, 'beat-look', 'beat one is what is on screen');
   await must(page, 'portal-chart', 'the chart is mounted');
-  await must(page, 'look-read-chart', 'Kai can be asked to read it');
+  // The two buttons that used to live under the chart were removed at the
+  // owner's word — "the kai read this chart button and expand don't need to be
+  // there". Kai is asked through the composer, like every other question.
+  await mustNot(page, 'look-read-chart', 'the read-this-chart button is gone');
+  await mustNot(page, 'look-expand', 'the expand button is gone');
+  await must(page, 'spine-next-decide', 'the read is offered once, on first load');
   await mustNot(page, 'beat-decide', 'beat two is NOT also on screen');
   await mustNot(page, 'beat-take', 'beat three is NOT also on screen');
   await mustNot(page, 'context-switcher', 'the old context switcher is gone');
@@ -122,12 +127,15 @@ const tap = async (page, testid, ms = 900) => {
   await tap(page, 'look-levels-toggle');
   await shot(page, 'p2-1b-look-levels');
 
-  console.log('\n   and the one action beat one asks for takes Kai to the chart');
+  console.log('\n   the read is an OPENING offer and retires once taken');
   await open(page, '/trade/META', 4200);
-  await tap(page, 'look-read-chart', 2600);
-  await must(page, 'stage-chart', 'the stage takes the screen so Kai has room to work');
-  await shot(page, 'p2-1c-look-kai-reading');
-  await tap(page, 'stage-close', 900).catch(() => {});
+  await must(page, 'spine-next-decide', 'offered on a chart nobody has read yet');
+  await tap(page, 'spine-next-decide', 1600);
+  await must(page, 'beat-decide', 'it takes you to the read');
+  await tap(page, 'spine-look', 1200);
+  await must(page, 'beat-look', 'back on the chart');
+  await mustNot(page, 'spine-next-decide', 'and it does not ask a second time');
+  await shot(page, 'p2-1c-look-read-taken');
 
   console.log('\n2. DECIDE — a graded setup');
   await open(page, '/trade/META?beat=decide', 4200);
