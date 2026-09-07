@@ -1,8 +1,8 @@
 export { Board, Section, StatusMark, FunnelRow, DailyBars } from './components';
 export type { BoardKey } from './components';
 export {
-  useAudit, useInvites, useOverview, usePeople, usePerson, useSegments, useSources, useStaffRole,
-  useSyncRunner,
+  useAudit, useInvites, useOverview, usePeople, usePerson, useRooms, useSegments, useSources,
+  useStaffRole, useSyncRunner,
 } from './useAdmin';
 export type { AdminResource } from './useAdmin';
 export {

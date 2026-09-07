@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import type {
   AdminAuditPage, AdminAuditRow, AdminInviteRow, AdminInvitesPage, AdminOverview,
-  AdminPeopleFilter, AdminPersonRow, AdminPerson, AdminSegmentRow, AdminSourceState, StaffRole,
+  AdminPeopleFilter, AdminPersonRow, AdminPerson, AdminRoomRow, AdminRoomsFilter,
+  AdminRoomsPage, AdminSegmentRow, AdminSourceState, StaffRole,
 } from '../../lib/types';
 
 /**
@@ -167,6 +168,81 @@ export function useInvites() {
   const invites = [...created.filter((i) => !ids.has(i.id)), ...listed];
 
   return { ...r, invites, totals: r.data?.totals ?? null, create, revoke, busy, actionError: error };
+}
+
+/**
+ * THE ROOMS, AND THE ONE THING AN OPERATOR CAN CHANGE ABOUT ONE.
+ *
+ * Read like people: first page from the filter, "Show more" walks an opaque
+ * cursor, no page size to raise. Write like invites: one `busy` flag, one
+ * `actionError` sentence, and the changed row put on screen at once and then
+ * read back.
+ *
+ * WHY THE SERVER'S ROW IS KEPT LOCALLY FOR A MOMENT. `setAvatar` answers with
+ * the room as it now stands, and that row goes into `edited` immediately —
+ * choosing a picture and then watching the old one sit there while a list
+ * request completes reads as "it didn't work", and the second thing an operator
+ * does about that is choose the picture again. `reload()` still runs, and the
+ * moment its data lands `edited` is dropped, so the list is the server's answer
+ * and never a local copy that quietly outlives it.
+ */
+export function useRooms(filter: AdminRoomsFilter) {
+  const key = JSON.stringify(filter);
+  const first = useAdminResource<AdminRoomsPage>(() => api.adminRooms(filter), [key]);
+  const [extra, setExtra] = useState<AdminRoomRow[]>([]);
+  const [edited, setEdited] = useState<Record<string, AdminRoomRow>>({});
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { setExtra([]); setCursor(null); setEdited({}); }, [key, first.data]);
+
+  const nextCursor = cursor ?? first.data?.next_cursor ?? null;
+
+  const more = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await api.adminRooms(filter, nextCursor);
+      setExtra((rows) => [...rows, ...page.rooms]);
+      setCursor(page.next_cursor);
+    } catch {
+      /* the rows already on screen are still true */
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [filter, nextCursor, loadingMore]);
+
+  const setAvatar = useCallback(async (roomId: string, imageUrl: string | null) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const room = await api.adminSetRoomAvatar(roomId, imageUrl);
+      setEdited((m) => ({ ...m, [room.id]: room }));
+      first.reload();
+      return room;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That picture was not saved.');
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }, [first]);
+
+  const rooms = [...(first.data?.rooms ?? []), ...extra].map((r) => edited[r.id] ?? r);
+
+  return {
+    ...first,
+    rooms,
+    totals: first.data?.totals ?? null,
+    hasMore: !!nextCursor,
+    loadingMore,
+    more,
+    setAvatar,
+    busy,
+    actionError: error,
+  };
 }
 
 export function useAudit(filter: { action?: string; target_id?: string }) {

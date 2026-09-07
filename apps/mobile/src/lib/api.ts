@@ -6,6 +6,7 @@ import type {
 import type {
   DeskPickResponse, DeskThemeResponse, DeskThemesResponse, DeskWatchlistResponse,
 } from '@shared/desk';
+import { Platform } from 'react-native';
 import { env, offlineMode } from './env';
 import { supabase } from './supabase';
 import { getAccessToken, recoverSession, SESSION_EXPIRED_COPY } from './auth-token';
@@ -22,6 +23,7 @@ import {
   adaptRuleAdherence, adaptTickerPage,
 } from './adapters';
 import {
+  adaptAdminRoomRow, adaptAdminRoomsPage,
   adaptAuditPage, adaptInviteRow, adaptInvitesPage, adaptOverview, adaptPeoplePage,
   adaptPerson, adaptRedeem, adaptSegments, adaptSourceState, adaptSources, adaptSyncRun,
 } from './adapters';
@@ -39,7 +41,8 @@ import type {
 } from './types';
 import type {
   AdminAuditPage, AdminInviteRow, AdminInvitesPage, AdminOverview, AdminPeopleFilter,
-  AdminPeoplePage, AdminPerson, AdminSegmentRow, AdminSourceState, AdminSyncRun,
+  AdminPeoplePage, AdminPerson, AdminRoomRow, AdminRoomsFilter, AdminRoomsPage,
+  AdminSegmentRow, AdminSourceState, AdminSyncRun,
   InviteRedeemResult,
 } from './types';
 import type {
@@ -95,9 +98,23 @@ async function request<T>(path: string, init?: RequestInit, retried = false): Pr
     if (fresh) return request<T>(path, init, true);
     throw new ApiError('UNAUTHENTICATED', SESSION_EXPIRED_COPY);
   }
+  return readEnvelope<T>(res);
+}
+
+/**
+ * WHAT CAME BACK, TURNED INTO EITHER A VALUE OR A TYPED ERROR.
+ *
+ * This is lifted out of `request()` so the multipart path below gets exactly
+ * the same treatment and there is only ever one copy of it. The two things it
+ * knows are both worth keeping in one place: a route the API lane has not
+ * deployed yet answers with Next's HTML 404 rather than our envelope, which has
+ * to become a typed NOT_FOUND instead of a JSON parse crash — and that single
+ * behaviour is what lets every admin screen degrade into `notAvailable` instead
+ * of breaking. The other is that the server writes the sentence it wants said
+ * (`message_plain`), and the app repeats it rather than inventing its own.
+ */
+async function readEnvelope<T>(res: Response): Promise<T> {
   const text = await res.text();
-  // A route the API lane has not deployed yet answers with Next's HTML 404,
-  // not our envelope — that must be a typed error, not a JSON parse crash.
   type Envelope = { error?: { code?: string; message_plain?: string } };
   let json: Envelope | null = null;
   try {
@@ -112,6 +129,46 @@ async function request<T>(path: string, init?: RequestInit, retried = false): Pr
     throw new ApiError(code, err.message_plain ?? 'Something went wrong. Please try again.');
   }
   return json as T;
+}
+
+/**
+ * A MULTIPART POST — THE SAME DOOR AS `request()`, MINUS ONE HEADER.
+ *
+ * Same base URL, same `authHeaders()`, the same one retry after a refreshed
+ * token, the same error envelope through `readEnvelope`. The single difference
+ * is the entire reason this function has to exist: **it does not set
+ * `Content-Type`.**
+ *
+ * A multipart body is delimited by a boundary string that `fetch` invents when
+ * it serialises the FormData, and it writes that boundary into the header
+ * itself. `request()` stamps `Content-Type: application/json` on everything, so
+ * a form sent through it would be labelled as JSON; setting the header by hand
+ * to `multipart/form-data` is no better, because a boundary-less multipart
+ * header leaves the server unable to find any parts at all. Either way the
+ * failure is a confusing "no file arrived with that request" that points
+ * nowhere near here. The community lane hit exactly this — see `uploadPhoto` in
+ * `lib/community-api.ts`.
+ */
+async function upload<T>(path: string, form: FormData, retried = false): Promise<T> {
+  if (!env.hasApi) throw new ApiError('NO_API', 'The service is not connected yet.');
+  let res: Response;
+  try {
+    res = await fetch(`${env.apiBase}/api/v1${path}`, {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: form,
+    });
+  } catch {
+    throw new ApiError('NETWORK', "I couldn't reach the service just now. Check your connection and try again.");
+  }
+  // The retry re-serialises the same FormData, which is safe: the form holds a
+  // file reference (phone) or a Blob (web), not a consumed stream.
+  if (res.status === 401 && !retried && supabase) {
+    const fresh = await recoverSession();
+    if (fresh) return upload<T>(path, form, true);
+    throw new ApiError('UNAUTHENTICATED', SESSION_EXPIRED_COPY);
+  }
+  return readEnvelope<T>(res);
 }
 
 /**
@@ -574,6 +631,83 @@ export const api = {
 
   adminSegments: async (): Promise<AdminSegmentRow[]> =>
     adaptSegments(await request<unknown>('/admin/segments')),
+
+  /**
+   * The rooms, so somebody can finally put a picture on one. `has_image`
+   * narrows to the rooms that have one or the rooms that do not; the cursor is
+   * opaque and round-trips untouched, exactly as it does for people.
+   */
+  adminRooms: async (f: AdminRoomsFilter = {}, cursor?: string, limit = 50): Promise<AdminRoomsPage> => {
+    const qs = new URLSearchParams({ limit: String(limit) });
+    if (f.q) qs.set('q', f.q);
+    if (f.has_image) qs.set('has_image', f.has_image);
+    const next = cursor ?? f.cursor;
+    if (next) qs.set('cursor', next);
+    return adaptAdminRoomsPage(await request<unknown>(`/admin/rooms?${qs.toString()}`));
+  },
+
+  /**
+   * Set or clear the picture on one room.
+   *
+   * `null` CLEARS it, and is sent as an explicit null rather than an omitted
+   * key — "no picture" is a decision an operator makes (the picture was wrong,
+   * or the room should go back to wearing its company logo) and it has to be
+   * expressible. An omitted key would read as "leave it alone", which is the
+   * opposite instruction.
+   */
+  adminSetRoomAvatar: async (roomId: string, imageUrl: string | null): Promise<AdminRoomRow> => {
+    const r = await request<Record<string, unknown>>(`/admin/rooms/${encodeURIComponent(roomId)}/avatar`, {
+      method: 'POST',
+      body: JSON.stringify({ image_url: imageUrl }),
+    });
+    return adaptAdminRoomRow(r?.room);
+  },
+
+  /**
+   * Send one already-downscaled picture and get back the address to WRITE DOWN.
+   *
+   * `/media` is not an admin route — it is the same upload every member uses to
+   * put a photo on a post — but it lives here beside the two calls above
+   * because setting a room's picture is the two of them in sequence and there
+   * is no other caller.
+   *
+   * IT RETURNS `stable_url`, NEVER `asset.url`. Both come back from this route
+   * and they look alike. `asset.url` is a short-lived signed link straight at
+   * the storage bucket: a room whose picture was saved as that one looks
+   * correct this afternoon and is a broken image by tomorrow, with nothing in
+   * between to warn anybody. `stable_url` is a permanent address on this API
+   * that redirects to a freshly signed link on every fetch, which is the only
+   * kind of value that belongs in a stored row.
+   *
+   * THE FILE PART IS BUILT TWO WAYS AND BOTH ARE LOAD-BEARING. On the phone,
+   * `{ uri, name, type }` is React Native's file object for FormData — the
+   * runtime recognises the shape and streams the file off disk. On the web
+   * there is no such convention: `FormData.append` takes a Blob or a string and
+   * nothing else, so a plain object is stringified to the literal text
+   * `[object Object]`, no file is attached, and the server answers, entirely
+   * correctly, that no picture arrived. The picked uri on web is a `blob:` URL
+   * (see `features/media/pick.ts`), which `fetch` reads back into a real Blob.
+   */
+  uploadAvatar: async (photo: { uri: string; name: string; mime: string }): Promise<string> => {
+    const form = new FormData();
+    form.append('purpose', 'avatar');
+    if (Platform.OS === 'web') {
+      const blob = await (await fetch(photo.uri)).blob();
+      // `File` is a Blob that carries a name. Where the runtime has no `File`
+      // constructor, append's third argument carries the filename instead — the
+      // part must have one either way or the server sees a nameless field.
+      if (typeof File === 'function') form.append('file', new File([blob], photo.name, { type: photo.mime }));
+      else form.append('file', blob, photo.name);
+    } else {
+      form.append('file', { uri: photo.uri, name: photo.name, type: photo.mime } as unknown as Blob);
+    }
+    const r = await upload<{ stable_url?: unknown }>('/media', form);
+    const url = typeof r?.stable_url === 'string' ? r.stable_url.trim() : '';
+    // Saying "saved" over a URL that is not there would put an empty string in
+    // the room's config and silently take the picture away from the room.
+    if (!url) throw new ApiError('BAD_RESPONSE', 'That picture went up, but the service did not say where it lives. Try it again.');
+    return url;
+  },
 
   /** Public, and authenticated: the first request a new session makes (§6). */
   redeemInvite: async (code: string): Promise<InviteRedeemResult> =>

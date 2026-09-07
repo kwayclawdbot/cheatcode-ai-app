@@ -24,12 +24,16 @@ import type { CrmStatus } from '../../lib/types';
  * OPERATOR'S OWN ACTION, which is what volt means in this palette. Kai is not
  * in this part of the app at all, so violet never appears here.
  */
-export type BoardKey = 'overview' | 'people' | 'invites' | 'sources' | 'audit';
+export type BoardKey = 'overview' | 'people' | 'invites' | 'rooms' | 'sources' | 'audit';
 
+// Rooms sits after Invites and before Sources on purpose: the rail runs from
+// the people who are here, through the doors they came in by, to the things
+// that were set up for them, and ends at the record of who touched what.
 const BOARDS: { key: BoardKey; label: string; route: string }[] = [
   { key: 'overview', label: 'Overview', route: '/admin' },
   { key: 'people', label: 'People', route: '/admin/people' },
   { key: 'invites', label: 'Invites', route: '/admin/invites' },
+  { key: 'rooms', label: 'Rooms', route: '/admin/rooms' },
   { key: 'sources', label: 'Sources', route: '/admin/sources' },
   { key: 'audit', label: 'Audit', route: '/admin/audit' },
 ];
