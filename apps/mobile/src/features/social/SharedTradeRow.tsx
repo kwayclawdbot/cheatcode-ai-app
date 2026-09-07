@@ -7,6 +7,7 @@ import { TickerMark } from '../../ui/Ticker';
 import { alpha, color, radius } from '../../ui/tokens';
 import { Avatar } from '../community/ui/Chrome';
 import { BeltChip } from './BeltChip';
+import { MemberName } from './MemberName';
 import type { SharedTrade } from '../../lib/types';
 
 /**
@@ -62,7 +63,17 @@ export function SharedTradeRow({ trade, testID }: { trade: SharedTrade; testID?:
         >
           <Avatar initial={trade.author.initial} url={trade.author.avatar_url} size={24} />
         </Pressable>
-        <T size={12} weight="semibold" numberOfLines={1}>{trade.author.display_name}</T>
+        {/* The name is a door too, not only the avatar. A row where the picture
+            is tappable and the name beside it is not teaches the member that
+            names sometimes fail, and they stop tapping them everywhere. */}
+        <MemberName
+          name={trade.author.display_name}
+          userId={trade.author.user_id}
+          belt={trade.author.belt}
+          size={12}
+          weight="semibold"
+          testID={`shared-trade-author-${trade.id}`}
+        />
         <BeltChip belt={trade.author.belt} />
         <T size={10} c={color.dim} style={{ marginLeft: 'auto' }}>{trade.time_label}</T>
       </View>

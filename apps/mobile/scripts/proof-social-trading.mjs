@@ -23,10 +23,21 @@
  *     old ones about the segmented control and the Following feed; the old
  *     truth is now a bug, so it is asserted ABSENT rather than deleted.
  *
- *   · THE BELT IS ON IT. Small, hairline, volt-family — and present on the
- *     full-size card, because a belt that only appears on a profile is a belt
- *     nobody sees. The compact card in chat does not repeat it: the message row
- *     above already names the author once.
+ *   · THE BELT IS ON IT. Small, hairline — and present on the full-size card,
+ *     because a belt that only appears on a profile is a belt nobody sees. The
+ *     compact card in chat does not repeat it: the message row above already
+ *     names the author once.
+ *
+ *     This used to say "volt-family", and it is worth recording why it no
+ *     longer does. The ladder was drawn in one hue at five intensities to keep
+ *     it clear of a locked palette, which solved the collision by removing the
+ *     information — five weights of the same yellow-green is not a rank anybody
+ *     reads. The belts now carry their real colours, kept clear of the signal
+ *     set by chroma rather than by hue (see `scripts/belt-palette-test.mts`),
+ *     and the card's EDGE carries the author's rung. What has not moved is the
+ *     volt inside the card, which is the assertion below that still matters:
+ *     the eyebrow, the authorship block and the controls are the user's colour
+ *     and say a person wrote this rather than Kai.
  *
  *   · THE INCENTIVE LINE CHANGES WHILE YOU TYPE. "An entry plus a stop or a
  *     target is what makes a call count" becomes "This one counts" the moment

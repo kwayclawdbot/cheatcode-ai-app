@@ -27,6 +27,7 @@ import { useMe } from '../../features/account/useAccount';
 import { MessageActionsSheet, type MessageActionsTarget } from '../../features/community/ui/MessageActionsSheet';
 import { portalApi } from '../../lib/trade-api';
 import { ClubBody } from '../../features/community/ui/ClubFeed';
+import { MemberName } from '../../features/social';
 import type { CircleDetail, CircleMessage } from '../../features/circles/types';
 import type { MessageReactions, ReactionKind } from '../../features/community/types';
 import { ReactionBar } from '../../features/community/ui/Social';
@@ -154,7 +155,27 @@ function Message({ m, onActions, onReact }: {
       )}
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-          <T size={13.5} weight="bold" c={m.is_kai ? color.violetLight : m.role ? color.gold : color.text}>{m.author}</T>
+          {/*
+            A CIRCLE NAME CANNOT BE A DOOR, and it is drawn through the shared
+            component precisely so that stays visible. `CircleMessage` carries
+            `author` as a bare string — there is no user id anywhere on the row
+            (see the moderation target below, which passes `authorUserId: null`
+            for the same reason) — so no `userId` is given here and the name
+            renders as plain text. Inventing an id to make it tappable would
+            produce a name that opens the wrong person's profile, and a
+            Pressable that goes nowhere is worse than no affordance: it teaches
+            the member that names sometimes silently fail.
+
+            No belt either, for the same honesty: the wire has no rung on these
+            rows, and a guessed rank is worse than an absent one. Kai and a
+            role-holder keep the colours they had — those are claims this row
+            can actually support.
+          */}
+          {m.is_kai || m.role ? (
+            <T size={13.5} weight="bold" c={m.is_kai ? color.violetLight : color.gold}>{m.author}</T>
+          ) : (
+            <MemberName name={m.author} size={13.5} testID={`circle-author-name-${m.id}`} />
+          )}
           {m.is_kai ? (
             <View style={{ paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, backgroundColor: alpha.violet20, borderWidth: 0.5, borderColor: alpha.violet50 }}>
               <T size={8.5} weight="bold" c={color.violetLight}>AI</T>

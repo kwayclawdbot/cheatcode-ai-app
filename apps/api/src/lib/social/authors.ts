@@ -52,6 +52,43 @@ export function mentionFor(author: SocialAuthor): string {
 }
 
 /**
+ * WHAT BELT EACH OF THESE PEOPLE IS ON — THE ONLY ANSWER TO THAT QUESTION.
+ *
+ * There is exactly one derivation of a member's rank in this codebase and this
+ * is it: `user_points.belt`, which 0039 §3 maintains as a HIGH-WATER MARK, so
+ * it is read and never recomputed from the points beside it. A second copy of
+ * this rule — an inline `select` in another loader, a `belt_for()` reimplemented
+ * on points in TypeScript — would not fail loudly; it would quietly disagree,
+ * and the same member would wear one belt on their call card and a different
+ * one on the message that call arrived in.
+ *
+ * ONE ROUND TRIP FOR A WHOLE PAGE, keyed by user id. Both author loaders call
+ * it inside their own `Promise.all`, so it runs beside the profile read rather
+ * than after it and costs a query, not a wait.
+ *
+ * A MEMBER WITH NO ROW IS WHITE, NOT UNKNOWN. `user_points` only gains a row
+ * when something resolves, so an absence here means "has never resolved
+ * anything", which is precisely what the bottom rung is. Callers who need to
+ * say "this thing has no rank at all" — Kai, a deleted account — must not go
+ * through this function; they have no user id to ask about in the first place.
+ */
+export async function beltsFor(userIds: string[]): Promise<Map<string, Belt>> {
+  const out = new Map<string, Belt>();
+  const ids = [...new Set(userIds.filter(Boolean))];
+  if (!ids.length) return out;
+
+  const db = serviceClient();
+  const { data } = await db.from('user_points').select('user_id,belt').in('user_id', ids);
+  for (const r of (data ?? []) as Record<string, unknown>[]) {
+    // `?? 'white'` rather than `|| 'white'` would keep an empty string, and an
+    // empty string is not a rung. A null column and a missing row mean the
+    // same thing here and get the same answer.
+    out.set(String(r.user_id), (String(r.belt ?? '') || 'white') as Belt);
+  }
+  return out;
+}
+
+/**
  * Load every author in one pair of round trips. Ids that do not resolve are
  * simply absent from the map; callers drop the row rather than render a person
  * who is not there (a deleted account cascades its rows away, but a feed
@@ -63,15 +100,10 @@ export async function loadAuthors(userIds: string[], _requestId = '-'): Promise<
   if (!ids.length) return out;
 
   const db = serviceClient();
-  const [profiles, points] = await Promise.all([
+  const [profiles, belts] = await Promise.all([
     db.from('profiles_public').select('user_id,handle,display_name,avatar_url').in('user_id', ids),
-    db.from('user_points').select('user_id,belt').in('user_id', ids),
+    beltsFor(ids),
   ]);
-
-  const belts = new Map<string, Belt>();
-  for (const r of (points.data ?? []) as Record<string, unknown>[]) {
-    belts.set(String(r.user_id), (String(r.belt ?? 'white') as Belt) ?? 'white');
-  }
 
   for (const r of (profiles.data ?? []) as Record<string, unknown>[]) {
     const id = String(r.user_id);

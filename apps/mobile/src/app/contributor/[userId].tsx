@@ -12,7 +12,7 @@ import { useSession } from '../../lib/session';
 import { Avatar, DisclosureChip, RoleChip, Sheet, SheetRow, StackHeader } from '../../features/community/ui/Chrome';
 import { Flag, MuteGlyph } from '../../features/community/ui/Icons';
 import {
-  BeltChip, BeltProgress, CommunityCallCard, FollowButton, SharedTradeRow, useContributorSocial,
+  BeltChip, BeltProgress, CommunityCallCard, FollowButton, MemberName, SharedTradeRow, useContributorSocial,
   secondaryHandle,
 } from '../../features/social';
 import type { ContributorProfile } from '../../features/community/types';
@@ -173,7 +173,15 @@ export default function Contributor() {
               tone={profile.role_labels.some((r) => roleTone(r) === 'gold') ? 'educator' : 'neutral'}
             />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <T size={20} weight="bold" numberOfLines={1}>{profile.display_name}</T>
+              {/* The belt ink, and deliberately NOT a door: you are already
+                  standing on this profile, and a name that opens the screen it
+                  is printed on is an affordance that does nothing. */}
+              <MemberName
+                name={profile.display_name}
+                belt={author?.belt}
+                size={20}
+                testID="contributor-name"
+              />
               {secondaryHandle(profile.display_name, handle) ? (
                 <T size={12.5} c={color.muted} testID="contributor-handle">
                   {secondaryHandle(profile.display_name, handle)}

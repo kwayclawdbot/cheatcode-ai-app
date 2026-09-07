@@ -1580,6 +1580,20 @@ export const fixtureSocialAuthors: Record<string, SocialAuthor> = {
     user_id: 'user-dee', handle: 'dee', display_name: 'Dee Okafor',
     avatar_url: null, initial: 'D', belt: 'black',
   },
+  /**
+   * The fifth rung, and the reason she exists.
+   *
+   * The other four members cover white, blue, brown and black, which was a
+   * complete-looking set right up until names and card edges started carrying
+   * the belt's colour — and then the one rung nobody could see was purple, the
+   * single belt whose hue sits nearest something the palette has already
+   * spoken for (Kai's violet). A fixture set that cannot show the risky case
+   * is a fixture set that agrees with you.
+   */
+  sofia: {
+    user_id: 'user-sofia', handle: 'sofiab', display_name: 'Sofia Bennett',
+    avatar_url: null, initial: 'S', belt: 'purple',
+  },
   me: {
     user_id: SOCIAL_ME, handle: 'kway', display_name: 'Kway',
     avatar_url: null, initial: 'K', belt: 'white',
@@ -1662,6 +1676,25 @@ export const fixtureCommunityCalls: CommunityCall[] = [
     published_at: '2026-09-02T15:10:00.000Z',
     time_label: 'Tue',
     resolved_at: '2026-09-03T17:22:00.000Z',
+  },
+  {
+    id: 'call-5',
+    author: fixtureSocialAuthors.sofia,
+    symbol: 'COST',
+    direction: 'long',
+    entry: 892,
+    stop: 874,
+    target: 940,
+    thesis: 'Six weeks of higher lows and $COST has not closed under the 50-day once. I want 892 to hold on the retest.',
+    mode: 'swing',
+    message_id: null,
+    scoreable: true,
+    status: 'open',
+    result_pct: null,
+    outcome_label: 'Still open',
+    published_at: '2026-09-05T16:20:00.000Z',
+    time_label: 'Fri',
+    resolved_at: null,
   },
 ];
 
@@ -1747,7 +1780,15 @@ export function fixtureLeaderboard(period: LeaderboardPeriod = 'week'): Leaderbo
   const rows: LeaderboardRow[] = [
     { rank: 1, author: fixtureSocialAuthors.dee, points: 262, wins: 19, resolved: 24, accuracy: 79, is_you: false },
     { rank: 2, author: fixtureSocialAuthors.priya, points: 148, wins: 11, resolved: 17, accuracy: 65, is_you: false },
-    { rank: 3, author: fixtureSocialAuthors.marcus, points: 74, wins: 7, resolved: 14, accuracy: 50, is_you: false },
+    /*
+     * Sofia is here so the board shows all five rungs at once, which is the
+     * only place in the app that happens. The board is the honest test of the
+     * ladder: five names, five belts, one list — if the colours were going to
+     * read as a bag of highlighter pens rather than as a rank, this is the
+     * screen where it would be obvious.
+     */
+    { rank: 3, author: fixtureSocialAuthors.sofia, points: 112, wins: 9, resolved: 15, accuracy: 60, is_you: false },
+    { rank: 4, author: fixtureSocialAuthors.marcus, points: 74, wins: 7, resolved: 14, accuracy: 50, is_you: false },
   ];
   return {
     period,

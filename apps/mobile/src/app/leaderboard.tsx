@@ -8,7 +8,7 @@ import { ObjectCard } from '../ui/Panel';
 import { T, Num, Eyebrow } from '../ui/Text';
 import { alpha, color, radius } from '../ui/tokens';
 import { Avatar } from '../features/community/ui/Chrome';
-import { BeltChip, useLeaderboard } from '../features/social';
+import { BeltChip, MemberName, useLeaderboard } from '../features/social';
 import type { LeaderboardPeriod, LeaderboardRow } from '../lib/types';
 
 /**
@@ -82,9 +82,32 @@ function Row({ row, pinned = false }: { row: LeaderboardRow; pinned?: boolean })
       <Avatar initial={row.author.initial} url={row.author.avatar_url} size={30} />
       <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <T size={13} weight="semibold" numberOfLines={1} c={you ? color.volt : color.text}>
-            {row.author.handle ? `@${row.author.handle}` : row.author.display_name}
-          </T>
+          {/*
+            THE BELT INK, AND NO SECOND DOOR. The whole row is already the
+            Pressable that opens the profile, and on web a role of "button"
+            renders as a real <button> which cannot contain another — so
+            `MemberName` is given no `userId` here and is asked only for the
+            colour.
+
+            YOUR OWN ROW STAYS VOLT. The rank, the accuracy figure and the
+            row's border are all volt on it already, because volt is the user:
+            tinting one word of that row a belt colour would read as a
+            rendering fault rather than as a rank, and you do not need to be
+            told your own belt on a list you are scanning for other people's.
+          */}
+          {you ? (
+            <T size={13} weight="semibold" numberOfLines={1} c={color.volt}>
+              {row.author.handle ? `@${row.author.handle}` : row.author.display_name}
+            </T>
+          ) : (
+            <MemberName
+              name={row.author.handle ? `@${row.author.handle}` : row.author.display_name}
+              belt={row.author.belt}
+              size={13}
+              weight="semibold"
+              testID={`board-row-name-${row.rank}`}
+            />
+          )}
           {you ? <T size={10} c={color.dim}>you</T> : null}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>

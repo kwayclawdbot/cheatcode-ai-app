@@ -8,6 +8,7 @@ import type { MessageMedia, ReactionKind, RoomMessage } from '../types';
 import { MediaStrip, QuoteBlock, ReactionBar, ThreadLine } from './Social';
 import { PostBody } from './PostBody';
 import { FollowButton } from '../../social/FollowButton';
+import { MemberName } from '../../social/MemberName';
 import { CommunityCallCard } from '../../social/CommunityCallCard';
 
 /**
@@ -99,19 +100,43 @@ export function MessageRow({
 
       <View style={{ flex: 1, gap: 3 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Open ${m.author.display_name}'s contributor profile`}
-            disabled={isKai || !onOpenAuthor}
-            onPress={onOpenAuthor}
-            hitSlop={{ top: 8, bottom: 8 }}
-          >
+          {/*
+            NAME AND USERNAME ARE ONE DOOR NOW. The name has always opened the
+            profile here; the `@handle` sat outside that pressable and did
+            nothing, which is the same word for the same person behaving two
+            ways an inch apart. `MemberName` holds both and routes itself, so
+            `onOpenAuthor` is no longer what makes the name work — it is kept
+            because the AVATAR still uses it, and because a caller that has a
+            reason to send somebody elsewhere still can.
+
+            Kai keeps violetLight, keeps his role chip, and is not a door: he
+            is not a member and there is no profile behind him. A deleted
+            author has no `user_id`, so they are not a door either.
+
+            AN EDUCATOR'S NAME IS NO LONGER GOLD. A name can carry one claim
+            and the belt is the one the owner asked for; gold was doing the
+            work of the RoleChip that is still printed right beside it, and
+            "Educator" in words is a stronger statement than a hue anybody has
+            to be taught. Kai and a deleted author keep `nameColor` because
+            neither of them has a rung to show instead.
+          */}
+          {isKai || !m.author.user_id ? (
             <T size={13.5} weight="bold" c={nameColor}>{m.author.display_name}</T>
-          </Pressable>
-          {/* The username, next to the name. Absent when there is none —
-              this line never repeats the display name with an `@` in front
-              of it, because that would be a mention nobody can type. */}
-          {m.author.handle ? (
+          ) : (
+            <MemberName
+              name={m.author.display_name}
+              userId={m.author.user_id}
+              belt={m.author.belt}
+              handle={m.author.handle}
+              showHandle
+              size={13.5}
+              handleSize={11.5}
+              testID={`message-author-name-${m.id}`}
+            />
+          )}
+          {/* Kai's own line still prints its username the plain way — his name
+              is not a member's name and it never wears a belt. */}
+          {(isKai || !m.author.user_id) && m.author.handle ? (
             <T size={11.5} c={color.dim} testID={`message-handle-${m.id}`}>{`@${m.author.handle}`}</T>
           ) : null}
           {m.author.role_labels.map((r) => <RoleChip key={r} label={r} tone={roleTone(r)} />)}

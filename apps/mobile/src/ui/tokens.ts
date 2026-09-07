@@ -40,6 +40,80 @@ export const color = {
   dangerDeep: '#B00020',
 } as const;
 
+/**
+ * THE BELT LADDER — the one place the five rungs have a colour.
+ * ===========================================================================
+ *
+ * The rule that keeps this from breaking the palette: SIGNAL IS LIT, BELT IS
+ * DYED. Every colour in `color` above that carries meaning is at full chroma —
+ * cyan, violet, gold, volt and red are all 100% saturation, green 62%. Every
+ * belt below sits between 15% and 61%. That single gap is what lets a blue
+ * belt share a screen with a cyan price without the two ever being read as the
+ * same kind of statement, and it is why a room of five different belts still
+ * looks like one product: they are five weights of dyed cloth, not five
+ * signal lights. Hue says which rung; chroma says "this is a person, not data".
+ *
+ * A belt colour is allowed in exactly two places — a member's NAME and the
+ * EDGE of something they authored. It is never a fill, never a chart series,
+ * never a control. The word is always printed alongside it (`BeltChip`), so
+ * the rung is never carried by colour alone.
+ *
+ * Contrast on the ground (#0B0B0E), measured, not guessed:
+ *   white 18.5:1   blue 6.2:1   purple 8.1:1   brown 6.7:1   black 14.0:1
+ * All well past 4.5:1, so a name is legible at every rung.
+ *
+ * ── WHY BLACK IS SILVER ────────────────────────────────────────────────────
+ * A black belt drawn in black is invisible here — the ground already is black.
+ * Every escape that keeps a hue makes it worse: gold collides with `caution`
+ * and with the brown belt right below it, violet is Kai's, volt is the user's
+ * own action colour and would make the top rank read as a button.
+ *
+ * So black is not given a hue at all, which is the honest reading of it: black
+ * is the absence of dye. It is rendered as a FINISH instead — polished
+ * platinum, the only near-achromatic entry in the ladder (15% saturation), and
+ * the brightest, so the top of the ladder is also the most present. On a card
+ * it is the only edge drawn as a metallic gradient rather than a flat hairline
+ * (see `beltEdgeGradient` in features/social/belts.ts). Cloth for the four
+ * dyed rungs; metal for the one that has stopped being cloth.
+ */
+export const belt = {
+  /** Warm ivory — the same ink every other name in the app uses. */
+  white: '#FFF7E8',
+  /**
+   * Steel blue — a fraction of `cyan`'s chroma and 22 degrees off its hue.
+   *
+   * Tuned down from a louder blue after seeing all five rungs in one list
+   * (`proof/belts-04-leaderboard-five-rungs.png`): at 61% saturation it was
+   * the most saturated colour in the ladder, which put the loudest hue on the
+   * second-LOWEST rank. Rank is carried by the word and by the order of the
+   * list, so a belt has no business competing for attention out of turn.
+   */
+  blue: '#7B9CC6',
+  /** Orchid. A third of `violet`'s chroma so it never reads as Kai. */
+  purple: '#BE9AC8',
+  /** Leather tan. Darker and browner than `gold`, which stays financial. */
+  brown: '#C08C5E',
+  /** Polished platinum — a finish, not a hue. See the note above. */
+  black: '#D6DAE1',
+} as const;
+
+/**
+ * The belt as an EDGE — the hairline around something that member authored.
+ * Half-strength, matching the 0.50 the volt card edge used before belts took
+ * that slot, so the card's weight on the page is unchanged and only its hue
+ * moved.
+ */
+export const beltAlpha = {
+  white: 'rgba(255,247,232,0.50)',
+  blue: 'rgba(123,156,198,0.50)',
+  purple: 'rgba(190,154,200,0.50)',
+  brown: 'rgba(192,140,94,0.50)',
+  black: 'rgba(214,218,225,0.50)',
+  /** The two ends of the black belt's metallic edge — graphite to platinum. */
+  blackMetalDim: 'rgba(214,218,225,0.16)',
+  blackMetalBright: 'rgba(214,218,225,0.72)',
+} as const;
+
 /** rgba() strings taken straight out of the artboard inline styles. */
 export const alpha = {
   // ivory (text) veils

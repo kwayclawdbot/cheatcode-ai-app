@@ -19,6 +19,7 @@ import type { MessageMedia, ReactionKind, RoomMessage } from '../types';
 import { MediaStrip, QuoteBlock, ReactionBar, ThreadLine } from './Social';
 import { PostBody } from './PostBody';
 import { FollowButton } from '../../social/FollowButton';
+import { MemberName } from '../../social/MemberName';
 import { CommunityCallCard } from '../../social/CommunityCallCard';
 
 /**
@@ -149,8 +150,40 @@ export function ClubMessage({
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 7, flexWrap: 'wrap' }}>
-          <T size={13} weight="bold" c={kai ? color.violetLight : color.text}>{message.author.display_name}</T>
-          {message.author.handle ? (
+          {/*
+            THE NAME ON THIS BOARD WAS DEAD, on every post, because this
+            component was never given an `onOpenAuthor` to begin with — so the
+            most-read surface in the app was the one place a name went nowhere.
+            `MemberName` carries the route itself, which is why the gap could
+            close here without the screen above having to learn about it.
+
+            Nesting is legal: the row wrapper is a Pressable that deliberately
+            carries no `accessibilityRole`, so on web it renders as a div and
+            not a <button> — see the comment on it. The cost is that a
+            press-and-hold started on the name goes to the name and not to the
+            moderation sheet, which is the right trade: the rest of the post is
+            still a long-press target, and a name that cannot be tapped is a
+            bug a member notices every time they read the board.
+
+            Kai gets neither: violetLight is his, he has no rank, and there is
+            no profile behind him. Nor does a deleted author — their `user_id`
+            is null and a door onto a removed account is a dead end.
+          */}
+          {kai ? (
+            <T size={13} weight="bold" c={color.violetLight}>{message.author.display_name}</T>
+          ) : (
+            <MemberName
+              name={message.author.display_name}
+              userId={message.author.author_deleted ? null : message.author.user_id}
+              belt={message.author.belt}
+              handle={message.author.handle}
+              showHandle
+              size={13}
+              handleSize={10.5}
+              testID={`club-author-name-${message.id}`}
+            />
+          )}
+          {kai && message.author.handle ? (
             <T size={10.5} c={color.dim}>{`@${message.author.handle}`}</T>
           ) : null}
           {kai ? (

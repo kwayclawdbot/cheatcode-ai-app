@@ -33,9 +33,11 @@ import type {
   FollowFeedItem, FollowState, Leaderboard, LeaderboardPeriod, LeaderboardRow, PointsExplainer,
   SharedTrade, SharedTradeOutcome, SocialAuthor, SocialDirection, SocialRecord,
 } from './types';
+import { isBelt } from '../features/social/belts';
 import type {
   AdminAuditPage, AdminInviteRow, AdminInvitesPage, AdminInviteTotals, AdminMetric,
   AdminOverview, AdminPeopleFilter, AdminPeoplePage, AdminPerson, AdminPersonRow,
+  AdminRoomRow, AdminRoomsPage,
   AdminScores, AdminSegmentRow, AdminSourceState, AdminSyncRun, AdminTimelineRow,
   CrmEventSource, CrmIdentityKind, CrmStatus, InviteRedeemResult, StaffBlock,
   StaffRole, SyncSourceName,
@@ -1486,11 +1488,19 @@ export function adaptAlertCard(raw: unknown, i = 0): AlertCard {
  */
 export function adaptAlertsRound4(raw: unknown): AlertsRound4 {
   const o = r4obj(raw);
+  const declaredMode = r4str(o.mode);
   const out: AlertsRound4 = {
     active: [], watching: [], history: [],
     counts: { active: 0, watching: 0, history: 0 },
     empty_copy: r4nul(o.card_empty_copy ?? o.empty_copy)
       ?? 'Nothing here yet. Kai will put an alert here the moment something changes.',
+    // The mode the SERVER filtered by. Kept as null rather than guessed when a
+    // build does not send it: a guess here would be indistinguishable from the
+    // server agreeing with us, which is the one thing this field exists to tell
+    // the difference between.
+    mode: declaredMode === 'day_trade' || declaredMode === 'swing' || declaredMode === 'invest'
+      ? declaredMode
+      : null,
   };
 
   if (Array.isArray(o.cards)) {
@@ -1530,7 +1540,26 @@ export function mergeAlertsTab(base: AlertsRound4, incoming: AlertsRound4, tab: 
     ...base,
     [tab]: incoming[tab],
     counts: incoming.counts,
-    empty_copy: incoming.empty_copy ?? base.empty_copy,
+    /**
+     * THE SENTENCE ON AN EMPTY BOARD BELONGS TO ACTIVE, because Active is the
+     * only tab left that can be empty in front of a person.
+     *
+     * Watching folded into Active on 7 Sept, so the board asks for both and
+     * merges them — active first, watching second. A plain `incoming ?? base`
+     * therefore let the SECOND reply's sentence win, and an empty Day Trade
+     * board said "I am not watching anything for you yet. Follow a setup…"
+     * instead of the day-trade words the server writes for exactly this case.
+     * Watching has no screen of its own any more, so its copy has nowhere to be
+     * right; Active's is the one a person reads.
+     */
+    empty_copy: tab === 'watching'
+      ? base.empty_copy ?? incoming.empty_copy
+      : incoming.empty_copy ?? base.empty_copy,
+    // The merged object takes the INCOMING mode. `base` may be the same mode's
+    // other tab, but it may also be the last thing held before a switch, and a
+    // merge that kept the older label would relabel fresh cards with the mode
+    // they are replacing.
+    mode: incoming.mode ?? base.mode ?? null,
   };
 }
 
@@ -1975,6 +2004,44 @@ export function adaptPerson(v: unknown): AdminPerson {
   };
 }
 
+/**
+ * A ROOM ON THE OPERATOR'S BOARD.
+ *
+ * `image_url` is put through the SAME test `roomImageUrl` applies in
+ * `src/ui/RoomAvatar.tsx` — a non-empty http(s) string, or nothing. The test is
+ * repeated rather than imported because that helper reads the room's whole
+ * `config` bag and this is already one field, but the two must agree: if this
+ * board counted a half-written value as "has a picture" while the member's
+ * screen fell through to the logo, the operator would be looking at a room that
+ * says it is fixed and is not.
+ */
+export function adaptAdminRoomRow(v: unknown): AdminRoomRow {
+  const r = a6(v);
+  const url = str(r.image_url).trim();
+  return {
+    id: str(r.id),
+    // A room always has a kind; an unknown one is still a room, so the fallback
+    // is the word rather than an empty string that would print as nothing.
+    type: str(r.type, 'room'),
+    slug: nStr(r.slug),
+    name: str(r.name),
+    image_url: /^https?:\/\//i.test(url) ? url : null,
+    plain: str(r.plain),
+  };
+}
+
+export function adaptAdminRoomsPage(v: unknown): AdminRoomsPage {
+  const r = a6(v);
+  const t = a6(r.totals);
+  return {
+    // A row with no id cannot be written to, so it is not shown at all.
+    rooms: arr(r.rooms).map(adaptAdminRoomRow).filter((x) => x.id),
+    next_cursor: nStr(r.next_cursor),
+    totals: { all: a6n(t.all), with_image: a6n(t.with_image), without_image: a6n(t.without_image) },
+    plain: str(r.plain),
+  };
+}
+
 export function adaptInviteRow(v: unknown): AdminInviteRow {
   const i = a6(v);
   const state = str(i.state);
@@ -2077,11 +2144,41 @@ export function adaptRedeem(v: unknown): InviteRedeemResult {
  * promise that has to hold belongs.
  * ====================================================================== */
 
-const BELTS: Belt[] = ['white', 'blue', 'purple', 'brown', 'black'];
-
+/**
+ * The rung guard is `isBelt` in `features/social/belts.ts` and is imported
+ * rather than repeated. This file used to keep its own copy of the ladder — two
+ * arrays of the same five words, either of which could gain a rung without the
+ * other — and the belt lane now owns the list because it owns the colours that
+ * are keyed off it. The import is type-safe at build time and pulls in nothing
+ * but plain objects at runtime (`ui/tokens.ts` has no imports of its own), so
+ * the adapter layer stays free of anything that touches the screen.
+ */
 export const adaptBelt = (v: unknown): Belt => {
   const s = r4str(v).toLowerCase();
-  return (BELTS as string[]).includes(s) ? (s as Belt) : 'white';
+  return isBelt(s) ? s : 'white';
+};
+
+/**
+ * A MESSAGE AUTHOR'S BELT, WHICH IS ALLOWED TO BE ABSENT — unlike every other
+ * belt in this file, which defaults to White.
+ *
+ * The difference is the whole point of the field. On a call card or a board row
+ * the author is a member by definition, so an unreadable value means "we failed
+ * to read a rank they definitely have" and White is the honest floor. A room
+ * message can be signed by somebody who has no rank at all — Kai is not a
+ * member, and an account that was deleted is not standing on anything — and the
+ * server says so by sending null. It also says nothing at all when it is an
+ * older build that predates the field.
+ *
+ * Both of those come back null here and the name renders in the house ivory it
+ * has always been. WHITE WOULD LOOK IDENTICAL ON SCREEN and would still be
+ * wrong: it is a rank somebody earned, asserted about a post nobody earned it
+ * on, and the moment White stops being ivory the mistake becomes visible.
+ */
+export const adaptAuthorBelt = (v: unknown): Belt | null => {
+  if (v == null) return null;
+  const s = r4str(v).toLowerCase();
+  return isBelt(s) ? s : null;
 };
 
 const BELT_LABEL: Record<Belt, string> = {

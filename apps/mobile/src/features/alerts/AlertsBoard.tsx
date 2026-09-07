@@ -15,7 +15,7 @@ import { useAlertActions, useAlertsRound4 } from './useAlerts';
 import { ModeControl } from '../home/ModeSheet';
 import { secondTab } from '../nav/second-tab';
 import { Avatar } from '../community/ui/Chrome';
-import { BeltChip, CommunityCallCard, secondaryHandle, useDeskCalls } from '../social';
+import { BeltChip, CommunityCallCard, MemberName, useDeskCalls } from '../social';
 import type { AlertBoardTab, AlertCard, AlertCardState, CommunityCall, GoalMode } from '../../lib/types';
 import { NOT_ADVICE_ALERTS } from '../legal/disclaimers';
 
@@ -131,7 +131,6 @@ function StateTabs({ value, onChange, counts }: {
  */
 function BoardCallRow({ call }: { call: CommunityCall }) {
   const router = useRouter();
-  const handle = secondaryHandle(call.author.display_name, call.author.handle);
   return (
     <View style={{ gap: 7 }} testID={`board-call-${call.id}`}>
       <Pressable
@@ -146,8 +145,20 @@ function BoardCallRow({ call }: { call: CommunityCall }) {
         })}
       >
         <Avatar initial={call.author.initial} url={call.author.avatar_url} size={22} />
-        <T size={12.5} weight="bold" numberOfLines={1}>{call.author.display_name}</T>
-        {handle ? <T size={10.5} c={color.dim}>{handle}</T> : null}
+        {/* NO `userId` HERE. The whole row above is already the door, and on
+            web react-native renders `accessibilityRole="button"` as a real
+            <button> — a second one inside it is illegal markup. This call is
+            only asking `MemberName` for the belt ink, so that a name is the
+            same colour on this board as it is everywhere else. */}
+        <MemberName
+          name={call.author.display_name}
+          belt={call.author.belt}
+          handle={call.author.handle}
+          showHandle
+          size={12.5}
+          handleSize={10.5}
+          testID={`board-call-name-${call.id}`}
+        />
         <BeltChip belt={call.author.belt} />
         <View style={{ flex: 1 }} />
         <T size={10.5} c={color.dim}>{call.time_label}</T>
@@ -161,7 +172,18 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
   const router = useRouter();
   /** Fixtures preview only — lets the owner and Playwright see the quiet day. */
   const params = useLocalSearchParams<{ fixture?: string }>();
+  /*
+   * THE MODE IS PART OF THE QUESTION, so it is an argument and not just a
+   * caption in the header.
+   *
+   * `/alerts` is scoped on the server by the profile's mode, and the app read
+   * it without ever mentioning which mode it was asking about. So the switch
+   * wrote the new mode, the header redrew, and the list underneath kept the
+   * answer to the old question — a day trader looking at swing picks until he
+   * happened to change tab. Passing it here is what makes the board re-ask.
+   */
   const { data, loading, error, isFixture, reload, tab, setTab } = useAlertsRound4(
+    mode,
     env.FIXTURES && params.fixture === 'empty' ? 'empty' : 'default',
   );
   const actions = useAlertActions(reload);

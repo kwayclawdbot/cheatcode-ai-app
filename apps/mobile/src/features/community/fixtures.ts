@@ -12,31 +12,54 @@ import type {
 import { EMPTY_REACTIONS } from './types';
 import { fixtureCommunityCalls } from '../../lib/fixtures';
 
+/*
+ * THE ROOM IS ON FOUR DIFFERENT RUNGS, ON PURPOSE.
+ *
+ * A member's name is drawn in their belt's colour, so a fixture room where
+ * everybody sat on the same rung would render as a screen full of ivory and
+ * prove nothing — and the thing most worth proving here is not that one belt
+ * works, it is that four of them in one conversation still read as one product
+ * rather than as a bag of colours. The rungs below are spread deliberately
+ * wide, including the two that sit nearest a colour the palette has already
+ * spoken for (purple next to Kai's violet, and the black belt's platinum).
+ *
+ * A ROLE AND A RUNG ARE DIFFERENT CLAIMS. Jordan is an Educator AND a black
+ * belt; Marcus is a Moderator AND a purple belt. The role is said in words by
+ * the chip beside the name and the rung is said by the name's colour, which is
+ * why one name can carry both without either one shouting over the other.
+ */
 const KAI: Author = {
   user_id: 'kai', display_name: 'Kai', handle: null, avatar_url: null, initial: 'K',
   role_labels: ['AI'], is_kai: true, author_deleted: false,
+  // Kai is not a member and earns nothing. Never a rung.
+  belt: null,
 };
 const JORDAN: Author = {
   user_id: 'u-jordan', display_name: 'Jordan', handle: 'jordan', avatar_url: null, initial: 'J',
-  role_labels: ['Educator'], is_kai: false, author_deleted: false,
+  role_labels: ['Educator'], is_kai: false, author_deleted: false, belt: 'black',
 };
 const SAM: Author = {
   user_id: 'u-sam', display_name: 'Sam', handle: 'sam', avatar_url: null, initial: 'S',
-  role_labels: [], is_kai: false, author_deleted: false,
+  role_labels: [], is_kai: false, author_deleted: false, belt: 'white',
 };
 const MARCUS: Author = {
   user_id: 'u-marcus', display_name: 'Marcus T.', handle: 'marcus', avatar_url: null, initial: 'M',
-  role_labels: ['Moderator'], is_kai: false, author_deleted: false,
+  role_labels: ['Moderator'], is_kai: false, author_deleted: false, belt: 'purple',
 };
 /**
  * The author of the call that lands in the room below. She is the same person
  * as `fixtureSocialAuthors.priya` — one member, written twice because the room
- * and the social layer describe an author differently (role labels here, a belt
- * there) — so the ids match and a tap through to the profile finds her.
+ * and the social layer describe an author differently (role labels here, the
+ * call's own record there) — so the ids match and a tap through to the profile
+ * finds her.
+ *
+ * HER RUNG HAS TO MATCH `fixtureSocialAuthors.priya`, which is brown. The room
+ * row and the card inside it name the same person on the same screen, so two
+ * different belts would be visible as two different colours an inch apart.
  */
 const PRIYA: Author = {
   user_id: 'user-priya', display_name: 'Priya Raman', handle: 'priya_r', avatar_url: null,
-  initial: 'P', role_labels: [], is_kai: false, author_deleted: false,
+  initial: 'P', role_labels: [], is_kai: false, author_deleted: false, belt: 'brown',
 };
 
 const META_SETUP: RoomSetup = {

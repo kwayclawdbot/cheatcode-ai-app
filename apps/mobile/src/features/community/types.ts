@@ -7,7 +7,7 @@
  * format. Enum values follow the Postgres enums in
  * supabase/migrations/0001_extensions_enums.sql.
  */
-import type { CommunityCall } from '../../lib/types';
+import type { Belt, CommunityCall } from '../../lib/types';
 
 export type RoomType = 'core' | 'setup' | 'announcement';
 export type MemberRole = 'member' | 'moderator' | 'educator' | 'expert';
@@ -70,6 +70,17 @@ export type Author = {
   initial: string;
   role_labels: string[];
   is_kai: boolean;
+  /**
+   * The rung this member is on, which is what colours their name.
+   *
+   * OPTIONAL ON PURPOSE, and the absence is meaningful: a message that arrives
+   * from a server that does not yet send the field renders the name in the
+   * house ivory — the colour it has always been — rather than in white belt's
+   * ivory, which happens to look identical but would be a claim about their
+   * rank that nobody made. Kai has no belt and never will; neither does a
+   * deleted author.
+   */
+  belt?: Belt | null;
   /**
    * The author deleted their account. `user_id` is null on these rows and
    * WITHOUT this flag that null reads as "posted by Kai" (migration 0010's

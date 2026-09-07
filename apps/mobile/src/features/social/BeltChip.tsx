@@ -8,10 +8,21 @@ import type { Belt, BeltBlock } from '../../lib/types';
 /**
  * The belt, as a chip you can put next to a name.
  *
- * A 3px bar in the belt's own weight, then the word. Nothing filled, nothing
+ * A 3px bar in the belt's own colour, then the word. Nothing filled, nothing
  * rounded into a badge, no icon: the same restraint as `RoleChip` next door,
  * because these two sit on the same line and one of them shouting would make
- * the other look broken. See `belts.ts` for why the ladder is volt-only.
+ * the other look broken.
+ *
+ * THE BAR IS A REAL BELT COLOUR NOW. It used to be volt at five intensities —
+ * the ladder was drawn entirely in one hue to keep it from colliding with the
+ * palette — and five weights of the same yellow-green is not something anybody
+ * reads as a rank. `belts.ts` explains how the collision is solved instead
+ * (signal is lit, belt is dyed) and `belt` in `tokens.ts` holds the values.
+ *
+ * The WORD stays quiet ink at every rung, deliberately. The name beside this
+ * chip is already in the belt's colour, and saying it twice in two type sizes
+ * on one line is one statement too many; the chip's job is to be the thing you
+ * read when you cannot separate five hues.
  */
 export function BeltChip({ belt, label, testID }: { belt: Belt; label?: string | null; testID?: string }) {
   const word = label?.replace(/\s*belt$/i, '') || BELT_LABEL[belt];

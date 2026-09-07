@@ -11,7 +11,8 @@ import { Avatar } from '../community/ui/Chrome';
 import { PostBody } from '../community/ui/PostBody';
 import { NOT_ADVICE_COMMUNITY_CALL } from '../legal/disclaimers';
 import { BeltChip } from './BeltChip';
-import { secondaryHandle } from './naming';
+import { beltEdgeGradient } from './belts';
+import { MemberName } from './MemberName';
 import { FollowButton } from './FollowButton';
 import type { CommunityCall } from '../../lib/types';
 
@@ -26,6 +27,29 @@ import type { CommunityCall } from '../../lib/types';
  * of the pair, and the member's own avatar where the orb would be. Somebody
  * who has learned that violet means "Kai said this" gets the other half of the
  * lesson for free: volt means a person said it.
+ *
+ * ── THE EDGE MOVED TO THE BELT, AND ONLY THE EDGE ───────────────────────
+ * The card used to be outlined in volt at half strength, which said the same
+ * sentence twice: the wash, the eyebrow and the authorship block were already
+ * saying "a person wrote this". The hairline was the one part of the card with
+ * nothing left to add, so it was the one part free to say something new — WHICH
+ * person, by rank.
+ *
+ * Everything volt inside the card is untouched and must stay that way. The
+ * background wash, the COMMUNITY TRADE eyebrow, the authorship block and every
+ * control are still volt, so the card still reads as authored by a member
+ * before anybody has looked at the border at all. A belt edge on its own would
+ * not carry that: four of the five rungs are quiet dyed colours a reader is not
+ * meant to decode at a glance, and a card whose only statement was a pale brown
+ * hairline would be a card that has stopped saying who made it.
+ *
+ * The ring is a `LinearGradient` at every rung rather than a `borderColor`,
+ * because the black belt's edge is metal — graphite to platinum across the
+ * card's own diagonal — and the four dyed belts return their colour three
+ * times, which renders as a flat hairline. One geometry, one code path, no
+ * branch on rank: a border that only some cards had would be a second layout
+ * to keep in step with the first. Its radius and its 0.5 are exactly what the
+ * volt border was, so the card weighs the same on the page as it always did.
  *
  * ── AND WHAT IS NOT ON IT ───────────────────────────────────────────────
  * No grade. No score. No score bar. No medallion. Nothing graded this: a
@@ -162,15 +186,52 @@ export function CommunityCallCard({
     </View>
   ) : null;
 
+  /**
+   * THE EDGE IS THE AUTHOR'S BELT, drawn as a ring rather than a border.
+   *
+   * A `borderColor` cannot hold a gradient, and the black belt's edge has to be
+   * one — see the note at the top of this file, and `beltEdgeGradient`. So the
+   * hairline is a `LinearGradient` half a point thick with the card sitting
+   * inside it. The outer radius is the radius the card has always had and the
+   * inner one is that minus the ring's own width, which is what keeps the two
+   * curves concentric instead of leaving a bright corner.
+   *
+   * THE CARD IS GIVEN THE PAGE GROUND TO SIT ON, and that line is doing real
+   * work. The card's own wash is translucent — volt at 10% over surface at 65%
+   * — so with the ring behind it the belt would come through the entire card
+   * face at about a sixth strength. That is a FILL, which is the one thing a
+   * belt colour is never allowed to be: a brown-tinted card reads as a state,
+   * like a warning or a stale price, rather than as a rank. Painting the ground
+   * under the wash composites the card exactly as it did when it sat directly
+   * on the screen, so the belt is confined to the half point it is meant to own.
+   *
+   * THE RING'S testID IS `call-edge-…`, NOT `community-call-edge-…`, and that
+   * is not a style choice. `proof-social-trading.mjs` selects the card with
+   * `[data-testid^="community-call-"]` and takes `.first()`; this ring is the
+   * card's ANCESTOR, so an id sharing that prefix would quietly hand every
+   * existing assertion a different element than the one it was written
+   * against. Those assertions would keep passing — descendant queries resolve
+   * through the ring either way — while no longer being about the card.
+   */
+  const edgeRadius = compact ? radius.xxl : radius.xxxl;
+
   return (
+    <LinearGradient
+      testID={`call-edge-${call.id}`}
+      colors={beltEdgeGradient(call.author.belt)}
+      start={gradientAngle.start}
+      end={gradientAngle.end}
+      style={{ borderRadius: edgeRadius, padding: 0.5 }}
+    >
     <LinearGradient
       testID={testID ?? `community-call-${call.id}`}
       colors={[alpha.volt10, alpha.surface65]}
       start={gradientAngle.start}
       end={gradientAngle.end}
       style={{
-        borderRadius: compact ? radius.xxl : radius.xxxl,
-        borderWidth: 0.5, borderColor: alpha.volt50,
+        borderRadius: edgeRadius - 0.5,
+        borderWidth: 0,
+        backgroundColor: color.bg,
         padding: compact ? 11 : 15, gap: compact ? 8 : 11,
       }}
     >
@@ -218,16 +279,29 @@ export function CommunityCallCard({
 
         <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
           <Eyebrow c={color.volt}>COMMUNITY TRADE</Eyebrow>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <T size={13} weight="bold" numberOfLines={1}>{call.author.display_name}</T>
-            {secondaryHandle(call.author.display_name, call.author.handle) ? (
-              <T size={10.5} c={color.dim} testID={`call-handle-${call.id}`}>
-                {secondaryHandle(call.author.display_name, call.author.handle)}
-              </T>
-            ) : null}
-            <BeltChip belt={call.author.belt} testID={`call-belt-${call.id}`} />
-            <T size={10} c={color.dim}>{call.time_label}</T>
-          </View>
+          {/*
+            THE NAME IS THE DOOR, not just the avatar beside it. It was the
+            avatar alone here, which is a rule nobody can learn: on the alerts
+            board the name opened the profile, on this card it did nothing. The
+            belt chip and the time ride along as the name's own suffix so they
+            stay on one line with it and wrap together.
+          */}
+          <MemberName
+            name={call.author.display_name}
+            userId={call.author.user_id}
+            belt={call.author.belt}
+            handle={call.author.handle}
+            showHandle
+            size={13}
+            handleSize={10.5}
+            testID={`call-author-name-${call.id}`}
+            suffix={
+              <>
+                <BeltChip belt={call.author.belt} testID={`call-belt-${call.id}`} />
+                <T size={10} c={color.dim}>{call.time_label}</T>
+              </>
+            }
+          />
         </View>
 
         {showFollow ? (
@@ -353,6 +427,7 @@ export function CommunityCallCard({
       <T size={compact ? 9.5 : 10} c={color.dim} testID={`call-not-advice-${call.id}`}>
         {NOT_ADVICE_COMMUNITY_CALL}
       </T>
+    </LinearGradient>
     </LinearGradient>
   );
 }

@@ -26,7 +26,7 @@ import { EMPTY_REACTIONS, trimQuote } from '../features/community/types';
 import {
   fixtureAssist, fixtureContributor, fixtureMessages, fixtureRooms, fixtureThread,
 } from '../features/community/fixtures';
-import { adaptCommunityCall } from './adapters';
+import { adaptAuthorBelt, adaptCommunityCall } from './adapters';
 import type { ClosedPosition, Debrief } from '../features/debrief/types';
 import { fixtureClosedPositions, fixtureDebriefs } from '../features/debrief/fixtures';
 
@@ -402,6 +402,10 @@ function mapMessage(raw: any, kaiObjects?: Record<string, any>): RoomMessage {
       ? {
           user_id: 'kai', display_name: 'Kai', handle: null, avatar_url: null,
           initial: 'K', role_labels: ['AI'], is_kai: true, author_deleted: false,
+          // Kai is not a member and never earns a rung. Written out rather
+          // than omitted: absent and null render identically, but only one of
+          // them says that somebody thought about it.
+          belt: null,
         }
       : severed
         ? {
@@ -409,6 +413,10 @@ function mapMessage(raw: any, kaiObjects?: Record<string, any>): RoomMessage {
             // claiming an author it no longer has.
             user_id: '', display_name: 'Former member', handle: null, avatar_url: null,
             initial: '·', role_labels: [], is_kai: false, author_deleted: true,
+            // The account is gone, so there is no rank to state. Colouring a
+            // severed row would be the app claiming to know something about
+            // somebody it has deliberately forgotten.
+            belt: null,
           }
         : {
             user_id: String(raw.user_id ?? author?.user_id ?? ''),
@@ -421,6 +429,16 @@ function mapMessage(raw: any, kaiObjects?: Record<string, any>): RoomMessage {
             role_labels: Array.isArray(author?.role_labels) ? author.role_labels : [],
             is_kai: false,
             author_deleted: false,
+            /*
+             * The rung, which is what colours their name in the room.
+             *
+             * Guarded rather than trusted: a server that has not shipped the
+             * field yet, or one that sends a rung this build has never heard
+             * of, must land on `null` and get the house ivory. The failure
+             * being avoided is not a crash — it is a member being quietly
+             * shown at the wrong rank, which nobody would report as a bug.
+             */
+            belt: adaptAuthorBelt(author?.belt),
           },
     body: raw.deleted ? null : raw.body ?? null,
     refs,
