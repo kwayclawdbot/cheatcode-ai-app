@@ -14,7 +14,7 @@
  * write below translates those four codes into the sentence the composer should
  * show. See `plainForLevelError`.
  */
-import type { CommunityCall, SocialAuthor } from '@shared/api';
+import type { AppMode, CommunityCall, SocialAuthor } from '@shared/api';
 import { serviceClient } from '../db';
 import { ApiError } from '../errors';
 import { log } from '../log';
@@ -23,7 +23,7 @@ import { loadAuthors } from './authors';
 import { outcomeLabel } from './outcomes';
 
 export const CALL_COLUMNS =
-  'id,user_id,symbol,direction,entry,stop,target,thesis,scoreable,status,result_pct,published_at,resolved_at,expires_at';
+  'id,user_id,symbol,direction,entry,stop,target,thesis,mode,message_id,scoreable,status,result_pct,published_at,resolved_at,expires_at';
 
 export type CallRow = {
   id: string;
@@ -34,6 +34,10 @@ export type CallRow = {
   stop: number | null;
   target: number | null;
   thesis: string;
+  /** Which desk. 0040: the authority, and the room is derived from it. */
+  mode: AppMode;
+  /** The room post this call became, or null when it never reached one. */
+  message_id: string | null;
   scoreable: boolean;
   status: 'open' | 'target' | 'stop' | 'expired' | 'withdrawn';
   result_pct: number | null;
@@ -53,6 +57,10 @@ export function toCallRow(r: Record<string, unknown>): CallRow {
     stop: n(r.stop),
     target: n(r.target),
     thesis: String(r.thesis ?? ''),
+    // 0040 backfilled and then made this NOT NULL, so a row cannot arrive
+    // without one. The coalesce is for a row read through an older select list.
+    mode: (String(r.mode ?? 'day_trade') as AppMode),
+    message_id: (r.message_id as string) ?? null,
     scoreable: r.scoreable === true,
     status: String(r.status ?? 'open') as CallRow['status'],
     result_pct: n(r.result_pct),
@@ -77,6 +85,8 @@ export function shapeCall(row: CallRow, author: SocialAuthor): CommunityCall {
     stop: row.stop,
     target: row.target,
     thesis: row.thesis,
+    mode: row.mode,
+    message_id: row.message_id,
     scoreable: row.scoreable,
     status: row.status,
     result_pct: row.result_pct,
@@ -144,6 +154,49 @@ export async function listCalls(opts: {
   return rows.map((r) => shapeCall(r, author));
 }
 
+/**
+ * ONE DESK'S CALLS, NEWEST FIRST — the Community tab on that mode's alert board.
+ *
+ * This is the read 0040's `community_calls_mode_feed_idx` was created for, and
+ * it is a different question from `listCalls` above: that one asks "what has
+ * this person called", this one asks "what has the Day Trade desk called". Many
+ * authors, so the identity lookup is batched into one round trip the same way
+ * the board and the feed batch theirs.
+ *
+ * NOBODY SEES A WITHDRAWN CALL HERE, INCLUDING ITS AUTHOR — which is stricter
+ * than the profile list, on purpose. A profile is your own record and should not
+ * develop holes; a desk tab is a shared surface, and a call somebody has taken
+ * back has no business sitting in the middle of everyone else's.
+ */
+export async function listCallsByMode(opts: {
+  mode: AppMode;
+  limit?: number;
+}): Promise<CommunityCall[]> {
+  const db = serviceClient();
+  const { data, error } = await db
+    .from('community_calls')
+    .select(CALL_COLUMNS)
+    .eq('mode', opts.mode)
+    .neq('status', 'withdrawn')
+    .order('published_at', { ascending: false })
+    .limit(opts.limit ?? 50);
+
+  if (error) {
+    log('warn', '-', 'social.calls_mode_read_failed', { mode: opts.mode, message: error.message });
+    return [];
+  }
+  const rows = ((data ?? []) as Record<string, unknown>[]).map(toCallRow);
+  if (!rows.length) return [];
+
+  const authors = await loadAuthors(rows.map((r) => r.user_id));
+  // A row whose author has gone is dropped rather than drawn as a blank person,
+  // the same rule `loadAuthors` documents for every other social surface.
+  return rows.flatMap((r) => {
+    const author = authors.get(r.user_id);
+    return author ? [shapeCall(r, author)] : [];
+  });
+}
+
 /* ------------------------------------------------------------------ */
 /* Writing                                                              */
 /* ------------------------------------------------------------------ */
@@ -156,6 +209,9 @@ export async function createCall(opts: {
   stop: number | null;
   target: number | null;
   thesis: string;
+  /** The desk. Decided by the route — the request if it said, else the
+   *  author's own primary mode. Never guessed here. */
+  mode: AppMode;
   requestId: string;
 }): Promise<CallRow> {
   const db = serviceClient();
@@ -169,6 +225,7 @@ export async function createCall(opts: {
       stop: opts.stop,
       target: opts.target,
       thesis: opts.thesis.trim(),
+      mode: opts.mode,
     } as never)
     .select(CALL_COLUMNS)
     .single();
@@ -180,6 +237,42 @@ export async function createCall(opts: {
     throw new ApiError('INTERNAL', 'I could not publish that call. Please try again.');
   }
   return toCallRow(data as Record<string, unknown>);
+}
+
+/**
+ * WRITE THE RECEIPT: this call became that post.
+ *
+ * Last step of publishing, and it cannot fail the publish. 0040 is explicit
+ * that `message_id` is nullable on purpose — "a call that exists on the board
+ * with no message is a degraded state worth being able to see, not a reason to
+ * lose the member's call" — so a refusal here is logged and swallowed. The call
+ * is already published, the post is already in the room; the only thing missing
+ * is the pointer that lets a withdrawal find it later.
+ *
+ * Returns whether the stamp took, so the caller can hand back a call object
+ * that tells the truth about itself.
+ */
+export async function stampCallMessage(opts: {
+  callId: string;
+  messageId: string;
+  requestId: string;
+}): Promise<boolean> {
+  const db = serviceClient();
+  const { data, error } = await db
+    .from('community_calls')
+    .update({ message_id: opts.messageId })
+    .eq('id', opts.callId)
+    .select('id')
+    .maybeSingle();
+  if (error || !data) {
+    log('warn', opts.requestId, 'social.call_message_not_stamped', {
+      call_id: opts.callId,
+      message_id: opts.messageId,
+      detail: error?.message ?? 'no row updated',
+    });
+    return false;
+  }
+  return true;
 }
 
 /**

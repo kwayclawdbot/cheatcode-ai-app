@@ -11,10 +11,7 @@ import type { NextRequest } from 'next/server';
 import { RoomJoinResponse } from '@shared/api';
 import { authedParams, ok, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
-import { serviceClient } from '@/lib/db';
-import { emitUserEvent } from '@/lib/events';
-import { callRpc, noteFallback } from '@/lib/rpc';
-import { loadRoom, loadMembership, roomStats, toRoomRow } from '@/lib/rooms';
+import { joinCoreRoom, loadRoom, loadMembership, roomStats, toRoomRow } from '@/lib/rooms';
 import { joinCircle } from '@/lib/round4/circles';
 
 export const dynamic = 'force-dynamic';
@@ -52,32 +49,16 @@ export const POST = authedParams<{ id: string }>(async (_req: NextRequest, ctx: 
     throw new ApiError('ROOM_RESTRICTED', 'That room is not one you join — it is an announcement feed.');
   }
 
-  const before = await loadMembership(ctx.params.id, ctx.user.id);
-  if (before?.banned) throw new ApiError('ROOM_RESTRICTED', 'You cannot join that room.');
-
-  if (!before) {
-    const rpc = await callRpc('join_core_room', { p_user_id: ctx.user.id, p_room_id: ctx.params.id }, ctx.requestId);
-    if (!rpc.ok) {
-      if (!rpc.missing) throw new ApiError('INTERNAL', 'We could not get you into that room. Please try again.');
-      // FALLBACK (documented in README): insert + outbox, two round-trips.
-      noteFallback(ctx.requestId, 'join_core_room');
-      const db = serviceClient();
-      const { error } = await db
-        .from('room_members')
-        .upsert({ room_id: ctx.params.id, user_id: ctx.user.id, role: 'member' } as never, {
-          onConflict: 'room_id,user_id',
-        });
-      if (error) throw new ApiError('INTERNAL', 'We could not get you into that room. Please try again.');
-      await emitUserEvent(
-        ctx.user.id,
-        'system',
-        'room',
-        ctx.params.id,
-        { event: 'room_joined', room_name: room.name },
-        ctx.requestId
-      );
-    }
-  }
+  // The joining itself lives in `lib/rooms.ts` because publishing a community
+  // call has to do exactly this too (0040: a call lands in its desk's room, and
+  // publishing into a room should put you in it). Two copies of "join a room"
+  // would be two places to forget the ban check.
+  const { alreadyMember } = await joinCoreRoom({
+    roomId: ctx.params.id,
+    userId: ctx.user.id,
+    roomName: String(room.name),
+    requestId: ctx.requestId,
+  });
 
   const [stats, membership] = await Promise.all([
     roomStats([ctx.params.id]),
@@ -88,9 +69,9 @@ export const POST = authedParams<{ id: string }>(async (_req: NextRequest, ctx: 
     RoomJoinResponse.parse({
       room: toRoomRow(room, stats.get(ctx.params.id), membership),
       joined: Boolean(membership),
-      already_member: Boolean(before),
-      plain: before ? `You are already in ${room.name}.` : `You are in ${room.name}.`,
+      already_member: alreadyMember,
+      plain: alreadyMember ? `You are already in ${room.name}.` : `You are in ${room.name}.`,
     }),
-    { status: before ? 200 : 201 }
+    { status: alreadyMember ? 200 : 201 }
   );
 });

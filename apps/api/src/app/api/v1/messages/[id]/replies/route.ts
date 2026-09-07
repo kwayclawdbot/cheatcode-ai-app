@@ -24,6 +24,7 @@ import { attachmentsForMessages } from '@/lib/media/store';
 import {
   MESSAGE_COLUMNS,
   authorsFor,
+  callsFor,
   loadMembership,
   objectsFor,
   quotesFor,
@@ -65,13 +66,18 @@ export const GET = authedParams<{ id: string }>(
     const all = [parentRow, ...replyRows];
     const ids = all.map((r) => String(r.id));
 
-    // Five batched lookups for the whole thread. Never one per row.
+    // Six batched lookups for the whole thread. Never one per row.
     //
     // `quotes` matters most HERE. A thread is one level deep, so a comment
     // answering another comment says so by quoting it (migration 0035 §2) —
     // this is the screen where nearly every quote in the app is read, and
     // resolving them one at a time would be a query per comment.
-    const [authors, objects, mine, media, quotes] = await Promise.all([
+    //
+    // `calls` matters here for a different reason: a call is a post people
+    // reply to, so opening the thread on one is the SECOND place its card has
+    // to draw. Without it the post at the top of the comments would be a bare
+    // sentence while the same post in the room above was a card.
+    const [authors, objects, mine, media, quotes, calls] = await Promise.all([
       authorsFor(all.map((r) => String(r.user_id ?? ''))),
       objectsFor(
         all
@@ -81,9 +87,14 @@ export const GET = authedParams<{ id: string }>(
       reactionsMineFor(ids, ctx.user.id),
       attachmentsForMessages(all.filter((r) => Number(r.attachment_count ?? 0) > 0).map((r) => String(r.id))),
       quotesFor(all.map((r) => r.quoted_message_id).filter((v): v is string => typeof v === 'string')),
+      callsFor(
+        all
+          .map((r) => (r.refs as Record<string, unknown> | null)?.community_call_id)
+          .filter((v): v is string => typeof v === 'string')
+      ),
     ]);
 
-    const extras = { mine, media, quotes };
+    const extras = { mine, media, quotes, calls };
 
     return ok(
       RepliesResponse.parse({

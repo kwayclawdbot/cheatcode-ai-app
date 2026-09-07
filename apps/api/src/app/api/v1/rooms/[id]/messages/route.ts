@@ -39,6 +39,7 @@ import {
   toRoomRow,
   MESSAGE_COLUMNS,
   authorsFor,
+  callsFor,
   objectsFor,
   toMessageRow,
   reactionsMineFor,
@@ -85,15 +86,16 @@ export const GET = authedParams<{ id: string }>(async (req: NextRequest, ctx: Ct
   const has_more = rows.length > q.limit;
   const page = has_more ? rows.slice(0, q.limit) : rows;
 
-  // SIX BATCHED LOOKUPS FOR THE WHOLE PAGE, and never one per message. The
+  // SEVEN BATCHED LOOKUPS FOR THE WHOLE PAGE, and never one per message. The
   // reaction COUNTS are not among them — they are denormalised onto the message
   // row (migration 0033 §2b) and arrived with the select above, so they cost
   // nothing. `mine` cannot be, because it is per-person; `media` is only asked
   // for the messages whose `attachment_count` says they have any, which on an
-  // ordinary page of text is no query at all; and `quotes` is only asked for
-  // the messages that actually quote something, so a page with no quotes on it
+  // ordinary page of text is no query at all; `quotes` is only asked for the
+  // messages that actually quote something; and `calls` is only asked for the
+  // messages carrying `refs.community_call_id`, so a page with no calls in it
   // makes no query either.
-  const [authors, objects, stats, mine, media, quotes] = await Promise.all([
+  const [authors, objects, stats, mine, media, quotes, calls] = await Promise.all([
     authorsFor(page.map((r) => String(r.user_id ?? ''))),
     objectsFor(
       page
@@ -104,9 +106,16 @@ export const GET = authedParams<{ id: string }>(async (req: NextRequest, ctx: Ct
     reactionsMineFor(page.map((r) => String(r.id)), ctx.user.id),
     attachmentsForMessages(page.filter((r) => Number(r.attachment_count ?? 0) > 0).map((r) => String(r.id))),
     quotesFor(page.map((r) => r.quoted_message_id).filter((v): v is string => typeof v === 'string')),
+    // 0040: a member's call rides on `refs`, exactly like a Kai object, so the
+    // room renders the card in the conversation rather than a link out of it.
+    callsFor(
+      page
+        .map((r) => (r.refs as Record<string, unknown> | null)?.community_call_id)
+        .filter((v): v is string => typeof v === 'string')
+    ),
   ]);
 
-  const messages = page.map((r) => toMessageRow(r, authors, objects, { mine, media, quotes }));
+  const messages = page.map((r) => toMessageRow(r, authors, objects, { mine, media, quotes, calls }));
   const lastSeq = stats.get(ctx.params.id)?.last_seq ?? 0;
   const sinceSeq = membership.last_read_seq;
   // Counted BEFORE the read mark moves below, and never counting the caller's
@@ -405,11 +414,17 @@ export const POST = authedParams<{ id: string }>(async (req: NextRequest, ctx: C
   // app says so rather than showing a quote that was never saved.
   const quotedId = inserted.quoted_message_id;
   const quotes = typeof quotedId === 'string' ? await quotesFor([quotedId]) : undefined;
+  // Same reasoning as the quote above, for a post that carries a call. The
+  // publish path (`POST /community/calls`) is where calls normally come from,
+  // but a post is a post and this route must hand back the same shape the room
+  // will send on the next read.
+  const callId = (inserted.refs as Record<string, unknown> | null)?.community_call_id;
+  const calls = typeof callId === 'string' ? await callsFor([callId]) : undefined;
   const message = toMessageRow(
     { ...inserted, attachment_count: attached.length },
     authors,
     new Map(),
-    { media: mediaMap, quotes }
+    { media: mediaMap, quotes, calls }
   );
 
   await db

@@ -7,11 +7,15 @@
  */
 import type {
   RoomRow, MessageRow, MessageAuthor, KaiObjectEnvelope, MessageReactions, ReactionKind, MessageMedia,
-  MessageQuote,
+  MessageQuote, CommunityCall,
 } from '@shared/api';
 import { serviceClient } from './db';
 import { ApiError } from './errors';
+import { emitUserEvent } from './events';
 import { envelope } from './kai/objects';
+import { callRpc, noteFallback } from './rpc';
+import { loadAuthors } from './social/authors';
+import { CALL_COLUMNS, shapeCall, toCallRow } from './social/calls';
 
 export const ROOM_COLUMNS = 'id,type,mode,slug,name,description,setup_id,config,pinned';
 
@@ -63,6 +67,61 @@ export function requireMember(m: Membership, roomName: string): asserts m is Non
  */
 export function isModerationMuted(m: NonNullable<Membership>): boolean {
   return Boolean(m.moderation_muted_until && new Date(m.moderation_muted_until).getTime() > Date.now());
+}
+
+/**
+ * GETTING SOMEBODY INTO A CORE ROOM — the one implementation.
+ *
+ * This was written inside `POST /rooms/:id/join` and had exactly one caller
+ * until a published call needed the same thing (0040: a call lands in its
+ * desk's room, and publishing into a room should put you in it so you see the
+ * replies). Two copies of "join a room" would be two places for the ban check
+ * to be forgotten, so it moved here and the route now calls it.
+ *
+ * A BANNED MEMBER IS REFUSED AND THAT REFUSAL IS THE POINT. `post_room_message`
+ * would refuse them anyway — it raises `room_banned` — but by then a call row
+ * may already exist, and the honest answer is to stop before anything is
+ * written. `bannedPlain` lets the caller say why in the words that fit what the
+ * member was actually trying to do.
+ *
+ * ONLY CORE ROOMS. Circles (`type = 'setup'`) join through `joinCircle`, and
+ * announcement rooms are not joinable at all; the caller checks the type.
+ */
+export async function joinCoreRoom(opts: {
+  roomId: string;
+  userId: string;
+  roomName: string;
+  requestId: string;
+  bannedPlain?: string;
+}): Promise<{ alreadyMember: boolean }> {
+  const before = await loadMembership(opts.roomId, opts.userId);
+  if (before?.banned) {
+    throw new ApiError('ROOM_RESTRICTED', opts.bannedPlain ?? 'You cannot join that room.');
+  }
+  if (before) return { alreadyMember: true };
+
+  const rpc = await callRpc('join_core_room', { p_user_id: opts.userId, p_room_id: opts.roomId }, opts.requestId);
+  if (!rpc.ok) {
+    if (!rpc.missing) throw new ApiError('INTERNAL', 'We could not get you into that room. Please try again.');
+    // FALLBACK (documented in README): insert + outbox, two round-trips.
+    noteFallback(opts.requestId, 'join_core_room');
+    const db = serviceClient();
+    const { error } = await db
+      .from('room_members')
+      .upsert({ room_id: opts.roomId, user_id: opts.userId, role: 'member' } as never, {
+        onConflict: 'room_id,user_id',
+      });
+    if (error) throw new ApiError('INTERNAL', 'We could not get you into that room. Please try again.');
+    await emitUserEvent(
+      opts.userId,
+      'system',
+      'room',
+      opts.roomId,
+      { event: 'room_joined', room_name: opts.roomName },
+      opts.requestId
+    );
+  }
+  return { alreadyMember: false };
 }
 
 export async function roomStats(roomIds: string[]): Promise<
@@ -360,6 +419,55 @@ export async function objectsFor(objectIds: string[]): Promise<Map<string, KaiOb
   return out;
 }
 
+/**
+ * THE CALLS A PAGE OF MESSAGES CARRIES, RESOLVED IN ONE QUERY.
+ *
+ * The exact shape of `objectsFor` above and for the same reason. 0040 chose to
+ * carry a member's call on `messages.refs -> 'community_call_id'` rather than
+ * invent a message kind, so the room renders the real card — direction, levels,
+ * belt, outcome — instead of a link the reader has to leave the conversation to
+ * follow. Resolving that one call at a time would be a query per message; this
+ * is one `in (...)` for the whole page, and a page with no calls on it makes no
+ * query at all.
+ *
+ * IT USES THE SAME SHAPER AS `/community/calls`. `shapeCall` is imported rather
+ * than reimplemented, so the card in the room and the card on the board's
+ * Community tab are the same object with the same fields — a second shaper here
+ * would drift the moment one of the two gained a field.
+ *
+ * AUTHORS COME FROM `loadAuthors`, NOT FROM `authorsFor`. They are different
+ * people-shapes: a message author is `MessageAuthor` (handle, name, avatar,
+ * role labels) and a call author is `SocialAuthor` (handle, name, avatar,
+ * initial, BELT). The belt is the difference and it is the reason the call card
+ * looks the way it does, so the call brings its own author with it.
+ *
+ * A CALL THAT DOES NOT RESOLVE IS SIMPLY ABSENT and the message falls back to
+ * its body, which is a readable sentence describing the trade. That is the
+ * whole reason the body is written as a sentence — see `callSentence` in
+ * `lib/social/rooms-bridge.ts`.
+ */
+export async function callsFor(callIds: string[]): Promise<Map<string, CommunityCall>> {
+  const out = new Map<string, CommunityCall>();
+  const ids = [...new Set(callIds.filter(Boolean))];
+  if (!ids.length) return out;
+
+  const db = serviceClient();
+  const { data } = await db.from('community_calls').select(CALL_COLUMNS).in('id', ids);
+  const rows = ((data ?? []) as Record<string, unknown>[]).map(toCallRow);
+  if (!rows.length) return out;
+
+  const authors = await loadAuthors(rows.map((r) => r.user_id));
+  for (const row of rows) {
+    const author = authors.get(row.user_id);
+    // No author means the profile is gone mid-delete. The card is a person
+    // saying something; without the person there is nothing to draw, and the
+    // message still has its sentence.
+    if (!author) continue;
+    out.set(row.id, shapeCall(row, author));
+  }
+  return out;
+}
+
 export function toMessageRow(
   row: Record<string, unknown>,
   authors: Map<string, MessageAuthor>,
@@ -368,10 +476,12 @@ export function toMessageRow(
     mine?: Map<string, ReactionKind[]>;
     media?: Map<string, MessageMedia[]>;
     quotes?: Map<string, MessageQuote>;
+    calls?: Map<string, CommunityCall>;
   }
 ): MessageRow {
   const refs = (row.refs as Record<string, unknown>) ?? null;
   const objectId = typeof refs?.kai_object_id === 'string' ? refs.kai_object_id : null;
+  const callId = typeof refs?.community_call_id === 'string' ? refs.community_call_id : null;
   return {
     id: String(row.id),
     room_id: String(row.room_id),
@@ -387,6 +497,15 @@ export function toMessageRow(
     created_at: String(row.created_at),
     author: row.user_id ? (authors.get(String(row.user_id)) ?? null) : null,
     kai_object: objectId ? (objects.get(objectId) ?? null) : null,
+    /**
+     * A REMOVED MESSAGE LOSES ITS CARD, the same way it loses its body, its
+     * reactions and its pictures. This is also how withdrawing reaches the
+     * conversation: withdrawing a call takes its post down, and a card left
+     * standing over a "this was removed" gap would still be presenting a live
+     * trade the member has taken back.
+     */
+    community_call:
+      callId && !(row.deleted ?? row.deleted_at) ? (extras?.calls?.get(callId) ?? null) : null,
     author_deleted: Boolean(row.author_deleted),
     reactions: reactionsOf(row, extras?.mine?.get(String(row.id)) ?? []),
     reply_count: Number(row.reply_count ?? 0),
