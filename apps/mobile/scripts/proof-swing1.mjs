@@ -353,6 +353,14 @@ const main = async () => {
     console.log(`  · ${rowCount} resolved alerts on History`);
     ok('the back catalogue is on History, not an empty tab', rowCount > 0, rowCount);
 
+    /*
+      HISTORY IS A STAT ROW NOW, NOT A PARAGRAPH.
+      `outcome-<symbol>` moved from a label-and-number pair to the RESULT cell
+      of that stat row — it is still the marker for "this one was measured", and
+      it is still absent on a row nothing measured, which is what the two counts
+      below are actually protecting. The disclosure that used to be a sentence
+      inside it is now one short line on the row, so it is read off the row.
+    */
     const outcomes = page.locator('[data-testid^="outcome-"]');
     const outcomeCount = await outcomes.count();
     console.log(`  · ${outcomeCount} of them carry a measured result`);
@@ -360,9 +368,27 @@ const main = async () => {
     ok('no row invents a result it does not have', outcomeCount <= rowCount, { outcomeCount, rowCount });
 
     const firstOutcome = (await outcomes.first().innerText()).replace(/\s+/g, ' ');
-    console.log(`  · first outcome: ${firstOutcome}`);
-    ok('the result carries its disclosure, not just a number', /close to close/i.test(firstOutcome), firstOutcome);
-    ok('and refuses to be read as a managed trade', /not the result of a managed trade/i.test(firstOutcome), firstOutcome);
+    console.log(`  · first result cell: ${firstOutcome}`);
+    ok('the result is a labelled number, not a sentence', /^RESULT [+\-−]?[\d.]+%$/i.test(firstOutcome.trim()), firstOutcome);
+
+    // The row the result sits on: what was called, the best it got, how long it
+    // was held. These are the numbers the owner asked to be able to read at a
+    // glance, and each is drawn only where it was measured.
+    const firstRow = (await rows.first().innerText()).replace(/\s+/g, ' ');
+    console.log(`  · first row: ${firstRow}`);
+    ok('the row shows the price it was called at', /CALLED \$[\d,.]+/i.test(firstRow), firstRow);
+    // "5 sessions" on a measured row, "Intraday"/"N days" on one that was
+    // never scored — the hold has to describe the same span the result does.
+    ok('the row shows how long it was held', /HELD (Intraday|\d+ (days?|sessions?))/i.test(firstRow), firstRow);
+    ok('and a measured row is held for the window it was measured over',
+      /HELD 5 sessions/i.test(firstRow), firstRow);
+    ok('the row carries no paragraph', !/holding the whole way/i.test(firstRow), firstRow);
+
+    const peaks = page.locator('[data-testid^="stat-peak-"]');
+    const peakCount = await peaks.count();
+    console.log(`  · ${peakCount} rows carry the best the move ever got`);
+    ok('the peak is on the rows that measured one', peakCount > 0, peakCount);
+    ok('and never on more rows than were measured', peakCount <= outcomeCount, { peakCount, outcomeCount });
 
     // The whole History tab, read as text: nothing may show a stop or a target
     // the source never persisted.
@@ -392,14 +418,26 @@ const main = async () => {
     }
 
     if (/short/i.test(historyText)) {
-      ok('a short on History reads as a short call, not a long', /A short call\./.test(historyText), historyText.slice(0, 400));
-      ok('and its result is framed by what the STOCK did', /stock closed [\d.]+% (below|above)/.test(historyText), historyText.slice(0, 400));
-      ok('and it says plainly whether the short was right', /short was (right|wrong)/.test(historyText), historyText.slice(0, 400));
+      // A short's result is the STOCK's move, not the position's, and the row
+      // has to say which — otherwise "+2.2%" on a short that lost reads as a
+      // short that won. The sentence that used to carry this is gone; the one
+      // short line under the numbers carries it now, and its peak cell is
+      // labelled for the same frame.
+      ok('a short on History says its numbers are the stock, not the position',
+        /the stock's move, close to close/i.test(historyText), historyText.slice(0, 400));
+      ok("and a short's best point is labelled as the stock's low, not a peak",
+        /STOCK LOW/i.test(historyText), historyText.slice(0, 400));
     } else {
       throw new Error('no short reached History — the proportional split is not working');
     }
+    ok('every measured row refuses to be read as a managed trade',
+      (historyText.match(/not a managed trade/gi) ?? []).length >= outcomeCount,
+      { disclosures: (historyText.match(/not a managed trade/gi) ?? []).length, outcomeCount });
     ok('History never claims a stop', !/\bStop\b/.test(historyText), historyText.slice(0, 200));
     ok('History never claims a target', !/\bTarget\b/.test(historyText), historyText.slice(0, 200));
+    ok('History is no longer a wall of narration',
+      !/holding the whole way/i.test(historyText) && !/qualifying print/i.test(historyText),
+      historyText.slice(0, 300));
 
     // And Active must not print a level the scanner never published either.
     await tap(page, 'screen-alerts', 'alerts-tab-active', 1600);

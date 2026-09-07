@@ -954,11 +954,20 @@ export const fixtureHistoryCards: AlertCard[] = [
     state_label: 'Executed',
     headline: 'Breakout held. Exited at first target after 3h 12m.',
     what_changed: 'Breakout held. Exited at first target after 3h 12m.',
-    trade: {},
+    trade: { entry: '241.60' },
     score_components: [],
     primary_action: { label: 'Review outcome', kind: 'closed' },
-    outcome: { label: 'Outcome', value: '+$112.40', tone: 'good' },
+    outcome: {
+      label: 'Five sessions on, close to close',
+      value: '+6.4%',
+      tone: 'good',
+      plain: 'Five sessions on, it closed +6.4% from the price it was called at — measured close to close, holding the whole way. No stop or target was published, so this is not the result of a managed trade.',
+      peak: '+9.1%',
+      peak_label: 'Peak',
+      basis: 'Peak intraday · close to close · not a managed trade',
+    },
     resolved_label: 'Yesterday',
+    held: '5 sessions',
   },
   {
     id: 'alert-amd-hist',
@@ -973,10 +982,40 @@ export const fixtureHistoryCards: AlertCard[] = [
     state_label: 'Invalidated',
     headline: 'Closed below 148 before entry triggered. Never taken.',
     what_changed: 'Closed below 148 before entry triggered. Never taken.',
-    trade: {},
+    trade: { entry: '151.20' },
     score_components: [],
     primary_action: { label: 'See what changed', kind: 'invalidated' },
     resolved_label: 'Aug 26',
+    held: '4 days',
+  },
+  /**
+   * A day-trade replay: the family that carries a contract and NO measured
+   * outcome. It is in the fixtures so the offline board shows the honest
+   * shape — no grade, no peak, no result — rather than only the rows that
+   * happen to have every number.
+   */
+  {
+    id: 'alert-meta-uoa-hist',
+    symbol: 'META',
+    company: 'Meta Platforms',
+    mode_label: 'Day Trade',
+    direction_label: 'Short',
+    instrument_label: 'equity',
+    grade: '—',
+    score: null,
+    state: 'closed',
+    state_label: 'Closed',
+    headline: 'META — finished',
+    what_changed: 'Called at $609.353 on Aug 11. This is a rehearsal, not an alert anyone was sent.',
+    trade: { entry: '609.35' },
+    score_components: [],
+    recommended_options: [
+      { label: 'The contract the flow bought', type: 'put', strike: '607.5', expiry: 'Aug 12', dte: 1, cost: '5.25', liquidity: 'good' },
+    ],
+    primary_action: { label: 'Review outcome', kind: 'closed' },
+    resolved_label: 'Aug 11, 4:00 PM ET',
+    held: 'Intraday',
+    replay: true,
   },
 ];
 
@@ -984,7 +1023,7 @@ export const fixtureAlertsRound4: AlertsRound4 = {
   active: fixtureAlertCards,
   watching: fixtureWatchingCards,
   history: fixtureHistoryCards,
-  counts: { active: 3, watching: 3, history: 2 },
+  counts: { active: 3, watching: 3, history: 3 },
   empty_copy: 'Nothing here yet. Kai will put an alert here the moment something changes.',
 };
 

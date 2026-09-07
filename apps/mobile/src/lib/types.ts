@@ -889,6 +889,16 @@ export type AlertOutcome = {
   value?: string | null;
   tone?: 'good' | 'bad' | 'neutral';
   plain?: string | null;
+  /**
+   * The best the move ever got, already in the same frame and format as
+   * `value`. Null where nothing measured it — the cell is then absent, not a
+   * dash. `plain` stays on the model for the detail view; History shows numbers.
+   */
+  peak?: string | null;
+  /** What that number is, in a word or two: "Peak" · "Stock low". */
+  peak_label?: string | null;
+  /** The one short line that says how the numbers were measured. */
+  basis?: string | null;
 };
 
 /** The standard actionable alert card (spec §2 / §3 / §9). */
@@ -926,6 +936,10 @@ export type AlertCard = {
   freshness_line?: string | null;   // "Quote 9:41:02 ET · live · received 8s ago"
   outcome?: AlertOutcome | null;    // History only
   resolved_label?: string | null;   // History only ("Yesterday")
+  /** History only — "Intraday" · "7 days". Null when either end is missing. */
+  held?: string | null;
+  /** True when the row is the engine re-run over stored tape, not an alert anyone was sent. */
+  replay?: boolean;
 };
 
 export type AlertsRound4 = {

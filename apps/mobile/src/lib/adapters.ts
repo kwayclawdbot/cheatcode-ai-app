@@ -1465,10 +1465,17 @@ export function adaptAlertCard(raw: unknown, i = 0): AlertCard {
             value: r4nul(out.value),
             tone: (r4str(out.tone, 'neutral') as 'good' | 'bad' | 'neutral'),
             plain: r4nul(out.plain),
+            // A server that has not shipped these yet sends nothing, and
+            // nothing is exactly what the card should draw for them.
+            peak: r4nul(out.peak),
+            peak_label: r4nul(out.peak_label),
+            basis: r4nul(out.basis),
           }
         : null;
     })(),
     resolved_label: r4nul(o.resolved_label ?? o.resolved_at_label),
+    held: r4nul(o.held),
+    replay: o.replay === true,
   };
 }
 

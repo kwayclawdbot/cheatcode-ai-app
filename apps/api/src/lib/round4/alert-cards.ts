@@ -722,6 +722,24 @@ export function outcomeOf(
   // going UP when the short worked, so a short row shows the PRICE move and the
   // colour still comes from whether the call was right.
   const shown = short ? -gain : gain;
+
+  /**
+   * The best it ever got — `mfe_5d_pct`, which `alert_outcomes.py` writes as
+   * the POSITION's maximum favourable excursion off intraday highs and lows,
+   * clamped at or above zero and already sign-corrected for direction.
+   *
+   * It is put into the same frame as `value` before it is shown. On a long that
+   * is the number as stored. On a short `value` is the STOCK's move by
+   * deliberate decision above, so the peak is the stock's intraday LOW and is
+   * negated to match — a row carrying "+2.2%" as the result and "+7.4%" as the
+   * peak would be two numbers in opposite frames, and the reader has no way to
+   * tell. It is only drawn where the excursion was actually measured; a peak
+   * nobody computed stays null and the cell is absent.
+   */
+  const mfe = Number(o.mfe_5d_pct);
+  const hasPeak = Number.isFinite(mfe);
+  const peakShown = short ? -mfe : mfe;
+
   return {
     label: short ? 'Five sessions on, the stock' : 'Five sessions on, close to close',
     value: Number.isFinite(shown)
@@ -731,7 +749,67 @@ export function outcomeOf(
     plain: typeof o.plain === 'string' && o.plain
       ? o.plain
       : `Five sessions on, this closed ${won ? 'higher' : 'lower'} than the price it was called at.`,
+    peak: hasPeak ? `${peakShown > 0 ? '+' : ''}${peakShown.toFixed(1)}%` : null,
+    peak_label: hasPeak ? (short ? 'Stock low' : 'Peak') : null,
+    // One line, and it has to do the work the paragraph used to: which frame the
+    // numbers are in, that the peak is an intraday extreme against a
+    // close-to-close result, and that nobody managed the position.
+    basis: short
+      ? "The stock's move, close to close · not a managed trade"
+      : hasPeak
+      ? 'Peak intraday · close to close · not a managed trade'
+      : 'Close to close · not a managed trade',
   };
+}
+
+/**
+ * The window every measured outcome covers.
+ *
+ * It is a constant because the measurement is one: `alert_outcomes.py` scores
+ * `gain_5d_pct` / `win_5d` close to close over five sessions, for every family
+ * it scores at all. `outcomeOf` above already writes "Five sessions on" into
+ * the label from the same fact; this is the same claim as a number, and if the
+ * scorer ever grows a second horizon both have to move together.
+ */
+const MEASURED_HOLD = '5 sessions';
+
+/**
+ * How long it was held, alert to resolution.
+ *
+ * Calendar days in New York, because that is the only thing the two timestamps
+ * on the row can support exactly. Counting SESSIONS would read better beside a
+ * five-session result and would need a market calendar this function does not
+ * have; a holiday would quietly make it wrong by one, and a number that is
+ * quietly wrong by one is worse than a coarser number that is right.
+ *
+ * Either timestamp missing → null, and the cell is absent rather than zero.
+ */
+export function heldPlain(from: string | null, to: string | null): string | null {
+  if (!from || !to) return null;
+  const a = new Date(from);
+  const b = new Date(to);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
+  const etDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const days = Math.round(
+    (Date.parse(`${etDay(b)}T00:00:00Z`) - Date.parse(`${etDay(a)}T00:00:00Z`)) / 86_400_000,
+  );
+  if (!Number.isFinite(days) || days < 0) return null;
+  if (days === 0) return 'Intraday';
+  return `${days} day${days === 1 ? '' : 's'}`;
+}
+
+/**
+ * A rehearsal — the live loop re-run over stored tape from a past session.
+ *
+ * The flag is written by the UOA ingest into both jsonb blobs. It used to reach
+ * the reader only as the first sentence of the narration, which was fine while
+ * History printed narration and is not fine now that it prints numbers.
+ */
+function isReplaySetup(setup: SetupRow | null): boolean {
+  if (!setup) return false;
+  const comps = (setup.score_components ?? {}) as Record<string, unknown>;
+  const snap = (setup.quote_snapshot ?? {}) as Record<string, unknown>;
+  return comps.is_replay === true || snap.is_replay === true;
 }
 
 /**
@@ -838,6 +916,7 @@ export function buildCard(input: BuildCardInput): AlertCard {
   const { headline, what_changed } = headlineFor(input);
   const { primary, secondary } = primaryActionFor(input);
   const dir = directionLabel(setup?.intent ?? (input.position?.direction === 'short' ? 'sell_short' : 'buy_to_open'));
+  const resolvedOutcome = outcomeOf(setup, input.state);
 
   return {
     id: input.id,
@@ -893,10 +972,27 @@ export function buildCard(input: BuildCardInput): AlertCard {
     fit: fitFor(input, plan),
     community: input.community,
 
-    outcome: outcomeOf(setup, input.state),
+    outcome: resolvedOutcome,
     resolved_label: input.state === 'closed' || input.state === 'invalidated'
       ? whenPlain(input.resolvedAt ?? input.triggeredAt ?? input.createdAt)
       : null,
+    /**
+     * How long the RESULT covers — which is not always how long the alert was
+     * live, and the difference is the whole reason this is not one expression.
+     *
+     * `valid_until` is when the idea went stale. On an intraday family that is
+     * the session close, so a row whose result is a five-session close-to-close
+     * measurement would have printed "Intraday" beside it — a hold and a result
+     * describing different spans, sat next to each other with no way to tell.
+     * Where a measurement exists, the hold is the measurement's own window;
+     * only where nothing was measured does the alert's own life answer.
+     */
+    held: input.state === 'closed' || input.state === 'invalidated'
+      ? (resolvedOutcome
+        ? MEASURED_HOLD
+        : heldPlain(input.triggeredAt ?? input.createdAt, input.resolvedAt ?? null))
+      : null,
+    replay: isReplaySetup(setup),
 
     primary_action: primary,
     secondary_actions: secondary,

@@ -499,29 +499,142 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
   );
 }
 
-/** History row — the audit trail, not a decision object (spec §1). */
+/**
+ * One number on a History row, with the word for what it is above it.
+ *
+ * THERE IS NO EMPTY STATE AND THERE IS NO PLACEHOLDER. A cell is built only
+ * where a measurement exists; the caller drops it entirely otherwise. This is
+ * the same rule the trade card's levels follow, and for the same reason — an
+ * em-dash under a label called "Peak" is read as a peak of nothing, which is a
+ * claim, not a gap.
+ *
+ * Cells are separated by space and by their own labels, not by tinted boxes or
+ * rules: a box inside a card is a card inside a card, and four of them turn a
+ * record into a dashboard. Weight and size carry the hierarchy instead — which
+ * also buys the width four numbers need to sit on ONE line at 390pt, and one
+ * line is the point. A stat row that wraps is two rows pretending to be one.
+ *
+ * Sizes are picked off the widest value each cell can actually hold in this
+ * corpus (a +400.0% peak, a +242.1% result, a $954.52 call, "5 sessions"), so
+ * nothing here truncates a number. Numbers must never be truncated; the
+ * fallback is to wrap, never to clip.
+ */
+function StatCell({ label, value, tone, size, minWidth, testID }: {
+  label: string; value: string; tone?: string; size: number; minWidth: number; testID?: string;
+}) {
+  return (
+    <View testID={testID} accessibilityLabel={`${label}, ${value}`} style={{ minWidth }}>
+      <T size={8.5} weight="bold" c={color.dim} ls={0.7}>{label.toUpperCase()}</T>
+      <Num size={size} weight={size >= 18 ? 'bold' : 'semibold'} c={tone ?? color.text} style={{ marginTop: 3 }}>
+        {value}
+      </Num>
+    </View>
+  );
+}
+
+/** Points into the row, so the whole card reads as somewhere to go. */
+function ChevronRight() {
+  return (
+    <Svg width={13} height={13} viewBox="0 0 24 24" fill="none">
+      <Path d="M9 6l6 6-6 6" stroke={color.dim} strokeWidth={2.5} />
+    </Svg>
+  );
+}
+
+/**
+ * History row — the audit trail, not a decision object (spec §1).
+ *
+ * IT IS A RECORD OF NUMBERS, NOT A STORY ABOUT THEM. What was called, the best
+ * it got, what it did, how long it took. The narration this row used to print —
+ * `what_changed`, and the outcome's `plain` paragraph — is still on the model
+ * and still served, and a tap still opens the whole thing in the Trade Portal.
+ * It is off the row because twenty-six paragraphs stacked on a phone is not a
+ * record anybody reads; four columns of numbers is.
+ *
+ * The one line that survives is the one that says how the numbers were
+ * measured, or — for a replayed alert — that nobody was ever sent it. That
+ * sentence is not narration, it is the number's own disclosure, and dropping it
+ * would leave a large green percentage on a card with nothing qualifying it.
+ */
 export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
   const router = useRouter();
   const bad = alert.state === 'invalidated';
+  const outcome = alert.outcome ?? null;
+  const contract = (alert.recommended_options ?? [])[0] ?? null;
+
+  /**
+   * The stat row, built from what exists. Chronological left to right — what it
+   * was called at, the best it reached, where it finished, how long that took —
+   * so a row reads as the life of one idea rather than as a table of metrics.
+   * The result is the only cell drawn large and the only one that carries
+   * colour, which is what makes it the thing the eye lands on first.
+   */
+  const stats: { key: string; label: string; value: string; tone?: string; size: number; minWidth: number }[] = [];
+  /*
+    `trade.entry` is a PRICE when the setup published one and a short sentence
+    ("Above $124.8.") when it did not — the adapter falls back on purpose, and
+    the trade card renders the sentence as a sentence. A stat cell cannot: the
+    label above it says "Called", and a sentence under that label reads as a
+    price that happens to have words in it. Only a number is admitted; the $ is
+    added because this cell sits between two percentages and a bare 124.80
+    there is ambiguous in a way it never is on the levels strip.
+  */
+  const called = alert.trade.entry?.trim() ?? '';
+  if (/^[$\d]/.test(called)) {
+    stats.push({ key: 'called', label: 'Called', value: called.startsWith('$') ? called : `$${called}`, size: 14, minWidth: 72 });
+  }
+  if (outcome?.peak) {
+    stats.push({ key: 'peak', label: outcome.peak_label ?? 'Peak', value: outcome.peak, size: 14, minWidth: 62 });
+  }
+  if (outcome?.value) {
+    stats.push({
+      key: 'result',
+      label: 'Result',
+      value: outcome.value,
+      tone: outcome.tone === 'bad' ? color.red : outcome.tone === 'good' ? color.green : color.text,
+      // A three-figure return ("+242.1%") is three glyphs wider than a normal
+      // one and is exactly the row that must not wrap — it is the best result
+      // in the book. The type gives way, the number does not.
+      size: outcome.value.length >= 7 ? 17 : 20,
+      minWidth: 78,
+    });
+  }
+  // "5 sessions" is the widest value in the row and the least important, so it
+  // is the one that gives up a point of type to keep all four on one line.
+  if (alert.held) stats.push({ key: 'held', label: 'Held', value: alert.held, size: 13, minWidth: 72 });
+
+  /**
+   * The single muted line. A rehearsal says so before anything else it could
+   * say — that is the one fact about this row that changes what every number
+   * above it means. Otherwise it is the measurement basis, and where there is
+   * neither, the headline, so the row is never a bare set of numbers with no
+   * word on it at all.
+   */
+  const note = alert.replay
+    ? 'Rehearsal, not an alert anyone was sent.'
+    : outcome?.basis ?? (stats.length ? null : alert.headline || null);
+
   return (
     <Pressable
       onPress={() => router.push(`/trade/${encodeURIComponent(alert.symbol)}?alert=${encodeURIComponent(alert.id)}&ctx=alert`)}
       accessibilityRole="button"
+      accessibilityHint={`Opens the full record for this ${alert.symbol} alert`}
       testID={`alert-history-${alert.symbol}`}
     >
       <LinearGradient
         colors={bad ? [alpha.red06, alpha.surface70] : [alpha.ivory05, alpha.surface70]}
         start={gradientAngle.start}
         end={gradientAngle.end}
-        style={{ borderRadius: radius.xl, paddingVertical: 13, paddingHorizontal: 14, borderWidth: 0.5, borderColor: bad ? alpha.red35 : alpha.ivory14, gap: 8 }}
+        style={{ borderRadius: radius.xl, paddingVertical: 13, paddingHorizontal: 14, borderWidth: 0.5, borderColor: bad ? alpha.red35 : alpha.ivory14, gap: 11 }}
       >
+        {/* Who, which way round, how well graded, and when it finished. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <TickerMark symbol={alert.symbol} size={22} />
           <T size={15} weight="bold">{alert.symbol}</T>
           {/*
             Direction is part of the record, not decoration: a short read as a
             long is read backwards. It sits next to the ticker on every history
-            row so the outcome underneath can only be read one way.
+            row so the numbers underneath can only be read one way.
           */}
           {alert.direction_label ? (
             <View
@@ -531,29 +644,73 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
               <T size={10} weight="semibold" c={color.muted} style={{ textTransform: 'capitalize' }}>{alert.direction_label}</T>
             </View>
           ) : null}
+          {/*
+            GradeChip draws nothing for an ungraded object — the day-trade
+            family issues no letter and must not be given one here.
+          */}
           <GradeChip grade={alert.grade} score={alert.score} />
-          <View style={{ paddingHorizontal: 7, paddingVertical: 1, borderRadius: 5, borderWidth: 0.5, borderColor: bad ? alpha.red40 : alpha.green50 }}>
-            <T size={10} c={bad ? color.red : color.green}>{alert.state_label}</T>
+          <View style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
+            {alert.resolved_label ? <T size={10} c={color.muted}>{alert.resolved_label}</T> : null}
+            {/* The word, always — the red wash on an invalidated row is never the only thing saying so. */}
+            <T size={10.5} weight="semibold" c={bad ? color.red : color.muted}>{alert.state_label}</T>
           </View>
-          {alert.resolved_label ? <T size={10} c={color.muted} style={{ marginLeft: 'auto' }}>{alert.resolved_label}</T> : null}
+          <ChevronRight />
         </View>
-        <T size={12.5} c={color.muted} lh={17.5}>{alert.what_changed || alert.headline}</T>
+
         {/*
-          The result, where there IS one. An alert that never resolved shows no
-          row at all rather than a dash pretending to be a measurement.
+          The body: the numbers. `outcome-<symbol>` stays on the result cell —
+          it is still the "this one was measured" marker the proofs count, and
+          it is still absent on a row nothing measured.
         */}
-        {alert.outcome ? (
-          <View style={{ gap: 3 }} testID={`outcome-${alert.symbol}`}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <T size={11.5} c={color.muted}>{alert.outcome.label}</T>
-              <Num size={11.5} weight="semibold" c={alert.outcome.tone === 'bad' ? color.red : color.green}>{alert.outcome.value ?? '—'}</Num>
-            </View>
-            {alert.outcome.plain ? (
-              <T size={10} c={color.dim} lh={14.5}>{alert.outcome.plain}</T>
+        {stats.length ? (
+          <View
+            testID={`stats-${alert.symbol}`}
+            style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', columnGap: 11, rowGap: 9 }}
+          >
+            {stats.map((s) => (
+              <StatCell
+                key={s.key}
+                label={s.label}
+                value={s.value}
+                tone={s.tone}
+                size={s.size}
+                minWidth={s.minWidth}
+                testID={s.key === 'result' ? `outcome-${alert.symbol}` : `stat-${s.key}-${alert.symbol}`}
+              />
+            ))}
+          </View>
+        ) : null}
+
+        {/*
+          The contract, where the engine named one — compact, and still a
+          contract rather than a sentence: strike and premium are numerals, the
+          side is a word. What the contract went on to do is not here because
+          nothing stores it (see the report); the cost is what was paid, and it
+          says so.
+        */}
+        {contract ? (
+          <View
+            testID={`contract-${alert.symbol}`}
+            accessibilityLabel={`${contract.strike} ${contract.type}, ${contract.expiry}${contract.cost ? `, paid ${contract.cost}` : ''}`}
+            style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}
+          >
+            <Num size={12.5} weight="semibold">{contract.strike}</Num>
+            <T size={11} weight="semibold" c={contract.type === 'put' ? color.red : color.green}>
+              {contract.type === 'put' ? 'Put' : 'Call'}
+            </T>
+            <T size={11} c={color.dim}>·</T>
+            <T size={11} c={color.muted}>{contract.expiry}</T>
+            {contract.cost ? (
+              <>
+                <T size={11} c={color.dim}>·</T>
+                <T size={11} c={color.muted}>paid</T>
+                <Num size={12} c={color.text}>{contract.cost.startsWith('$') ? contract.cost : `$${contract.cost}`}</Num>
+              </>
             ) : null}
           </View>
         ) : null}
-        <T size={11} weight="semibold" c={color.violetLight}>{alert.primary_action.label}</T>
+
+        {note ? <T size={10.5} c={color.dim} lh={15}>{note}</T> : null}
       </LinearGradient>
     </Pressable>
   );

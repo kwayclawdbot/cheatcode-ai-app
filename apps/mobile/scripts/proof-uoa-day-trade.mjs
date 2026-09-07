@@ -148,12 +148,30 @@ await shot('03-history');
   const onBoard = await meta.count() > 0;
   note(onBoard, 'the replayed real alert is in History');
   if (onBoard) {
-    // The rehearsal sentence is the FIRST thing in the story, so it has to
-    // survive whatever truncation a history row applies. If this ever fails,
-    // the fix is the row, not the sentence — a rehearsal that does not say so
-    // is the one thing this card must never be.
+    // The row is a stat row now, so the rehearsal fact is a FIELD on the card
+    // rather than the first sentence of a paragraph that happened to fit. If
+    // this ever fails, the fix is the row, not the sentence — a rehearsal that
+    // does not say so is the one thing this card must never be.
     const t = (await meta.innerText()).replace(/\s+/g, ' ');
     note(/rehearsal, not an alert anyone was sent/i.test(t), 'and the row says it was a rehearsal');
+
+    // The numbers this family HAS, as numbers.
+    note(/CALLED \$609/i.test(t), 'the row shows the price it was called at');
+    note(/HELD Intraday/i.test(t), 'and that it was an intraday call');
+    note(await meta.locator('[data-testid="contract-META"]').count() > 0, 'and the contract it named');
+    note(/607\.5/.test(t) && /put/i.test(t) && /Aug 12/.test(t) && /5\.25/.test(t),
+      'strike, side, expiry and what was paid, all on one compact line');
+
+    // And the numbers it does NOT have. This family scores no outcome at all,
+    // so a result or a peak appearing here would be an invention.
+    note(await meta.locator('[data-testid="outcome-META"]').count() === 0,
+      'no result — nothing ever measured one for this family');
+    note(await meta.locator('[data-testid="stat-peak-META"]').count() === 0,
+      'no peak — the same');
+    note(!/\bRESULT\b/.test(t) && !/\bPEAK\b/.test(t), 'and no empty cell standing in for either');
+
+    // The narration is off the row, not deleted — it is behind the tap.
+    note(!/qualifying print/i.test(t), 'the flow narration is no longer poured onto the row');
   }
 }
 
