@@ -611,6 +611,36 @@ export default function Community() {
                 <T size={10} lh={14} c={color.dim} style={{ flex: 1 }}>Example rooms</T>
               </View>
             ) : null}
+
+            {/*
+              UNREACHABLE IS NOT EMPTY, AND IT IS NOT EXAMPLE DATA EITHER.
+              This screen used to fall back to `fixtureRooms` whenever the
+              service failed, so a dead connection produced a club full of
+              invented rooms that looked exactly like the real one.
+            */}
+            {source === 'unreachable' ? (
+              <View style={{ paddingHorizontal: 16, paddingTop: 16, gap: 10 }} testID="community-unreachable">
+                <T size={15} weight="bold">We couldn't load the club</T>
+                <T size={12} lh={18} c={color.muted}>
+                  Nothing was reached, so nothing is shown. The rooms below would have been made up,
+                  and an invented club is worse than an empty screen.
+                </T>
+                <Pressable
+                  testID="community-retry"
+                  accessibilityRole="button"
+                  accessibilityLabel="Try loading the club again"
+                  onPress={() => { void load(); }}
+                  style={({ pressed }) => ({
+                    alignSelf: 'flex-start', minHeight: 36, justifyContent: 'center',
+                    paddingHorizontal: 16, borderRadius: radius.pill,
+                    borderWidth: 1, borderColor: alpha.volt55, backgroundColor: alpha.volt10,
+                    opacity: pressed ? 0.7 : 1,
+                  })}
+                >
+                  <T size={12} weight="semibold" c={color.volt}>Try again</T>
+                </Pressable>
+              </View>
+            ) : null}
           </>
         )}
       </ScrollView>

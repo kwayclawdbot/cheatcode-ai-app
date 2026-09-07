@@ -247,6 +247,9 @@ export default function CircleRoom() {
     try {
       const r = await circlesApi.detail(circleId);
       setDetail(r.detail);
+      // Null when nothing answered — the screen's own error state covers it
+      // rather than a fixture circle standing in for a real one.
+      if (!r.detail) { setError('We could not load that circle. Try again in a moment.'); return; }
       if (r.detail.circle.symbol) {
         // 5-minute bars: the one intraday resolution every stack serves.
         const c = await portalApi.candles(r.detail.circle.symbol, '5m');

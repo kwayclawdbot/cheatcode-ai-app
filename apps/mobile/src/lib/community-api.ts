@@ -38,7 +38,21 @@ export class CommunityApiError extends Error {
   }
 }
 
-export type Source = 'api' | 'supabase' | 'fixtures';
+/**
+ * Where the thing on screen came from.
+ *
+ * `unreachable` is the one that matters. It used to not exist: when the live
+ * service failed, these calls returned FIXTURES, so a member with a dead
+ * connection saw a room full of invented posts with real names on them and no
+ * way to tell. The owner hit exactly that during a dead-Metro window and read
+ * it as the community. Example content is now reachable ONLY behind
+ * `EXPO_PUBLIC_FIXTURES`, which is a flag somebody sets on purpose to run
+ * proofs; every other failure says so.
+ *
+ * The house law this restores: a blank must never look like data — and fake
+ * data is worse than blank, because blank at least invites a retry.
+ */
+export type Source = 'api' | 'supabase' | 'fixtures' | 'unreachable';
 
 async function authHeaders(): Promise<Record<string, string>> {
   if (!supabase) return {};
@@ -550,11 +564,9 @@ export const communityApi = {
       const direct = await roomsFromSupabase();
       if (direct) return { rooms: direct, source: 'supabase', note: null };
     }
-    return {
-      rooms: fixtureRooms,
-      source: 'fixtures',
-      note: offlineMode ? null : 'Showing example rooms — the service is not reachable.',
-    };
+    // Example rooms ONLY when somebody asked for them with the flag.
+    if (env.FIXTURES) return { rooms: fixtureRooms, source: 'fixtures', note: null };
+    return { rooms: [], source: 'unreachable', note: null };
   },
 
   async join(roomId: string): Promise<boolean> {
@@ -589,12 +601,10 @@ export const communityApi = {
         /* fall through to fixtures */
       }
     }
-    return {
-      messages: afterSeq > 0 ? [] : fixtureMessages,
-      room: null,
-      catchUp: null,
-      source: 'fixtures',
-    };
+    if (env.FIXTURES) {
+      return { messages: afterSeq > 0 ? [] : fixtureMessages, room: null, catchUp: null, source: 'fixtures' };
+    }
+    return { messages: [], room: null, catchUp: null, source: 'unreachable' };
   },
 
   /** Resolve the setup behind a setup room (rooms.setup_id -> GET /setups/:id). */
@@ -924,7 +934,7 @@ export const communityApi = {
     await request(`/rooms/${roomId}/${muted ? 'mute' : 'unmute'}`, { method: 'POST', body: JSON.stringify({}) });
   },
 
-  async contributor(userId: string): Promise<{ profile: ContributorProfile; source: Source }> {
+  async contributor(userId: string): Promise<{ profile: ContributorProfile | null; source: Source }> {
     if (live()) {
       try {
         const r = await request<any>(`/contributors/${userId}`);
@@ -965,7 +975,8 @@ export const communityApi = {
         /* fall through */
       }
     }
-    return { profile: fixtureContributor, source: 'fixtures' };
+    if (env.FIXTURES) return { profile: fixtureContributor, source: 'fixtures' };
+    return { profile: null, source: 'unreachable' };
   },
 };
 
@@ -1071,7 +1082,8 @@ export const debriefApi = {
         /* fall through */
       }
     }
-    return { debriefs: fixtureDebriefs, closed: fixtureClosedPositions, source: 'fixtures' };
+    if (env.FIXTURES) return { debriefs: fixtureDebriefs, closed: fixtureClosedPositions, source: 'fixtures' };
+    return { debriefs: [], closed: [], source: 'unreachable' };
   },
 
   async get(id: string): Promise<{ debrief: Debrief | null; source: Source }> {
@@ -1083,7 +1095,8 @@ export const debriefApi = {
         /* fall through */
       }
     }
-    return { debrief: fixtureDebriefs.find((d) => d.id === id) ?? fixtureDebriefs[0] ?? null, source: 'fixtures' };
+    if (env.FIXTURES) return { debrief: fixtureDebriefs.find((d) => d.id === id) ?? fixtureDebriefs[0] ?? null, source: 'fixtures' };
+    return { debrief: null, source: 'unreachable' };
   },
 
   async create(positionId: string): Promise<Debrief | null> {
@@ -1257,7 +1270,8 @@ export const circlesApi = {
         return { circles: [], can_create: null, create_hint: null, source: 'api' };
       }
     }
-    return { circles: fixtureCircles, can_create: true, create_hint: null, source: 'fixtures' };
+    if (env.FIXTURES) return { circles: fixtureCircles, can_create: true, create_hint: null, source: 'fixtures' };
+    return { circles: [], can_create: false, create_hint: null, source: 'unreachable' };
   },
 
   /** Staff only. The API enforces it against `staff_role()`; this just asks. */
@@ -1294,8 +1308,9 @@ export const circlesApi = {
    * levels come from the setup the room was opened for. There is no separate
    * circle-detail endpoint to depend on.
    */
-  async detail(id: string): Promise<{ detail: CircleDetail; source: Source }> {
-    if (!live()) return { detail: fixtureCircleDetail(id), source: 'fixtures' };
+  async detail(id: string): Promise<{ detail: CircleDetail | null; source: Source }> {
+    if (env.FIXTURES) return { detail: fixtureCircleDetail(id), source: 'fixtures' };
+    if (!live()) return { detail: null, source: 'unreachable' };
 
     // The circle's identity comes from `/circles` — that row is readable
     // whether or not you are a member, so the header, the clock and the levels

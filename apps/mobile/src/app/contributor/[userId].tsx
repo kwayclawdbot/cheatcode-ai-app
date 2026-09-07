@@ -118,8 +118,10 @@ export default function Contributor() {
       const { profile: p, source } = await communityApi.contributor(id);
       if (!alive) return;
       setProfile(p);
-      setExampleData(communityApi.available() && source === 'fixtures');
-      setMuted(p.muted);
+      setExampleData(source === 'fixtures');
+      // `p` is null when the service could not be reached — the screen's own
+      // empty state says so rather than a fixture profile wearing a real name.
+      setMuted(p?.muted ?? false);
       setLoading(false);
     })();
     return () => { alive = false; };

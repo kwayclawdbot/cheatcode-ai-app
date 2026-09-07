@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, ScrollView, ActivityIndicator } from 'react-native';
+import { View, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Wash } from '../../../ui/Wash';
 import { KeyboardDock } from '../../../ui/KeyboardDock';
@@ -99,6 +99,15 @@ export default function RoomScreen() {
   const [showCatchUp, setShowCatchUp] = useState(false);
   /** True when we are online but the room service answered with nothing. */
   const [exampleData, setExampleData] = useState(false);
+  /**
+   * The service answered with nothing and we are NOT in fixtures mode.
+   * Before this existed the room fell back to example messages, so a member
+   * with a dead connection read invented posts as the conversation.
+   */
+  const [unreachable, setUnreachable] = useState(false);
+  /** Bumped by Try again; the initial-load effect keys on it. */
+  const [reloadTick, setReloadTick] = useState(0);
+  const reload = useCallback(() => setReloadTick((n) => n + 1), []);
 
   const lastSeq = useRef(0);
   const focusedOnce = useRef(false);
@@ -136,7 +145,8 @@ export default function RoomScreen() {
       setMuted(!!found?.muted_until);
       setShowCatchUp(!!found && found.unread > 0);
       merge(page.messages);
-      setExampleData(communityApi.available() && page.source === 'fixtures');
+      setExampleData(page.source === 'fixtures');
+      setUnreachable(page.source === 'unreachable');
       setLoading(false);
       // With nothing new, drop straight to the latest message like any chat.
       // With a backlog, stay at the top so the pinned intelligence and the
@@ -146,7 +156,7 @@ export default function RoomScreen() {
       }
     })();
     return () => { alive = false; };
-  }, [roomId, merge]);
+  }, [roomId, merge, reloadTick]);
 
   /** Live updates, or the 5s poll that stands in for them. */
   const pull = useCallback(async () => {
@@ -373,6 +383,32 @@ export default function RoomScreen() {
               <T size={12} lh={17} c={color.gold}>
                 Example conversation. The room service isn't connected yet, so nothing here was written by a member.
               </T>
+            </ObjectCard>
+          ) : null}
+
+          {/* Could not be reached. Say so, and offer the one thing that helps. */}
+          {unreachable ? (
+            <ObjectCard r={radius.lg} style={{ padding: 16, gap: 10 }} testID="room-unreachable">
+              <T size={13.5} weight="bold">We couldn't load this room</T>
+              <T size={12} lh={18} c={color.muted}>
+                Nothing was reached, so nothing is shown — what you would be looking at otherwise is
+                invented, and a room of invented posts is worse than an empty one. Your connection or
+                the service is the usual reason.
+              </T>
+              <Pressable
+                testID="room-retry"
+                accessibilityRole="button"
+                accessibilityLabel="Try loading the room again"
+                onPress={() => { setUnreachable(false); setLoading(true); reload(); }}
+                style={({ pressed }) => ({
+                  alignSelf: 'flex-start', minHeight: 36, justifyContent: 'center',
+                  paddingHorizontal: 16, borderRadius: radius.pill,
+                  borderWidth: 1, borderColor: alpha.volt55, backgroundColor: alpha.volt10,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <T size={12} weight="semibold" c={color.volt}>Try again</T>
+              </Pressable>
             </ObjectCard>
           ) : null}
 
