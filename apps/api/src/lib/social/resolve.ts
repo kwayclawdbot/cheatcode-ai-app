@@ -7,18 +7,37 @@
  * fires it writes the outcome and calls `award_points`; when it does not, it
  * still stamps `last_checked_at`.
  *
+ * IT ALSO KEEPS THE PEAKS, and not only for members' calls. `runPeakTracking`
+ * (`lib/tracking/peaks.ts`) runs inside this same pass and writes down the
+ * highest and lowest price every ACTIVE call has seen — the house's own alerts
+ * as well as members' — as prices, with the time they were seen. That is what
+ * lets History print "peak $27.91" instead of a percentage nobody can place.
+ *
+ * IT IS DELIBERATELY NOT A SECOND CRON. A tracker on its own schedule would ask
+ * Polygon for the same symbols this job is already asking about, at almost the
+ * same moments, and double the rate-limit pressure for nothing. Bolting it on
+ * here means ONE snapshot request covers both jobs: the tracker runs FIRST and
+ * fills the shared snapshot cache, and the `getSnapshot` below is then served
+ * from it. Do not reorder those two without reading `getSessionExtremes`.
+ *
  * WHY `last_checked_at` IS WRITTEN ON EVERY PASS, FIRED OR NOT. 0038 §4 says
  * it: an unresolved call whose last check is hours stale means the resolver is
  * broken, and that is a thing somebody should be able to see in the table
  * without reading logs. A field only written on success cannot report a
  * failure.
  *
- * ONE SNAPSHOT CALL FOR EVERY SYMBOL. `getSnapshot()` covers the whole batch in
- * one request, the same way the paper tick does, so the cost of a pass does not
- * grow with the number of open calls. There is a rate limiter in front of
- * Polygon (`POLYGON_RPM`) and this job is scheduled every five minutes rather
- * than every minute for exactly that reason — a call's five-day horizon does
- * not need a sixty-second resolution.
+ * ONE SNAPSHOT CALL FOR EVERY SYMBOL, and now for both jobs. `getSnapshot()`
+ * covers the whole batch in one request, the same way the paper tick does, so
+ * the cost of a pass does not grow with the number of open calls — nor with the
+ * number of house alerts being tracked, because they ride in the same request.
+ * There is a rate limiter in front of Polygon (`POLYGON_RPM`) and this job is
+ * scheduled every five minutes rather than every minute for exactly that
+ * reason. Five minutes is also enough for the peaks: the session aggregate
+ * REMEMBERS the high, so a spike between two passes is still recorded even
+ * though no pass watched it happen.
+ *
+ * The only per-row costs are one-offs: seeding a row whose history predates
+ * tracking, and grading an option contract at its expiry. Neither repeats.
  *
  * AN EXPIRED CALL SCORES NOTHING. A call that ran its five days without
  * touching either level was neither right nor wrong; paying it or charging it
@@ -33,6 +52,7 @@
 import { serviceClient } from '../db';
 import { log } from '../log';
 import { getSnapshot } from '../market/polygon';
+import { runPeakTracking, type PeakReport } from '../tracking/peaks';
 import { CALL_COLUMNS, toCallRow, type CallRow } from './calls';
 import { legHit, resultPct } from './outcomes';
 import { awardAndAnnounce } from './points';
@@ -58,6 +78,9 @@ export type ResolveReport = {
   degraded: boolean;
   degraded_reason: string | null;
   plain: string;
+  /** What the same pass wrote down about peaks. Null only on the early exit
+   *  where the pass could not read its own rows and never got that far. */
+  peaks: PeakReport | null;
 };
 
 export async function runSocialResolve(opts: { requestId: string }): Promise<ResolveReport> {
@@ -98,12 +121,26 @@ export async function runSocialResolve(opts: { requestId: string }): Promise<Res
   }
 
   const calls = ((openRes.data ?? []) as Record<string, unknown>[]).map(toCallRow);
+  const symbols = [...new Set(calls.map((c) => c.symbol))].sort();
+
+  /* --- 3. Write down the extremes, for the house AND for members ------- */
+  //
+  // BEFORE the quote read, on purpose. The peak tracker asks Polygon for the
+  // running session high and low of everything active — house alerts and open
+  // calls together — in one request, and `getSnapshot` below then reads that
+  // same cached response instead of sending a second one. Reverse the order and
+  // the pass costs two calls instead of one.
+  //
+  // It runs even when no member has an open call: the house's own alerts are
+  // tracked by the same sweep, and they are the reason History can show a peak
+  // price at all. That is why this sits ABOVE the early return.
+  const peaks = await runPeakTracking({ requestId: opts.requestId, at, alsoPrice: symbols });
+
   if (!calls.length) {
-    return report(at, 0, 0, 0, 0, 0, expired, 0, 0, false, null);
+    return report(at, 0, 0, 0, 0, 0, expired, 0, 0, false, null, peaks);
   }
 
-  /* --- 3. One snapshot for every symbol -------------------------------- */
-  const symbols = [...new Set(calls.map((c) => c.symbol))].sort();
+  /* --- 4. One snapshot for every symbol -------------------------------- */
   const snap = await getSnapshot(symbols);
   const prices = new Map<string, number>();
   for (const q of snap.quotes) {
@@ -111,7 +148,7 @@ export async function runSocialResolve(opts: { requestId: string }): Promise<Res
     prices.set(q.symbol.toUpperCase(), q.price);
   }
 
-  /* --- 4. Decide, one call at a time ----------------------------------- */
+  /* --- 5. Decide, one call at a time ----------------------------------- */
   let hitTarget = 0;
   let stopped = 0;
   let awarded = 0;
@@ -150,7 +187,7 @@ export async function runSocialResolve(opts: { requestId: string }): Promise<Res
     if (award.belt_changed) beltsChanged += 1;
   }
 
-  /* --- 5. Stamp everything that did not fire, in one write ------------- */
+  /* --- 6. Stamp everything that did not fire, in one write ------------- */
   if (untouched.length) {
     const { error } = await db
       .from('community_calls')
@@ -172,7 +209,8 @@ export async function runSocialResolve(opts: { requestId: string }): Promise<Res
     awarded,
     beltsChanged,
     snap.degraded,
-    snap.degraded_reason
+    snap.degraded_reason,
+    peaks
   );
 }
 
@@ -236,9 +274,11 @@ function report(
   awarded: number,
   beltsChanged: number,
   degraded: boolean,
-  degradedReason: string | null
+  degradedReason: string | null,
+  peaks: PeakReport | null = null
 ): ResolveReport {
   return {
+    peaks,
     ran_at: at,
     checked,
     symbols,

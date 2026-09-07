@@ -968,6 +968,21 @@ type Cached<T> = { at: number; value: T };
 const groupedCache = new Map<string, Cached<Map<string, GroupedRow>>>();
 const quoteCache = new Map<string, Cached<MarketQuote>>();
 const newsCache = new Map<string, Cached<NewsItem[]>>();
+/**
+ * The RAW snapshot rows, cached per symbol beside the finished quotes.
+ *
+ * `quoteCache` holds what `getSnapshot` decided — a price and a freshness. This
+ * holds what Polygon actually said, including `day.h` and `day.l`, the running
+ * session high and low that the quote throws away because a quote is one
+ * number. The peak tracker needs exactly those two, for the same symbols, in
+ * the same pass.
+ *
+ * Caching the raw row is what keeps a resolver pass at ONE Polygon call instead
+ * of two: whichever of `getSnapshot` or `getSessionExtremes` runs first pays
+ * for the request, and the other reads this. Same TTL as the quotes, because it
+ * is the same response.
+ */
+const snapTickerCache = new Map<string, Cached<SnapTicker>>();
 
 /**
  * A minute is a long time in an open market and no time at all in a shut one.
@@ -1062,15 +1077,109 @@ function snapshotPrice(t: SnapTicker, now = new Date()): { price: number; ts: st
   return null;
 }
 
+/**
+ * One call for many symbols, served from `snapTickerCache` where it can be.
+ *
+ * Only the symbols whose cached row has gone stale are asked for, so a second
+ * caller inside the same TTL — the peak tracker right after the quote read —
+ * costs nothing. A symbol Polygon simply does not answer for is NOT cached as
+ * absent: it stays missing so the next pass asks again, which is the behaviour
+ * a halted or newly listed ticker needs.
+ */
 async function tickersSnapshot(symbols: string[]): Promise<Map<string, SnapTicker> | null> {
   if (!symbols.length) return new Map();
-  const r = await polyGet<SnapBody>('/v2/snapshot/locale/us/markets/stocks/tickers', {
-    tickers: symbols.join(','),
-  });
-  if (!r.ok) return null;
+  const ttl = snapshotTtlMs();
   const out = new Map<string, SnapTicker>();
-  for (const t of r.data.tickers ?? []) out.set(t.ticker, t);
+  const missing: string[] = [];
+  for (const s of symbols) {
+    const hit = fresh(snapTickerCache.get(s), ttl);
+    if (hit) out.set(s, hit);
+    else missing.push(s);
+  }
+  if (!missing.length) return out;
+
+  const r = await polyGet<SnapBody>('/v2/snapshot/locale/us/markets/stocks/tickers', {
+    tickers: missing.join(','),
+  });
+  // A failed request must not be reported as "these symbols do not exist". If
+  // nothing at all was cached, say so with null, exactly as this did before.
+  if (!r.ok) return out.size ? out : null;
+  for (const t of r.data.tickers ?? []) {
+    out.set(t.ticker, t);
+    snapTickerCache.set(t.ticker, { at: Date.now(), value: t });
+  }
   return out;
+}
+
+/**
+ * The running session high and low for many symbols, in one call.
+ *
+ * This is the tracker's whole read. `day.h` / `day.l` are today's extremes so
+ * far — not a bar that has closed, the session as it stands — which is why a
+ * pass every five minutes is enough to catch a spike: the aggregate remembers
+ * the spike even though the pass did not see the print.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO is tell you WHEN the extreme happened.
+ * Polygon does not carry that on the aggregate and there is no honest way to
+ * infer it from a snapshot, so the caller stamps the observation time and the
+ * row's basis says 'session' — good to about five minutes, and never presented
+ * as the instant of the print.
+ *
+ * Outside a session both come back as zero, and zero is not a price: those are
+ * dropped rather than written, which is what stops an overnight pass from
+ * recording a low of $0.00 against every open call.
+ */
+export type SessionExtreme = { high: number; low: number };
+
+export async function getSessionExtremes(symbols: string[]): Promise<Map<string, SessionExtreme>> {
+  const wanted = [...new Set(symbols.map((s) => s.toUpperCase()).filter(Boolean))];
+  const out = new Map<string, SessionExtreme>();
+  if (!wanted.length) return out;
+
+  const snapped = await tickersSnapshot(wanted);
+  if (!snapped) return out;
+
+  for (const s of wanted) {
+    const row = snapped.get(s);
+    if (!row) continue;
+    const high = num(row.day?.h);
+    const low = num(row.day?.l);
+    // Both, or neither. A session that has a high but no low is a half-written
+    // aggregate, and half of a range is not a range.
+    if (high === null || low === null || high <= 0 || low <= 0) continue;
+    out.set(s, { high, low });
+  }
+  return out;
+}
+
+/**
+ * Daily bars, UNADJUSTED, for one ticker — equity or option.
+ *
+ * SEPARATE FROM `fetchAggregates` ON PURPOSE, and the difference is the whole
+ * reason it exists: that one passes `adjusted: true`, which restates old prices
+ * in today's share terms. That is right for a chart and wrong for every
+ * question this file's callers ask. A split once minted a fake 15x in this
+ * house, because a call made before the split was compared against prices
+ * expressed after it. "The best price this call ever saw" has to be measured in
+ * the share terms the call was made in, so: `adjusted=false`, always, and any
+ * future caller reading this should not be tempted to "reuse the other one".
+ *
+ * Polygon serves option tickers — `O:MRNA260821C00120000` — from the same
+ * aggregates path as equities, so this doubles as the contract grader's reader.
+ * The ticker is NOT uppercased here: an option ticker is already in its exact
+ * form and case-folding a symbol we were handed is how `O:` tickers get broken.
+ */
+export async function fetchDailyBarsUnadjusted(
+  ticker: string,
+  from: string,
+  to: string
+): Promise<PolyResult<Candle[]>> {
+  const r = await polyGet<AggsBody>(
+    `/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${from}/${to}`,
+    { adjusted: false, sort: 'asc', limit: 5000 }
+  );
+  if (!r.ok) return r;
+  return { ok: true, data: (r.data.results ?? []).map(toCandle), delayed: r.delayed };
 }
 
 export type SnapshotResult = {
@@ -1797,6 +1906,7 @@ export async function fetchTickerReference(symbol: string): Promise<TickerRefere
 export function resetMarketCaches(): void {
   groupedCache.clear();
   quoteCache.clear();
+  snapTickerCache.clear();
   newsCache.clear();
   resolveCache.clear();
   refetchedAt.clear();

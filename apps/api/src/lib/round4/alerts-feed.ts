@@ -61,7 +61,11 @@ function symbolOf(row: Record<string, unknown>): string | null {
 }
 
 const SETUP_COLUMNS =
-  'id,symbol,mode,intent,state,score,grade_band,grade_display,score_components,thesis_plain,thesis_technical,entry_condition,invalidation,stop,targets,catalyst,quote_snapshot,valid_until,scanner_run_id,discussion_room_id';
+  'id,symbol,mode,intent,state,score,grade_band,grade_display,score_components,thesis_plain,thesis_technical,entry_condition,invalidation,stop,targets,catalyst,quote_snapshot,valid_until,scanner_run_id,discussion_room_id,' +
+  // What the peak tracker wrote while the call was running (0041). These are
+  // what let a History row print "peak $27.91" instead of a bare percentage.
+  'call_price,high_price,high_basis,low_price,low_basis,peak_price,peak_at,peak_gain_pct,' +
+  'resolution_kind,resolution_price,contract_cost,contract_peak,contract_peak_multiple,contract_expiry_value';
 
 /**
  * How many of the sent alerts each tab carries. Active is the live window (a

@@ -1,6 +1,13 @@
 /**
  * GET | POST /api/v1/internal/social/resolve
  *
+ * THE PASS DOES TWO JOBS AND THE PATH ONLY NAMES ONE. It resolves members'
+ * calls, and it keeps the running peak of every ACTIVE call — the house's own
+ * alerts included — so History can show what the best price actually was rather
+ * than a percentage with no price behind it. The path is unchanged because the
+ * cron entry in `vercel.json` points at it and renaming a scheduled route to be
+ * tidier is a way to silently stop a job. See `lib/social/resolve.ts`.
+ *
  * NOT a user route. Auth is `internalAuthorized()` — the `x-internal-secret`
  * header for a script, or the `Authorization: Bearer <CRON_SECRET>` a Vercel
  * cron derives. An unauthorised caller gets 404, exactly as if the path did not
@@ -51,6 +58,14 @@ async function handle(req: NextRequest): Promise<Response> {
       awarded: result.awarded,
       belts_changed: result.belts_changed,
       degraded: result.degraded,
+      // The peak tracker's half of the same pass. Logged flat beside the
+      // resolver's own counters so one log line says what the whole pass did.
+      tracked_setups: result.peaks?.tracked_setups ?? 0,
+      tracked_calls: result.peaks?.tracked_calls ?? 0,
+      extremes_written: result.peaks?.extremes_written ?? 0,
+      seeded: result.peaks?.seeded ?? 0,
+      tracking_resolved: result.peaks?.resolved ?? 0,
+      contracts_graded: result.peaks?.contracts_graded ?? 0,
     });
 
     return Response.json(result, { status: 200, headers: { 'x-request-id': requestId } });

@@ -38,6 +38,34 @@ export type SetupRow = {
    * snapshot and labels it with its real age. Never populated by a scanner.
    */
   live_quote?: MarketQuote | null;
+
+  /**
+   * WHAT THIS CALL ACTUALLY DID WHILE IT WAS RUNNING, written by the peak
+   * tracker inside the *\/5 resolver pass (`lib/tracking/peaks.ts`) and added by
+   * migration 0041.
+   *
+   * `peak_price`, `peak_at` and `peak_gain_pct` are GENERATED columns: the
+   * database picks the favourable extreme from the direction on the row, so
+   * nothing on this side has to decide whether a short's peak is its high or
+   * its low. Read them, never compute them.
+   *
+   * All optional because a row read with an older column list simply will not
+   * carry them, and an absent measurement must stay absent.
+   */
+  call_price?: number | null;
+  high_price?: number | null;
+  high_basis?: string | null;
+  low_price?: number | null;
+  low_basis?: string | null;
+  peak_price?: number | null;
+  peak_at?: string | null;
+  peak_gain_pct?: number | null;
+  resolution_kind?: string | null;
+  resolution_price?: number | null;
+  contract_cost?: number | null;
+  contract_peak?: number | null;
+  contract_peak_multiple?: number | null;
+  contract_expiry_value?: number | null;
 };
 
 export type ProfileRow = {
