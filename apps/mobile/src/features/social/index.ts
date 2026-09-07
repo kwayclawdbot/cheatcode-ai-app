@@ -2,6 +2,7 @@ export { BeltChip, BeltProgress } from './BeltChip';
 export { BELT_INK, BELT_LABEL, BELT_ORDER, beltBorder, beltRank, beltTextInk } from './belts';
 export { BeltUpSheet } from './BeltUpSheet';
 export { CommunityCallCard } from './CommunityCallCard';
+export { CallChart, levelsFor, windowFor } from './CallChart';
 export { FollowButton } from './FollowButton';
 export { secondaryHandle } from './naming';
 export { SharedTradeRow } from './SharedTradeRow';

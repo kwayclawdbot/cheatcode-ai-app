@@ -151,7 +151,36 @@ async function captureApp(browser) {
   await tap(page, 'focus-etf', 'focus index ETFs');
   await shot(page, 'p4a-05-personalize-answered');
   await tap(page, 'cta-continue', 'continue to plan');
-  await settle(page, 1200);           await shot(page, 'p4a-06-plan');
+  await settle(page, 1200);
+
+  /**
+   * ONBOARDING GREW A STEP, AND THIS IS WHY THE PLAN ASSERTION WAS FAILING.
+   *
+   * "The team opens the circles, and members have names" (8d11382) inserted
+   * `(onboarding)/username.tsx` between personalize and the plan, so the
+   * Continue above stopped landing on the plan and started landing on "What
+   * should we call you?". The assertion below never reached the screen it is
+   * about — and because it was capturing p4a-06 from wherever it HAD landed, it
+   * looked like the plan had lost Kai's voice line rather than like the proof
+   * had lost its way. The screenshot is what gives it away: the progress bar
+   * has five segments now, not four.
+   *
+   * The step is SKIPPED rather than filled in. This proof is about the shape of
+   * the onboarding screens, a username is asked for again from Account and from
+   * the first post, and skipping is a path a real member takes — so taking it
+   * here keeps the proof about what it was always about.
+   *
+   * It is conditional so that this does not become the next version of the same
+   * problem: if the step moves or goes away, the proof walks on rather than
+   * failing on a missing tap.
+   */
+  if (await page.getByTestId('screen-username').count()) {
+    await shot(page, 'p4a-05b-username');
+    await tap(page, 'username-skip', 'skip the username step');
+    await settle(page, 1200);
+  }
+
+  await shot(page, 'p4a-06-plan');
   // Kai's voice for `new` must be visible on the plan
   await assertText(page, 'I explain every term the first time it appears.', 'plan (voice: new)');
 

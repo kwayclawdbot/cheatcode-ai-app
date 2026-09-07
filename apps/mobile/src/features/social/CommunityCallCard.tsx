@@ -4,6 +4,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { alpha, color, gradientAngle, radius } from '../../ui/tokens';
 import { T, Num, Eyebrow } from '../../ui/Text';
+import { ChevronDown, ChevronRight } from '../../ui/Icons';
+import { CallChart } from './CallChart';
 import { TickerMark } from '../../ui/Ticker';
 import { Avatar } from '../community/ui/Chrome';
 import { PostBody } from '../community/ui/PostBody';
@@ -62,6 +64,19 @@ import type { CommunityCall } from '../../lib/types';
 
 const DIRECTION_LABEL = { long: 'Long', short: 'Short' } as const;
 
+/**
+ * WHICH CARDS ARE OPEN, FOR AS LONG AS THE APP IS RUNNING.
+ *
+ * A room's message list and the Community tab both recycle their rows, so a
+ * card that is scrolled past and back is a NEW component with new state. Held
+ * in `useState` alone, every chart somebody opened would shut itself the moment
+ * it left the screen — which reads as the app throwing away what you asked for.
+ * A module-level set survives the unmount and nothing else: it is not written
+ * anywhere, and a reload starts with every card closed, which is the right
+ * default for a list.
+ */
+const expanded = new Set<string>();
+
 function LevelCell({ label, value, c, bg, border, compact, testID }: {
   label: string; value: string; c: string; bg: string; border: string;
   compact?: boolean; testID?: string;
@@ -118,6 +133,15 @@ export function CommunityCallCard({
   const hasLevels = !!(entry || stop || target);
   const resolved = call.status !== 'open';
   const tone = outcomeTone(call);
+  const [open, setOpen] = React.useState(() => expanded.has(call.id));
+
+  const toggleChart = React.useCallback(() => {
+    setOpen((was) => {
+      const now = !was;
+      if (now) expanded.add(call.id); else expanded.delete(call.id);
+      return now;
+    });
+  }, [call.id]);
 
   /** The outcome, once there is one. Same object at both densities. */
   const outcome = resolved ? (
@@ -258,6 +282,52 @@ export function CommunityCallCard({
           testID={`call-thesis-${call.id}`}
         />
       ) : null}
+
+      {/*
+        THE CHART, ON REQUEST.
+
+        It sits after the thesis because it is the evidence for the words, not
+        the headline: the levels are already stated as cells above, and the
+        chart is where you go to see what they were drawn against.
+
+        NOTHING IS FETCHED UNTIL THIS OPENS. `CallChart` is mounted, not
+        hidden, so a collapsed card issues no request and holds no chart — a
+        room with twenty calls in it costs exactly as much to scroll as it did
+        before this existed, and only the cards somebody actually asked about
+        cost anything at all.
+      */}
+      <View style={{ gap: compact ? 8 : 11 }}>
+        <Pressable
+          testID={`call-chart-toggle-${call.id}`}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          accessibilityLabel={
+            open
+              ? `Hide the ${call.symbol} chart`
+              : hasLevels
+                ? `Show the ${call.symbol} chart with this call's levels drawn on it`
+                : `Show the ${call.symbol} chart`
+          }
+          onPress={toggleChart}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          style={({ pressed }) => ({
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            alignSelf: 'flex-start', minHeight: 30,
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <T size={11} weight="semibold" c={color.muted}>
+            {open ? 'Hide chart' : 'Chart'}
+          </T>
+          {open
+            ? <ChevronDown size={9} color={color.muted} />
+            : <ChevronRight size={9} color={color.muted} />}
+        </Pressable>
+
+        {open ? (
+          <CallChart call={call} compact={compact} testID={`call-chart-${call.id}`} />
+        ) : null}
+      </View>
 
       {/* Withdrawing belongs where you are reading your own record, not in the
           middle of somebody else's conversation. */}
