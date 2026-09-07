@@ -69,7 +69,14 @@ export type AuditAction =
   | 'community.message.keep'
   | 'community.member.mute'
   | 'community.member.unmute'
-  | 'community.queue.read';
+  | 'community.queue.read'
+  // The picture on a room. Set and clear are two verbs rather than one with a
+  // nullable payload, because "who took the picture off #swing-ideas" is a
+  // question asked by grouping on this column — and an operator scanning the
+  // log should be able to see a removal without opening the row's `after`.
+  | 'community.room.list'
+  | 'community.room.avatar.set'
+  | 'community.room.avatar.clear';
 
 export type AuditInput = {
   actorUserId: string | null;
