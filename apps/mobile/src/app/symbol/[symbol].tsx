@@ -8,8 +8,8 @@ import { ScreenLoading } from '../../ui/Loading';
 import { FreshnessMark } from '../../ui/FreshnessMark';
 import { alpha, color, radius } from '../../ui/tokens';
 import { KaiView, TickerSections, useTickerPage } from '../../features/ticker';
-import { ChartView } from '../../features/chart/ChartView';
-import { usePortalCandles } from '../../features/portal/usePortal';
+import { SymbolChart } from '../../features/chart/SymbolChart';
+import { usePortalCandles, useSymbolAnnotations } from '../../features/portal/usePortal';
 import type { PortalTimeframe } from '../../features/portal/types';
 import { openKaiSheet } from '../../features/kai-sheet';
 import { useSession } from '../../lib/session';
@@ -53,6 +53,12 @@ export default function TickerPageScreen() {
   const { profile } = useSession();
   const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? 'day_trade';
   const { data, loading, error, isFixture } = useTickerPage(symbol, mode);
+  /**
+   * The marks on this symbol's chart — the SAME store the Trade portal uses.
+   * Loaded here rather than inside the chart so the page can also talk about
+   * them (how far price is from a line you drew) without a second fetch.
+   */
+  const marks = useSymbolAnnotations(symbol);
   /**
    * The research page and the Trade Portal now show the SAME chart on the SAME
    * resolutions. The old 1D/1W/1M/1Y chips were a different vocabulary for the
@@ -110,15 +116,39 @@ export default function TickerPageScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 8, gap: 11 }}
         showsVerticalScrollIndicator={false}
       >
-        <ChartView
+        {/*
+          THE SAME CHART AS TRADE, not a lighter one. It had a bare `ChartView`
+          with `annotations={[]}` — no tools, no full screen, and no knowledge
+          that the chart had ever been drawn on, so a line you drew in Trade did
+          not exist here and one drawn here could not exist at all. `SymbolChart`
+          is the whole assembly and `useSymbolAnnotations` is the same per-symbol
+          store the portal writes to, which is what makes it one chart rather
+          than two that share candles.
+
+          NO `portal` PROP, and that is correct rather than missing: this page is
+          not about a trade, so there is no entry or stop that belongs on it at
+          rest, and the chart opens with only what the user drew themselves.
+        */}
+        <SymbolChart
           testID="ticker-chart"
           symbol={data.symbol}
+          name={data.company ?? null}
           timeframe={tf}
           candles={candles}
-          annotations={[]}
+          annotations={marks.annotations}
           lastPrice={data.quote?.price ?? null}
-          onTimeframeChange={setTf}
           height={210}
+          onTimeframeChange={setTf}
+          onDrawCreate={(a) => { void marks.createUserAnnotation(a); }}
+          onDrawUpdate={marks.updateUserAnnotation}
+          onDrawDelete={(id) => marks.setAnnotationStatus(id, 'deleted')}
+          kaiSheet={(
+            <KaiView
+              take={data.kai_view.take}
+              actions={data.kai_view.actions}
+              onAsk={(q2) => openKaiSheet({ context: { kind: 'symbol', symbol: data.symbol }, question: q2 })}
+            />
+          )}
         />
 
         <Pressable

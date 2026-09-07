@@ -145,3 +145,82 @@ export function usePortalCandles(symbol: string, tf: PortalTimeframe | null) {
 
   return { candles, exact, loading };
 }
+
+
+/* ------------------------------------------------------------------ */
+/* One chart truth per symbol                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The marks on a symbol's chart, for any surface that is not the Trade portal.
+ *
+ * THE POINT IS THAT THERE IS ONLY ONE SET. `chart_annotations` has always been
+ * keyed by (user, symbol) — what was missing was that the ticker page never
+ * read it, and passed `annotations={[]}` to its chart. So a line you drew in
+ * Trade did not exist on the ticker page and one drawn there could not have
+ * existed at all, which made "the chart" two different charts wearing the same
+ * candles.
+ *
+ * This is the same store the portal uses, reached the same way, so a drawing
+ * made on either surface is on both the next time they load. It is a separate
+ * HOOK rather than a separate cache: `usePortal` gets its annotations inside
+ * the portal payload because that endpoint already returns them, and asking for
+ * them twice there would be a second request for something already in hand.
+ */
+export function useSymbolAnnotations(symbol: string) {
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    if (!symbol) return;
+    setLoading(true);
+    try {
+      setAnnotations(await portalApi.annotations(symbol));
+    } catch {
+      // A chart with no marks is a legitimate chart. It is not worth an error
+      // state, and the drawing tools still work on it.
+      setAnnotations([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [symbol]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  /** Drawn here, saved, then swapped for the row that will survive a reload. */
+  const createUserAnnotation = useCallback(async (draft: Annotation) => {
+    setAnnotations((prev) => [...prev, draft]);
+    try {
+      const saved = await portalApi.createAnnotation({
+        symbol: draft.symbol,
+        timeframe: draft.timeframe ?? 'D',
+        kind: draft.kind,
+        price: draft.price,
+        price2: draft.price2,
+        ts_from: draft.ts_from,
+        ts_to: draft.ts_to,
+        text: draft.text,
+      });
+      if (saved) setAnnotations((prev) => prev.map((a) => (a.id === draft.id ? saved : a)));
+    } catch {
+      // The draft stands. Losing somebody's drawing to a timed-out request is
+      // worse than keeping one that will not survive a reload.
+    }
+  }, []);
+
+  const updateUserAnnotation = useCallback((a: Annotation) => {
+    setAnnotations((prev) => prev.map((x) => (x.id === a.id ? a : x)));
+    if (a.id.startsWith('draft:') || a.id.startsWith('local:')) return;
+    void portalApi.patchAnnotation(a.id, {
+      price: a.price, price2: a.price2, ts_from: a.ts_from, ts_to: a.ts_to,
+    }).catch(() => { /* local state is what the user sees */ });
+  }, []);
+
+  const setAnnotationStatus = useCallback((id: string, status: Annotation['status']) => {
+    setAnnotations((prev) =>
+      status === 'deleted' ? prev.filter((a) => a.id !== id) : prev.map((a) => (a.id === id ? { ...a, status } : a)));
+    void portalApi.patchAnnotation(id, { status }).catch(() => { /* as above */ });
+  }, []);
+
+  return { annotations, loading, createUserAnnotation, updateUserAnnotation, setAnnotationStatus, reload: load };
+}

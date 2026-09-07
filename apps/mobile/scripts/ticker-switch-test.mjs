@@ -171,20 +171,20 @@ section('The pencil is the door to drawing');
 
 {
   await open('/trade/TSLA');
-  ok('a pencil sits on the chart', await has('chart-pencil'));
+  ok('a pencil sits on the chart', await has('portal-chart-pencil'));
   ok('and the tools are NOT out until it is tapped', !(await has('draw-tray')));
 
-  await tap('chart-pencil', 900);
+  await tap('portal-chart-pencil', 900);
   ok('tapping it brings the tools out', await has('draw-tray'));
   ok('all three of them', (await has('draw-tool-level')) && (await has('draw-tool-trendline')) && (await has('draw-tool-zone')));
   await page.screenshot({ path: 'proof/chart-pencil-open.png' });
 
-  await tap('chart-pencil', 900);
+  await tap('portal-chart-pencil', 900);
   ok('tapping it again puts them away', !(await has('draw-tray')));
 
   // A shape retires the tray on its own: the tool is one-shot by design, and
   // the pencil is a door rather than a mode you have to remember to leave.
-  await tap('chart-pencil', 700);
+  await tap('portal-chart-pencil', 700);
   await tap('draw-tool-level', 700);
   const box = await page.locator('[data-testid="portal-chart"]').first().boundingBox();
   if (box) {
@@ -200,8 +200,8 @@ section('Full screen, with Kai still one tap away');
 
 {
   await open('/trade/TSLA');
-  ok('an expand glyph sits beside the pencil', await has('chart-expand'));
-  await tap('chart-expand', 2000);
+  ok('an expand glyph sits beside the pencil', await has('portal-chart-expand'));
+  await tap('portal-chart-expand', 2000);
   ok('it opens the chart full screen', await has('stage-chart'));
   ok('with an obvious way out', await has('stage-close'));
   ok('and Kai beside it', await has('stage-kai'));
@@ -224,6 +224,36 @@ section('Full screen, with Kai still one tap away');
 
   await tap('stage-close', 1600);
   ok('Done returns to the portal', !(await has('stage-chart')) && (await has('portal-chart')));
+}
+
+/* ------------------------------------------------------------------ */
+section('The ticker page has the same chart, not a lesser one');
+
+/**
+ * The ticker page had a bare `ChartView` with `annotations={[]}` — no tools, no
+ * full screen, and no knowledge that the chart had ever been drawn on. Both
+ * surfaces now mount the same `SymbolChart`, so this asserts the assembly is
+ * present on the OTHER one rather than that a copy of it was made.
+ */
+{
+  await open('/symbol/META');
+  ok('the ticker page renders', await has('screen-ticker'));
+  ok('with the shared chart', await has('ticker-chart'));
+  ok('a pencil, as in Trade', await has('ticker-chart-pencil'));
+  ok('and an expand glyph', await has('ticker-chart-expand'));
+
+  await tap('ticker-chart-pencil', 900);
+  ok('the pencil opens the tools here too', await has('draw-tray'));
+  ok('all three of them',
+    (await has('draw-tool-level')) && (await has('draw-tool-trendline')) && (await has('draw-tool-zone')));
+  await page.screenshot({ path: 'proof/ticker-chart-parity.png' });
+  await tap('ticker-chart-pencil', 700);
+
+  await tap('ticker-chart-expand', 2000);
+  ok('full screen works from the ticker page', await has('stage-chart'));
+  ok('with Kai reachable without leaving it', await has('stage-kai'));
+  await page.screenshot({ path: 'proof/ticker-chart-fullscreen.png' });
+  await tap('stage-close', 1400);
 }
 
 await browser.close();
