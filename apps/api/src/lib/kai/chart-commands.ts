@@ -36,6 +36,18 @@ import {
   withDefaults,
   type IndicatorSpec,
 } from '@shared/indicators';
+import {
+  DRAWABLE_PATTERNS,
+  PATTERNS,
+  REFUSED_PATTERNS,
+  findPattern,
+  isDrawablePattern,
+  parsePattern,
+  patternPlain,
+  patternRefusal,
+  type PatternBar,
+  type PatternId,
+} from '@shared/patterns';
 import { z } from 'zod';
 import { levels, isLong } from '../setups';
 import type { SetupRow } from './context';
@@ -1196,6 +1208,225 @@ async function markZone(
 }
 
 /* ------------------------------------------------------------------ */
+/* Patterns                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One instance of a pattern, resolved into something with a label on it.
+ *
+ * `top` and `bottom` are the same number for a swing, because a swing is a band
+ * with no height. Keeping one shape means the marking code never has to ask
+ * which kind it is holding before it can read a price out of it.
+ */
+export type ResolvedPatternMatch = {
+  label: string;
+  kind: 'zone' | 'level';
+  top: number;
+  bottom: number;
+  tsFrom: string;
+  tsTo: string | null;
+  at: string;
+  direction: 'bullish' | 'bearish' | null;
+  reason: string;
+};
+
+export type ResolvedPattern = {
+  id: PatternId;
+  kind: 'zone' | 'level';
+  /** Singular and plural, for the sentence Kai says about a count. */
+  noun: { one: string; many: string };
+  cap: number;
+  /** How many are actually on this chart, BEFORE the cap. */
+  found: number;
+  capped: boolean;
+  /** Newest first, cut to the cap. */
+  matches: ResolvedPatternMatch[];
+  provenance: string;
+};
+
+/**
+ * Find one named pattern on the bars this chart already loaded.
+ *
+ * DETECTION HAPPENS HERE, ON THE SERVER, AND THAT IS THE WHOLE DESIGN. The model
+ * names WHICH pattern; this function goes and finds WHERE they are, in
+ * `ctx.dailyBars` — the same candles `loadChartContext` fetched for everything
+ * else. That is the anti-invention rule holding in a place it would otherwise
+ * leak: a model asked to find gaps would answer with prices, and a price a model
+ * wrote is a price nobody can check. Here every edge of every box is a high or a
+ * low off a stored bar, and it is also what lets the zones PERSIST — an
+ * annotation row can only be written for something the server knows the numbers
+ * of.
+ *
+ * Returns null when nothing was found, which is a real answer and not a failure:
+ * a chart with no unfilled gap on it has no unfilled gap on it, and the prompt
+ * is built so Kai is never offered one.
+ */
+export function resolvePattern(ctx: ChartContext, name: string): ResolvedPattern | null {
+  const id = parsePattern(name);
+  if (!isDrawablePattern(id)) return null;
+  const entry = PATTERNS[id];
+
+  const bars: PatternBar[] = (ctx.dailyBars ?? [])
+    .filter((b) => typeof b.o === 'number' && typeof b.h === 'number' && typeof b.l === 'number' && typeof b.c === 'number')
+    .map((b) => ({ ts: b.ts, o: b.o as number, h: b.h as number, l: b.l as number, c: b.c as number, v: b.v ?? null }));
+  // Three bars is the least any of these definitions can be evaluated over, and
+  // a pattern found on two bars would be a pattern found on nothing.
+  if (bars.length < 3) return null;
+
+  const { matches, found, cap } = findPattern(id, bars);
+  if (!matches.length) return null;
+
+  const plain = patternPlain(id);
+  return {
+    id,
+    kind: entry.kind,
+    noun: entry.noun,
+    cap,
+    found,
+    capped: found > matches.length,
+    matches: matches.map((m) => ({
+      label: entry.label(m),
+      kind: m.kind,
+      top: r2(m.top),
+      bottom: r2(m.bottom),
+      tsFrom: m.tsFrom,
+      tsTo: m.tsTo,
+      at: m.at,
+      direction: m.direction,
+      reason: `${m.why} A ${entry.noun.one} is ${plain}.`,
+    })),
+    provenance:
+      `${found} ${found === 1 ? entry.noun.one : entry.noun.many} found in ${bars.length} stored daily bars for ${ctx.symbol}` +
+      `${found > matches.length ? `; the ${matches.length} most recent are drawn` : ''}.`,
+  };
+}
+
+/**
+ * The patterns that actually find something on THIS chart right now.
+ *
+ * Same rule as `availableIndicators` and `availableZones`, for the same reason:
+ * offering "I can mark the gaps" on a chart with no unfilled gap on it is how
+ * Kai ends up narrating a box that never appears. A pattern is worse than a
+ * level here, because a level either resolves or it does not while a pattern can
+ * resolve to an empty list — so the emptiness has to be checked, not assumed.
+ */
+export function availablePatterns(ctx: ChartContext): string[] {
+  return DRAWABLE_PATTERNS.filter((id) => resolvePattern(ctx, id) !== null);
+}
+
+/** What Kai must be told he CANNOT find, so he offers a sentence instead of a box. */
+export function refusedPatterns(): { name: string; why: string }[] {
+  return REFUSED_PATTERNS.map((r) => ({ name: r.aliases[0], why: r.why }));
+}
+
+/**
+ * Draw every instance of one pattern, up to its cap.
+ *
+ * ONE ANNOTATION PER INSTANCE, not one row describing a set. Each gap is its own
+ * band with its own two edges and its own explanation, so each one has to be
+ * something the user can tap and be told about; a single row covering four boxes
+ * could only carry one reason, and three of the four would be unexplained.
+ *
+ * THE CAP IS SAID OUT LOUD WHENEVER IT BITES. "I marked the gaps" over a chart
+ * showing four of the eleven that exist is not false enough to notice and not
+ * true enough to trade on, which is the worst kind of wrong. So the narration
+ * carries both numbers whenever they differ.
+ *
+ * A SWING IS A SUPPORT OR A RESISTANCE, DECIDED BY WHICH SIDE OF PRICE IT IS ON
+ * — the same rule `computedLevels` uses. A swing high under price is acting as
+ * support and one above it is acting as resistance, and it is the same turn
+ * either way; naming the side rather than the shape is also what lets these rows
+ * into the director's table, which only accepts the kinds that name a level.
+ *
+ * IT DRAWS EVEN IF IT CANNOT BE SAVED, exactly like `markIndicator`. The numbers
+ * came off candles the client is already holding, so a database missing the
+ * table is not a reason to leave the chart blank while Kai says he marked the
+ * gaps. The rows go out unpersisted instead: same boxes, gone on reload.
+ */
+async function markPattern(
+  ctx: ChartContext,
+  name: string,
+  say: (fallback: string) => string
+): Promise<ChartCommandFrame | null> {
+  const p = resolvePattern(ctx, name);
+  if (!p) return null;
+
+  const base = {
+    symbol: ctx.symbol,
+    timeframe: ctx.levelTimeframe,
+    provenance: 'kai' as const,
+    source_alert_id: ctx.alertId,
+    source_setup_id: ctx.setup?.id ?? null,
+    source_plan_id: ctx.planId,
+  };
+  const last =
+    ctx.bars.lastPrice ??
+    (ctx.dailyBars ?? []).reduce<number | null>((acc, b) => (typeof b.c === 'number' ? b.c : acc), null);
+
+  const anns: AnnotationRow[] = [];
+  for (const m of p.matches) {
+    const draft =
+      m.kind === 'zone'
+        ? {
+            ...base,
+            kind: 'zone' as const,
+            price: m.top,
+            price2: m.bottom,
+            ts_from: m.tsFrom,
+            // Null on purpose: an unfilled gap is still sitting there, and a box
+            // that stops halfway across the plot says it expired.
+            ts_to: m.tsTo,
+            text: m.label,
+            reason: m.reason,
+          }
+        : {
+            ...base,
+            kind: (last !== null && m.top < last ? 'support' : 'resistance') as AnnotationKind,
+            price: m.top,
+            ts_from: m.at,
+            text: m.label,
+            reason: m.reason,
+          };
+    anns.push((await upsertAnnotation(ctx.userId, draft)) ?? ephemeralAnnotation(draft));
+  }
+  if (!anns.length) return null;
+
+  const n = p.matches.length;
+  const noun = n === 1 ? p.noun.one : p.noun.many;
+  const count = p.capped
+    ? `I marked the ${n} most recent ${noun} — there are ${p.found} on this chart.`
+    : n === 1
+      ? `I marked the one ${noun} on this chart.`
+      : `I marked the ${n} ${noun} on this chart.`;
+
+  return {
+    type: 'chart_command',
+    command: 'mark_pattern',
+    payload: {
+      pattern: p.id,
+      kind: p.kind,
+      count: n,
+      found: p.found,
+      capped: p.capped,
+      matches: p.matches.map((m) => ({
+        label: m.label,
+        price: m.top,
+        price2: m.bottom,
+        from: m.tsFrom,
+        to: m.tsTo,
+        at: m.at,
+        direction: m.direction,
+      })),
+      symbol: ctx.symbol,
+      timeframe: ctx.timeframe,
+    },
+    annotations: anns,
+    narration: say(`${count} A ${p.noun.one} is ${patternPlain(p.id)}.`),
+    provenance: p.provenance,
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* Execution                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -1304,6 +1535,39 @@ export async function executeChartCommand(
 
       case 'mark_zone':
         return await markZone(ctx, String(args.zone ?? args.level ?? args.name ?? ''), say);
+
+      case 'mark_pattern': {
+        const key = String(args.pattern ?? args.name ?? args.level ?? '');
+        const found = await markPattern(ctx, key, say);
+        if (found) return found;
+
+        /**
+         * NAMED SOMETHING REAL THAT I CANNOT FIND HONESTLY.
+         *
+         * The same answer the RSI gets one case up, for the same reason. An
+         * order block is a real thing traders talk about and a reasonable thing
+         * to ask for; what it is not is something this codebase can measure,
+         * because deciding which candle counts is a judgement. A box I guessed
+         * looks exactly like a box I measured once it is on the screen, so the
+         * frame carries no annotation and Kai says the registry's sentence.
+         *
+         * A pattern that IS supported but found nothing falls through to null
+         * instead, and draws nothing without an apology — there being no
+         * unfilled gap on this chart is not a limitation to explain.
+         */
+        const refusal = patternRefusal(key);
+        if (refusal) {
+          return {
+            type: 'chart_command',
+            command: 'mark_pattern',
+            payload: { pattern: key, refused: true, symbol: ctx.symbol, timeframe: ctx.timeframe },
+            annotations: [],
+            narration: say(refusal),
+            provenance: 'Nothing was drawn — I have no way to find this one from the bars.',
+          };
+        }
+        return null;
+      }
 
       case 'mark_plan': {
         const setupLevels = ctx.setup ? levels(ctx.setup) : { entry: null, stop: null, targets: [], perShare: null, rr: null };
@@ -1681,11 +1945,15 @@ export function chartCommandProtocol(ctx: {
   indicators?: string[];
   /** The AREAS that can be shaded right now: `range`, `risk`. */
   zones?: string[];
+  /** The PATTERNS that actually find something on these bars: `fvg`, `swing_high`. */
+  patterns?: string[];
 }): string {
   const drawings = ctx.drawings ?? [];
   const indicators = ctx.indicators ?? [];
   const zones = ctx.zones ?? [];
+  const patterns = ctx.patterns ?? [];
   const refusals = refusedIndicators();
+  const patternRefusals = refusedPatterns();
   return `CHART CONTROL
 
 You are talking to the user underneath a live ${ctx.symbol} chart on the
@@ -1734,9 +2002,27 @@ Rules, and they are strict:
       ? ` \`{"command":"mark_zone","args":{"zone":"range"}}\`. THIS CHART HAS: ${zones.join(', ')} — naming any other shades nothing. Each one's edges are levels from the list above, so a zone never asserts anything a line could not.`
       : ' No zone resolves on this chart right now, so do not offer to shade one.'
   }
+- A PATTERN IS A SET, AND THE SERVER FINDS IT — you only name which one.${
+    patterns.length
+      ? ` \`{"command":"mark_pattern","args":{"pattern":"fvg"}}\`. THIS CHART HAS: ${patterns.join(', ')} — naming any other draws nothing.
+  Every instance is measured off bars that printed, so you never write where one
+  is. EACH ONE IS CAPPED: only the most recent few are drawn, and you MUST say
+  the cap out loud when it bites — "I marked the four most recent gaps, there are
+  eleven" — because a chart showing four of eleven while you say "the gaps" is
+  not false enough to notice and not true enough to trade on.`
+      : ' No pattern finds anything on this chart right now, so do not offer to mark one.'
+  }${
+    patternRefusals.length
+      ? `
+- SOME PATTERNS I HAVE NO HONEST WAY TO FIND: ${patternRefusals.map((r) => r.name).join(', ')}.
+  Finding one takes a judgement, and a box that was guessed looks exactly like a
+  box that was measured. Asking for one draws nothing and says why. Offer the
+  gaps and the swing highs and lows instead — those can be pointed at bars.`
+      : ''
+  }
 - One command per reply. Say your sentence in the text BEFORE the block — the
   chart changing without you saying what changed is not acceptable.
-- commands: mark_level · mark_zone (args.zone) · set_timeframe (args.timeframe
+- commands: mark_level · mark_zone (args.zone) · mark_pattern (args.pattern) · set_timeframe (args.timeframe
   one of 1m, 5m, 15m, 1h, 4h, 1d) · show_invalidation · mark_plan · zoom_trigger · compare_prior ·
   highlight_community · annotation_remove (args.annotation_id) ·
   annotation_explain (args.annotation_id) · alert_from_level · prepare_trade
@@ -1804,10 +2090,14 @@ export function chartAnswerProtocol(ctx: {
   indicators?: string[];
   /** The areas it can shade. The director's `[ZONE:…]` may name these. */
   zones?: string[];
+  /** The patterns that find something on these bars right now. */
+  patterns?: string[];
 }): string {
   const indicators = ctx.indicators ?? [];
   const zones = ctx.zones ?? [];
+  const patterns = ctx.patterns ?? [];
   const refusals = refusedIndicators();
+  const patternRefusals = refusedPatterns();
   return `ANSWERING ON THE CHART
 
 When the user asks a QUESTION about this ${ctx.symbol} chart — why the grade is
@@ -1844,6 +2134,16 @@ Rules:
     zones.length
       ? `TALKING ABOUT AN AREA SHADES IT. This chart can shade ${zones.join(', ')} — say "the range it has been stuck in" or "what you are risking" and the region is shaded behind the candles. Use it when the point is a stretch of chart rather than one price.`
       : 'This chart has no shadeable area right now, so describe prices rather than regions.'
+  }
+- ${
+    patterns.length
+      ? `PATTERNS ARE FOUND FOR YOU, AND THEY ARE CAPPED. This chart has ${patterns.join(', ')}. Naming one marks the most recent few — never all of them — so if you mention it, say how many you marked and how many there are. Do not say where one is; you were not told, and the server measured every edge off bars that printed.`
+      : 'No pattern finds anything on this chart right now, so do not mention gaps or swings as though they were about to appear.'
+  }${
+    patternRefusals.length
+      ? `
+- ${patternRefusals.map((r) => r.name.toUpperCase()).join(', ')} CANNOT BE FOUND HONESTLY. If one comes up, say plainly that you would be guessing and offer what you can measure instead. Do not name it as though it were about to appear on the chart.`
+      : ''
   }
 - Two to four sentences. This is fifteen to thirty seconds of speech, not a
   segment. Say the thing and stop. ASKED TO MARK A SET, NAME EVERY MEMBER OF IT

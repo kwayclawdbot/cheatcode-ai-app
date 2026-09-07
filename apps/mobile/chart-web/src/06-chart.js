@@ -127,6 +127,11 @@ function Chart(root) {
   this.annotations = new AnnotationLayer();
   this.series.attachPrimitive(this.annotations);
 
+  // Drawing by hand. Constructed last, so it binds its pointer handlers AFTER
+  // the chart's own — a tool that is out gets the gesture, and when none is out
+  // its handlers fall through to the camera exactly as before.
+  this.draw = new DrawTool(this);
+
   this.rail = new TimeframeRail(root, function (tf, who) { self._railPick(tf, who); });
   this.rail.setOptions(TF_ORDER, this.timeframe);
   this.pointer = new KaiPointer(root);
@@ -138,6 +143,25 @@ function Chart(root) {
   this.veil = document.createElement('div');
   this.veil.className = 'veil';
   root.appendChild(this.veil);
+
+  /**
+   * The way back to autoscale. Hidden until there is something to go back FROM,
+   * because a control that is always visible and almost never useful is just
+   * another thing in front of the chart.
+   */
+  this.autoBtn = document.createElement('button');
+  this.autoBtn.className = 'autoscale';
+  this.autoBtn.type = 'button';
+  this.autoBtn.textContent = 'Auto';
+  this.autoBtn.setAttribute('aria-label', 'Fit the price scale to the bars again');
+  this.autoBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    self.setAutoScale(true);
+    // Re-fit where the user can SEE it happen. Under reduced motion it is
+    // instant, which is the same promise kept a different way.
+    self.fitDefault(reducedMotion() ? 0 : 260);
+  });
+  root.appendChild(this.autoBtn);
 
   this.empty = document.createElement('div');
   this.empty.className = 'empty';
@@ -195,6 +219,75 @@ Chart.prototype._bindInterrupt = function () {
       self.setAutoScale(false);
     }
   };
+  /**
+   * A FINGER ON THE PRICE SIDEBAR SCALES THE PRICE, EVEN INSIDE A PAGE.
+   *
+   * `vertTouchDrag` is a whole-chart option, and Lightweight Charts uses it for
+   * the price axis as well as for the plot: with it off, a vertical touch on the
+   * axis is treated as page scroll and thrown away. That is right for the PLOT
+   * when the chart is embedded — the page needs that finger — and wrong for the
+   * AXIS, which nobody drags by accident. Measured before this: dragging the
+   * price sidebar with a finger in the Trade Portal moved nothing, while the
+   * same drag with a mouse worked and the same finger worked once the chart was
+   * expanded. One whole gesture missing, on the surface most people use.
+   *
+   * So the flag is flipped for the DURATION OF A TOUCH THAT STARTED ON THE AXIS
+   * and put back the moment it ends. The plot never sees it on, because a touch
+   * that started on the plot never turns it on. Which surface was touched is
+   * decided by the axis's own reported width rather than by reaching into the
+   * library's DOM, so it cannot drift when the library re-renders.
+   */
+  var axisTouch = false;
+  var onAxis = function (clientX) {
+    var r = self.host.getBoundingClientRect();
+    var axisW = 0;
+    try { axisW = self.chart.priceScale('right').width(); } catch (e) { axisW = 0; }
+    return axisW > 0 && clientX - r.left >= r.width - axisW - 2;
+  };
+  this.host.addEventListener('touchstart', function (e) {
+    var t = e.touches && e.touches[0];
+    if (!t || !onAxis(t.clientX)) return;
+    axisTouch = true;
+    self.chart.applyOptions({ handleScroll: { vertTouchDrag: true } });
+  }, { capture: true, passive: true });
+  var endAxisTouch = function () {
+    if (!axisTouch) return;
+    axisTouch = false;
+    self.chart.applyOptions({ handleScroll: { vertTouchDrag: !!self.owns } });
+  };
+  this.host.addEventListener('touchend', endAxisTouch, { capture: true, passive: true });
+  this.host.addEventListener('touchcancel', endAxisTouch, { capture: true, passive: true });
+
+  /**
+   * SCALING THE AXIS BY HAND MAKES THE RANGE YOURS.
+   *
+   * Autoscale and a manual range are the same control and only one can win (see
+   * `setAutoScale`). While autoscale is on, the annotation layer's own
+   * `autoscaleInfo` re-derives the range every frame, so a drag that is not
+   * followed by this would be undone before the finger left the glass.
+   *
+   * A TAP IS NOT A DRAG. Six pixels of movement, so touching the axis to read a
+   * number does not silently take the chart off autoscale — which would be a
+   * mode change nobody asked for and nobody saw.
+   */
+  var axisFrom = null;
+  var axisDown = function (e) {
+    var t = (e.touches && e.touches[0]) || e;
+    if (t.clientX == null || !onAxis(t.clientX)) { axisFrom = null; return; }
+    axisFrom = t.clientY;
+  };
+  var axisUp = function (e) {
+    if (axisFrom == null) return;
+    var t = (e.changedTouches && e.changedTouches[0]) || e;
+    var moved = t.clientY == null ? 0 : Math.abs(t.clientY - axisFrom);
+    axisFrom = null;
+    if (moved > 6) self.setAutoScale(false);
+  };
+  this.host.addEventListener('touchstart', axisDown, { passive: true });
+  this.host.addEventListener('pointerdown', axisDown, { passive: true });
+  this.host.addEventListener('touchend', axisUp, { passive: true });
+  this.host.addEventListener('pointerup', axisUp, { passive: true });
+
   this.host.addEventListener('touchstart', onStart, { passive: true });
   this.host.addEventListener('pointerdown', onStart, { passive: true });
   this.host.addEventListener('touchmove', onMove, { passive: true });
@@ -354,7 +447,24 @@ Chart.prototype.setGestures = function (own) {
       vertTouchDrag: !!own,
     },
     handleScale: {
-      axisPressedMouseMove: own ? { time: true, price: true } : true,
+      /**
+       * THE PRICE SIDEBAR ALWAYS TAKES A DRAG, EMBEDDED OR NOT.
+       *
+       * It used to be handed `true` when embedded, which enables the MOUSE and
+       * leaves touch to the pane's own `vertTouchDrag` — and that is off when
+       * the chart is inside a scrolling page. Measured: dragging the price axis
+       * with a finger in the Trade Portal moved nothing at all, while the same
+       * drag with a mouse worked, and the same finger worked once the chart was
+       * expanded. That is exactly the owner's report, and it is a whole gesture
+       * missing on the surface most people use.
+       *
+       * The object form asks for both pointer types explicitly. It is also the
+       * right call on the merits: a finger on the PLOT is ambiguous when the
+       * chart sits in a scrolling page — the page probably wants it — but a
+       * finger on the price axis is not ambiguous at all. Nobody drags a price
+       * scale by accident.
+       */
+      axisPressedMouseMove: { time: true, price: true },
       mouseWheel: true,
       pinch: true,
       axisDoubleClickReset: true,
@@ -387,6 +497,17 @@ Chart.prototype.setGestures = function (own) {
 Chart.prototype.setAutoScale = function (on) {
   this.autoScaleOn = !!on;
   this.chart.priceScale('right').applyOptions({ autoScale: !!on });
+  /**
+   * A MODE THE USER CANNOT SEE IS A MODE THEY ARE STUCK IN.
+   *
+   * Taking the price scale off autoscale is the right thing to do the moment
+   * someone drags it — but nothing on screen said so, and nothing offered a way
+   * back. The way out was a double-tap that only someone who already knew would
+   * try. So the state gets a chip: it appears only while the range is manual,
+   * it says what it does, and one tap gives the chart its scale back and re-fits
+   * in front of you rather than snapping silently.
+   */
+  if (this.autoBtn) this.autoBtn.classList.toggle('is-on', !on);
 };
 
 /**

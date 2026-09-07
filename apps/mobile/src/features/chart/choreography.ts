@@ -188,6 +188,10 @@ export function sequenceFor(input: ChoreoInput): ChoreoStep[] {
     // all it would fall to `default` and return no steps, which is how a command
     // that resolved perfectly well ends up moving nothing.
     case 'mark_zone':
+    // A pattern markup arrives as SEVERAL annotations from one command — three
+    // gaps, three swing highs — so it stages as one gesture with a single
+    // pointer trip, which is what `mark_level` already does for a set.
+    case 'mark_pattern':
     case 'mark_level':
     case 'highlight_community': {
       if (!anns.length) return [];

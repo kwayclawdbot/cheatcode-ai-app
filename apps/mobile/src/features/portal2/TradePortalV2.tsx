@@ -62,6 +62,19 @@ import { useTake } from './useTake';
 import { useMe } from '../account/useAccount';
 
 /**
+ * A bar time as the annotations API stores it.
+ *
+ * The chart page counts in seconds since the epoch, because that is what
+ * Lightweight Charts hands it and converting on every pointer move would be
+ * arithmetic in the middle of a gesture. One conversion at the boundary instead.
+ */
+function isoOf(t: number | string | null | undefined): string | null {
+  if (t == null) return null;
+  if (typeof t === 'string') return t;
+  return Number.isFinite(t) ? new Date(t * 1000).toISOString() : null;
+}
+
+/**
  * The chart is the subject in beat one and the ground in beat two.
  *
  * IN BEAT THREE IT IS NOT ON SCREEN AT ALL. Confirming an order is the one
@@ -106,8 +119,10 @@ export default function TradePortalV2() {
   const alertId = params.alert ? String(params.alert) : null;
   const setupId = params.setup ? String(params.setup) : null;
 
-  const { data, annotations, upsertAnnotation, setAnnotationStatus, loading, error, locked, reload } =
-    usePortal(symbol, { alert: alertId, setup: setupId, ctx: 'kai', mode });
+  const {
+    data, annotations, upsertAnnotation, createUserAnnotation, updateUserAnnotation,
+    setAnnotationStatus, loading, error, locked, reload,
+  } = usePortal(symbol, { alert: alertId, setup: setupId, ctx: 'kai', mode });
 
   const [beat, setBeat] = useState<Beat>(
     params.beat === 'decide' || params.beat === 'take' ? (params.beat as Beat) : 'look',
@@ -462,6 +477,45 @@ export default function TradePortalV2() {
         caption={answer?.text ?? null}
         notice={status?.text ?? null}
         noticeTone={status?.tone ?? null}
+        /**
+         * DRAWING BY HAND. The chart page reports geometry in bar timestamps
+         * because that is the clock it is holding; the annotations API stores
+         * ISO strings. The conversion happens HERE, once, at the boundary, so
+         * neither side has to know about the other's units.
+         */
+        onDrawCreate={(d) => {
+          void createUserAnnotation({
+            id: d.id,
+            symbol: data.symbol,
+            timeframe: tf ?? data.chart.timeframe,
+            kind: d.kind as Annotation['kind'],
+            price: d.price,
+            price2: d.price2,
+            ts_from: isoOf(d.ts_from),
+            ts_to: isoOf(d.ts_to),
+            text: d.text,
+            reason: 'You drew this one.',
+            provenance: 'user',
+            status: 'valid',
+            source_alert_id: null,
+            source_setup_id: null,
+            source_plan_id: null,
+            created_at: null,
+            updated_at: null,
+          });
+        }}
+        onDrawChange={(d) => {
+          const existing = annotations.find((a) => a.id === d.id);
+          if (!existing) return;
+          updateUserAnnotation({
+            ...existing,
+            price: d.price,
+            price2: d.price2,
+            ts_from: isoOf(d.ts_from),
+            ts_to: isoOf(d.ts_to),
+          });
+        }}
+        onDrawDelete={(id) => setAnnotationStatus(id, 'deleted')}
       />
 
       <View style={{ paddingHorizontal: 16, paddingBottom: 12, paddingTop: 2 }}>

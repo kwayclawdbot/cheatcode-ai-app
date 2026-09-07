@@ -104,6 +104,23 @@ export type ChartViewProps = {
   /** Measured on the frame that actually shows the bars, after every `setData`. */
   onPainted?: (p: { ms: number; bars: number }) => void;
 
+  /**
+   * DRAWING BY HAND. The page owns the gesture; the host owns the tray and the
+   * database. A finished drawing arrives here as a draft with a local id, and
+   * whoever mounted this chart is responsible for persisting it and sending the
+   * real row back down — which is why these are callbacks rather than the page
+   * writing anything itself. The page has no network and must not grow one.
+   */
+  onDrawCreated?: (a: DraftAnnotation) => void;
+  onDrawChanged?: (a: DraftAnnotation) => void;
+  onDrawDeleted?: (id: string) => void;
+  /** Which of the user's drawings has handles on it, or null. Drives the tray. */
+  onDrawSelected?: (s: { id: string | null; kind: string | null; provenance: string | null }) => void;
+  /** The tool the page currently has out. It puts itself away after one shape. */
+  onDrawTool?: (tool: DrawToolName) => void;
+  /** A long press on the user's own drawing — the phone's "do something to this". */
+  onDrawLongPress?: (id: string) => void;
+
   testID?: string;
 };
 
@@ -112,6 +129,27 @@ export type ChartViewProps = {
 /* ------------------------------------------------------------------ */
 
 type Outbound = { type: string; id?: string | null; payload?: Record<string, unknown> };
+
+/** The tools the chart page knows how to draw with. */
+export type DrawToolName = 'level' | 'trendline' | 'zone' | null;
+
+/**
+ * A drawing as the PAGE reports it: geometry and nothing else.
+ *
+ * Times come back as bar timestamps in seconds, because that is what the chart
+ * is holding. Turning them into the ISO strings the annotations API stores is
+ * the host's job, done once at the boundary, so neither side has to know about
+ * the other's clock.
+ */
+export type DraftAnnotation = {
+  id: string;
+  kind: string;
+  price: number | null;
+  price2: number | null;
+  ts_from: number | string | null;
+  ts_to: number | string | null;
+  text: string | null;
+};
 
 const toWire = (a: Annotation): ChoreoAnnotation => ({
   id: a.id,
@@ -138,6 +176,7 @@ export const ChartView = forwardRef<ChartHandle, ChartViewProps>(function ChartV
     timeframes = PORTAL_TIMEFRAMES, hideAnnotations = false, showVolume = false,
     reducedMotion = false, height,
     onSelectAnnotation, onTimeframeChange, onViewportChange, onCrosshair, onReady, onFps, onPainted,
+    onDrawCreated, onDrawChanged, onDrawDeleted, onDrawSelected, onDrawTool, onDrawLongPress,
     testID = 'chart-view',
   } = props;
 
@@ -159,8 +198,14 @@ export const ChartView = forwardRef<ChartHandle, ChartViewProps>(function ChartV
   const latest = useRef({ symbol, timeframe, candles, annotations, lastPrice, hideAnnotations, showVolume, reducedMotion });
   latest.current = { symbol, timeframe, candles, annotations, lastPrice, hideAnnotations, showVolume, reducedMotion };
 
-  const cb = useRef({ onSelectAnnotation, onTimeframeChange, onViewportChange, onCrosshair, onReady, onFps, onPainted });
-  cb.current = { onSelectAnnotation, onTimeframeChange, onViewportChange, onCrosshair, onReady, onFps, onPainted };
+  const cb = useRef({
+    onSelectAnnotation, onTimeframeChange, onViewportChange, onCrosshair, onReady, onFps, onPainted,
+    onDrawCreated, onDrawChanged, onDrawDeleted, onDrawSelected, onDrawTool, onDrawLongPress,
+  });
+  cb.current = {
+    onSelectAnnotation, onTimeframeChange, onViewportChange, onCrosshair, onReady, onFps, onPainted,
+    onDrawCreated, onDrawChanged, onDrawDeleted, onDrawSelected, onDrawTool, onDrawLongPress,
+  };
 
   const uri = useMemo(() => pageUri(), []);
 
@@ -250,6 +295,18 @@ export const ChartView = forwardRef<ChartHandle, ChartViewProps>(function ChartV
       case 'crosshairEnd': cb.current.onCrosshair?.(null); break;
       case 'fps': cb.current.onFps?.({ fps: Number(p.fps), worst: Number(p.worst) }); break;
       case 'painted': cb.current.onPainted?.({ ms: Number(p.ms), bars: Number(p.bars) }); break;
+      case 'draw.created': cb.current.onDrawCreated?.(p.annotation as DraftAnnotation); break;
+      case 'draw.changed': cb.current.onDrawChanged?.(p.annotation as DraftAnnotation); break;
+      case 'draw.deleted': cb.current.onDrawDeleted?.(String(p.id)); break;
+      case 'draw.selected':
+        cb.current.onDrawSelected?.({
+          id: p.id == null ? null : String(p.id),
+          kind: p.kind == null ? null : String(p.kind),
+          provenance: p.provenance == null ? null : String(p.provenance),
+        });
+        break;
+      case 'draw.tool': cb.current.onDrawTool?.((p.tool ?? null) as DrawToolName); break;
+      case 'draw.longPress': cb.current.onDrawLongPress?.(String(p.id)); break;
       default: break;
     }
   }, []);
@@ -365,6 +422,10 @@ export const ChartView = forwardRef<ChartHandle, ChartViewProps>(function ChartV
     removeAnnotations: (ids) => send('annotations.remove', { ids }),
     flashAnnotation: (id, pulses) => send('annotations.flash', { id, pulses: pulses ?? 2 }),
     setAnnotationsHidden: (on) => send('annotations.hidden', { on }),
+
+    setDrawTool: (tool) => send('draw.setTool', { tool }),
+    selectDrawing: (id) => send('draw.select', { id }),
+    deleteSelectedDrawing: () => send('draw.deleteSelected'),
   }), [ready, send, sendAwait]);
 
   /* ---------------- the surface ---------------- */

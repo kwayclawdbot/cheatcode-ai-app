@@ -96,7 +96,7 @@ export type Annotation = {
 
 export type ChartCommandName =
   | 'mark_level' | 'set_timeframe' | 'show_invalidation' | 'mark_plan'
-  | 'zoom_trigger' | 'compare_prior' | 'highlight_community' | 'mark_zone'
+  | 'zoom_trigger' | 'compare_prior' | 'highlight_community' | 'mark_zone' | 'mark_pattern'
   | 'annotation_remove' | 'annotation_explain' | 'alert_from_level' | 'prepare_trade'
   // v2 (LIVE-1): the camera is a first-class command, so Kai can say "look
   // over here" instead of narrating a level that is 400 bars off screen.
@@ -108,6 +108,13 @@ export const CHART_COMMAND_NAMES: ChartCommandName[] = [
   'compare_prior', 'highlight_community', 'annotation_remove', 'annotation_explain',
   'alert_from_level', 'prepare_trade',
   'zoom_range', 'scroll_bars', 'scroll_to_now', 'flash_annotation', 'pointer_hint',
+  // THIS LIST IS A GATE, NOT A CATALOGUE. `useKaiPortal` drops any frame whose
+  // command is not on it, so a command added to the union and forgotten here is
+  // resolved by the server, persisted, sent, and then silently thrown away by
+  // the client — the chart sits still while Kai says he drew something, which is
+  // the exact failure this whole lane exists to remove. It has now fallen behind
+  // twice. Anything added to `ChartCommandName` belongs here in the same edit.
+  'mark_zone', 'mark_pattern',
 ];
 
 export type ChartCommand = {

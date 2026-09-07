@@ -398,6 +398,7 @@ function AnnotationLayer() {
   this._curves = {};      // spec key -> computed series, so a pan costs no arithmetic
   this._curvesFor = '';   // the bar window those curves were computed over
   this._showAll = false;  // the overflow chip, tapped
+  this._selected = null;  // the user's own drawing being edited
   this._raf = 0;
   this._self = this;
 }
@@ -504,6 +505,13 @@ AnnotationLayer.prototype.setLastPrice = function (p) {
   this._lastPrice = typeof p === 'number' && isFinite(p) ? p : this._lastPrice;
 };
 
+/** Which drawing has handles on it. Only ever one, and only ever the user's. */
+AnnotationLayer.prototype.setSelected = function (id) {
+  if (this._selected === id) return;
+  this._selected = id || null;
+  this._kick();
+};
+
 /** Show every horizontal level, budget or not. The overflow chip toggles this. */
 AnnotationLayer.prototype.toggleOverflow = function () {
   this._showAll = !this._showAll;
@@ -604,6 +612,21 @@ AnnotationLayer.prototype._budget = function (items) {
   for (i = 0; i < items.length; i++) {
     var a = items[i];
     if (!a || a.status === 'hidden' || a.status === 'deleted') continue;
+    /**
+     * A DRAWING YOU MADE IS NEVER EDITED BY THE BUDGET.
+     *
+     * The cap and the merge exist because KAI can put eleven lines on a chart
+     * while narrating, and the eleventh makes the first ten unreadable. Neither
+     * is true of a line you drew on purpose: you know it is there, you chose
+     * where it goes, and hiding it — or silently folding it into a neighbour and
+     * relabelling it "+1" — would be the app overruling you about your own
+     * chart. So they skip the budget entirely and are always drawn.
+     *
+     * They do not count against Kai's eight either. His allowance is about how
+     * much HE may add, and spending it on your work would mean drawing your own
+     * levels made Kai quieter.
+     */
+    if (a.provenance === 'user') { others.push(a); continue; }
     if (shapeOf(a) === 'level' && typeof a.price === 'number' && isFinite(a.price)) rules.push(a);
     else if (a.kind === 'zone' && typeof a.price === 'number' && typeof a.price2 === 'number') zones.push(a);
     else others.push(a);
@@ -875,7 +898,18 @@ AnnotationLayer.prototype._draw = function (target) {
       var grown = 1 - Math.pow(1 - grow, 3);                       // ease-out
       var chip = Math.max(0, Math.min(1, (age - ANN_DRAW_MS) / ANN_CHIP_MS));
       var dead = a.status === 'invalidated';
-      var col = a.color || kindColor(a.kind);
+      /**
+       * VOLT IS THE USER'S, VIOLET IS KAI'S — palette lock 14, and it is the
+       * one rule that makes a chart carrying both authors readable at a glance.
+       * A line you drew and a line Kai drew mean completely different things
+       * when you come back to the chart tomorrow, and the difference has to
+       * survive without opening either of them.
+       *
+       * It OVERRIDES the semantic colour on purpose. A level you drew is not
+       * "support" in the sense the engine means — you have not graded it, and
+       * colouring it cyan would file your own mark under the app's analysis.
+       */
+      var col = a.color || (a.provenance === 'user' ? TOKENS.volt : kindColor(a.kind));
       // Two pulses: the opacity swings, the line does not move. Motion that
       // moves a price line would be a lie about the price.
       var pulse = 1;
@@ -1136,6 +1170,51 @@ AnnotationLayer.prototype._draw = function (target) {
         ctx.stroke();
         ctx.setLineDash([]);
         self._chipAndTag(ctx, a, col, claimY(ly), W, chip, base, hit, dead, mergedWith);
+      }
+    }
+
+    /**
+     * HANDLES ON THE SELECTED DRAWING.
+     *
+     * Drawn LAST so they sit over everything, and drawn in volt because they
+     * belong to the user's own mark and to nothing else. They are the difference
+     * between a drawing you can look at and a drawing you can adjust — without
+     * them the only edit available is delete-and-draw-again, which on a phone is
+     * most of a minute of work to move a line by two dollars.
+     *
+     * The positions are the same ones `DrawTool._handles` grabs at, and they are
+     * derived from the same geometry rather than passed between the two, so a
+     * handle can never be drawn somewhere it cannot be grabbed.
+     */
+    if (self._selected) {
+      for (var si = 0; si < self._items.length; si++) {
+        var sa = self._items[si];
+        if (sa.id !== self._selected || sa.provenance !== 'user') continue;
+        var pts = [];
+        if (sa.kind === 'trendline') {
+          pts.push([toX(sa.ts_from), toY(sa.price)]);
+          pts.push([toX(sa.ts_to), toY(sa.price2 != null ? sa.price2 : sa.price)]);
+        } else if (sa.kind === 'zone') {
+          var zx = toX(sa.ts_from);
+          var zt = toY(sa.price), zb = toY(sa.price2);
+          if (zx == null) zx = 20;
+          pts.push([zx + 14, zt]);
+          pts.push([zx + 14, zb]);
+          pts.push([zx, zt == null || zb == null ? null : (zt + zb) / 2]);
+          if (sa.ts_to != null) pts.push([toX(sa.ts_to), zt == null || zb == null ? null : (zt + zb) / 2]);
+        } else {
+          pts.push([W * 0.5, toY(sa.price)]);
+        }
+        ctx.globalAlpha = 1;
+        for (var pi = 0; pi < pts.length; pi++) {
+          var hx = pts[pi][0], hy = pts[pi][1];
+          if (hx == null || hy == null) continue;
+          ctx.fillStyle = TOKENS.bg;
+          ctx.beginPath(); ctx.arc(hx, hy, 5.5, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = TOKENS.volt;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.arc(hx, hy, 5.5, 0, Math.PI * 2); ctx.stroke();
+        }
       }
     }
 

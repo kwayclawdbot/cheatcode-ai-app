@@ -54,18 +54,25 @@ import {
   computeIntradayLevels,
   computeKeyLevels,
   findTrendlines,
+  fractals,
+  solidBars,
 } from '../src/lib/market/key-levels.ts';
 import {
   availableDrawings,
   availableIndicators,
+  availablePatterns,
   availableZones,
+  chartCommandProtocol,
   indicatorRefusalFor,
   executeChartCommand,
   availableLevels,
+  refusedPatterns,
   resolveIndicator,
   resolveLevel,
+  resolvePattern,
   type ChartContext,
 } from '../src/lib/kai/chart-commands.ts';
+import { parsePattern, patternRefusal } from '../../../packages/shared/patterns.ts';
 import { fetchAggregates, lastTradingDate, polygonConfigured } from '../src/lib/market/polygon.ts';
 import { toAnnotationRow } from '../src/lib/round4/annotations.ts';
 import { looksLikeIndicator, parseIndicator } from '../../../packages/shared/indicators.ts';
@@ -632,6 +639,292 @@ const withPlan: ChartContext = {
 ok('the plan supplies the stop', near(resolveLevel(withPlan, 'stop')?.price, 125));
 ok('and its provenance points at the plan, not at bars', resolveLevel(withPlan, 'stop')?.provenance.includes('plan') === true);
 ok('while the computed levels are still there beside it', near(resolveLevel(withPlan, 'prior_day_low')?.price, 126.25));
+
+/* ------------------------------------------------------------------ */
+section('Patterns — the shape a few bars made, measured off those bars');
+
+/**
+ * THE OWNER ASKED FOR "MARKUP ALL RECENT FVGS" AND THAT IS A DIFFERENT REQUEST
+ * FROM EVERYTHING ABOVE IT.
+ *
+ * A level is one price the server looks up. A pattern is a SET the server has to
+ * go and FIND, and the finding is the part that can go wrong quietly: a model
+ * asked where the gaps are will answer with prices, and prices a model wrote are
+ * prices nobody can check. So the arithmetic lives on the server and this is
+ * where it gets proven — on bars whose answer was worked out on paper first, so
+ * that a detector that changes meaning fails here rather than on someone's
+ * chart.
+ *
+ * THE FIXTURE, AND THE GAPS IT CONTAINS, WORKED OUT BY HAND.
+ *
+ * A gap is three candles: bars[i-2], bars[i-1], bars[i]. Bullish when the FIRST
+ * bar's high is below the THIRD bar's low; bearish when the first bar's low is
+ * above the third bar's high. Walking every one of the eighteen triples in
+ * `gapBars` below leaves exactly three:
+ *
+ *   i=2    02 Mar l 109.00  >  04 Mar h  98.00   BEARISH  [ 98.00, 109.00]
+ *   i=8    08 Mar h  94.00  <  10 Mar l  96.00   BULLISH  [ 94.00,  96.00]
+ *   i=14   14 Mar h 108.00  <  16 Mar l 110.00   BULLISH  [108.00, 110.00]
+ *
+ * and the third one is FILLED: 18 March trades 106.00 to 120.00, which covers
+ * [108.00, 110.00] end to end. A filled gap is history rather than a level, so
+ * it must not come back — leaving two, newest first.
+ *
+ * NOTHING ELSE FILLS EITHER OF THE SURVIVORS, and that took arranging: filling
+ * is one bar covering the WHOLE band, so the drop through the bearish gap has to
+ * be checked against every bar after it, not just the next one. The first draft
+ * of this fixture had a bullish gap at the front that a later crash swallowed
+ * whole, which is the detector being right and the fixture being wrong.
+ */
+const gapBars: Candle[] = [
+  /*  0 */ d('2026-03-02', 110, 116, 109, 115),
+  /*  1 */ d('2026-03-03', 115, 115.5, 95, 96), // the candle that made the bearish gap
+  /*  2 */ d('2026-03-04', 96, 98, 92, 94),
+  /*  3 */ d('2026-03-05', 94, 97, 91, 93),
+  /*  4 */ d('2026-03-06', 93, 96, 90, 92),
+  /*  5 */ d('2026-03-07', 92, 95, 89, 91),
+  /*  6 */ d('2026-03-08', 91, 94, 88, 93),
+  /*  7 */ d('2026-03-09', 93, 100, 92, 99), // the candle that made the bullish gap
+  /*  8 */ d('2026-03-10', 99, 102, 96, 101),
+  /*  9 */ d('2026-03-11', 101, 103, 97, 102),
+  /* 10 */ d('2026-03-12', 102, 104, 98, 103),
+  /* 11 */ d('2026-03-13', 103, 106, 100, 105),
+  /* 12 */ d('2026-03-14', 105, 108, 102, 107),
+  /* 13 */ d('2026-03-15', 107, 115, 106, 114), // the candle that made the gap that gets filled
+  /* 14 */ d('2026-03-16', 114, 118, 110, 117),
+  /* 15 */ d('2026-03-17', 117, 119, 111, 118),
+  /* 16 */ d('2026-03-18', 118, 120, 106, 108), // trades 106 to 120 — covers [108, 110] end to end
+  /* 17 */ d('2026-03-19', 108, 112, 104, 110),
+  /* 18 */ d('2026-03-20', 110, 114, 106, 113),
+  /* 19 */ d('2026-03-21', 113, 116, 108, 115),
+];
+
+const gapCtx = bareContext(gapBars);
+const gaps = resolvePattern(gapCtx, 'fvg');
+
+ok('asking for the gaps by name finds some', gaps !== null && gaps.matches.length > 0);
+ok('and exactly the two that are still open', gaps?.matches.length === 2 && gaps?.found === 2, {
+  got: gaps?.matches.map((m) => [m.bottom, m.top]),
+});
+ok('the newest one is first', gaps?.matches[0].at === '2026-03-09T00:00:00.000Z', gaps?.matches[0].at);
+ok(
+  'the bullish gap is the band between the 8th\'s high and the 10th\'s low — 94.00 to 96.00',
+  gaps?.matches[0].bottom === 94 && gaps?.matches[0].top === 96,
+  gaps?.matches[0]
+);
+ok('and it is named as bullish', gaps?.matches[0].direction === 'bullish');
+ok(
+  'the bearish one is 98.00 to 109.00',
+  gaps?.matches[1].bottom === 98 && gaps?.matches[1].top === 109 && gaps?.matches[1].direction === 'bearish',
+  gaps?.matches[1]
+);
+ok(
+  'each is anchored to the MIDDLE candle — the bar that made the gap, not the two either side',
+  gaps?.matches[0].at === '2026-03-09T00:00:00.000Z' &&
+    gaps?.matches[0].tsFrom === '2026-03-09T00:00:00.000Z' &&
+    gaps?.matches[1].at === '2026-03-03T00:00:00.000Z',
+  [gaps?.matches[0].at, gaps?.matches[1].at]
+);
+ok(
+  'and left open at the right, because an unfilled gap has not expired',
+  gaps?.matches.every((m) => m.tsTo === null)
+);
+ok(
+  'the gap the 18th traded straight through is NOT reported',
+  gaps?.matches.every((m) => !(m.bottom === 108 && m.top === 110)),
+  gaps?.matches.map((m) => [m.bottom, m.top])
+);
+ok(
+  'every edge is a high or a low off a bar that printed — nothing is averaged',
+  gaps?.matches.every((m) => gapBars.some((b) => b.h === m.top || b.l === m.top) && gapBars.some((b) => b.h === m.bottom || b.l === m.bottom))
+);
+ok(
+  'and each one says in plain words which bars it came off',
+  gaps?.matches.every((m) => /never met/.test(m.reason) && /\$/.test(m.reason)),
+  gaps?.matches[0].reason
+);
+ok('the label is the pattern and the day it was made', gaps?.matches[0].label === 'FVG 9 Mar', gaps?.matches[0].label);
+
+/**
+ * THE CAP, AND WHY IT HAS TO BE SAID OUT LOUD.
+ *
+ * A staircase where every bar's low is above the high of the bar before last:
+ * bar k runs 100+10k to 105+10k, so bars[k-2].h = 85+10k is under bars[k].l =
+ * 100+10k for every triple from i=2 onwards. Eight bars, six gaps, and nothing
+ * ever comes back down to fill one. The registry draws four.
+ */
+const stairBars: Candle[] = Array.from({ length: 8 }, (_, k) =>
+  d(`2026-04-0${k + 1}`, 101 + 10 * k, 105 + 10 * k, 100 + 10 * k, 104 + 10 * k)
+);
+const stairCtx = bareContext(stairBars);
+const stairs = resolvePattern(stairCtx, 'fair value gaps');
+
+ok('six gaps are found on the staircase', stairs?.found === 6, stairs?.found);
+ok('and exactly four are returned, because that is the cap', stairs?.matches.length === 4, stairs?.matches.length);
+ok('the resolver says out loud that it capped', stairs?.capped === true && stairs?.cap === 4);
+ok(
+  'the four are the most recent four, newest first',
+  stairs?.matches.map((m) => m.at).join(',') ===
+    ['2026-04-07', '2026-04-06', '2026-04-05', '2026-04-04'].map((s) => `${s}T00:00:00.000Z`).join(','),
+  stairs?.matches.map((m) => m.at)
+);
+ok(
+  'and the newest is the band between the 6th bar\'s high and the 8th bar\'s low — 155 to 170',
+  stairs?.matches[0].bottom === 155 && stairs?.matches[0].top === 170,
+  stairs?.matches[0]
+);
+ok('the provenance counts them all, not just the drawn ones', stairs?.provenance.includes('6 gaps') === true, stairs?.provenance);
+
+/**
+ * SWINGS — the same 3-bar fractal `key-levels.ts` uses, mirrored into the shared
+ * package because the mobile bundle cannot import the market layer. Mirrored
+ * code that drifts is worse than duplicated code that does not, so this asserts
+ * the two agree on the same bars.
+ *
+ * A zigzag: even bars run 100+k to 110+k, odd bars 94+k to 104+k. Every even bar
+ * is a high above both its neighbours and every odd bar is a low below both, so
+ * the turns are known before the detector runs. Thirteen bars, five swing highs
+ * and six swing lows, and the last bar closes at 117 so the newest highs sit
+ * above price and the older ones below it.
+ */
+const zigBars: Candle[] = Array.from({ length: 13 }, (_, k) =>
+  k % 2 === 0
+    ? d(`2026-02-${String(k + 1).padStart(2, '0')}`, 101 + k, 110 + k, 100 + k, k === 12 ? 117 : 109 + k)
+    : d(`2026-02-${String(k + 1).padStart(2, '0')}`, 95 + k, 104 + k, 94 + k, 103 + k)
+);
+const zigCtx = bareContext(zigBars);
+const highs = resolvePattern(zigCtx, 'swing highs');
+const lows = resolvePattern(zigCtx, 'recent lows');
+
+ok('five swing highs are on this chart', highs?.found === 5, highs?.found);
+ok('three of them are drawn, newest first', highs?.matches.length === 3 && highs?.capped === true);
+ok(
+  'and they are the highs of real bars: 120, 118, 116',
+  highs?.matches.map((m) => m.top).join(',') === '120,118,116',
+  highs?.matches.map((m) => m.top)
+);
+ok(
+  'each price is a field on the bar it is anchored to',
+  highs?.matches.every((m) => zigBars.some((b) => b.ts === m.at && b.h === m.top))
+);
+ok('six swing lows, three drawn', lows?.found === 6 && lows?.matches.length === 3, [lows?.found, lows?.matches.length]);
+ok(
+  'and they are the lows of real bars: 105, 103, 101',
+  lows?.matches.map((m) => m.bottom).join(',') === '105,103,101',
+  lows?.matches.map((m) => m.bottom)
+);
+ok(
+  'a level has no height — top and bottom are the same price',
+  [...(highs?.matches ?? []), ...(lows?.matches ?? [])].every((m) => m.top === m.bottom)
+);
+ok(
+  'the mirrored fractal agrees with the one the levels rail uses, bar for bar',
+  (() => {
+    const mine = (highs?.matches ?? []).map((m) => m.at);
+    const theirs = fractals(solidBars(zigBars), 'high').map((p) => p.ts).reverse().slice(0, 3);
+    return mine.join(',') === theirs.join(',');
+  })(),
+  { mine: (highs?.matches ?? []).map((m) => m.at), theirs: fractals(solidBars(zigBars), 'high').map((p) => p.ts) }
+);
+
+/* ------------------------------------------------------------------ */
+section('mark_pattern — a set of boxes, and the cap said out loud');
+
+const gapFrame = await executeChartCommand(gapCtx, { command: 'mark_pattern', args: { pattern: 'fvg' } });
+ok('marking the gaps produces a frame', gapFrame !== null);
+ok('typed as its own command', gapFrame?.command === 'mark_pattern');
+ok('one annotation per gap, not one row for the set', gapFrame?.annotations.length === 2, gapFrame?.annotations.length);
+ok('and every one of them is a zone', gapFrame?.annotations.every((a) => a.kind === 'zone'));
+ok(
+  'carrying the exact edges that were measured — 96.00 over 94.00',
+  gapFrame?.annotations[0].price === 96 && gapFrame?.annotations[0].price2 === 94,
+  [gapFrame?.annotations[0].price, gapFrame?.annotations[0].price2]
+);
+ok('anchored to the bar that made it', gapFrame?.annotations[0].ts_from === '2026-03-09T00:00:00.000Z');
+ok('and open at the right-hand edge', gapFrame?.annotations[0].ts_to === null);
+ok(
+  'nothing was capped here, so the narration does not claim it was',
+  !/most recent/.test(gapFrame?.narration ?? ''),
+  gapFrame?.narration
+);
+
+const stairFrame = await executeChartCommand(stairCtx, { command: 'mark_pattern', args: { pattern: 'gaps' } });
+ok('four boxes go out when there are six', stairFrame?.annotations.length === 4, stairFrame?.annotations.length);
+ok(
+  'AND KAI SAYS THE CAP OUT LOUD — both numbers, in a sentence',
+  /4 most recent gaps/.test(stairFrame?.narration ?? '') && /there are 6 on this chart/.test(stairFrame?.narration ?? ''),
+  stairFrame?.narration
+);
+ok('the payload carries both counts too', stairFrame?.payload.count === 4 && stairFrame?.payload.found === 6 && stairFrame?.payload.capped === true);
+
+/**
+ * A SWING IS A SHELF, so it is marked as one — and which shelf it is depends on
+ * which side of price it is sitting on, exactly as `computedLevels` decides it.
+ * The last bar closes at 117: 120 and 118 are above it, 116 is below.
+ */
+const highFrame = await executeChartCommand(zigCtx, { command: 'mark_pattern', args: { name: 'swing high' } });
+ok('swing highs are marked as levels, not as boxes', highFrame?.annotations.every((a) => a.kind === 'support' || a.kind === 'resistance'));
+ok(
+  'the ones above the last price are resistance and the one below is support',
+  highFrame?.annotations.map((a) => `${a.price}:${a.kind}`).join(',') === '120:resistance,118:resistance,116:support',
+  highFrame?.annotations.map((a) => `${a.price}:${a.kind}`)
+);
+
+/* ------------------------------------------------------------------ */
+section('Naming a pattern — what resolves, what refuses, what draws nothing');
+
+ok('a chart with gaps on it advertises them', availablePatterns(gapCtx).includes('fvg'), availablePatterns(gapCtx));
+ok(
+  'a chart with NO gap on it does not — the prompt never offers an empty set',
+  !availablePatterns(zigCtx).includes('fvg'),
+  availablePatterns(zigCtx)
+);
+ok('but it does advertise its swings', availablePatterns(zigCtx).includes('swing_high') && availablePatterns(zigCtx).includes('swing_low'));
+ok(
+  'the longest alias wins, so "fair value gap" is not read as "gap"',
+  parsePattern('mark all the fair value gaps') === 'fvg' && parsePattern('imbalances') === 'fvg' && parsePattern('fvgs') === 'fvg'
+);
+ok('and the plurals land on the same row', parsePattern('swing highs') === 'swing_high' && parsePattern('recent lows') === 'swing_low');
+ok('a word nobody named is not a pattern', parsePattern('the bit that looks dodgy') === null);
+
+ok('every refused pattern has a sentence attached', refusedPatterns().every((r) => r.why.length > 40 && /^I /.test(r.why)));
+ok('and asking for one by name gets that sentence', typeof patternRefusal('order blocks') === 'string');
+ok('a pattern that CAN be found is not refused', patternRefusal('fvg') === null && patternRefusal('swing highs') === null);
+ok('and a name nobody has heard of is not refused either — it is just unknown', patternRefusal('the vibes') === null);
+
+const obFrame = await executeChartCommand(gapCtx, { command: 'mark_pattern', args: { pattern: 'order block' } });
+ok('asking for an order block still answers', obFrame !== null);
+ok('it draws NOTHING', (obFrame?.annotations.length ?? 1) === 0 && obFrame?.payload.refused === true, obFrame?.payload);
+ok(
+  'and says plainly that it would be guessing',
+  /guess/i.test(obFrame?.narration ?? '') && (obFrame?.narration ?? '').length > 60,
+  obFrame?.narration
+);
+ok(
+  'a name nobody defined draws nothing and says nothing',
+  (await executeChartCommand(gapCtx, { command: 'mark_pattern', args: { pattern: 'the_vibes' } })) === null
+);
+ok(
+  'and a supported pattern with nothing to find draws nothing rather than apologising',
+  (await executeChartCommand(zigCtx, { command: 'mark_pattern', args: { pattern: 'fvg' } })) === null
+);
+
+ok(
+  'the prompt offers Kai the patterns this chart has, and tells him they are capped',
+  (() => {
+    const block = chartCommandProtocol({
+      symbol: 'TEST',
+      timeframe: '1d',
+      available: availableLevels(gapCtx),
+      patterns: availablePatterns(gapCtx),
+    });
+    return block.includes('mark_pattern') && block.includes('fvg') && /CAPPED/.test(block);
+  })()
+);
+ok(
+  'and names the ones he cannot find, so a plausible request gets a sentence',
+  chartCommandProtocol({ symbol: 'TEST', timeframe: '1d', available: [], patterns: [] }).includes('order blocks')
+);
 
 /* ------------------------------------------------------------------ */
 /* Live pass — real bars, real symbols, real provenance                */

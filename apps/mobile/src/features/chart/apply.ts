@@ -94,6 +94,15 @@ export type ChartHandle = {
   removeAnnotations(ids: string[]): void;
   flashAnnotation(id: string, pulses?: number): void;
   setAnnotationsHidden(on: boolean): void;
+
+  /* drawing by hand */
+  //
+  // The HOST decides which tool is out; the PAGE decides what a gesture with it
+  // means. Keeping the split here means the tray can be rebuilt, moved or
+  // replaced without touching a line of the drawing logic.
+  setDrawTool?: (tool: 'level' | 'trendline' | 'zone' | null) => void;
+  selectDrawing?: (id: string | null) => void;
+  deleteSelectedDrawing?: () => void;
 };
 
 /* ------------------------------------------------------------------ */

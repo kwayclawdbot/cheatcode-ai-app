@@ -47,8 +47,10 @@ import { loadChartContext } from '../round4/chart-context';
 import {
   availableDrawings,
   availableIndicators,
+  availablePatterns,
   availableZones,
   refusedIndicators,
+  refusedPatterns,
   availableLevels,
   resolveIndicator,
   resolveLevel,
@@ -99,8 +101,11 @@ export const KAI_TOOLS: Anthropic.Tool[] = [
       'close, the opening range, the day\'s and the year\'s extremes, swing highs and lows, support and ' +
       'resistance — and those are what get drawn as horizontal lines. INDICATORS are curves that have a ' +
       'different value on every bar: the moving averages, VWAP, Bollinger Bands, the CheatCode Trend ' +
-      'Clouds. ZONES are areas that can be shaded. It also tells you which indicators need their own ' +
-      'panel and therefore cannot be drawn on price at all. ' +
+      'Clouds. ZONES are areas that can be shaded. PATTERNS are shapes the bars made that the server ' +
+      'goes and finds for you — the unfilled fair value gaps, the swing highs and lows — and they come ' +
+      'back as a list of names rather than as places, because only the most recent few of each are ever ' +
+      'drawn. It also tells you which indicators need their own ' +
+      'panel and therefore cannot be drawn on price at all, and which patterns cannot be found honestly. ' +
       'NONE of it needs a graded setup: it is arithmetic on bars and exists for almost any symbol. ' +
       'Call this when the user asks what is on a chart, where the levels are, or what price is doing ' +
       'relative to anything. It returns only what actually resolved — anything absent from the ' +
@@ -284,6 +289,13 @@ async function readChartLevels(input: Record<string, unknown>, ctx: ToolCtx): Pr
     zones_note:
       'A zone shades an AREA rather than a price, with mark_zone. Every zone above is built from two levels in the list, ' +
       'so shading one asserts nothing a pair of lines would not.',
+    patterns_available: availablePatterns(chart),
+    patterns_note:
+      'A pattern is a SET, and every one of them is CAPPED — mark_pattern draws only the most recent few and tells you ' +
+      'how many there were altogether. Say both numbers out loud whenever they differ; "I marked the gaps" over a chart ' +
+      'showing four of eleven is not true. Only the names above find anything on this symbol, and you are never told ' +
+      'where an instance is: the server measures every edge off bars that printed, which is why they can be drawn at all.',
+    patterns_i_cannot_find: refusedPatterns(),
     drawings_available: availableDrawings(chart),
     has_graded_setup: Boolean(chart.setup),
     must_say: chart.setup

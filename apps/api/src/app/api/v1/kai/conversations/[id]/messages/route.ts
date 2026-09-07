@@ -42,6 +42,7 @@ import {
   ChartCommandRequest,
   availableDrawings,
   availableIndicators,
+  availablePatterns,
   availableZones,
   availableLevels,
   chartAnswerProtocol,
@@ -271,6 +272,13 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
     // average as a horizontal shelf in the first place.
     const chartIndicators = chartCtx ? availableIndicators(chartCtx) : [];
     const chartZones = chartCtx ? availableZones(chartCtx) : [];
+    // Patterns are listed separately again, and for a reason the other two do
+    // not have: a pattern can resolve to an EMPTY set. A chart either has a
+    // previous day's high or it does not, but it can have the fair-value-gap
+    // vocabulary and no unfilled gap on it — so this is the only list where
+    // being offered the name is not enough to guarantee something appears, and
+    // it is computed against the bars rather than assumed.
+    const chartPatterns = chartCtx ? availablePatterns(chartCtx) : [];
     const answerLevels = chartCtx ? [...levelTableFor(chartCtx).keys()] : [];
     const chartOnScreen = chartCtx
       ? { symbol: chartCtx.symbol, timeframe: chartCtx.timeframe, levels: chartLevels }
@@ -329,6 +337,7 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
             drawings: chartDrawings,
             indicators: chartIndicators,
             zones: chartZones,
+            patterns: chartPatterns,
           })
         : null,
       chartCtx
@@ -338,6 +347,7 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
             available: answerLevels,
             indicators: chartIndicators,
             zones: chartZones,
+            patterns: chartPatterns,
           })
         : null,
     ]

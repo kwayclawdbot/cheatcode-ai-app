@@ -71,7 +71,49 @@ export function usePortal(
     void portalApi.patchAnnotation(id, { status }).catch(() => { /* local state is the truth the user sees */ });
   }, []);
 
-  return { data, annotations, upsertAnnotation, setAnnotationStatus, loading, error, locked, reload: load };
+  /**
+   * A DRAWING THE USER MADE, SAVED AND THEN SWAPPED FOR THE REAL ROW.
+   *
+   * It goes on screen first with the local id the chart page minted, because the
+   * line has to appear under the finger rather than after a server. The POST
+   * then comes back with the row that will survive a reload, and the draft is
+   * replaced by it — same shape, same place, a real id. If the write fails the
+   * draft is left exactly where it is: losing someone's drawing because a
+   * request timed out is worse than keeping one that will not survive a reload,
+   * and the alternative (a line vanishing under the hand that drew it) reads as
+   * the app being broken.
+   */
+  const createUserAnnotation = useCallback(async (draft: Annotation) => {
+    setAnnotations((prev) => [...prev, draft]);
+    try {
+      const saved = await portalApi.createAnnotation({
+        symbol: draft.symbol,
+        timeframe: draft.timeframe ?? 'D',
+        kind: draft.kind,
+        price: draft.price,
+        price2: draft.price2,
+        ts_from: draft.ts_from,
+        ts_to: draft.ts_to,
+        text: draft.text,
+      });
+      if (saved) setAnnotations((prev) => prev.map((a) => (a.id === draft.id ? saved : a)));
+    } catch {
+      /* the draft stands; see above */
+    }
+  }, []);
+
+  /** Move or resize one of the user's own drawings, and remember it. */
+  const updateUserAnnotation = useCallback((a: Annotation) => {
+    setAnnotations((prev) => prev.map((x) => (x.id === a.id ? a : x)));
+    // A draft that has not been saved yet has nothing to PATCH.
+    if (a.id.startsWith('draft:') || a.id.startsWith('local:')) return;
+    void portalApi.patchAnnotation(a.id, { price: a.price }).catch(() => { /* local state is what the user sees */ });
+  }, []);
+
+  return {
+    data, annotations, upsertAnnotation, createUserAnnotation, updateUserAnnotation,
+    setAnnotationStatus, loading, error, locked, reload: load,
+  };
 }
 
 /** Candles for the selected timeframe. `exact` is false when the stack had to

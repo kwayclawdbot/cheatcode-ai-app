@@ -237,6 +237,37 @@ html, body {
 .empty.is-on { display: block; }
 
 /* ------------------------------------------------------------------ */
+/* The way back to autoscale                                           */
+/* ------------------------------------------------------------------ */
+
+/* It sits at the FOOT of the price axis, against the scale it undoes, rather
+   than floating over the candles — a control belongs next to the thing it
+   controls, and the axis gutter is the one strip of this chart with nothing in
+   it. Hidden entirely until the scale is manual: a permanent button for a state
+   you are almost never in is just furniture. */
+.autoscale {
+  position: absolute;
+  right: 4px;
+  bottom: 24px;
+  z-index: 6;
+  display: none;
+  padding: 3px 7px;
+  border-radius: 4px;
+  border: 0.5px solid rgba(255, 247, 232, 0.18);
+  background: var(--surface);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+.autoscale.is-on { display: block; }
+.autoscale:active { transform: scale(0.94); opacity: 0.8; }
+
+/* ------------------------------------------------------------------ */
 /* Reduced motion                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -914,6 +945,7 @@ function AnnotationLayer() {
   this._curves = {};      // spec key -> computed series, so a pan costs no arithmetic
   this._curvesFor = '';   // the bar window those curves were computed over
   this._showAll = false;  // the overflow chip, tapped
+  this._selected = null;  // the user's own drawing being edited
   this._raf = 0;
   this._self = this;
 }
@@ -1020,6 +1052,13 @@ AnnotationLayer.prototype.setLastPrice = function (p) {
   this._lastPrice = typeof p === 'number' && isFinite(p) ? p : this._lastPrice;
 };
 
+/** Which drawing has handles on it. Only ever one, and only ever the user's. */
+AnnotationLayer.prototype.setSelected = function (id) {
+  if (this._selected === id) return;
+  this._selected = id || null;
+  this._kick();
+};
+
 /** Show every horizontal level, budget or not. The overflow chip toggles this. */
 AnnotationLayer.prototype.toggleOverflow = function () {
   this._showAll = !this._showAll;
@@ -1120,6 +1159,21 @@ AnnotationLayer.prototype._budget = function (items) {
   for (i = 0; i < items.length; i++) {
     var a = items[i];
     if (!a || a.status === 'hidden' || a.status === 'deleted') continue;
+    /**
+     * A DRAWING YOU MADE IS NEVER EDITED BY THE BUDGET.
+     *
+     * The cap and the merge exist because KAI can put eleven lines on a chart
+     * while narrating, and the eleventh makes the first ten unreadable. Neither
+     * is true of a line you drew on purpose: you know it is there, you chose
+     * where it goes, and hiding it — or silently folding it into a neighbour and
+     * relabelling it "+1" — would be the app overruling you about your own
+     * chart. So they skip the budget entirely and are always drawn.
+     *
+     * They do not count against Kai's eight either. His allowance is about how
+     * much HE may add, and spending it on your work would mean drawing your own
+     * levels made Kai quieter.
+     */
+    if (a.provenance === 'user') { others.push(a); continue; }
     if (shapeOf(a) === 'level' && typeof a.price === 'number' && isFinite(a.price)) rules.push(a);
     else if (a.kind === 'zone' && typeof a.price === 'number' && typeof a.price2 === 'number') zones.push(a);
     else others.push(a);
@@ -1391,7 +1445,18 @@ AnnotationLayer.prototype._draw = function (target) {
       var grown = 1 - Math.pow(1 - grow, 3);                       // ease-out
       var chip = Math.max(0, Math.min(1, (age - ANN_DRAW_MS) / ANN_CHIP_MS));
       var dead = a.status === 'invalidated';
-      var col = a.color || kindColor(a.kind);
+      /**
+       * VOLT IS THE USER'S, VIOLET IS KAI'S — palette lock 14, and it is the
+       * one rule that makes a chart carrying both authors readable at a glance.
+       * A line you drew and a line Kai drew mean completely different things
+       * when you come back to the chart tomorrow, and the difference has to
+       * survive without opening either of them.
+       *
+       * It OVERRIDES the semantic colour on purpose. A level you drew is not
+       * "support" in the sense the engine means — you have not graded it, and
+       * colouring it cyan would file your own mark under the app's analysis.
+       */
+      var col = a.color || (a.provenance === 'user' ? TOKENS.volt : kindColor(a.kind));
       // Two pulses: the opacity swings, the line does not move. Motion that
       // moves a price line would be a lie about the price.
       var pulse = 1;
@@ -1652,6 +1717,51 @@ AnnotationLayer.prototype._draw = function (target) {
         ctx.stroke();
         ctx.setLineDash([]);
         self._chipAndTag(ctx, a, col, claimY(ly), W, chip, base, hit, dead, mergedWith);
+      }
+    }
+
+    /**
+     * HANDLES ON THE SELECTED DRAWING.
+     *
+     * Drawn LAST so they sit over everything, and drawn in volt because they
+     * belong to the user's own mark and to nothing else. They are the difference
+     * between a drawing you can look at and a drawing you can adjust — without
+     * them the only edit available is delete-and-draw-again, which on a phone is
+     * most of a minute of work to move a line by two dollars.
+     *
+     * The positions are the same ones `DrawTool._handles` grabs at, and they are
+     * derived from the same geometry rather than passed between the two, so a
+     * handle can never be drawn somewhere it cannot be grabbed.
+     */
+    if (self._selected) {
+      for (var si = 0; si < self._items.length; si++) {
+        var sa = self._items[si];
+        if (sa.id !== self._selected || sa.provenance !== 'user') continue;
+        var pts = [];
+        if (sa.kind === 'trendline') {
+          pts.push([toX(sa.ts_from), toY(sa.price)]);
+          pts.push([toX(sa.ts_to), toY(sa.price2 != null ? sa.price2 : sa.price)]);
+        } else if (sa.kind === 'zone') {
+          var zx = toX(sa.ts_from);
+          var zt = toY(sa.price), zb = toY(sa.price2);
+          if (zx == null) zx = 20;
+          pts.push([zx + 14, zt]);
+          pts.push([zx + 14, zb]);
+          pts.push([zx, zt == null || zb == null ? null : (zt + zb) / 2]);
+          if (sa.ts_to != null) pts.push([toX(sa.ts_to), zt == null || zb == null ? null : (zt + zb) / 2]);
+        } else {
+          pts.push([W * 0.5, toY(sa.price)]);
+        }
+        ctx.globalAlpha = 1;
+        for (var pi = 0; pi < pts.length; pi++) {
+          var hx = pts[pi][0], hy = pts[pi][1];
+          if (hx == null || hy == null) continue;
+          ctx.fillStyle = TOKENS.bg;
+          ctx.beginPath(); ctx.arc(hx, hy, 5.5, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = TOKENS.volt;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.arc(hx, hy, 5.5, 0, Math.PI * 2); ctx.stroke();
+        }
       }
     }
 
@@ -2060,6 +2170,427 @@ TimeframeRail.prototype.pressVisual = function (tf, done) {
 };
 
 
+/* ===== chart-web/src/05a-draw.js ===== */
+/**
+ * Drawing on the chart with your own hands.
+ *
+ * THE GAP THIS FILLS, in the owner's words: "little things like no manual
+ * drawing abilities". Everything on this chart until now was placed by Kai or
+ * computed from bars. A trader's first instinct in front of a chart is to draw
+ * a line on it, and there was nothing to draw with — which quietly says the
+ * chart is something you watch rather than something you use.
+ *
+ * WHAT THIS FILE IS, AND WHAT IT DELIBERATELY IS NOT. It is the GESTURE half:
+ * which surface was touched, what shape that turns into, and which handle is
+ * being dragged. It is NOT a renderer — every drawing is an ordinary annotation
+ * and goes through the same `AnnotationLayer` that draws Kai's, so a user's
+ * trendline and Kai's are the same object drawn by the same code, differing
+ * only in `provenance`. That is the whole reason a user's drawing can be
+ * selected, hidden, explained and persisted without any of that being built
+ * twice.
+ *
+ * ONE POINTER PATH FOR FINGER AND MOUSE. Pointer Events are supported by every
+ * surface this app runs on — WKWebView, Android WebView, and desktop browsers
+ * for Expo web — so there is one set of handlers rather than a touch path and a
+ * mouse path that drift apart. The test drives both.
+ *
+ * THE LIBRARY'S GESTURES ARE TURNED OFF WHILE A TOOL IS ACTIVE, and back on the
+ * moment it is put away. Drawing a trendline across a chart that is panning
+ * underneath the finger produces a line through two prices that were never both
+ * on screen, which is worse than no line at all.
+ *
+ * NOTHING HERE WRITES TO A DATABASE. The page has no network (see 07-bridge.js).
+ * A finished drawing is POSTED UP to the host, which persists it through the
+ * same annotations API Kai's marks go through and sends the authoritative row
+ * back down. Until that round trip lands the drawing is on screen as a draft, so
+ * the line appears under the finger rather than after a server.
+ */
+
+/** How close a finger has to get to a handle for it to count as grabbing it. */
+var HANDLE_HIT = 16;
+/** Below this, a drag was a tap. Fingers are not precise and a tap is not a box. */
+var DRAG_MIN = 6;
+
+function DrawTool(chart) {
+  this.c = chart;
+  this.tool = null;        // null | 'level' | 'trendline' | 'zone'
+  this.selectedId = null;
+  this._draft = null;      // the annotation being created or edited
+  this._grab = null;       // which handle, when editing
+  this._from = null;       // pointer down position
+  this._seq = 0;
+  this._pressTimer = 0;
+  this._saved = null;      // the library's gesture options, while a tool is out
+  this._bind();
+}
+
+/* ------------------------------------------------------------------ */
+/* Coordinates                                                         */
+/* ------------------------------------------------------------------ */
+
+/** Price at a y, or null off the scale. */
+DrawTool.prototype._price = function (y) {
+  var p = this.c.series.coordinateToPrice(y);
+  return p == null || !isFinite(p) ? null : p;
+};
+
+/**
+ * The bar time at an x.
+ *
+ * `coordinateToTime` answers null past either end of the data, and a drawing
+ * anchored just off the last bar is a completely reasonable thing to want — so
+ * the logical scale is used instead, which extrapolates. Snapping to whole bars
+ * is deliberate: a trendline anchored a third of the way through a candle
+ * implies a precision the data does not have.
+ */
+DrawTool.prototype._time = function (x) {
+  var bars = this.c.bars;
+  if (!bars.length) return null;
+  var logical = this.c.chart.timeScale().coordinateToLogical(x);
+  if (logical == null || !isFinite(logical)) return null;
+  var idx = Math.round(logical);
+  if (idx >= 0 && idx < bars.length) return bars[idx].time;
+  var step = bars.length > 1 ? bars[1].time - bars[0].time : 86400;
+  if (idx < 0) return bars[0].time + idx * step;
+  return bars[bars.length - 1].time + (idx - (bars.length - 1)) * step;
+};
+
+/** Where the pointer is, in the plot's own coordinates. */
+DrawTool.prototype._at = function (e) {
+  var r = this.c.host.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+};
+
+/** True when this x is over the price axis rather than the plot. */
+DrawTool.prototype._overAxis = function (x) {
+  var w = 0;
+  try { w = this.c.chart.priceScale('right').width(); } catch (e) { w = 0; }
+  return w > 0 && x >= this.c.host.clientWidth - w - 2;
+};
+
+/* ------------------------------------------------------------------ */
+/* Tool state                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Pick up a tool, or put it down.
+ *
+ * WHILE A TOOL IS OUT THE CHART DOES NOT MOVE. The options are saved and
+ * restored rather than reset to a guess, so putting the tool away returns the
+ * chart to whatever the host had configured — embedded or on the stage, which
+ * are genuinely different gesture sets.
+ */
+DrawTool.prototype.setTool = function (tool) {
+  var next = tool === 'level' || tool === 'trendline' || tool === 'zone' ? tool : null;
+  if (next === this.tool) return;
+  this.tool = next;
+  this.c.host.style.cursor = next ? 'crosshair' : '';
+
+  if (next && !this._saved) {
+    var o = this.c.chart.options();
+    this._saved = { handleScroll: o.handleScroll, handleScale: o.handleScale };
+    this.c.chart.applyOptions({
+      handleScroll: { mouseWheel: false, pressedMouseMove: false, horzTouchDrag: false, vertTouchDrag: false },
+      handleScale: { axisPressedMouseMove: false, mouseWheel: false, pinch: false, axisDoubleClickReset: false },
+    });
+  } else if (!next && this._saved) {
+    this.c.chart.applyOptions(this._saved);
+    this._saved = null;
+  }
+  // Picking up a tool clears the selection: you are about to make a new thing,
+  // and leaving handles on an old one invites a drag that edits the wrong shape.
+  if (next) this.select(null);
+  post({ type: 'draw.tool', payload: { tool: this.tool } });
+};
+
+DrawTool.prototype.select = function (id) {
+  if (this.selectedId === id) return;
+  this.selectedId = id;
+  this.c.annotations.setSelected(id);
+  var a = this._find(id);
+  post({
+    type: 'draw.selected',
+    payload: { id: id, kind: a ? a.kind : null, provenance: a ? a.provenance : null, text: a ? a.text : null },
+  });
+};
+
+DrawTool.prototype._find = function (id) {
+  if (!id) return null;
+  var items = this.c.annotations.items();
+  for (var i = 0; i < items.length; i++) if (items[i].id === id) return items[i];
+  return null;
+};
+
+/** Remove the selected drawing. Only ever the user's own — see `_hitOwn`. */
+DrawTool.prototype.deleteSelected = function () {
+  var id = this.selectedId;
+  var a = this._find(id);
+  if (!a || a.provenance !== 'user') return false;
+  this.select(null);
+  this.c.annotations.remove([id]);
+  post({ type: 'draw.deleted', payload: { id: id } });
+  return true;
+};
+
+/* ------------------------------------------------------------------ */
+/* The gestures                                                        */
+/* ------------------------------------------------------------------ */
+
+DrawTool.prototype._bind = function () {
+  var self = this;
+  var host = this.c.host;
+  host.addEventListener('pointerdown', function (e) { self._down(e); });
+  host.addEventListener('pointermove', function (e) { self._move(e); });
+  host.addEventListener('pointerup', function (e) { self._up(e); });
+  host.addEventListener('pointercancel', function () { self._cancel(); });
+};
+
+/** The handles of the selected drawing, in plot coordinates. */
+DrawTool.prototype._handles = function (a) {
+  if (!a) return [];
+  var self = this;
+  var toY = function (p) { return p == null ? null : self.c.series.priceToCoordinate(p); };
+  var toX = function (t) {
+    if (t == null) return null;
+    var u = typeof t === 'number' ? t : Math.floor(Date.parse(t) / 1000);
+    return self.c.chart.timeScale().timeToCoordinate(u);
+  };
+  var W = this.c.host.clientWidth;
+  var out = [];
+  if (a.kind === 'trendline') {
+    out.push({ h: 'from', x: toX(a.ts_from), y: toY(a.price) });
+    out.push({ h: 'to', x: toX(a.ts_to), y: toY(a.price2) });
+  } else if (a.kind === 'zone') {
+    var x1 = toX(a.ts_from);
+    var x2 = a.ts_to == null ? W - 60 : toX(a.ts_to);
+    out.push({ h: 'top', x: x1 == null ? 20 : x1 + 14, y: toY(a.price) });
+    out.push({ h: 'bottom', x: x1 == null ? 20 : x1 + 14, y: toY(a.price2) });
+    out.push({ h: 'from', x: x1, y: (toY(a.price) + toY(a.price2)) / 2 });
+    if (a.ts_to != null) out.push({ h: 'to', x: x2, y: (toY(a.price) + toY(a.price2)) / 2 });
+  } else {
+    // A level has one handle, and it is deliberately not at x=0: a control in
+    // the corner of the plot is a control under the chip that names the line.
+    out.push({ h: 'price', x: W * 0.5, y: toY(a.price) });
+  }
+  return out.filter(function (p) { return p.x != null && p.y != null; });
+};
+
+/** The user-authored drawing under this point, if any. Kai's are not grabbable. */
+DrawTool.prototype._hitOwn = function (pt) {
+  var items = this.c.annotations.items();
+  var best = null;
+  var bestD = Infinity;
+  var self = this;
+  var toY = function (p) { return p == null ? null : self.c.series.priceToCoordinate(p); };
+  for (var i = 0; i < items.length; i++) {
+    var a = items[i];
+    if (a.provenance !== 'user' || a.status === 'hidden' || a.status === 'deleted') continue;
+    var d = Infinity;
+    if (a.kind === 'zone') {
+      var y1 = toY(a.price), y2 = toY(a.price2);
+      if (y1 == null || y2 == null) continue;
+      var top = Math.min(y1, y2), bot = Math.max(y1, y2);
+      d = pt.y >= top - 4 && pt.y <= bot + 4 ? 0 : Math.min(Math.abs(pt.y - top), Math.abs(pt.y - bot));
+    } else if (a.kind === 'trendline') {
+      var hs = this._handles(a);
+      if (hs.length < 2) continue;
+      d = distToSegment(pt, hs[0], hs[1]);
+    } else {
+      var y = toY(a.price);
+      if (y == null) continue;
+      d = Math.abs(pt.y - y);
+    }
+    if (d < bestD) { bestD = d; best = a; }
+  }
+  return bestD <= 14 ? best : null;
+};
+
+DrawTool.prototype._down = function (e) {
+  var pt = this._at(e);
+  if (this._overAxis(pt.x)) return;
+  this._from = pt;
+
+  // --- editing an existing drawing ---
+  if (!this.tool) {
+    var sel = this._find(this.selectedId);
+    var hs = this._handles(sel);
+    for (var i = 0; i < hs.length; i++) {
+      if (Math.abs(hs[i].x - pt.x) <= HANDLE_HIT && Math.abs(hs[i].y - pt.y) <= HANDLE_HIT) {
+        this._grab = { id: sel.id, handle: hs[i].h, before: cloneAnn(sel) };
+        this._lockChart(true);
+        return;
+      }
+    }
+    var own = this._hitOwn(pt);
+    this.select(own ? own.id : null);
+    // A long press on your own drawing offers to remove it. It is the gesture a
+    // phone has for "and now do something to this thing", and it means the
+    // delete does not depend on chrome being on screen.
+    if (own) {
+      var self = this;
+      clearTimeout(this._pressTimer);
+      this._pressTimer = setTimeout(function () {
+        post({ type: 'draw.longPress', payload: { id: own.id } });
+      }, 550);
+    }
+    return;
+  }
+
+  // --- creating a new one ---
+  var price = this._price(pt.y);
+  var time = this._time(pt.x);
+  if (price == null || time == null) return;
+  var id = 'draft:' + (++this._seq);
+  this._draft =
+    this.tool === 'level'
+      ? { id: id, kind: 'support', price: round2(price), price2: null, ts_from: null, ts_to: null, text: 'Level', provenance: 'user', status: 'valid' }
+      : this.tool === 'trendline'
+        ? { id: id, kind: 'trendline', price: round2(price), price2: round2(price), ts_from: time, ts_to: time, text: 'Trendline', provenance: 'user', status: 'valid' }
+        : { id: id, kind: 'zone', price: round2(price), price2: round2(price), ts_from: time, ts_to: null, text: 'Zone', provenance: 'user', status: 'valid' };
+  this.c.annotations.add([this._draft]);
+  this._lockChart(true);
+};
+
+DrawTool.prototype._move = function (e) {
+  if (!this._from) return;
+  var pt = this._at(e);
+  if (Math.abs(pt.x - this._from.x) > 4 || Math.abs(pt.y - this._from.y) > 4) clearTimeout(this._pressTimer);
+
+  if (this._grab) {
+    var a = this._find(this._grab.id);
+    if (!a) return;
+    var p = this._price(pt.y);
+    var t = this._time(pt.x);
+    if (this._grab.handle === 'price' || this._grab.handle === 'top') { if (p != null) a.price = round2(p); }
+    else if (this._grab.handle === 'bottom') { if (p != null) a.price2 = round2(p); }
+    else if (this._grab.handle === 'from') {
+      if (t != null) a.ts_from = t;
+      if (p != null && a.kind === 'trendline') a.price = round2(p);
+    } else if (this._grab.handle === 'to') {
+      if (t != null) a.ts_to = t;
+      if (p != null && a.kind === 'trendline') a.price2 = round2(p);
+    }
+    this.c.annotations.add([a]);
+    return;
+  }
+
+  if (!this._draft) return;
+  var pp = this._price(pt.y);
+  var tt = this._time(pt.x);
+  if (this._draft.kind === 'support') {
+    if (pp != null) this._draft.price = round2(pp);
+  } else if (this._draft.kind === 'trendline') {
+    if (pp != null) this._draft.price2 = round2(pp);
+    if (tt != null) this._draft.ts_to = tt;
+  } else {
+    if (pp != null) this._draft.price2 = round2(pp);
+    // A drag that stayed in one column is a band, not a box: it is left OPEN at
+    // the right so it runs to the live edge, which is what a supply or demand
+    // area actually claims. Moving sideways is how you say "only this stretch".
+    if (tt != null && Math.abs(pt.x - this._from.x) > DRAG_MIN * 3) this._draft.ts_to = tt;
+  }
+  this.c.annotations.add([this._draft]);
+};
+
+DrawTool.prototype._up = function (e) {
+  clearTimeout(this._pressTimer);
+  var pt = this._at(e);
+  var moved = this._from ? Math.abs(pt.x - this._from.x) + Math.abs(pt.y - this._from.y) : 0;
+  this._from = null;
+  this._lockChart(false);
+
+  if (this._grab) {
+    var edited = this._find(this._grab.id);
+    var g = this._grab;
+    this._grab = null;
+    if (edited) post({ type: 'draw.changed', payload: { annotation: cloneAnn(edited) } });
+    return;
+  }
+
+  var d = this._draft;
+  this._draft = null;
+  if (!d) return;
+
+  /**
+   * A SHAPE THAT NEVER GOT A SECOND POINT IS NOT A SHAPE.
+   *
+   * A tap with the trendline tool would otherwise store a line from a bar to
+   * itself — a dot claiming to be a trendline — and a tap with the zone tool a
+   * rectangle with no height, which is a level wearing a box's clothes. Both are
+   * dropped, and the tool stays out so the next attempt is just a drag.
+   *
+   * A LEVEL IS THE ONE THING A TAP CAN FINISH, because a horizontal line needs
+   * one price and nothing else.
+   */
+  if (d.kind !== 'support' && moved < DRAG_MIN) {
+    this.c.annotations.remove([d.id]);
+    return;
+  }
+  if (d.kind === 'zone' && Math.abs(d.price - d.price2) < Math.max(0.01, Math.abs(d.price) * 0.0005)) {
+    this.c.annotations.remove([d.id]);
+    return;
+  }
+  if (d.kind === 'zone') {
+    var hi = Math.max(d.price, d.price2);
+    var lo = Math.min(d.price, d.price2);
+    d.price = hi; d.price2 = lo;
+  }
+  post({ type: 'draw.created', payload: { annotation: cloneAnn(d) } });
+  this.select(d.id);
+  // One shape per pick-up. Leaving the tool armed is how a chart ends up with
+  // five lines nobody meant to draw.
+  this.setTool(null);
+};
+
+DrawTool.prototype._cancel = function () {
+  clearTimeout(this._pressTimer);
+  if (this._draft) this.c.annotations.remove([this._draft.id]);
+  this._draft = null;
+  this._grab = null;
+  this._from = null;
+  this._lockChart(false);
+};
+
+/** Hold the chart still for the duration of a drag that is not about the camera. */
+DrawTool.prototype._lockChart = function (on) {
+  if (this.tool) return;   // already locked for as long as the tool is out
+  if (on && !this._editLock) {
+    var o = this.c.chart.options();
+    this._editLock = { handleScroll: o.handleScroll, handleScale: o.handleScale };
+    this.c.chart.applyOptions({
+      handleScroll: { mouseWheel: false, pressedMouseMove: false, horzTouchDrag: false, vertTouchDrag: false },
+      handleScale: { axisPressedMouseMove: false, mouseWheel: false, pinch: false, axisDoubleClickReset: false },
+    });
+  } else if (!on && this._editLock) {
+    this.c.chart.applyOptions(this._editLock);
+    this._editLock = null;
+  }
+};
+
+/* ------------------------------------------------------------------ */
+/* Small shared geometry                                               */
+/* ------------------------------------------------------------------ */
+
+function round2(n) { return Math.round(n * 100) / 100; }
+
+function cloneAnn(a) {
+  return {
+    id: a.id, kind: a.kind, price: a.price, price2: a.price2,
+    ts_from: a.ts_from, ts_to: a.ts_to, text: a.text,
+    provenance: a.provenance, status: a.status,
+  };
+}
+
+/** Distance from a point to a segment — how a trendline is hit-tested. */
+function distToSegment(p, a, b) {
+  var dx = b.x - a.x, dy = b.y - a.y;
+  var len = dx * dx + dy * dy;
+  if (!len) return Math.hypot(p.x - a.x, p.y - a.y);
+  var t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+
 /* ===== chart-web/src/06-chart.js ===== */
 /**
  * The chart itself, and the camera Kai drives.
@@ -2190,6 +2721,11 @@ function Chart(root) {
   this.annotations = new AnnotationLayer();
   this.series.attachPrimitive(this.annotations);
 
+  // Drawing by hand. Constructed last, so it binds its pointer handlers AFTER
+  // the chart's own — a tool that is out gets the gesture, and when none is out
+  // its handlers fall through to the camera exactly as before.
+  this.draw = new DrawTool(this);
+
   this.rail = new TimeframeRail(root, function (tf, who) { self._railPick(tf, who); });
   this.rail.setOptions(TF_ORDER, this.timeframe);
   this.pointer = new KaiPointer(root);
@@ -2201,6 +2737,25 @@ function Chart(root) {
   this.veil = document.createElement('div');
   this.veil.className = 'veil';
   root.appendChild(this.veil);
+
+  /**
+   * The way back to autoscale. Hidden until there is something to go back FROM,
+   * because a control that is always visible and almost never useful is just
+   * another thing in front of the chart.
+   */
+  this.autoBtn = document.createElement('button');
+  this.autoBtn.className = 'autoscale';
+  this.autoBtn.type = 'button';
+  this.autoBtn.textContent = 'Auto';
+  this.autoBtn.setAttribute('aria-label', 'Fit the price scale to the bars again');
+  this.autoBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    self.setAutoScale(true);
+    // Re-fit where the user can SEE it happen. Under reduced motion it is
+    // instant, which is the same promise kept a different way.
+    self.fitDefault(reducedMotion() ? 0 : 260);
+  });
+  root.appendChild(this.autoBtn);
 
   this.empty = document.createElement('div');
   this.empty.className = 'empty';
@@ -2258,6 +2813,75 @@ Chart.prototype._bindInterrupt = function () {
       self.setAutoScale(false);
     }
   };
+  /**
+   * A FINGER ON THE PRICE SIDEBAR SCALES THE PRICE, EVEN INSIDE A PAGE.
+   *
+   * `vertTouchDrag` is a whole-chart option, and Lightweight Charts uses it for
+   * the price axis as well as for the plot: with it off, a vertical touch on the
+   * axis is treated as page scroll and thrown away. That is right for the PLOT
+   * when the chart is embedded — the page needs that finger — and wrong for the
+   * AXIS, which nobody drags by accident. Measured before this: dragging the
+   * price sidebar with a finger in the Trade Portal moved nothing, while the
+   * same drag with a mouse worked and the same finger worked once the chart was
+   * expanded. One whole gesture missing, on the surface most people use.
+   *
+   * So the flag is flipped for the DURATION OF A TOUCH THAT STARTED ON THE AXIS
+   * and put back the moment it ends. The plot never sees it on, because a touch
+   * that started on the plot never turns it on. Which surface was touched is
+   * decided by the axis's own reported width rather than by reaching into the
+   * library's DOM, so it cannot drift when the library re-renders.
+   */
+  var axisTouch = false;
+  var onAxis = function (clientX) {
+    var r = self.host.getBoundingClientRect();
+    var axisW = 0;
+    try { axisW = self.chart.priceScale('right').width(); } catch (e) { axisW = 0; }
+    return axisW > 0 && clientX - r.left >= r.width - axisW - 2;
+  };
+  this.host.addEventListener('touchstart', function (e) {
+    var t = e.touches && e.touches[0];
+    if (!t || !onAxis(t.clientX)) return;
+    axisTouch = true;
+    self.chart.applyOptions({ handleScroll: { vertTouchDrag: true } });
+  }, { capture: true, passive: true });
+  var endAxisTouch = function () {
+    if (!axisTouch) return;
+    axisTouch = false;
+    self.chart.applyOptions({ handleScroll: { vertTouchDrag: !!self.owns } });
+  };
+  this.host.addEventListener('touchend', endAxisTouch, { capture: true, passive: true });
+  this.host.addEventListener('touchcancel', endAxisTouch, { capture: true, passive: true });
+
+  /**
+   * SCALING THE AXIS BY HAND MAKES THE RANGE YOURS.
+   *
+   * Autoscale and a manual range are the same control and only one can win (see
+   * `setAutoScale`). While autoscale is on, the annotation layer's own
+   * `autoscaleInfo` re-derives the range every frame, so a drag that is not
+   * followed by this would be undone before the finger left the glass.
+   *
+   * A TAP IS NOT A DRAG. Six pixels of movement, so touching the axis to read a
+   * number does not silently take the chart off autoscale — which would be a
+   * mode change nobody asked for and nobody saw.
+   */
+  var axisFrom = null;
+  var axisDown = function (e) {
+    var t = (e.touches && e.touches[0]) || e;
+    if (t.clientX == null || !onAxis(t.clientX)) { axisFrom = null; return; }
+    axisFrom = t.clientY;
+  };
+  var axisUp = function (e) {
+    if (axisFrom == null) return;
+    var t = (e.changedTouches && e.changedTouches[0]) || e;
+    var moved = t.clientY == null ? 0 : Math.abs(t.clientY - axisFrom);
+    axisFrom = null;
+    if (moved > 6) self.setAutoScale(false);
+  };
+  this.host.addEventListener('touchstart', axisDown, { passive: true });
+  this.host.addEventListener('pointerdown', axisDown, { passive: true });
+  this.host.addEventListener('touchend', axisUp, { passive: true });
+  this.host.addEventListener('pointerup', axisUp, { passive: true });
+
   this.host.addEventListener('touchstart', onStart, { passive: true });
   this.host.addEventListener('pointerdown', onStart, { passive: true });
   this.host.addEventListener('touchmove', onMove, { passive: true });
@@ -2417,7 +3041,24 @@ Chart.prototype.setGestures = function (own) {
       vertTouchDrag: !!own,
     },
     handleScale: {
-      axisPressedMouseMove: own ? { time: true, price: true } : true,
+      /**
+       * THE PRICE SIDEBAR ALWAYS TAKES A DRAG, EMBEDDED OR NOT.
+       *
+       * It used to be handed `true` when embedded, which enables the MOUSE and
+       * leaves touch to the pane's own `vertTouchDrag` — and that is off when
+       * the chart is inside a scrolling page. Measured: dragging the price axis
+       * with a finger in the Trade Portal moved nothing at all, while the same
+       * drag with a mouse worked, and the same finger worked once the chart was
+       * expanded. That is exactly the owner's report, and it is a whole gesture
+       * missing on the surface most people use.
+       *
+       * The object form asks for both pointer types explicitly. It is also the
+       * right call on the merits: a finger on the PLOT is ambiguous when the
+       * chart sits in a scrolling page — the page probably wants it — but a
+       * finger on the price axis is not ambiguous at all. Nobody drags a price
+       * scale by accident.
+       */
+      axisPressedMouseMove: { time: true, price: true },
       mouseWheel: true,
       pinch: true,
       axisDoubleClickReset: true,
@@ -2450,6 +3091,17 @@ Chart.prototype.setGestures = function (own) {
 Chart.prototype.setAutoScale = function (on) {
   this.autoScaleOn = !!on;
   this.chart.priceScale('right').applyOptions({ autoScale: !!on });
+  /**
+   * A MODE THE USER CANNOT SEE IS A MODE THEY ARE STUCK IN.
+   *
+   * Taking the price scale off autoscale is the right thing to do the moment
+   * someone drags it — but nothing on screen said so, and nothing offered a way
+   * back. The way out was a double-tap that only someone who already knew would
+   * try. So the state gets a chip: it appears only while the range is manual,
+   * it says what it does, and one tap gives the chart its scale back and re-fits
+   * in front of you rather than snapping silently.
+   */
+  if (this.autoBtn) this.autoBtn.classList.toggle('is-on', !on);
 };
 
 /**
@@ -2797,6 +3449,16 @@ function handle(msg) {
       case 'annotations.remove': c.annotations.remove(p.ids || []); return done(id, 'done');
       case 'annotations.flash': c.annotations.flash(p.id, p.pulses); return done(id, 'done');
       case 'annotations.hidden': c.annotations.setHidden(p.on); return done(id, 'done');
+
+      /* -------- drawing by hand -------- */
+      //
+      // The host owns the TRAY; the page owns the GESTURE. Everything the user
+      // draws comes back up as `draw.created` / `draw.changed` / `draw.deleted`
+      // for the host to persist through the annotations API, because this page
+      // has no network and must not grow one.
+      case 'draw.setTool': c.draw.setTool(p.tool); return done(id, 'done');
+      case 'draw.select': c.draw.select(p.id || null); return done(id, 'done');
+      case 'draw.deleteSelected': c.draw.deleteSelected(); return done(id, 'done');
 
       /* -------- Kai's pointer -------- */
       case 'pointer.moveTo': {

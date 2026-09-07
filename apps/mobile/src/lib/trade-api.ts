@@ -1473,17 +1473,50 @@ export const portalApi = {
     return list.map((a) => adaptAnnotation(a, symbol)).filter((a) => a.status !== 'deleted');
   },
 
-  createAnnotation: async (body: {
-    symbol: string; kind: AnnotationKind; price: number; price2?: number | null;
-    timeframe?: PortalTimeframe | null; text?: string | null; reason?: string | null;
-  }): Promise<Annotation> => {
-    const r = await request<unknown>('/annotations', { method: 'POST', body: JSON.stringify(body) });
-    return adaptAnnotation(obj(pick(obj(r), 'annotation')) ?? r, body.symbol);
-  },
-
   /** Hide, delete or retitle one annotation. The user owns every Kai line. */
-  patchAnnotation: async (id: string, patch: { status?: AnnotationStatus; text?: string }): Promise<void> => {
+  patchAnnotation: async (id: string, patch: { status?: AnnotationStatus; text?: string; price?: number | null }): Promise<void> => {
     if (!live()) return;
     await request<unknown>(`/annotations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) });
+  },
+
+  /**
+   * A drawing the USER made, written to the same table Kai's marks go into.
+   *
+   * `provenance: 'user'` is the whole point and it is not decoration: it is what
+   * makes the mark theirs. The chart draws it in volt rather than in the app's
+   * own colours, Kai's declutter never folds it away or counts it against his
+   * line budget, and the reason line says who put it there rather than
+   * inventing an analysis nobody made.
+   *
+   * IN FIXTURES MODE IT ANSWERS WITH THE DRAFT UNCHANGED, so the tools can be
+   * used and demonstrated on a stack with no backend. The id stays the local one
+   * and the drawing does not survive a reload, which is the honest amount of
+   * degradation rather than a silent failure to save.
+   */
+  createAnnotation: async (a: {
+    symbol: string;
+    timeframe: PortalTimeframe;
+    kind: AnnotationKind;
+    price?: number | null;
+    price2?: number | null;
+    ts_from?: string | null;
+    ts_to?: string | null;
+    text?: string | null;
+  }): Promise<Annotation | null> => {
+    if (!live()) return null;
+    const body = {
+      symbol: a.symbol,
+      timeframe: a.timeframe === 'D' ? '1d' : a.timeframe,
+      kind: a.kind,
+      price: a.price ?? null,
+      price2: a.price2 ?? null,
+      ts_from: a.ts_from ?? null,
+      ts_to: a.ts_to ?? null,
+      text: a.text ?? null,
+      provenance: 'user',
+    };
+    const r = await request<unknown>('/annotations', { method: 'POST', body: JSON.stringify(body) });
+    const row = pick(obj(r), 'annotation');
+    return row ? adaptAnnotation(row, a.symbol) : null;
   },
 };

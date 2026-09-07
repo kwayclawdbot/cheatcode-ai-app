@@ -77,6 +77,16 @@ function handle(msg) {
       case 'annotations.flash': c.annotations.flash(p.id, p.pulses); return done(id, 'done');
       case 'annotations.hidden': c.annotations.setHidden(p.on); return done(id, 'done');
 
+      /* -------- drawing by hand -------- */
+      //
+      // The host owns the TRAY; the page owns the GESTURE. Everything the user
+      // draws comes back up as `draw.created` / `draw.changed` / `draw.deleted`
+      // for the host to persist through the annotations API, because this page
+      // has no network and must not grow one.
+      case 'draw.setTool': c.draw.setTool(p.tool); return done(id, 'done');
+      case 'draw.select': c.draw.select(p.id || null); return done(id, 'done');
+      case 'draw.deleteSelected': c.draw.deleteSelected(); return done(id, 'done');
+
       /* -------- Kai's pointer -------- */
       case 'pointer.moveTo': {
         var pt = c.resolvePoint(p);

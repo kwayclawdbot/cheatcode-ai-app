@@ -31,6 +31,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Modal, Platform, Pressable, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChartView } from './ChartView';
+import type { DraftAnnotation } from './ChartView';
+import { DrawTray, type DrawToolName } from './DrawTray';
 import type { ChartHandle } from './apply';
 import { allowLandscape, lockPortrait } from './orientation';
 import type { Annotation, PortalTimeframe } from '../portal/types';
@@ -78,6 +80,14 @@ export type ChartStageProps = {
   notice?: string | null;
   /** `failed` tints the hairline gold — a problem, not Kai talking. */
   noticeTone?: 'working' | 'failed' | null;
+
+  /**
+   * DRAWING BY HAND. Omit them and the tray does not appear — a chart with no
+   * way to save what you draw should not offer to let you draw it.
+   */
+  onDrawCreate?: (a: DraftAnnotation) => void;
+  onDrawChange?: (a: DraftAnnotation) => void;
+  onDrawDelete?: (id: string) => void;
 };
 
 /* ------------------------------------------------------------------ */
@@ -156,6 +166,9 @@ function LowerThird({
 
 export function ChartStage(props: ChartStageProps) {
   const { open, onClose, live = false, caption, notice, noticeTone } = props;
+  const [tool, setTool] = useState<DrawToolName>(null);
+  const [selected, setSelected] = useState<{ id: string | null; provenance: string | null }>({ id: null, provenance: null });
+  const canDraw = Boolean(props.onDrawCreate);
 
   /**
    * ONE LOWER THIRD, TWO JOBS. Kai's words win while he is speaking; when he is
@@ -243,8 +256,34 @@ export function ChartStage(props: ChartStageProps) {
             onSelectAnnotation={props.onSelectAnnotation}
             onTimeframeChange={props.onTimeframeChange}
             onReady={() => setReady(true)}
+            onDrawCreated={props.onDrawCreate}
+            onDrawChanged={props.onDrawChange}
+            onDrawDeleted={props.onDrawDelete}
+            onDrawSelected={(s) => setSelected({ id: s.id, provenance: s.provenance })}
+            // The page puts the tool away after one shape; the tray has to hear
+            // about it or it would keep showing a tool that is no longer armed.
+            onDrawTool={(t) => setTool(t)}
+            onDrawLongPress={() => chart.current?.deleteSelectedDrawing?.()}
           />
         </View>
+
+        {/*
+          The tools. Hidden while Kai is talking, for the same reason the header
+          and the rail are: there is nothing to do but watch, so nothing asks to
+          be tapped.
+        */}
+        {canDraw && !live ? (
+          <DrawTray
+            tool={tool}
+            onPick={(t) => {
+              setTool(t);
+              chart.current?.setDrawTool?.(t);
+            }}
+            canDelete={selected.id !== null && selected.provenance === 'user'}
+            onDelete={() => chart.current?.deleteSelectedDrawing?.()}
+            left={landscape ? Math.max(insets.left, 8) : 0}
+          />
+        ) : null}
 
         {/* ---- the header, floating ---- */}
         <Animated.View
