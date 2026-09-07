@@ -238,22 +238,31 @@ const main = async () => {
     await go(page, '/community', 3500);
     await shot(page, 'live2b-01-community');
 
-    // Exactly three rooms, in order, no mode chips. Asserted here rather than
-    // eyeballed in the screenshot.
-    const roomIds = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('[data-testid^="room-"]')).map((n) => n.getAttribute('data-testid')));
-    const WANT = ['room-day-trade', 'room-swing', 'room-investing'];
-    console.log(`  · rooms on screen: ${roomIds.join(', ') || '(none)'}`);
-    if (JSON.stringify(roomIds) !== JSON.stringify(WANT)) {
-      throw new Error(`expected exactly ${WANT.join(', ')} — got ${roomIds.join(', ') || '(none)'}`);
+    /*
+     * ONE MODE SWITCH (owner, 7 Sept). This used to assert exactly three
+     * `room-*` pills and NO `mode-*` control. Both halves are now reversed, and
+     * for the reason the old assertion was written in the first place: there
+     * must be exactly ONE row of three, not two rows of three. The rail went;
+     * the headbar's segmented control stayed, because it is the same one every
+     * other screen carries and it writes the global mode.
+     */
+    const railPills = await page.locator('[data-testid^="room-"]').count();
+    if (railPills) throw new Error(`the room rail is back on the community tab (${railPills} pills)`);
+    const segs = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-testid^="mode-seg-"]')).map((n) => n.getAttribute('data-testid')));
+    const WANT = ['mode-seg-day_trade', 'mode-seg-swing', 'mode-seg-invest'];
+    console.log(`  · mode control on screen: ${segs.join(', ') || '(none)'}`);
+    if (JSON.stringify(segs) !== JSON.stringify(WANT)) {
+      throw new Error(`expected exactly ${WANT.join(', ')} — got ${segs.join(', ') || '(none)'}`);
     }
-    const chips = await page.locator('[data-testid^="mode-"]').count();
-    if (chips) throw new Error(`the mode chips are still on the community tab (${chips} of them)`);
-    const firstRoom = WANT[0];
+    if (!(await page.getByTestId('club-room-name').count())) {
+      throw new Error('the header does not say which room you are reading');
+    }
 
     {
       console.log('[3] post a real message, then ask Kai');
-      await page.locator(`[data-testid="${firstRoom}"]`).last().click();
+      // Changing rooms is the mode control now, and only that.
+      await page.locator('[data-testid="mode-seg-day_trade"]').last().click();
       await page.waitForTimeout(3500);
       await shot(page, 'live2b-02-room');
 
@@ -285,9 +294,14 @@ const main = async () => {
       }
 
       console.log('[4] structured composer, real post');
-      const plus = page.getByTestId('composer-structured').last();
+      // The structured composer used to be its own unlabelled + on the bar.
+      // It is now the "Post an idea" row inside the composer's + menu, so the
+      // way in is two taps and both are asserted.
+      const plus = page.getByTestId('composer-plus').last();
       if (await plus.count()) {
         await plus.click();
+        await page.waitForTimeout(600);
+        await page.getByTestId('composer-action-idea').last().click();
         await page.waitForTimeout(2500);
         const fill = async (id, text) => {
           const el = page.getByTestId(id).last();

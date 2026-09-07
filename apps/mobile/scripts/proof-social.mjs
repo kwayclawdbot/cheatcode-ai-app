@@ -24,8 +24,10 @@
  *   · answering a COMMENT quotes it and draws the answer indented under it,
  *     which is the whole of "reply to another user's comment";
  *   · a removed comment keeps its place and loses its words;
- *   · the composer has a way to add a picture, and the accessibility copy on
- *     it tells the truth about location data before anything is picked.
+ *   · the composer's + opens a menu of NAMED rows rather than a bar of glyphs,
+ *     the picture row tells the truth about location data and about video
+ *     before anything is picked, and the primary circle is a SEND button in
+ *     every state — never the microphone that used to sit there doing nothing.
  *
  * WHAT CHANGED, and why the old assertions are gone: this file used to assert
  * that the bar drew four WORDS and that "no emoji reactions are left in the
@@ -217,30 +219,68 @@ if (await replyBtn.count()) {
 }
 
 /* -- 3. the composer ----------------------------------------------- */
-console.log('\nsocial / adding a picture');
-const attach = page.locator('[data-testid="composer-attach"]').first();
-note(await attach.count() > 0, 'the comment composer offers a picture');
-if (await attach.count()) {
-  const hint = await attach.getAttribute('aria-describedby');
-  const label = await attach.getAttribute('aria-label');
-  note(label === 'Add a picture', `and names the action ("${label}")`);
-  void hint;
+/**
+ * WHAT THESE ASSERTIONS USED TO BE, and why they changed on 2026-09-07.
+ *
+ * They looked for `composer-attach` — a lone unlabelled camera button — and for
+ * `composer-mic`, a microphone that sat where the send button belonged and did
+ * nothing when tapped, because there is no speech-to-text anywhere in this app.
+ * The owner asked for both to go. So the camera is now one NAMED row inside a
+ * `+` menu, alongside the other things a member can post, and the primary
+ * circle is a send button in every state. These assert the new controls; they
+ * were not deleted to make the script pass.
+ */
+console.log('\nsocial / the + menu on the comment composer');
+// Scoped to the thread's own composer: the club board keeps its composer
+// mounted behind this screen, so an unscoped testid matches a hidden one.
+const plus = page.locator('[data-testid="screen-thread"] [data-testid="composer-plus"]').last();
+note(await plus.count() > 0, 'the comment composer offers a +');
+if (await plus.count()) {
+  note((await plus.getAttribute('aria-label')) === 'Add to this post', 'and it names what it is for');
+  await plus.click();
+  await page.waitForTimeout(500);
+  note(await has('composer-plus-menu'), 'tapping it opens a menu');
+  await shot('composer-plus-menu');
+
+  const photo = page.locator('[data-testid="composer-action-photo"]').last();
+  note(await photo.count() > 0, 'the menu offers a picture, as a named row');
+  if (await photo.count()) {
+    const hint = ((await photo.innerText()) ?? '').replace(/\s+/g, ' ');
+    // The promise the server keeps, and the one thing it will not take, both
+    // said BEFORE anything is picked rather than as a note afterwards.
+    note(/location data is removed/i.test(hint), 'and says the location comes off before anything is picked');
+    note(/video is not accepted/i.test(hint), 'and says plainly that video is not accepted');
+  }
+  note(await has('composer-action-call'), 'the menu offers publishing a call');
+  note(await has('composer-action-kai'), 'and asking Kai');
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.locator('[data-testid="composer-plus-backdrop"]').click().catch(() => {});
+  await page.waitForTimeout(400);
 }
 
+console.log('\nsocial / send, never a microphone');
 await go('/room/room-meta');
 await page.waitForTimeout(1200);
 await shot('room-composer');
-note(await has('composer-attach'), 'the room composer offers one too');
+note(await has('composer-plus'), 'the room composer offers the + too');
+note(await has('composer-send'), 'and its primary action is Send');
+note((await page.locator('[data-testid="composer-mic"]').count()) === 0, 'there is no microphone');
 
 await go('/community');
 await page.waitForTimeout(1200);
-note(await has('composer-attach'), 'and so does the club board');
+note(await has('composer-plus'), 'and so does the club board');
+note(await has('composer-send'), 'whose primary action is Send with an empty field');
+note((await page.locator('[data-testid="composer-mic"]').count()) === 0, 'and not a microphone');
+const emptySend = page.locator('[data-testid="composer-send"]').first();
+note((await emptySend.getAttribute('aria-disabled')) === 'true', 'disabled while there is nothing to post');
 
-// Kai's composer is the SAME component and must NOT grow a camera.
+// Kai's composer is the SAME component and must NOT grow a camera or a + menu.
 await go('/');
 await page.waitForTimeout(2000);
-const kaiAttach = await page.locator('[data-testid="composer-attach"]').count();
-note(kaiAttach === 0, 'Kai\'s composer does not offer one — he does not take photographs');
+note((await page.locator('[data-testid="composer-plus"]').count()) === 0,
+  'Kai\'s composer offers neither — he does not take photographs');
+note((await page.locator('[data-testid="composer-mic"]').count()) === 0,
+  'and has no microphone either: there is no speech-to-text in this app');
 
 /* -- done ----------------------------------------------------------- */
 await browser.close();

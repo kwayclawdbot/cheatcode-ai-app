@@ -14,6 +14,7 @@
  * `source` on each result says which one you are looking at, and the screens
  * surface it rather than pretending.
  */
+import { Platform } from 'react-native';
 import { env, offlineMode } from './env';
 import { supabase } from './supabase';
 import { getAccessToken, recoverSession, SESSION_EXPIRED_COPY } from './auth-token';
@@ -801,9 +802,21 @@ export const communityApi = {
    * the browser/runtime to set its own boundary. Setting it by hand is the
    * classic way to make an upload that fails with no useful message.
    *
-   * The `{ uri, name, type }` shape is React Native's file object for FormData
-   * — it streams the file off disk rather than reading it into JavaScript, so
-   * a three-megabyte photo does not become a three-megabyte string first.
+   * THE FILE PART IS BUILT TWO DIFFERENT WAYS AND BOTH ARE LOAD-BEARING.
+   *
+   * On the PHONE, `{ uri, name, type }` is React Native's file object for
+   * FormData — the runtime recognises the shape and streams the file off disk
+   * rather than reading it into JavaScript, so a three-megabyte photo does not
+   * become a three-megabyte string first.
+   *
+   * On the WEB there is no such convention, and this is the bug that made
+   * uploads "not work" for every member using the hosted app. `FormData.append`
+   * takes a Blob or a string and nothing else: hand it a plain object and it is
+   * stringified to the literal text `[object Object]`. No file is attached, and
+   * the API answers, entirely correctly, "No picture arrived with that
+   * request." The formats were never the problem and neither was the server.
+   * The web fix is to produce a REAL file: the picked uri there is a `blob:`
+   * URL (see `features/media/pick.ts`), which `fetch` reads back into a Blob.
    */
   async uploadPhoto(
     photo: { uri: string; name: string; mime: string },
@@ -813,7 +826,19 @@ export const communityApi = {
 
     const form = new FormData();
     form.append('purpose', purpose);
-    form.append('file', { uri: photo.uri, name: photo.name, type: photo.mime } as unknown as Blob);
+    if (Platform.OS === 'web') {
+      const blob = await (await fetch(photo.uri)).blob();
+      // `File` is a Blob that carries a name. Where the runtime has no `File`
+      // constructor, append's third argument carries the filename instead —
+      // the part must have one either way or the server sees a nameless field.
+      if (typeof File === 'function') {
+        form.append('file', new File([blob], photo.name, { type: photo.mime }));
+      } else {
+        form.append('file', blob, photo.name);
+      }
+    } else {
+      form.append('file', { uri: photo.uri, name: photo.name, type: photo.mime } as unknown as Blob);
+    }
 
     const res = await fetch(`${env.apiBase}/api/v1/media`, {
       method: 'POST',

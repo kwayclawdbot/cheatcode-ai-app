@@ -26,6 +26,21 @@
  * VIDEO IS NOT OFFERED. `mediaTypes` is `['images']` and there is no branch
  * that handles a video asset, because the server refuses one — the reasons are
  * written out in migration 0033 and they are not reasons the phone can fix.
+ *
+ * ── THE WEB IS A THIRD PLATFORM AND IT DECODES DIFFERENTLY ──────────────
+ * On the phone the OS decodes the picture, so anything in the camera roll
+ * opens, HEIC included. On the web the BROWSER decodes it, into an `<img>` and
+ * then a canvas, and no browser but Safari will open an iPhone `.heic`. What
+ * came back from that was nothing: the picker reports 0×0 for a file it could
+ * not measure, the manipulator then rejects with a canvas element rather than
+ * an Error, and the member got a bare "That picture could not be opened." for
+ * every file they had picked — including the ones that were fine.
+ *
+ * So each picture is now handled ON ITS OWN. One file the browser cannot read
+ * costs that file and says which one and why; the rest still go up. Everything
+ * that DOES decode leaves here as a JPEG, on every platform, which is why the
+ * API's narrow list (image/jpeg and image/png, nothing else) is never something
+ * a member has to know about.
  */
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
@@ -49,7 +64,12 @@ export type PickedPhoto = {
 };
 
 export type PickOutcome =
-  | { ok: true; photos: PickedPhoto[] }
+  /**
+   * `skipped` is one plain sentence per file that could not be opened. It is
+   * separate from `photos` because both can be non-empty at once: three good
+   * pictures and one the browser would not read is a normal afternoon.
+   */
+  | { ok: true; photos: PickedPhoto[]; skipped: string[] }
   | { ok: false; reason: 'cancelled' }
   | { ok: false; reason: 'denied'; plain: string }
   | { ok: false; reason: 'failed'; plain: string };
@@ -97,10 +117,26 @@ export async function pickPhotos(remaining: number): Promise<PickOutcome> {
     if (res.canceled) return { ok: false, reason: 'cancelled' };
 
     const photos: PickedPhoto[] = [];
+    const skipped: string[] = [];
     for (const asset of res.assets.slice(0, remaining)) {
-      photos.push(await downscale(asset));
+      // Checked BEFORE the work, so a file the browser has already failed to
+      // measure is refused with the reason rather than with a stack trace.
+      const blocked = webCannotDecode(asset);
+      if (blocked) { skipped.push(blocked); continue; }
+      try {
+        photos.push(await downscale(asset));
+      } catch (e) {
+        skipped.push(plainFailure(asset, e));
+      }
     }
-    return { ok: true, photos };
+    // Nothing survived: this is a failure, not a partial success, and the
+    // reasons are what the member needs to read.
+    if (!photos.length) {
+      return skipped.length
+        ? { ok: false, reason: 'failed', plain: skipped.join(' ') }
+        : { ok: false, reason: 'cancelled' };
+    }
+    return { ok: true, photos, skipped };
   } catch (e) {
     return {
       ok: false,
@@ -108,6 +144,42 @@ export async function pickPhotos(remaining: number): Promise<PickOutcome> {
       plain: e instanceof Error ? `That picture could not be opened. ${e.message}` : 'That picture could not be opened.',
     };
   }
+}
+
+/**
+ * Web only: is this a file the browser has already shown it cannot read?
+ *
+ * TWO SIGNALS, BOTH FROM THINGS THAT ALREADY HAPPENED. The picker measures
+ * every image by loading it into an `<img>` and reports 0×0 when that load
+ * failed — a real photograph is never 0×0 — and an iPhone `.heic` names itself
+ * in its type and its filename. Neither is a guess about the future.
+ *
+ * Returns the sentence to show, or null when there is nothing wrong.
+ */
+function webCannotDecode(asset: ImagePicker.ImagePickerAsset): string | null {
+  if (Platform.OS !== 'web') return null;
+
+  const name = (asset.fileName ?? '').trim();
+  const mime = (asset.mimeType ?? '').toLowerCase();
+  const looksHeic = /heic|heif/.test(mime) || /\.(heic|heif)$/i.test(name);
+  const unmeasurable = (asset.width ?? 0) === 0 && (asset.height ?? 0) === 0;
+
+  if (!looksHeic && !unmeasurable) return null;
+  const subject = name ? `“${name}”` : 'That picture';
+  if (looksHeic) {
+    return `${subject} is an iPhone .heic picture, and this browser cannot open one — only Safari can. On your phone the app opens it fine; here, export it as a JPEG or PNG first.`;
+  }
+  return `${subject} could not be opened by this browser. JPEG and PNG always work.`;
+}
+
+/** What to say when the re-encode itself failed. */
+function plainFailure(asset: ImagePicker.ImagePickerAsset, e: unknown): string {
+  const name = (asset.fileName ?? '').trim();
+  const subject = name ? `“${name}”` : 'That picture';
+  // The web manipulator rejects with a CANVAS ELEMENT, not an Error, so
+  // `e.message` is not something that can be assumed to exist here.
+  const detail = e instanceof Error && e.message ? ` ${e.message}` : '';
+  return `${subject} could not be opened.${detail || ' JPEG and PNG always work.'}`;
 }
 
 /**

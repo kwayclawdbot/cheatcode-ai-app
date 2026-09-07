@@ -655,6 +655,18 @@ export const api = {
     )),
 
   /**
+   * `GET /community/calls?mode=` — ONE DESK'S calls, newest first. This is the
+   * Community tab on the Swing and Day Trade boards.
+   *
+   * It is a separate method rather than a second argument to the one above
+   * because the route treats them as two different questions and answers the
+   * desk when it is sent both (see its header). Two questions, two calls, no
+   * argument combination that quietly means something else.
+   */
+  communityCallsByMode: async (mode: GoalMode): Promise<CommunityCall[]> =>
+    adaptCommunityCalls(await request<unknown>(`/community/calls?mode=${encodeURIComponent(mode)}`)),
+
+  /**
    * Withdraw a call. It is NOT a delete: the row stays with status
    * `withdrawn`, so a member cannot quietly remove a call that went against
    * them and leave a record that only contains the good ones.

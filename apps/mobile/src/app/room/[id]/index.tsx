@@ -465,6 +465,12 @@ export default function RoomScreen() {
             onSend={send}
             onKai={() => setKaiSheet(true)}
             onStructured={() => router.push(`/room/${roomId}/compose`)}
+            // The + menu's Kai row runs ONE command — the catch-up summary —
+            // through the same `runKai` the sheet uses, so a refusal arrives in
+            // the service's own words in the same place as every other one.
+            // Nothing is fired without a tap: this call costs credits.
+            onAskKai={() => { void runKai('summarize'); }}
+            callSymbol={room?.setup?.symbol ?? null}
             disabled={!!room?.config.posting_restricted}
             disabledReason={room?.config.posting_restricted ? 'Posting is restricted in this room right now. You can still read and ask Kai.' : null}
             attachments={media.attachments}

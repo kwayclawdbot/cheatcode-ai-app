@@ -62,8 +62,18 @@ await shot('board');
   const t = await text();
   note(await has('screen-community'), 'the Community tab renders');
   note(await has('club-composer'), 'there is a composer');
-  note(await has('room-rail'), 'the three club rooms are selectable');
-  note(/Day Trade/.test(t) && /Swing/.test(t) && /Investing/.test(t), 'and all three are named');
+  // ONE MODE SWITCH (owner, 7 Sept). The in-body rail of day/swing/invest
+  // pills is gone; the headbar control is the switch and the header names the
+  // room. Asserted absent rather than simply unmentioned — a proof that stopped
+  // referring to the rail would not notice it coming back.
+  note(!(await has('room-rail')), 'there is no second mode switch in the feed body');
+  note(await has('club-mode-segmented'), 'the headbar mode control is the one switch');
+  note(await has('club-room-name'), 'and the header names the room you are reading');
+  note(/Day Trade/.test(t), 'which is Day Trade, the fixture profile’s mode');
+  // THE FABRICATED SYNTHESIS BAR IS GONE. It read as Kai having looked at the
+  // conversation; it was a template fed the circle symbols.
+  note(!/driving today’s discussion|driving today's discussion/.test(t),
+    'nothing claims to have read the conversation');
   note(await has('circles-row'), 'the circles row is drawn');
   note(!/Premium/.test(t), 'the circles row no longer advertises a premium upsell');
   // Presence is NOT checked here. In fixtures the number comes from the fixture

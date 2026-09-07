@@ -162,7 +162,12 @@ note(await has('screen-community'), 'the Community tab opened');
 // simply stopped mentioning it would not notice it coming back.
 note(!(await has('community-feed')), 'there is no Rooms/Following switch on the tab any more');
 note(!(await has('following-feed')), 'and no Following feed as a destination');
-note(await has('room-rail'), 'what the tab shows is the rooms — the rail naming which one you are reading');
+// What the tab shows is the ROOMS. The rail that used to name them is gone
+// (owner, 7 Sept) because it duplicated the headbar mode control; the header
+// line names the room instead and the headbar changes it.
+note(!(await has('room-rail')), 'and no second mode switch in the feed body');
+note(await has('club-room-name'), 'the header names the room you are reading');
+note(await has('club-mode-segmented'), 'and the headbar mode control is what changes it');
 note(await has('club-composer'), 'and the room composer, because this screen is always a room now');
 await shot('05-community-rooms');
 
@@ -172,7 +177,7 @@ await shot('05-community-rooms');
 // only for old links.
 await go('/community?feed=following');
 note(!(await has('following-feed')), '?feed=following no longer opens a separate feed');
-note(await has('room-rail'), 'it lands on the rooms, which is what the tab is');
+note(await has('club-room-name'), 'it lands on a room, which is what the tab is');
 
 /* -- 2c. THE CALL IS A MESSAGE, DRAWN AS A CARD --------------------- */
 await go('/community');
@@ -277,7 +282,7 @@ note(
  */
 console.log('\nsocial-trading / the same call, in the room screen');
 await go('/room/room-day-trade');
-note(await has('screen-room') || await has('room-day-trade') || (await text()).length > 0, 'the room screen opened');
+note(await has('screen-room') || (await text()).length > 0, 'the room screen opened');
 const roomCall = page.locator('[data-testid^="message-call-"]').first();
 note(await roomCall.count() > 0, 'MessageRow draws the call as a card too, not as a sentence');
 if (await roomCall.count()) {

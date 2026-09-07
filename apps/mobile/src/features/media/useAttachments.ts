@@ -49,6 +49,12 @@ export function useAttachments(limit = MAX_PER_POST): AttachmentsController {
       return;
     }
 
+    // Some of them opened and some did not. The ones that did carry on
+    // uploading; the ones that did not are named, once, above the composer —
+    // silently dropping a file the member watched themselves select is the
+    // failure that gets reported as "the uploads don't work".
+    if (outcome.skipped.length) setNotice(outcome.skipped.join(' '));
+
     const started: Attachment[] = outcome.photos.map((p, i) => ({
       key: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
       uri: p.uri,

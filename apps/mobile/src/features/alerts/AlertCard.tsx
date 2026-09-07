@@ -454,9 +454,15 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
         </>
       ) : null}
 
-      {/* Monitoring progress stays visible on Watching cards */}
+      {/* Monitoring progress stays visible on watching cards — and since those
+          cards now live inside Active rather than behind a tab of their own,
+          this bar is the thing that says which of them is nearly there. It
+          carries a testID so a proof can assert it survived the fold. */}
       {alert.progress ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+        <View
+          testID={`alert-progress-${alert.symbol}`}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}
+        >
           <T size={11} c={color.muted} style={{ width: 74 }}>To trigger</T>
           <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: alpha.ivory08, overflow: 'hidden' }}>
             <View style={{ width: `${Math.max(0, Math.min(100, alert.progress.pct))}%`, height: '100%', borderRadius: 3, backgroundColor: color.violet }} />

@@ -15,34 +15,75 @@ import { AlertsEmpty, HistoryAlertRow, StandardAlertCard } from './AlertCard';
 import { useAlertActions, useAlertBuilder, useAlertsRound4 } from './useAlerts';
 import { ModeControl } from '../home/ModeSheet';
 import { secondTab } from '../nav/second-tab';
-import type { AlertTab, GoalMode } from '../../lib/types';
+import { Avatar } from '../community/ui/Chrome';
+import { BeltChip, CommunityCallCard, secondaryHandle, useDeskCalls } from '../social';
+import type { AlertBoardTab, AlertCard, AlertCardState, CommunityCall, GoalMode } from '../../lib/types';
 import { NOT_ADVICE_ALERTS } from '../legal/disclaimers';
 
 /**
  * Alerts — prototype board "Alerts" + docs/10 §1–§5.
  *
- * Alerts are COMPLETE TRADE OBJECTS, not notifications. Three top-level
- * states — Active · Watching · History — and one standard card grammar across
- * all three: grade medallion, qualitative scorecard (never fractions),
- * expandable evidence and ONE state-driven primary action that routes into
- * the Trade Portal with the alert context (`/trade/[symbol]?alert=&ctx=alert`).
- * There is no alert-detail destination between the card and the portal.
- * The natural-language composer stays.
+ * Alerts are COMPLETE TRADE OBJECTS, not notifications, and one standard card
+ * grammar runs across the board: grade medallion, qualitative scorecard (never
+ * fractions), expandable evidence and ONE state-driven primary action that
+ * routes into the Trade Portal with the alert context
+ * (`/trade/[symbol]?alert=&ctx=alert`). There is no alert-detail destination
+ * between the card and the portal. The natural-language composer stays.
  *
  * This is the Day Trade and Swing face of the second tab. In Invest mode the
  * same tab draws the research desk instead, so the mode chip sits in the
  * header here: the person who changed the mode is the person who has to be
  * able to change it back, and Account is too far to hunt for.
+ *
+ * ── THREE TABS, AND WHICH THREE CHANGED (owner, 7 Sept) ──────────────────
+ * It was Active · Watching · History. Watching was never a different KIND of
+ * thing from Active — it is the same alert earlier in its life — so keeping it
+ * behind its own tab meant checking two lists to answer the one question the
+ * board exists for, "is there anything for me". The watching cards now sit IN
+ * Active, unchanged, progress bars and all, sorted after the ones asking for a
+ * decision. `ACTIVE_ORDER` below is what makes that one list rather than two
+ * stuck together.
+ *
+ * The tab it freed is COMMUNITY: what MEMBERS of this desk have called, newest
+ * first, in the volt card that says a person wrote it. That belongs beside the
+ * house's alerts and nowhere near inside them — the two are never mixed into a
+ * single list, because volt and violet mean different authors and a list that
+ * interleaved them would be teaching the opposite.
  */
 
-const TABS: { key: AlertTab; label: string }[] = [
+const TABS: { key: AlertBoardTab; label: string }[] = [
   { key: 'active', label: 'Active' },
-  { key: 'watching', label: 'Watching' },
+  { key: 'community', label: 'Community' },
   { key: 'history', label: 'History' },
 ];
 
+/**
+ * ONE LIST, ORDERED BY HOW MUCH IT WANTS YOU.
+ *
+ * Active holds what the server calls `active` and what it calls `watching`.
+ * Concatenating them would show a triggered card, then a dormant one, then
+ * another triggered one — the join visible as a stutter in the middle. Sorting
+ * the whole set on this single gradient — happening now, ready for you, running,
+ * planned, nearly there, being kept an eye on, over — makes the seam disappear,
+ * and the sort is stable so the server's own ordering survives inside each rank.
+ *
+ * `closed` never reaches this list; it is on History. It is here so the record
+ * is total and the next lifecycle state cannot be silently ranked zero.
+ */
+const ACTIVE_ORDER: Record<AlertCardState, number> = {
+  entry_reached: 0,
+  ready: 1,
+  order_pending: 2,
+  position_active: 3,
+  planned: 4,
+  forming: 5,
+  watching: 6,
+  invalidated: 7,
+  closed: 8,
+};
+
 function StateTabs({ value, onChange, counts }: {
-  value: AlertTab; onChange: (t: AlertTab) => void; counts: Record<AlertTab, number>;
+  value: AlertBoardTab; onChange: (t: AlertBoardTab) => void; counts: Record<AlertBoardTab, number>;
 }) {
   return (
     <View style={{ flexDirection: 'row', gap: 26, borderBottomWidth: 1, borderBottomColor: alpha.ivory08 }} testID="alerts-tabs">
@@ -78,6 +119,44 @@ function StateTabs({ value, onChange, counts }: {
   );
 }
 
+/**
+ * A MEMBER'S CALL ON THE BOARD: the author, then the card.
+ *
+ * The compact card drops its own authorship block on purpose — in a room the
+ * message row above it already carries the avatar, the name and the time. This
+ * list is that row. It is also the tap target for the profile: the card's
+ * insides are already pressable (the ticker), and on web react-native renders
+ * `accessibilityRole="button"` as a real `<button>`, which cannot contain
+ * another. So the name is the door, above the card, where a name belongs.
+ */
+function BoardCallRow({ call }: { call: CommunityCall }) {
+  const router = useRouter();
+  const handle = secondaryHandle(call.author.display_name, call.author.handle);
+  return (
+    <View style={{ gap: 7 }} testID={`board-call-${call.id}`}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${call.author.display_name}, open their profile`}
+        accessibilityHint="Everything they have published, and how it turned out."
+        testID={`board-call-author-${call.id}`}
+        onPress={() => router.push(`/contributor/${encodeURIComponent(call.author.user_id)}` as never)}
+        style={({ pressed }) => ({
+          flexDirection: 'row', alignItems: 'center', gap: 8,
+          paddingHorizontal: 2, opacity: pressed ? 0.65 : 1,
+        })}
+      >
+        <Avatar initial={call.author.initial} url={call.author.avatar_url} size={22} />
+        <T size={12.5} weight="bold" numberOfLines={1}>{call.author.display_name}</T>
+        {handle ? <T size={10.5} c={color.dim}>{handle}</T> : null}
+        <BeltChip belt={call.author.belt} />
+        <View style={{ flex: 1 }} />
+        <T size={10.5} c={color.dim}>{call.time_label}</T>
+      </Pressable>
+      <CommunityCallCard call={call} compact />
+    </View>
+  );
+}
+
 export function AlertsBoard({ mode }: { mode: GoalMode }) {
   const router = useRouter();
   /** Fixtures preview only — lets the owner and Playwright see the quiet day. */
@@ -88,12 +167,36 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
   const actions = useAlertActions(reload);
   const builder = useAlertBuilder();
   const second = secondTab(mode);
+  /** This desk's member calls. A separate route, never folded into `/alerts`. */
+  const calls = useDeskCalls(mode);
+  const callList = calls.data ?? [];
 
-  const counts = useMemo<Record<AlertTab, number>>(() => ({
-    active: data?.counts.active ?? data?.active.length ?? 0,
-    watching: data?.counts.watching ?? data?.watching.length ?? 0,
+  /**
+   * ACTIVE, FOLDED. The server's two lists become one, then sort onto the one
+   * gradient. Nothing is dropped and nothing is re-styled: a watching card is
+   * the same `StandardAlertCard` it always was, progress bar included.
+   */
+  const activeList = useMemo<AlertCard[]>(() => {
+    if (!data) return [];
+    return [...data.active, ...data.watching]
+      .sort((a, b) => ACTIVE_ORDER[a.state] - ACTIVE_ORDER[b.state]);
+  }, [data]);
+
+  /**
+   * COUNTS THAT ARE TRUE, and each one true in its own way.
+   *
+   * Active is the server's own `active` + `watching` numbers added together —
+   * two counts the API sends, not a guess about a list we might only have half
+   * of. Community is `callList.length`, the calls actually on screen, because
+   * that route sends no count and inventing one would be the exact lie this
+   * board keeps not telling. History is unchanged.
+   */
+  const counts = useMemo<Record<AlertBoardTab, number>>(() => ({
+    active: (data?.counts.active ?? data?.active.length ?? 0)
+      + (data?.counts.watching ?? data?.watching.length ?? 0),
+    community: callList.length,
     history: data?.counts.history ?? data?.history.length ?? 0,
-  }), [data]);
+  }), [data, callList.length]);
 
   if (!data && loading) {
     return (
@@ -109,26 +212,29 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
     builder.clear();
   };
 
-  const list = data ? data[tab] : [];
-
   /**
    * A quiet day has to lead somewhere. Each offer below is a route that
-   * already exists — Kai on Home, the other state tab, a company page — so an
-   * empty list is a fork in the road rather than a wall.
+   * already exists — Kai on Home, the other tab, a company page, a member's
+   * own call — so an empty list is a fork in the road rather than a wall.
    */
   const askKai = { label: 'Ask Kai what he sees', testID: 'alerts-empty-kai', onPress: () => router.push('/home') };
   const lookUp = { label: 'Look up a company', testID: 'alerts-empty-search', onPress: () => router.push('/symbol/search') };
-  const seeWatching = {
-    label: `See the ${counts.watching} Kai is watching`,
-    testID: 'alerts-empty-watching',
-    onPress: () => setTab('watching'),
+  const seeCommunity = {
+    label: counts.community === 1 ? 'See the 1 member call' : `See the ${counts.community} member calls`,
+    testID: 'alerts-empty-community',
+    onPress: () => setTab('community'),
+  };
+  const publishCall = {
+    label: 'Publish a call',
+    testID: 'alerts-empty-publish',
+    onPress: () => router.push('/community/call/new'),
   };
 
   const offers =
     tab === 'active'
-      ? (counts.watching ? [seeWatching, askKai] : [askKai, lookUp])
-      : tab === 'watching'
-      ? [lookUp, askKai]
+      ? (counts.community ? [seeCommunity, askKai] : [askKai, lookUp])
+      : tab === 'community'
+      ? [publishCall, lookUp]
       : [askKai];
 
   return (
@@ -150,32 +256,46 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
         testID={`alerts-list-${tab}`}
       >
         {tab === 'history' ? (
-          list.length ? (
-            list.map((a) => <HistoryAlertRow key={a.id} alert={a} />)
+          data?.history.length ? (
+            data.history.map((a) => <HistoryAlertRow key={a.id} alert={a} />)
           ) : (
             <AlertsEmpty
               copy="Nothing has finished yet. Executed, closed and invalidated alerts land here, and the record is worth more than the list."
               offers={offers}
             />
           )
-        ) : list.length ? (
-          list.map((a) => <StandardAlertCard key={a.id} alert={a} />)
+        ) : tab === 'community' ? (
+          callList.length ? (
+            callList.map((c) => <BoardCallRow key={c.id} call={c} />)
+          ) : (
+            <AlertsEmpty
+              // NOT the alerts payload's `empty_copy`. That sentence is about
+              // what Kai is or is not seeing, and this list is not Kai's.
+              copy={
+                calls.notAvailable
+                  ? "Member calls aren't live on this stack yet."
+                  : 'Nobody on this desk has published a call yet. A call is a member saying what they are doing and letting it be checked later — yours can be the first.'
+              }
+              offers={offers}
+            />
+          )
+        ) : activeList.length ? (
+          activeList.map((a) => <StandardAlertCard key={a.id} alert={a} />)
         ) : (
           <AlertsEmpty
-            // Both tabs take the server's sentence when there is one. The
-            // server is the half that knows which mode the board is in, and an
-            // empty Active tab means something different in Day Trade than it
-            // does in Swing. The strings below are the fallback for an offline
-            // or fixture render, not a second opinion.
-            copy={
-              tab === 'active'
-                ? (data?.empty_copy ?? "Nothing needs a decision right now. Kai moves an alert here the moment a verified event happens — no alert is better than a made-up one.")
-                : (data?.empty_copy ?? "Kai isn't monitoring anything for you yet. Tell him what to watch below, in your own words.")
-            }
+            // Active takes the server's sentence when there is one. The server
+            // is the half that knows which mode the board is in, and an empty
+            // Active tab means something different in Day Trade than it does in
+            // Swing. The string below is the fallback for an offline or fixture
+            // render, not a second opinion.
+            copy={data?.empty_copy ?? "Nothing needs a decision right now. Kai moves an alert here the moment a verified event happens — no alert is better than a made-up one."}
             offers={offers}
           />
         )}
 
+        {tab === 'community' && calls.error ? (
+          <T size={11} c={color.muted} align="center">{calls.error}</T>
+        ) : null}
         {error ? <T size={11} c={color.muted} align="center">{error}</T> : null}
         {actions.error ? <T size={11} c={color.red} align="center">{actions.error}</T> : null}
         {isFixture ? <T size={10} c={color.dim} align="center">Sample alerts — the alerts service is not connected here.</T> : null}

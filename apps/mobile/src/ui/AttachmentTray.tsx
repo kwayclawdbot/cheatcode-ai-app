@@ -106,6 +106,12 @@ export function AttachmentTray({
 /**
  * The add-a-picture button.
  *
+ * NOT MOUNTED ANYWHERE ANY MORE. Both composers now put picking a photo behind
+ * the + menu (`ui/ComposerActions.tsx`) as a NAMED row, because a bar of
+ * unlabelled glyphs stops scaling at about two of them. Kept here, unused, only
+ * so a screen that wants a bare one-purpose camera button has it; anything that
+ * belongs beside the other things you can post belongs in the menu instead.
+ *
  * Its accessibility hint carries the promise the server keeps — that the
  * location comes off — BEFORE anything is picked, rather than as a note
  * afterwards. Somebody deciding whether to post a photo of their desk should be

@@ -94,7 +94,7 @@ await shot('01-tab');
   const t = await text();
   note(await has('screen-day-trade-soon'), 'a real day-trade account gets the coming-soon screen');
   note(!(await has('screen-alerts')), 'and not the alerts board');
-  note(!(await has('alerts-tabs')), 'no Active/Watching/History rail');
+  note(!(await has('alerts-tabs')), 'no Active/Community/History rail');
   note(/Not live yet/i.test(t), 'it says the mode is not live');
   // The bug this replaces: swing cards under a same-day heading.
   note(!/same-day alerts/i.test(t), 'it does not describe anything on screen as same-day alerts');

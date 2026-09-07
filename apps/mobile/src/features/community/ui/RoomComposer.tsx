@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { View, TextInput, Pressable } from 'react-native';
+import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { alpha, color, gradient, gradientAngle, radius } from '../../../ui/tokens';
 import { family } from '../../../ui/fonts';
 import { T } from '../../../ui/Text';
-import { Plus } from '../../../ui/Icons';
 import { Send } from './Icons';
-import { AttachButton, AttachmentTray, type Attachment } from '../../../ui/AttachmentTray';
+import { AttachmentTray, type Attachment } from '../../../ui/AttachmentTray';
+import { ComposerActions, type ComposerAction } from '../../../ui/ComposerActions';
 import { QuoteBlock } from './Social';
 import type { MessageQuote } from '../types';
 
@@ -15,12 +16,22 @@ export type { Attachment };
 export function RoomComposer({
   roomLabel, onSend, onKai, onStructured, disabled, disabledReason, testID,
   attachments = [], onAttach, onRemoveAttachment, attachLimit = 4, placeholder,
-  quote, quoteLabel, onClearQuote,
+  quote, quoteLabel, onClearQuote, onPublishCall, onAskKai, callSymbol,
 }: {
   roomLabel: string;
   onSend: (text: string) => void;
   onKai: () => void;
   onStructured: () => void;
+  /**
+   * The + menu's shortcut to Kai — ONE explicit tap, one call, never automatic:
+   * a room summary costs the member credits. Absent, the row opens the full
+   * @Kai sheet instead of guessing at a command.
+   */
+  onAskKai?: () => void;
+  /** Absent → the + menu pushes the call composer itself, with `callSymbol`. */
+  onPublishCall?: () => void;
+  /** Pre-fills the call composer's ticker when the room has one. */
+  callSymbol?: string | null;
   disabled?: boolean;
   disabledReason?: string | null;
   testID?: string;
@@ -44,6 +55,7 @@ export function RoomComposer({
   onClearQuote?: () => void;
 }) {
   const [value, setValue] = useState('');
+  const router = useRouter();
 
   const uploading = attachments.some((a) => a.state === 'uploading');
   const ready = attachments.filter((a) => a.state === 'ready');
@@ -59,6 +71,52 @@ export function RoomComposer({
     onSend(value.trim());
     setValue('');
   };
+
+  /**
+   * WHAT THE + OFFERS.
+   *
+   * A LIST, NOT THREE HARDCODED BUTTONS — a fourth thing to post is a line
+   * here. Every row says what it does, and the two rows that would otherwise
+   * over-promise say so instead: the picker takes pictures and not video,
+   * because the service refuses video for reasons written out in migration
+   * 0033, and asking Kai spends credits, so the row says that before the tap
+   * rather than the account screen saying it afterwards.
+   */
+  const actions: ComposerAction[] = [
+    ...(onAttach ? [{
+      id: 'photo',
+      label: 'Add a picture',
+      hint: attachments.length >= attachLimit
+        ? `You already have ${attachLimit}. Remove one to add another.`
+        : `Up to ${attachLimit}. Pictures only — video is not accepted here. Location data is removed from every one.`,
+      disabled: !canAttach,
+      onPress: onAttach,
+    } as ComposerAction] : []),
+    {
+      id: 'call',
+      label: 'Publish a call',
+      hint: 'Entry, stop, target. It goes on your profile and gets scored.',
+      disabled,
+      onPress: onPublishCall ?? (() => router.push(
+        callSymbol ? `/community/call/new?symbol=${encodeURIComponent(callSymbol)}` : '/community/call/new'
+      )),
+    },
+    {
+      id: 'idea',
+      label: 'Post an idea',
+      hint: 'Thesis, entry, invalidation, risk, target — as one object.',
+      disabled,
+      onPress: onStructured,
+    },
+    {
+      id: 'kai',
+      label: 'Ask Kai to catch me up',
+      hint: 'A summary of what has been said here. One tap, one answer — it costs credits.',
+      tone: 'kai',
+      disabled,
+      onPress: onAskKai ?? onKai,
+    },
+  ];
 
   return (
     <View style={{ gap: 8 }} testID={testID ?? 'room-composer'}>
@@ -95,26 +153,10 @@ export function RoomComposer({
       <AttachmentTray attachments={attachments} onRemove={onRemoveAttachment} />
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        {onAttach ? (
-          <AttachButton onPress={onAttach} disabled={!canAttach} limit={attachLimit} />
-        ) : null}
-
-        <Pressable
-          testID="composer-structured"
-          accessibilityRole="button"
-          accessibilityLabel="Post an idea"
-          accessibilityHint="Opens the structured composer: thesis, entry, invalidation, risk, target, evidence."
-          disabled={disabled}
-          onPress={onStructured}
-          style={({ pressed }) => ({
-            width: 44, height: 44, borderRadius: 22,
-            alignItems: 'center', justifyContent: 'center',
-            borderWidth: 0.5, borderColor: alpha.ivory24,
-            opacity: disabled ? 0.45 : pressed ? 0.8 : 1,
-          })}
-        >
-          <Plus size={16} color={color.text} />
-        </Pressable>
+        {/* ONE + FOR EVERYTHING YOU CAN ADD. This was two unlabelled glyphs —
+            a photograph and a plus — that between them offered exactly two of
+            the four things a member can put in a room, and named neither. */}
+        <ComposerActions actions={actions} disabled={disabled} />
 
         <LinearGradient
           colors={gradient.composer as unknown as readonly [string, string, ...string[]]}

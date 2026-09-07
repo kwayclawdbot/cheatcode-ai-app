@@ -6,7 +6,10 @@ import {
   fixtureAlertsSimple,
 } from '../../lib/fixtures';
 import { mergeAlertsTab } from '../../lib/adapters';
-import type { AlertDetail, AlertDraftPreview, AlertLifecycle, AlertMonitoring, AlertsRound4, AlertsSimple, AlertTab } from '../../lib/types';
+import type {
+  AlertBoardTab, AlertDetail, AlertDraftPreview, AlertLifecycle, AlertMonitoring, AlertsRound4,
+  AlertsSimple, AlertTab,
+} from '../../lib/types';
 
 /** GET /alerts, grouped into the five lifecycle sections. */
 export function useAlertsLifecycle() {
@@ -148,30 +151,56 @@ export function useAlertsSimple() {
 /* ==================================================================== */
 
 /**
- * `GET /alerts?tab=` → Active · Watching · History.
+ * `GET /alerts?tab=` → the server's Active · Watching · History, read by a
+ * board that draws Active · Community · History.
  *
  * The API answers with the requested tab's cards plus the counts for all
  * three, so the hook keeps the three lists it has already seen and refreshes
- * one at a time. Switching tabs therefore never blanks the screen.
+ * only what the visible tab needs. Switching tabs therefore never blanks the
+ * screen.
+ *
+ * ── WHY THE ACTIVE TAB COSTS TWO REQUESTS ────────────────────────────────
+ * Watching folded into Active on 7 Sept (see `AlertBoardTab`). The server still
+ * shapes three buckets, on purpose: `alerts.tab` is a GENERATED column and the
+ * lifecycle mapping behind it is the same one History and the resolver read.
+ * So the fold is done here, and the board's Active tab has to hold both lists —
+ * which means asking for both. They go out together rather than one after the
+ * other, so the screen waits for the slower of the two and not for their sum.
+ *
+ * The alternative was teaching `?tab=` to mean "active and watching", which is
+ * a third meaning for a word the database already defines, for the sake of one
+ * request. `history` still costs exactly one.
  */
 export function useAlertsRound4(fixture: 'default' | 'empty' = 'default') {
   const offline = !api.available();
   // Fixtures preview only — lets the owner and Playwright see the quiet day.
   const seed = fixture === 'empty' ? fixtureAlertsRound4Empty : fixtureAlertsRound4;
-  const [tab, setTab] = useState<AlertTab>('active');
+  const [tab, setTab] = useState<AlertBoardTab>('active');
   const [data, setData] = useState<AlertsRound4 | null>(offline ? seed : null);
   const [loading, setLoading] = useState(!offline);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
+  /**
+   * Which of the server's buckets this board tab needs. `community` needs none
+   * of them — it is a different route entirely — so it never fires a request
+   * and never blanks the alert lists already held.
+   */
+  const wanted: AlertTab[] =
+    tab === 'active' ? ['active', 'watching'] : tab === 'history' ? ['history'] : [];
+
   useEffect(() => {
     if (offline) { setData(seed); setLoading(false); return; }
+    if (!wanted.length) { setLoading(false); return; }
     let alive = true;
     setLoading(true);
-    api.alertsRound4(tab)
-      .then((incoming) => {
+    Promise.all(wanted.map((t) => api.alertsRound4(t).then((incoming) => ({ t, incoming }))))
+      .then((answers) => {
         if (!alive) return;
-        setData((prev) => (prev ? mergeAlertsTab(prev, incoming, tab) : incoming));
+        setData((prev) => answers.reduce(
+          (acc: AlertsRound4 | null, { t, incoming }) => (acc ? mergeAlertsTab(acc, incoming, t) : incoming),
+          prev,
+        ));
         setError(null);
       })
       .catch((e: unknown) => {
@@ -182,6 +211,8 @@ export function useAlertsRound4(fixture: 'default' | 'empty' = 'default') {
       })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
+    // `wanted` is derived from `tab` and rebuilt every render; `tab` is the dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offline, seed, tab, tick]);
 
   return {

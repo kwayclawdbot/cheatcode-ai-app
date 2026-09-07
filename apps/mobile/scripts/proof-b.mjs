@@ -65,10 +65,13 @@ const main = async () => {
     // #investing, all visible to everyone. There is no mode chip row to tap any
     // more, so [1] shoots the directory and then opens the second room from its
     // own row — which is the only way in now.
-    console.log('\n[1] community home — three rooms');
+    console.log('\n[1] community home — three rooms, one switch');
     await open(page, '/community');
     await shot(page, 'b-01-community');
-    await tap(page, 'room-swing', 1400);
+    // The in-body room rail went on 7 Sept — it was a second day/swing/invest
+    // switch under the one in the headbar. The headbar control is the way into
+    // another room now, so that is what this taps.
+    await tap(page, 'mode-seg-swing', 1600);
     await shot(page, 'b-02-room-swing');
 
     console.log('[2] the day-trade room, with its pinned setup');

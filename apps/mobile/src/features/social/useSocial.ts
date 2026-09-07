@@ -16,7 +16,8 @@ import {
   fixtureLeaderboard,
 } from '../../lib/fixtures';
 import type {
-  CommunityCall, ContributorSocial, FollowFeed, FollowState, Leaderboard, LeaderboardPeriod,
+  CommunityCall, ContributorSocial, FollowFeed, FollowState, GoalMode, Leaderboard,
+  LeaderboardPeriod,
 } from '../../lib/types';
 import type { CreateCommunityCallBody } from '@cheatcode/shared';
 
@@ -31,6 +32,24 @@ export function useCommunityCalls(userId?: string) {
     ? fixtureCommunityCalls.filter((c) => c.author.user_id === userId)
     : fixtureCommunityCalls;
   return useResource<CommunityCall[]>(() => api.communityCalls(userId), seed, [userId ?? '']);
+}
+
+/**
+ * `GET /community/calls?mode=` — ONE DESK'S calls, newest first.
+ *
+ * The Community tab on the Swing and Day Trade boards. It is deliberately not
+ * folded into the alerts payload: a member's call is not a house alert, it has
+ * no grade and no lifecycle, and the route that already answers this question
+ * has an index built for exactly this read. Widening `/alerts` to carry a
+ * second kind of object would have put them in one payload and, sooner or
+ * later, in one list.
+ *
+ * Offline the fixtures are filtered by the same `mode` the server filters on,
+ * so the fixture board and the real board disagree about nothing.
+ */
+export function useDeskCalls(mode: GoalMode) {
+  const seed = fixtureCommunityCalls.filter((c) => c.mode === mode);
+  return useResource<CommunityCall[]>(() => api.communityCallsByMode(mode), seed, [mode]);
 }
 
 /** `GET /contributors/:id` — the community half of a profile. */

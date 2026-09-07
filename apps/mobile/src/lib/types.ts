@@ -787,8 +787,30 @@ export type Experience = 'new' | 'some' | 'pro';
 /** "What should Kai watch?" chips. */
 export type FocusKey = 'tech' | 'ai' | 'energy' | 'etf' | 'crypto' | 'earnings';
 
-/** Alerts IA — exactly three top-level states (spec §1). */
+/**
+ * THE SERVER'S THREE BUCKETS. This is the `?tab=` query parameter, the key on
+ * every `AlertTabChip` the API sends, and the shape of the `alerts.tab`
+ * GENERATED column in the database, which maps lifecycle states onto exactly
+ * these three words. It is a contract with the server and it does not move.
+ */
 export type AlertTab = 'active' | 'watching' | 'history';
+
+/**
+ * WHAT THE BOARD DRAWS, which is no longer the same list (owner, 7 Sept).
+ *
+ * Watching was its own tab and should not have been: a card Kai is watching and
+ * a card that has just triggered are the same object at two moments of one
+ * life, and splitting them made a person check two lists to answer one
+ * question. So Watching FOLDED INTO ACTIVE — the cards are unchanged, progress
+ * bars and all, and they sort after the ones that need a decision — and the tab
+ * it vacated became COMMUNITY, the desk's member-published calls.
+ *
+ * The fold is a client-side reading of the server's three buckets. Nothing
+ * about `AlertTab`, the generated column or the lifecycle mapping changed: a
+ * board tab of `active` reads the server's `active` AND `watching`, and
+ * `community` is not an alerts read at all — it is `GET /community/calls?mode=`.
+ */
+export type AlertBoardTab = 'active' | 'community' | 'history';
 
 /** Card lifecycle → the ONE state-driven primary action (spec §5). */
 export type AlertCardState =

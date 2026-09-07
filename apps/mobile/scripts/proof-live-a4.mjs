@@ -209,7 +209,7 @@ const main = async () => {
   await assertNoFractions(page, 'ticker page');
 
   // ---- 4. Alerts as trade objects
-  console.log('[4] Alerts — Active / Watching / History');
+  console.log('[4] Alerts — Active / Community / History');
   await go(page, '/alerts', 'screen-alerts', 'alerts-tabs');
   await page.waitForTimeout(2500);
   await shot(page, 'live-a4-12-alerts-active');
@@ -237,8 +237,12 @@ const main = async () => {
     }
     await go(page, '/alerts', 'screen-alerts', 'alerts-tabs');
     await page.waitForTimeout(2500);
-    // the new alert is a monitored idea → it lands in Watching
-    await softTap(page, 'screen-alerts', 'alerts-tab-watching', 'Watching tab');
+    // The new alert is a monitored idea. Watching folded into Active on
+    // 7 Sept, so it lands on the tab we are already on — nothing to press.
+    note(
+      (await page.locator('[data-testid="alerts-tab-watching"]').count()) === 0,
+      'Watching is not a tab of its own any more — the card lands in Active',
+    );
     await page.waitForTimeout(2000);
     await shot(page, 'live-a4-12d-alerts-watching-after-create');
   }
@@ -281,13 +285,19 @@ const main = async () => {
     await shot(page, 'live-a4-14-alerts-story');
     await assertNoFractions(page, 'alerts · story open');
   } else {
-    console.log('  · no active card on this account — Watching is where the seed lands');
+    console.log('  · no card on this account yet — Active is where the seed lands');
   }
 
-  await softTap(page, 'screen-alerts', 'alerts-tab-watching', 'Watching tab');
+  // The tab Watching vacated is Community: this desk's member-published calls,
+  // newest first, in the volt card that says a person wrote them.
+  await softTap(page, 'screen-alerts', 'alerts-tab-community', 'Community tab');
   await page.waitForTimeout(1500);
-  await shot(page, 'live-a4-15-alerts-watching');
-  await assertNoFractions(page, 'alerts · watching');
+  await shot(page, 'live-a4-15-alerts-community');
+  note(
+    (await page.locator('[data-testid="alerts-list-community"]').count()) > 0,
+    'the Community tab draws its own list, not the alerts one',
+  );
+  await assertNoFractions(page, 'alerts · community');
   await softTap(page, 'screen-alerts', 'alerts-tab-history', 'History tab');
   await page.waitForTimeout(1500);
   await shot(page, 'live-a4-16-alerts-history');
@@ -304,8 +314,8 @@ const main = async () => {
     note(/\/trade\/[A-Z.]+\?alert=[^&]+&ctx=alert/.test(url), `CTA routed to ${url}`);
     await shot(page, 'live-a4-17-cta-destination');
   } else {
-    // Watching cards carry the same contract
-    await softTap(page, 'screen-alerts', 'alerts-tab-watching', 'Watching tab');
+    // Watching cards carry the same contract, and they are on Active now.
+    await softTap(page, 'screen-alerts', 'alerts-tab-active', 'back to Active');
     const w = page.locator('[data-testid^="alert-cta-"]').first();
     if (await w.count()) {
       await w.click();

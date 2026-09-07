@@ -1,23 +1,31 @@
 /**
  * Community — Community.html (round 4).
  *
- * The club header, a row of time-boxed CIRCLES, Kai's pinned summary, and the
- * feed of whichever mode room you have selected. The three mode rooms stay the
- * base of the club (owner decision 2026-08-27: Day Trade · Swing · Investing);
- * circles sit above them because they expire and the mode rooms do not.
+ * The club header, a row of time-boxed CIRCLES, and the feed of whichever mode
+ * room you are in. The three mode rooms stay the base of the club (owner
+ * decision 2026-08-27: Day Trade · Swing · Investing); circles sit above them
+ * because they expire and the mode rooms do not.
  *
- * DEVIATION, deliberate: the board shows a bare feed with no room selector,
- * because the board is one screenshot. Three rooms exist, so the feed says
- * which one you are reading and lets you change it. Everything else — the
- * "N online" line, the ring clocks, `$TICKER` chips, reactions, Kai objects and
- * the "Message Cheat Code Club… $ @Kai" composer — is the board.
+ * ONE SWITCH, NOT TWO (owner, 7 Sept). There used to be a rail of day/swing/
+ * invest pills in the body of the feed, directly under a headbar that already
+ * held a day/swing/invest control. Two controls for one setting is a question
+ * asked twice: whichever one you press, the other has to be watched to see if
+ * it agreed. The headbar control is the one that survived — it is the same
+ * control every other screen carries, and it writes the global mode — and this
+ * screen simply shows the room belonging to whatever mode is set. What the rail
+ * carried and the headbar does not is the per-room unread count; that is the
+ * one thing lost, and a badge on a duplicate switch is not worth the switch.
+ *
+ * The feed still SAYS which room you are reading — the room's name sits in the
+ * header line under the club name. Saying it and letting you change it are two
+ * different jobs, and only the second one was duplicated.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import Svg, { Circle as SvgCircle, Path } from 'react-native-svg';
 import { Screen } from '../../ui/Screen';
-import { T, Num } from '../../ui/Text';
+import { T } from '../../ui/Text';
 import { ObjectCard } from '../../ui/Panel';
 import { Composer } from '../../ui/Composer';
 import { useAttachments } from '../../features/media/useAttachments';
@@ -149,12 +157,23 @@ export default function Community() {
     [rooms],
   );
 
-  // The room you read first is the one matching your mode.
+  /**
+   * THE ROOM IS THE MODE. Not "the room you land on first" — the room, full
+   * stop. With the rail gone the headbar control is the only way to change
+   * rooms, so this has to hold whenever the mode changes and not only on the
+   * first frame; the old version ran once and then never again, which was
+   * correct while a rail existed to do the rest and would be a dead switch now.
+   *
+   * `ModeSegmented` also sets the room itself the instant it is pressed. That
+   * is not a second source of truth, it is the same answer arriving sooner: the
+   * press awaits the profile write, and this effect covers the case the press
+   * cannot — rooms that had not loaded yet when the mode was chosen.
+   */
   useEffect(() => {
-    if (roomId || !coreRooms.length) return;
-    const mine = coreRooms.find((r) => r.mode === profile?.primary_mode);
-    setRoomId((mine ?? coreRooms[0]).id);
-  }, [coreRooms, roomId, profile?.primary_mode]);
+    if (!coreRooms.length) return;
+    const mine = coreRooms.find((r) => r.mode === mode);
+    setRoomId((prev) => mine?.id ?? prev ?? coreRooms[0].id);
+  }, [coreRooms, mode]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -226,14 +245,27 @@ export default function Community() {
     ? `${online.toLocaleString()} online`
     : members > 0 ? `${members.toLocaleString()} members` : 'the club';
 
-  const kaiPinned = selected?.pinned.find((p) => p.kind === 'kai')?.text
-    ?? (circles.length
-      ? (() => {
-          const syms = circles.slice(0, 3).map((c) => c.symbol);
-          const list = syms.length > 1 ? `${syms.slice(0, -1).join(', ')} and ${syms[syms.length - 1]}` : syms[0];
-          return `${list} ${syms.length > 1 ? 'are' : 'is'} driving today’s discussion.`;
-        })()
-      : null);
+  /**
+   * A REAL PIN, OR NOTHING (owner, 7 Sept).
+   *
+   * This used to fall back to a sentence built out of the circle symbols —
+   * "META, NVDA and AMD are driving today's discussion." — whenever the room
+   * had no pin. It read as Kai having looked at the conversation. It had not:
+   * it never opened a single message, it was a template with the top three
+   * circles dropped into it, and because circles are almost always open the
+   * fallback was almost always what you saw. A bar that appears every time and
+   * says something plausible every time is the most expensive kind of wrong,
+   * because it teaches people to believe the next thing it says.
+   *
+   * What is left is the pin a MODERATOR actually pinned, which is a real
+   * object, written by a person, that a room may or may not have. So the bar is
+   * no longer permanent: no pin, no bar.
+   *
+   * The replacement for synthesis is not a bar at all — it is `summarize`,
+   * which reads the room's real recent messages and answers in the room. That
+   * lives on the composer, and is another lane's work.
+   */
+  const kaiPinned = selected?.pinned.find((p) => p.kind === 'kai')?.text ?? null;
 
   /**
    * OPTIMISTIC, THEN CORRECTED. The chip flips on the tap — a reaction that
@@ -333,6 +365,18 @@ export default function Community() {
         <View style={{ flex: 1, minWidth: 0 }}>
           <T size={16} weight="bold" numberOfLines={1}>Cheat Code Club</T>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {/* WHICH ROOM THIS IS. The rail used to answer this as a side
+                effect of being a switch; it is a caption, so it is written as
+                one. Volt, because the room is the thing the mode control
+                beside it selects. */}
+            {selected ? (
+              <>
+                <T size={10.5} weight="semibold" c={color.volt} testID="club-room-name" numberOfLines={1}>
+                  {selected.name}
+                </T>
+                <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: color.dim }} />
+              </>
+            ) : null}
             <T size={10.5} c={color.dim} testID="club-presence">{presence}</T>
             {/* What is actually keeping this feed fresh, in its own words. It
                 says "Refreshing every 5s" when it is polling, and only ever
@@ -358,12 +402,12 @@ export default function Community() {
         </Pressable>
 
         {/*
-          Mode lives in the headbar now (owner, 6 Sept), between search and the
-          people button. It is the same global setting the chip and the sheet
-          write — `PUT /mode` — and on this screen it also opens the room that
-          belongs to the mode you picked, so the control is never a switch that
-          appears to do nothing. The rail below stays: it carries the unread
-          counts, and tapping either keeps the other in step.
+          Mode lives in the headbar (owner, 6 Sept), between search and the
+          people button, and since 7 Sept it is the ONLY mode control on this
+          screen. It is the same global setting the chip and the sheet write —
+          `PUT /mode` — and here it also opens the room that belongs to the mode
+          you picked, so the control is never a switch that appears to do
+          nothing.
         */}
         <ModeSegmented
           mode={mode}
@@ -499,38 +543,11 @@ export default function Community() {
               </View>
             ) : null}
 
-            {/* Which of the three rooms this feed is. */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 8 }}
-              testID="room-rail"
-            >
-              {coreRooms.map((r) => {
-                const on = r.id === roomId;
-                return (
-                  <Pressable
-                    key={r.id}
-                    testID={`room-${r.slug}`}
-                    accessibilityRole="tab"
-                    accessibilityLabel={r.name}
-                    accessibilityState={{ selected: on }}
-                    onPress={() => setRoomId(r.id)}
-                    style={{
-                      paddingHorizontal: 12, height: 32, borderRadius: radius.pill,
-                      alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6,
-                      backgroundColor: on ? alpha.volt14 : 'transparent',
-                      borderWidth: 0.5, borderColor: on ? alpha.volt50 : alpha.ivory12,
-                    }}
-                  >
-                    <T size={12} weight={on ? 'bold' : 'regular'} c={on ? color.volt : color.muted}>{r.name}</T>
-                    {r.unread ? <Num size={10} weight="bold" c={color.dim}>{String(r.unread)}</Num> : null}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+            {/* The room rail was here. It is gone — see the header of this
+                file. The headbar's mode control is the switch, and the room's
+                name is in the header line beside it. */}
 
-            <View style={{ paddingHorizontal: 16, gap: 14, paddingTop: 6 }}>
+            <View style={{ paddingHorizontal: 16, gap: 14, paddingTop: 12 }}>
               {messages.length ? messages.map((m) => (
                 <ClubMessage
                   key={m.id}

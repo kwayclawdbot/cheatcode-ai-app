@@ -97,13 +97,20 @@ const main = async () => {
   ok('and no rewording of it either', !/unverified until Kai/i.test(club));
 
   console.log('\n[2b] Switching the mode moves the feed to that mode\'s room');
-  const railBefore = await page.getByTestId('room-rail').innerText().catch(() => '');
+  // The in-body room rail was removed on 7 Sept — it was a second day/swing/
+  // invest switch under the one in the headbar. So this is now the whole test
+  // of that control: press it, and the room the feed is showing has to change.
+  ok('there is no second mode switch in the feed body',
+    (await page.getByTestId('room-rail').count()) === 0);
+  const roomBefore = await page.getByTestId('club-room-name').first().innerText().catch(() => '');
   await page.getByTestId('mode-seg-invest').first().click();
   await settle(page, 1600);
   await shot(page, 'owner-0906-02-mode-invest');
   const invest = await page.getByTestId('mode-seg-invest').first().getAttribute('aria-selected');
   ok('Invest reads as the chosen mode', invest === 'true' || invest === null, { invest });
-  ok('the room rail is still there and still says which room you are in', railBefore.length > 0);
+  const roomAfter = await page.getByTestId('club-room-name').first().innerText().catch(() => '');
+  ok('and the feed moved to that mode\'s room', /Investing/i.test(roomAfter) && roomAfter !== roomBefore,
+    { roomBefore, roomAfter });
 
   /* ---------------- 4. a room wears its company's logo ------------------ */
   console.log('\n[4] A room named for a company wears that company\'s logo');

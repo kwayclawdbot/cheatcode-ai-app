@@ -200,7 +200,12 @@ try {
   await shot(alex.page, '01-day-trade-active');
   {
     ok('a day-trade account lands on the alerts board', await has(alex.page, 'screen-alerts'));
-    ok('the Active/Watching/History rail is there', await has(alex.page, 'alerts-tabs'));
+    ok('the Active/Community/History rail is there', await has(alex.page, 'alerts-tabs'));
+    // Watching folded into Active on 7 Sept and the tab it freed became
+    // Community. Asserted by name, because a rail that quietly grew a fourth
+    // tab or lost the new one would still satisfy the line above.
+    ok('Watching is no longer a tab of its own', !(await has(alex.page, 'alerts-tab-watching')));
+    ok('and Community is', await has(alex.page, 'alerts-tab-community'));
 
     const feed = await feedFor(alex.page, 'active');
     ok('the API served the Active feed', feed.status === 200, feed.status);
@@ -341,7 +346,10 @@ try {
   {
     ok('Community is the rooms — there is no feed switch', !(await has(blake.page, 'community-feed')));
     ok('and no Following feed as a destination', !(await has(blake.page, 'following-feed')));
-    ok('the room rail is on screen', await has(blake.page, 'room-rail'));
+    // The in-body room rail was removed on 7 Sept — it duplicated the headbar
+    // mode control. The header names the room; the headbar changes it.
+    ok('there is no second mode switch in the feed body', !(await has(blake.page, 'room-rail')));
+    ok('the header names the room you are reading', await has(blake.page, 'club-room-name'));
     // The door that used to live in the Following feed's empty state. It needs
     // a signed-in id to build a profile route, so this is the only kind of run
     // that can prove it is there.
@@ -351,13 +359,17 @@ try {
       (await blake.page.locator('[data-testid^="club-follow-"]').count()) > 0,
     );
 
-    const dayTrade = blake.page.locator('[data-testid="room-day-trade"]').first();
+    // Changing rooms is now the headbar mode control, and only that. This is
+    // the assertion that the one remaining switch actually switches.
+    const dayTrade = blake.page.locator('[data-testid="mode-seg-day_trade"]').first();
     if (await dayTrade.count()) {
       // Not `settled()` — that one waits for a contributor profile. This is a
       // room changing under an already-mounted tab, so what is waited on is the
       // next poll bringing the room's messages back.
       await dayTrade.click();
       await blake.page.waitForTimeout(8000);
+      const room = await blake.page.getByTestId('club-room-name').first().innerText().catch(() => '');
+      ok('the headbar mode control moved the feed to the Day Trade room', /Day Trade/i.test(room), { room });
     }
     await shot(blake.page, '08-call-in-room-chat');
 
@@ -388,7 +400,7 @@ try {
     await blake.page.evaluate(() => window.history.pushState({}, '', '/community?feed=following'));
     await blake.page.waitForTimeout(3000);
     ok('no Following feed comes back', !(await has(blake.page, 'following-feed')));
-    ok('the rooms are still what is on screen', await has(blake.page, 'room-rail'));
+    ok('the rooms are still what is on screen', await has(blake.page, 'club-room-name'));
     ok('and the room composer is still there', await has(blake.page, 'club-composer'));
   }
 } catch (e) {

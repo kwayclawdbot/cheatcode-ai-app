@@ -174,7 +174,7 @@ async function captureApp(browser) {
   await shot(page, 'p4a-14-ticker-community');
   await assertNoFractions(page, 'ticker page');
 
-  console.log('[4] Alerts — Active / Watching / History, medallion + the bars card');
+  console.log('[4] Alerts — Active / Community / History, medallion + the bars card');
   await open(page, '/alerts');
   /*
    * Onboarding above picks Day Trade, and since a6fcb55 Day Trade is archived
@@ -238,9 +238,24 @@ async function captureApp(browser) {
   await tap(page, 'alert-story-META', 'open the story');
   await shot(page, 'p4a-17-alerts-story');
   await assertNoFractions(page, 'alerts · story open');
-  await tap(page, 'alerts-tab-watching', 'Watching tab');
+  /*
+   * WATCHING IS INSIDE ACTIVE NOW (owner, 7 Sept), so the tab it had is gone
+   * and the cards it held are on the tab we are already on. Both halves are
+   * asserted: the tab must not exist, and NVDA — a watching-state fixture card
+   * — must be on the Active list WITH the progress bar that made it one.
+   */
+  await assertNoTestId(page, 'alerts-tab-watching', 'alerts · Watching is not a tab any more');
+  await assertTestId(page, 'alert-card-NVDA', 'alerts · a watching card is inside Active');
+  await assertTestId(page, 'alert-progress-NVDA', 'alerts · and it kept its progress bar');
   await shot(page, 'p4a-18-alerts-watching');
-  await assertNoFractions(page, 'alerts · watching');
+  await assertNoFractions(page, 'alerts · active, watching folded in');
+
+  // The tab Watching vacated is Community: this desk's member-published calls.
+  await tap(page, 'alerts-tab-community', 'Community tab');
+  await settle(page, 900);
+  await assertTestId(page, 'alerts-list-community', 'alerts · the community list');
+  await shot(page, 'p4a-18b-alerts-community');
+
   await tap(page, 'alerts-tab-history', 'History tab');
   await shot(page, 'p4a-19-alerts-history');
   await tap(page, 'alerts-tab-active', 'back to Active');

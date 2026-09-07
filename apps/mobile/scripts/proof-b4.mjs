@@ -247,8 +247,20 @@ const main = async () => {
     await must(page, 'club-presence', 'N online / N members');
     await must(page, 'circles-row', 'the circles row');
     await must(page, 'circle-circle-meta', 'META circle with its clock');
+    // THE PIN IS A REAL PIN. The bar used to fall back to a sentence built out
+    // of the circle symbols whenever the room had no pin, which is why it was
+    // always on screen. Day Trade is the one fixture room with a moderator's
+    // pin, so the bar is here AND it says the pinned text — not the template.
     await must(page, 'kai-pinned', "Kai's pinned summary");
-    await must(page, 'room-rail', 'the three mode rooms are the base');
+    await mustText(page, 'kai-pinned', /CPI print at 10:00/, 'and it is the pinned text, not a made-up one');
+    if (/driving today’s discussion|driving today's discussion/.test(await page.locator('body').innerText())) {
+      throw new Error('the fabricated "driving today’s discussion" bar is back');
+    }
+    console.log('  · nothing on the screen claims to have read the conversation');
+    // ONE MODE SWITCH, IN THE HEADBAR. The in-body rail duplicated it.
+    if (await has(page, 'room-rail')) throw new Error('the room rail is back in the feed body');
+    await must(page, 'club-mode-segmented', 'the headbar mode control is the one switch');
+    await must(page, 'club-room-name', 'and the header still names the room you are reading');
     await must(page, 'club-composer', 'Message Cheat Code Club… $ @Kai');
     await shot(page, 'p4b-14-community');
 

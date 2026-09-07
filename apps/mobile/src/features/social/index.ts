@@ -6,7 +6,7 @@ export { FollowButton } from './FollowButton';
 export { secondaryHandle } from './naming';
 export { SharedTradeRow } from './SharedTradeRow';
 export {
-  LEVEL_ERRORS, plainLevelError, useCommunityCalls, useContributorSocial, useFollow,
-  useFollowFeed, useLeaderboard, usePublishCall,
+  LEVEL_ERRORS, plainLevelError, useCommunityCalls, useContributorSocial, useDeskCalls,
+  useFollow, useFollowFeed, useLeaderboard, usePublishCall,
 } from './useSocial';
 export { PREVIEW_BELT, useBeltUp } from './useBeltUp';

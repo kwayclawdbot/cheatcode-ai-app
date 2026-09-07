@@ -63,7 +63,7 @@ await shot('01-board');
   note(await has('screen-alerts'), 'a day-trade account lands on the alerts board');
   note(!(await has('screen-day-trade-soon')), 'and NOT on the coming-soon screen');
   note(!/not live yet/i.test(t), 'nothing still says the mode is not live');
-  note(await has('alerts-tabs'), 'the Active/Watching/History rail is there');
+  note(await has('alerts-tabs'), 'the Active/Community/History rail is there');
 }
 
 /* ── the card itself ──────────────────────────────────────────────── */

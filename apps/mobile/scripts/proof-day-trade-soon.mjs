@@ -48,7 +48,7 @@ await shot('01-tab');
   const t = await text();
   note(await has('screen-day-trade-soon'), 'the coming-soon screen is what draws');
   note(!(await has('screen-alerts')), 'the alerts board does NOT draw');
-  note(!(await has('alerts-tabs')), 'no Active/Watching/History rail to imply content');
+  note(!(await has('alerts-tabs')), 'no Active/Community/History rail to imply content');
   note(/Not live yet/i.test(t), 'it says plainly that the mode is not live');
   note(/^Day Trade\b/.test(t.trim()), 'the heading names the mode');
   // Three "Day Trade"s in the top 100px reads like a form letter.

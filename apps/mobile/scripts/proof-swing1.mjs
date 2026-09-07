@@ -224,13 +224,14 @@ const main = async () => {
     console.log('\n[3] the Alerts tab, in the browser');
     await go(page, '/alerts', 4000);
     await arrive(page, 'screen-alerts');
-    // Whichever tab these land in, the cards are on screen once we are there.
-    for (const t of ['active', 'watching']) {
-      if (await seen(page, 'screen-alerts', `alerts-tab-${t}`)) {
-        await tap(page, 'screen-alerts', `alerts-tab-${t}`, 1400);
-        if (await page.locator(`[data-testid="medallion-${gold.symbol}"]`).count()) break;
-      }
+    // Watching folded into Active on 7 Sept, so wherever in its life an alert
+    // is, its card is on the Active tab. That fold is what this loop used to
+    // walk around, and it is now the assertion.
+    if (await seen(page, 'screen-alerts', 'alerts-tab-active')) {
+      await tap(page, 'screen-alerts', 'alerts-tab-active', 1400);
     }
+    ok('Watching is not a tab of its own any more',
+      !(await seen(page, 'screen-alerts', 'alerts-tab-watching')));
     await page.waitForTimeout(1200);
     await shot(page, 'swing1-01-alerts-tab');
 
@@ -445,11 +446,12 @@ const main = async () => {
     // The identity line on a standard card is "company · mode · direction ·
     // instrument", so this matches the direction itself rather than the word
     // wherever it happens to appear in a thesis.
+    // Active now holds the watching cards too, so this one read covers both
+    // lists the old proof had to visit in turn — which is the point of the
+    // fold. The card that used to sit behind Watching is in `activeText`.
     ok('no short reaches Active', !/·\s*short\s*·/i.test(activeText), activeText.match(/.{0,60}short.{0,60}/i)?.[0]);
-    await tap(page, 'screen-alerts', 'alerts-tab-watching', 1400);
-    const watchingText = (await page.locator('[data-testid="alerts-list-watching"]').last().innerText()).replace(/\s+/g, ' ');
-    ok('nor Watching', !/·\s*short\s*·/i.test(watchingText), watchingText.match(/.{0,60}short.{0,60}/i)?.[0]);
-    await tap(page, 'screen-alerts', 'alerts-tab-active', 1400);
+    ok('and Active is where the watched cards are',
+      (await page.locator('[data-testid="alerts-list-watching"]').count()) === 0);
     await page.locator(`[data-testid="alert-expand-${gold.symbol}"]`).last().click();
     await page.waitForTimeout(1400);
     const activeCard = (await page.locator(`[data-testid="alert-card-${gold.symbol}"]`).last().innerText()).replace(/\s+/g, ' ');
