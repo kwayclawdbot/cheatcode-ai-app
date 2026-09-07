@@ -351,6 +351,52 @@ try {
       const card = alex.page.locator(`[data-testid="alert-card-${sym}"]`).first();
       const t = (await card.innerText().catch(() => '')).replace(/\s+/g, ' ');
       ok(`${sym}: the strike and the side are on it`, /\b(Call|Put)\b/.test(t), t.slice(0, 300));
+
+      /*
+       * AND IT IS A GRAPHIC, COLLAPSED (owner, 7 Sept: "the options card is
+       * basic af and doesn't even give the correct context").
+       *
+       * The collapsed card carries the strike rail, the runway of days left,
+       * the cost and the tradability verdict. The two score blocks and their
+       * evidence live behind the expander — a collapsed card that showed them
+       * would be the whole contract report on a scrolling board.
+       */
+      ok(`${sym}: the time left is drawn, not just written`, await has(alex.page, `contract-expiry-${sym}`));
+      ok(`${sym}: in a band of readings rather than a stack of blocks`, await has(alex.page, `contract-band-${sym}`));
+      ok(`${sym}: what it costs is on the collapsed card`, await has(alex.page, `contract-cost-${sym}`));
+      ok(`${sym}: and so is whether you could trade it`,
+        (await alex.page.locator(`[data-testid="contract-tradability-${sym}"]`).count()) > 0
+        || (await alex.page.locator(`[data-testid="contract-floor-${sym}"]`).count()) > 0);
+      /*
+       * AND THE CARD IS NOT LONG (owner: "just generic stacked cards making
+       * the card super long"). The evidence — the prose, the floor grid — is
+       * behind the expander, and there is exactly ONE contract graphic on the
+       * card however many contracts the payload names.
+       */
+      ok(`${sym}: the evidence stays behind the expander`,
+        (await alex.page.locator(`[data-testid="contract-print-${sym}"]`).count()) === 0
+        && (await alex.page.locator(`[data-testid="contract-floor-${sym}"]`).count()) === 0);
+      ok(`${sym}: and there is one contract graphic, never a stack of them`,
+        (await alex.page.locator(`[data-testid^="contract-${sym}-"]`).count())
+        - (await alex.page.locator(`[data-testid^="contract-${sym}-alt-"]`).count()) === 1);
+      /*
+       * The rail needs BOTH an underlying price and a distance. Where the
+       * ingest has them the rail is drawn and reads out in plain English;
+       * where it does not, nothing is drawn, which is the correct answer and
+       * not a failure — so it is reported either way.
+       */
+      const railed = (await alex.page.locator(`[data-testid="contract-rail-${sym}"]`).count()) > 0;
+      console.log(railed
+        ? `      · ${sym}: the strike rail is drawn`
+        : `      · ${sym}: no strike rail — this payload carries no underlying price`);
+      if (railed) {
+        ok(`${sym}: the rail reads out the gap in plain English`,
+          /out of the money|in the money/i.test(t), t.slice(0, 300));
+      }
+      // No letter, no 0–100. One measurement does not earn a grade, and a
+      // "contract score" would be that grade under another name.
+      ok(`${sym}: no composite contract score is invented`,
+        !/quality score|contract score|out of 100/i.test(t), t.slice(0, 300));
       ok(`${sym}: no letter grade`, /No grade/i.test(t), t.slice(0, 300));
       ok(`${sym}: no stop invented for a contract that has none`, !/\bStop\b/i.test(t), t.slice(0, 300));
       ok(`${sym}: and no target either`, !/\bTarget\b/i.test(t), t.slice(0, 300));
@@ -416,11 +462,18 @@ try {
       ok(`${sym}: no stop and no target invented for it`,
         !c.plan?.stop && !(c.plan?.targets ?? []).length, c.plan);
     }
-    // Drawn, not merely served. The History row renders one compact contract.
+    /*
+      Drawn, not merely served. The History row renders ONE compact contract
+      line and did not follow the active card into a graphic — a record is read
+      in a column of twenty-six other records, and a card there is not a record.
+    */
     for (const sym of REPLAYS) {
       ok(`${sym}: the contract line is on the screen`, await has(alex.page, `contract-${sym}`));
       ok(`${sym}: and no grade chip is drawn beside it`,
         (await alex.page.locator(`[data-testid="alert-history-${sym}"] [data-testid="grade-chip"]`).count()) === 0);
+      ok(`${sym}: and the row did not become a contract graphic`,
+        (await alex.page.locator(`[data-testid="alert-history-${sym}"] [data-testid="contract-rail-${sym}"]`).count()) === 0
+        && (await alex.page.locator(`[data-testid="alert-history-${sym}"] [data-testid="contract-cost-${sym}"]`).count()) === 0);
     }
     const histText = await bodyText(alex.page);
     ok('a rehearsal says it is one', /Rehearsal, not an alert anyone was sent/i.test(histText));

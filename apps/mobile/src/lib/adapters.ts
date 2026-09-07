@@ -1210,7 +1210,8 @@ export function adaptActionPreview(env: KaiObjectEnvelope | null): KaiActionPrev
 /* partially-deployed API still renders.                                 */
 /* ==================================================================== */
 import type {
-  AlertCard, AlertCardState, AlertFamilyPerformance, AlertOptionContract, AlertScoreComponent,
+  AlertCard, AlertCardState, AlertContractFloorCheck, AlertFamilyPerformance,
+  AlertOptionContract, AlertScoreComponent,
   AlertScores, AlertsRound4,
   ConversationRow, ConversationsPayload, Experience, FocusKey, KaiProfile, RuleAdherence,
   TickerMeter, TickerPage,
@@ -1356,6 +1357,31 @@ export function adaptAlertScores(raw: unknown): AlertScores | null {
  * A contract the engine proposes. A row without a strike, an expiry and a
  * side is not a contract — it is dropped rather than shown with dashes.
  */
+/**
+ * A boolean the server actually SENT, or null.
+ *
+ * `r4bool` folds every non-true value to `false`, which is right for a flag
+ * and wrong for the two contract verdicts below: `volume_oi_credited: false`
+ * and `clears_liquidity_floor: false` are FINDINGS — "the engine looked and
+ * says no" — while a missing field means it never looked. The graphic draws
+ * different things for those two, so the adapter has to keep them apart.
+ */
+const r4tri = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null);
+
+/** One line of the liquidity floor, or nothing. A check with no label is not a check. */
+function adaptFloorCheck(raw: unknown): AlertContractFloorCheck | null {
+  const o = r4obj(raw);
+  const label = r4nul(o.label ?? o.name);
+  const value = r4nul(o.value ?? o.measured);
+  if (!label || !value) return null;
+  return {
+    label,
+    value,
+    requirement: r4str(o.requirement ?? o.minimum ?? o.threshold),
+    passes: o.passes === true || o.pass === true || o.ok === true,
+  };
+}
+
 export function adaptOptionContract(raw: unknown): AlertOptionContract | null {
   const o = r4obj(raw);
   const strike = r4nul(o.strike ?? o.strike_price);
@@ -1365,6 +1391,9 @@ export function adaptOptionContract(raw: unknown): AlertOptionContract | null {
   if (!strike || !expiry || !type) return null;
   const liq = r4str(o.liquidity).toLowerCase();
   const costNum = r4num(o.cost ?? o.ask ?? o.premium);
+  const checks = r4arr(o.floor_checks).map(adaptFloorCheck)
+    .filter((c): c is AlertContractFloorCheck => c !== null);
+  const failures = r4arr(o.liquidity_failures).map((f) => r4str(f)).filter(Boolean);
   return {
     label: r4short(o.label, 16),
     type,
@@ -1373,6 +1402,38 @@ export function adaptOptionContract(raw: unknown): AlertOptionContract | null {
     dte: r4num(o.dte ?? o.days_to_expiry),
     cost: costNum != null ? `$${costNum.toFixed(2)}` : r4nul(o.cost ?? o.ask ?? o.premium),
     liquidity: liq === 'good' || liq === 'thin' ? liq : null,
+
+    option_symbol: r4nul(o.option_symbol ?? o.contract_ticker),
+
+    underlying_price: r4num(o.underlying_price ?? o.underlying),
+    otm_pct: r4num(o.otm_pct),
+
+    bid: r4num(o.bid),
+    ask: r4num(o.ask),
+    spread_pct_of_mid: r4num(o.spread_pct_of_mid),
+    spread_dollars: r4num(o.spread_dollars),
+    cost_per_contract: r4num(o.cost_per_contract),
+
+    iv: r4num(o.iv ?? o.implied_volatility),
+    iv_rank: r4num(o.iv_rank),
+    iv_percentile: r4num(o.iv_percentile),
+
+    volume: r4num(o.volume),
+    open_interest: r4num(o.open_interest),
+    volume_oi_multiple: r4num(o.volume_oi_multiple),
+    volume_oi_threshold: r4num(o.volume_oi_threshold),
+    volume_oi_credited: r4tri(o.volume_oi_credited),
+    volume_vs_own_adv: r4num(o.volume_vs_own_adv),
+    spike_evidence: r4nul(o.spike_evidence),
+
+    premium: r4num(o.premium),
+    ask_side_share: r4num(o.ask_side_share),
+    sweeps: r4num(o.sweeps),
+    blocks: r4num(o.blocks),
+
+    clears_liquidity_floor: r4tri(o.clears_liquidity_floor),
+    floor_checks: checks.length ? checks : null,
+    liquidity_failures: failures.length ? failures : null,
   };
 }
 

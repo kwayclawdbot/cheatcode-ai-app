@@ -106,13 +106,65 @@ await card.screenshot({ path: path.join(OUT, 'uoa-daytrade-02b-card-only.png') }
 {
   const t = await cardText();
 
-  // The contract card — the whole point of the options lane.
+  /*
+    THE CONTRACT GRAPHIC — the whole point of the options lane.
+
+    This used to check four label/value rows in a half-width tile. The tile is
+    gone (owner, 7 Sept: "the options card is basic af and doesn't even give the
+    correct context"), so what is checked now is the graphic: the strike rail,
+    the runway of days left, the cost, and the tradability verdict — plus the
+    two score blocks, which only appear once the card is expanded.
+
+    Each part is asserted BY ITS OWN testID as well as by text, because the
+    thing that would go wrong here is a block quietly not rendering when a
+    field is null. A missing block is correct when the engine measured nothing
+    and a bug when it measured something, and only the testID can tell the
+    difference from outside.
+  */
   note(await card.locator('[data-testid="contracts-SYNTH"]').count() > 0, 'the contracts section is drawn');
+  note(await card.locator('[data-testid="contract-SYNTH-0"]').count() > 0, 'and the contract itself is a graphic, not a summary');
   note(/607\.5/.test(t), 'the contract strike is shown');
   note(/put/i.test(t), 'and its side');
   note(/Aug 12/.test(t), 'and its expiry');
-  note(/5\.25/.test(t), 'and what it costs');
-  note(/Active/i.test(t), 'and its liquidity, which cleared the floor');
+  note(await card.locator('[data-testid="contract-expiry-SYNTH"]').count() > 0, 'the time-left cell is drawn, with its runway of days');
+  note(/TIME LEFT/i.test(t), 'and the band names it');
+  note(await card.locator('[data-testid="contract-cost-SYNTH"]').count() > 0, 'the cost is drawn');
+  note(/5\.25|\$525/.test(t), 'and what it costs');
+  note(await card.locator('[data-testid="contract-tradability-SYNTH"]').count() > 0
+    || await card.locator('[data-testid="contract-floor-SYNTH"]').count() > 0,
+    'and whether you could have got in and out of it');
+  note(/get in and out at a fair price|Active market/i.test(t),
+    'said in plain words, not as a one-word liquidity grade');
+
+  /*
+    THE RAIL AND THE SCORES ARE DRAWN ONLY WHERE THE ENGINE MEASURED THEM.
+    The rail needs an underlying price and a distance; the score blocks need a
+    print. Where the ingest has not been enriched yet these are absent, and
+    absent is the correct answer — so this is reported, not failed.
+  */
+  const railed = await card.locator('[data-testid="contract-rail-SYNTH"]').count() > 0;
+  console.log(railed
+    ? '  ·    the strike rail is drawn — the payload carries the stock price and the distance'
+    : '  ·    no strike rail — this payload has no underlying price, so none is drawn');
+  if (railed) {
+    note(/out of the money|in the money/i.test(t), 'and the gap is read out in plain English');
+  }
+  const printed = await card.locator('[data-testid="contract-print-SYNTH"]').count() > 0;
+  console.log(printed
+    ? '  ·    the print-strength block is drawn'
+    : '  ·    no print-strength block — this payload carries no flow measurements');
+  if (printed) {
+    // The honesty gate. An uncredited multiple must never be drawn as a bar it
+    // cleared; the block prints the credited measure and the engine's sentence.
+    const uncredited = await card.locator('[data-testid="contract-uncredited-SYNTH"]').count() > 0;
+    const t2 = (await card.innerText()).replace(/\s+/g, ' ');
+    note(!uncredited || /not credit/i.test(t2),
+      'an uncredited volume multiple says so in the engine\'s own words');
+    note(!uncredited || !/bar \d/i.test(t2),
+      'and it is never given the threshold meter, which belongs to the credited measure');
+  }
+  note(!/quality score|contract score|out of 100/i.test(t),
+    'and no composite quality number is invented for a contract');
 
   // The bar this family actually measures — and, just as importantly, the two
   // it does not. A trend bar appearing here would mean something started
@@ -161,6 +213,9 @@ await shot('03-history');
     note(await meta.locator('[data-testid="contract-META"]').count() > 0, 'and the contract it named');
     note(/607\.5/.test(t) && /put/i.test(t) && /Aug 12/.test(t) && /5\.25/.test(t),
       'strike, side, expiry and what was paid, all on one compact line');
+    // The active card's graphic must not have followed the component down here.
+    note(!/STRIKE\b/.test(t) && !/per contract/i.test(t),
+      'and the row is still one line, not the active card\'s contract graphic');
 
     // And the numbers it does NOT have. This family scores no outcome at all,
     // so a result or a peak appearing here would be an invention.

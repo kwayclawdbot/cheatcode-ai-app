@@ -784,6 +784,100 @@ const SWING_COMPONENTS = [
 ];
 
 export const fixtureAlertCards: AlertCard[] = [
+  /**
+   * THE OPTIONS-FLOW FAMILY, WITH ITS REAL NUMBERS.
+   *
+   * Moderna, 19 August. This is the shape the contract graphic was built for
+   * and every figure below is the one the engine actually recorded for that
+   * print — including the two awkward ones, which is the point of having it
+   * here at all:
+   *
+   *   · `volume_oi_credited: false` — the volume-to-open-interest multiple came
+   *     out at 15.8×, past the 14× bar, and the engine THREW IT AWAY because
+   *     open interest was 48 contracts and a ratio against 48 means nothing.
+   *     A fixture that only carried credited prints would let a card that draws
+   *     15.8× as a cleared bar pass every check we have.
+   *
+   *   · `clears_liquidity_floor: false` — three of the four floor checks pass
+   *     and the spread misses by a mile. A fixture where everything clears
+   *     would never draw the failure state.
+   *
+   * There is no grade and no score, and there is no stop and no target, because
+   * this engine computes none of those. That absence is the fixture too.
+   */
+  {
+    id: 'alert-mrna-uoa',
+    symbol: 'MRNA',
+    company: 'Moderna',
+    mode_label: 'Day Trade',
+    direction_label: 'Long',
+    instrument_label: 'options',
+    grade: '—',
+    score: null,
+    state: 'ready',
+    state_label: 'Triggered',
+    triggered_at_label: '10:04 AM',
+    headline: 'Unusual options flow on Moderna',
+    what_changed: 'A single day of call buying went through at 3,800 times this contract\'s own average volume, nearly all of it paid at the asking price.',
+    company_summary: 'Moderna makes messenger-RNA vaccines and therapeutics.',
+    trade: {
+      direction: 'Long',
+      current: '115.50',
+      note: 'This engine reads options flow and nothing else, so it publishes no risk plan — there is no level here that it computed.',
+    },
+    recommended_options: [
+      {
+        label: 'The contract the flow bought',
+        type: 'call',
+        strike: '120',
+        expiry: 'Aug 21',
+        dte: 2,
+        cost: '$5.60',
+        option_symbol: 'MRNA260821C00120000',
+
+        underlying_price: 115.5,
+        otm_pct: 3.9,
+
+        bid: 4.75,
+        ask: 5.6,
+        spread_dollars: 0.85,
+        spread_pct_of_mid: 0.1643,
+        cost_per_contract: 560,
+
+        iv: 2.1525,
+        iv_rank: 100,
+        iv_percentile: 100,
+
+        volume: 760,
+        open_interest: 48,
+        volume_oi_multiple: 15.83,
+        volume_oi_threshold: 14.0,
+        volume_oi_credited: false,
+        volume_vs_own_adv: 3800,
+        spike_evidence: 'open interest was thin, so the multiple was not credited; the contract cleared its own average daily volume instead',
+
+        premium: 196070,
+        ask_side_share: 0.9972,
+        sweeps: 1,
+        blocks: 0,
+
+        clears_liquidity_floor: false,
+        floor_checks: [
+          { label: 'Volume today', value: '760', requirement: '400 minimum', passes: true },
+          { label: 'Open interest', value: '48', requirement: 'no minimum', passes: true },
+          { label: 'Bid', value: '$4.75', requirement: '$0.20 minimum', passes: true },
+          { label: 'Spread', value: '16.4% of mid · $0.85', requirement: '10% of mid or $0.05', passes: false },
+        ],
+        liquidity_failures: [
+          'the gap between bid and ask is 16.4% of the middle of the market and $0.85 wide, over both the 10% and the $0.05 allowance',
+        ],
+      },
+    ],
+    score_components: [],
+    kai_interpretation: 'Somebody paid up for two days of room. That is a statement about timing, not about the company.',
+    primary_action: { label: 'Open Trade Portal', kind: 'ready' },
+    freshness_line: 'Quote 10:04:11 ET · live · received 6s ago',
+  },
   {
     id: 'alert-meta-1',
     symbol: 'META',
@@ -1010,7 +1104,36 @@ export const fixtureHistoryCards: AlertCard[] = [
     trade: { entry: '609.35' },
     score_components: [],
     recommended_options: [
-      { label: 'The contract the flow bought', type: 'put', strike: '607.5', expiry: 'Aug 12', dte: 1, cost: '5.25', liquidity: 'good' },
+      /*
+        The 11 August Meta put, with the figures that were recorded for it.
+        Only what was measured is here: there is a spread and a bid on this one,
+        so the floor verdict is real — and it CLEARED, which is the counterpart
+        to the Moderna card above. What is absent (no `sweeps`, no `blocks`, no
+        `iv_rank`) is absent because it was never measured, and the History line
+        prints nothing for any of it.
+      */
+      {
+        label: 'The contract the flow bought',
+        type: 'put',
+        strike: '607.5',
+        expiry: 'Aug 12',
+        dte: 1,
+        cost: '5.25',
+        underlying_price: 609.353,
+        otm_pct: 0.3,
+        /* No `iv` — nobody recorded one for this contract, and a plausible
+           number in a fixture is the fastest way to ship a plausible number in
+           production. The History line simply omits the IV clause. */
+        cost_per_contract: 525,
+        volume_oi_multiple: 38.58,
+        volume_oi_threshold: 14.0,
+        volume_oi_credited: true,
+        volume_vs_own_adv: 135.66,
+        premium: 262667,
+        ask_side_share: 0.998,
+        clears_liquidity_floor: true,
+        liquidity: 'good',
+      },
     ],
     primary_action: { label: 'Review outcome', kind: 'closed' },
     resolved_label: 'Aug 11, 4:00 PM ET',
@@ -1023,7 +1146,7 @@ export const fixtureAlertsRound4: AlertsRound4 = {
   active: fixtureAlertCards,
   watching: fixtureWatchingCards,
   history: fixtureHistoryCards,
-  counts: { active: 3, watching: 3, history: 3 },
+  counts: { active: 4, watching: 3, history: 3 },
   empty_copy: 'Nothing here yet. Kai will put an alert here the moment something changes.',
 };
 

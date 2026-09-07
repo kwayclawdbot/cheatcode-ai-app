@@ -884,9 +884,29 @@ export type AlertScores = {
 };
 
 /**
- * One contract the engine would use to express this idea. Shown as a small
- * card, never a sentence and never a chain table. The ticker is not repeated
- * inside it — the card it sits in already carries the mark.
+ * One line of the tradability floor: what was measured, what the engine asks
+ * for, and whether this contract cleared it. The requirement is carried as the
+ * engine wrote it ("10% of mid or $0.05") rather than re-derived here — a
+ * second copy of a threshold is a second thing that can go stale.
+ */
+export type AlertContractFloorCheck = {
+  label: string;         // "Spread"
+  value: string;         // "16.4% of mid · $0.85"
+  requirement: string;   // "10% of mid or $0.05"
+  passes: boolean;
+};
+
+/**
+ * One contract the engine would use to express this idea. Drawn as a CONTRACT
+ * GRAPHIC — a strike rail, a runway of days, the cost — never a labelled list
+ * and never a chain table. The ticker is not repeated inside it; the card it
+ * sits in already carries the mark.
+ *
+ * EVERY FIELD BELOW THE FIRST SIX IS OPTIONAL AND IS `null` WHEN THE ENGINE DID
+ * NOT MEASURE IT, and the graphic draws nothing for a null. This is the same
+ * rule the levels strip and the bars follow (see `AlertScores` above): a bar of
+ * length zero is a picture of "as bad as it gets", not of "not measured", and
+ * the two must never look the same.
  */
 export type AlertOptionContract = {
   /** Optional role, e.g. "Kai's pick" · "Cheaper". NEVER the ticker. */
@@ -895,8 +915,57 @@ export type AlertOptionContract = {
   strike: string;                   // "510"
   expiry: string;                   // "Sep 19"
   dte?: number | null;              // 13
-  cost?: string | null;             // "$4.20"
+  cost?: string | null;             // "$4.20" — per share, what the row was priced at
   liquidity?: 'good' | 'thin' | null;
+
+  /** OCC-style symbol, e.g. "MRNA260821C00120000". Not drawn; used for keys. */
+  option_symbol?: string | null;
+
+  // ── where the strike sits against the stock ──────────────────────────────
+  underlying_price?: number | null;   // 115.5
+  /** Positive = out of the money in this contract's direction. 3.9 = 3.9%. */
+  otm_pct?: number | null;
+
+  // ── what it costs and how wide the market is ─────────────────────────────
+  bid?: number | null;                // 4.75
+  ask?: number | null;                // 5.60
+  spread_pct_of_mid?: number | null;  // 0.1643 — a FRACTION, not a percent
+  spread_dollars?: number | null;     // 0.85
+  cost_per_contract?: number | null;  // 560
+
+  // ── implied volatility ───────────────────────────────────────────────────
+  /** A fraction: 2.1525 = 215%. There is no `iv_start` in this pipeline, so
+   *  no change/delta is ever rendered. */
+  iv?: number | null;
+  iv_rank?: number | null;            // 0–100
+  iv_percentile?: number | null;      // 0–100
+
+  // ── how far the print stood out from this contract's own normal ──────────
+  volume?: number | null;             // 760
+  open_interest?: number | null;      // 48
+  volume_oi_multiple?: number | null; // 15.83
+  /** The engine's own bar — the day-trade tier's measured 90th percentile. */
+  volume_oi_threshold?: number | null;// 14.0
+  /**
+   * FALSE means the engine explicitly did NOT credit the multiple (thin open
+   * interest makes it meaningless), and the graphic must not draw it as a
+   * cleared bar. `spike_evidence` says what was credited instead.
+   */
+  volume_oi_credited?: boolean | null;
+  volume_vs_own_adv?: number | null;  // 3800
+  /** Rendered VERBATIM. The engine's own account of what it credited. */
+  spike_evidence?: string | null;
+
+  premium?: number | null;            // 196070
+  ask_side_share?: number | null;     // 0.9972 — a FRACTION
+  sweeps?: number | null;             // 1
+  blocks?: number | null;             // 0
+
+  // ── whether you could have got in and out at a fair price ────────────────
+  clears_liquidity_floor?: boolean | null;
+  floor_checks?: AlertContractFloorCheck[] | null;
+  /** Plain-English reasons the floor was missed. Only where it was. */
+  liquidity_failures?: string[] | null;
 };
 
 export type AlertProgress = { pct: number; label: string } | null;
@@ -1246,6 +1315,53 @@ export type AdminPerson = {
   merged_from: { id: string; display_name: string | null }[];
   merge_conflicts: AdminTimelineRow[];
   plain: string;
+};
+
+/**
+ * A ROOM AS THE OPERATOR SEES IT — the facts, and not the conclusion.
+ *
+ * `RoomAvatar` picks a room's picture from three places in order: the image an
+ * admin chose, else the company logo when the room is about a ticker, else the
+ * room's initial on a tinted disc. Case 1 had no way of ever happening, because
+ * `image_url` lives in the room's jsonb `config` bag and nothing in the product
+ * wrote it. This row is the missing hand.
+ *
+ * DELIBERATELY NOT A FIELD HERE: which of those three cases a room is currently
+ * drawing. The rule for "is this name a ticker or just a short word" is
+ * `isTickerish` in `src/ui/RoomAvatar.tsx`, and it is the rule the member's
+ * screen actually runs. A second copy of it — on the server or in this type —
+ * would be a second answer to one question, and the two would eventually
+ * disagree without anything failing. So the server ships `name` and
+ * `image_url`, and the board applies the rule the app already owns.
+ */
+export type AdminRoomRow = {
+  id: string;
+  /** 'ticker' | 'topic' | … — the room's kind, straight off the row. */
+  type: string;
+  slug: string | null;
+  name: string;
+  /**
+   * `rooms.config.image_url`. Null means nobody has chosen one, and that is a
+   * legitimate permanent answer rather than a missing value: the room falls
+   * back to its company logo or its initial, and never to a broken image.
+   */
+  image_url: string | null;
+  plain: string;
+};
+
+export type AdminRoomsPage = {
+  rooms: AdminRoomRow[];
+  next_cursor: string | null;
+  /** Counted across everything, not across the page on screen. */
+  totals: { all: number; with_image: number; without_image: number };
+  plain: string;
+};
+
+/** `has_image` narrows to rooms that do or don't have a chosen picture. */
+export type AdminRoomsFilter = {
+  q?: string;
+  has_image?: 'yes' | 'no';
+  cursor?: string;
 };
 
 export type AdminInviteState = 'open' | 'revoked' | 'expired' | 'exhausted';

@@ -139,6 +139,17 @@ if (await meta.count()) {
   note(await meta.locator('[data-testid="contract-META"]').count() > 0, 'the contract is drawn');
   note(/607\.5/.test(t) && /Put/.test(t) && /Aug 12/.test(t) && /5\.25/.test(t),
     'strike, side, expiry and what was paid — as numerals, on one line');
+  /*
+    THE HISTORY ROW DID NOT BECOME A CARD.
+    The active card got a full contract graphic on 7 Sept and this row
+    deliberately did not: a record is read in a column of twenty-six other
+    records. The line grew by the days left and — where one was recorded — the
+    implied volatility, and by nothing else. These two assertions are what stop
+    the graphic leaking down here the next time somebody reuses the component.
+  */
+  note(/\b1d\b/.test(t), 'and how many days it had left');
+  note(!/STRIKE\b/.test(t) && !/per contract/i.test(t) && !/Print strength/i.test(t),
+    'and it is still one line — no rail, no cost block, no score blocks');
   note(!/RESULT/.test(t), 'no result — this engine scores none');
   note(!/PEAK/.test(t), 'no peak — the same');
   note(await meta.locator('[data-testid="grade-chip"]').count() === 0, 'and no letter grade is invented');

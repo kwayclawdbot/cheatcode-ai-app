@@ -231,8 +231,19 @@ async function captureApp(browser) {
   await assertText(page, 'Risk:Reward', 'alerts · risk:reward bar');
   await assertTestId(page, 'hold-plan-META', 'alerts · hold plan, inside the bars card');
   await assertText(page, 'Hold plan', 'alerts · hold plan label');
+  /*
+   * The contract is a GRAPHIC and it is not behind the fold (owner, 7 Sept).
+   * The eyebrow this used to look for — "IF YOU TRADE THIS WITH OPTIONS" — was
+   * the swing card's framing, where a contract is an optional way to express a
+   * stock idea. It stopped being rendered when the section moved out of the
+   * expander and the assertion was never updated with it, so it had been
+   * asserting a string the component no longer contained.
+   */
   await assertTestId(page, 'contracts-META', 'alerts · the option contracts');
-  await assertText(page, 'IF YOU TRADE THIS WITH OPTIONS', 'alerts · contracts eyebrow');
+  await assertText(page, 'THE CONTRACT THE FLOW BOUGHT', 'alerts · contracts eyebrow');
+  await assertTestId(page, 'contract-META-0', 'alerts · the first contract graphic');
+  await assertTestId(page, 'contract-expiry-META', 'alerts · the runway of days left');
+  await assertTestId(page, 'contract-cost-META', 'alerts · what the contract costs');
   await assertTestId(page, 'alert-story-META', 'alerts · the story toggle');
 
   // The two sections the owner took OFF the card must stay off it.
@@ -244,7 +255,8 @@ async function captureApp(browser) {
   // Top to bottom, in the one order the card is allowed to read in.
   await assertOrder(
     page,
-    ['Entry', 'Trend strength', 'Hold plan', 'IF YOU TRADE THIS WITH OPTIONS', 'The story'],
+    /* The contract leads now — it is above the expander, not inside it. */
+    ['THE CONTRACT THE FLOW BOUGHT', 'Entry', 'Trend strength', 'Hold plan', 'The story'],
     'alerts · expanded card order',
   );
 

@@ -10,8 +10,11 @@ import { KaiOrb } from '../../ui/KaiOrb';
 // one shared mark lives in the design system now (see src/ui/Ticker.tsx).
 import { TickerMark } from '../../ui/Ticker';
 import { GradeMedallion, GradeChip, gradeBand } from '../grade';
+// The contract is a graphic now, not a tile of label/value rows — see the
+// header of ContractGraphic.tsx for why the half-width box had to go.
+import { ContractSection, ContractLine } from './ContractGraphic';
 import type {
-  AlertCard as AlertCardModel, AlertCardState, AlertOptionContract, AlertScoreComponent,
+  AlertCard as AlertCardModel, AlertCardState, AlertScoreComponent,
 } from '../../lib/types';
 
 /**
@@ -151,50 +154,6 @@ function tradeBars(alert: AlertCardModel): Bar[] {
   return bars;
 }
 
-const LIQUIDITY_WORD: Record<'good' | 'thin', string> = { good: 'Active', thin: 'Thin' };
-
-/**
- * One contract as an object you can look at, not a row in a chain and not a
- * sentence. Strike is the loud thing; call/put is a word, never colour alone.
- */
-function ContractCard({ c, grow, testID }: { c: AlertOptionContract; grow?: boolean; testID?: string }) {
-  const put = c.type === 'put';
-  const tone = put ? color.red : color.green;
-  const tint = put ? color.redTint : color.greenTint;
-  const days = c.dte != null ? `${c.dte} day${c.dte === 1 ? '' : 's'}` : null;
-  return (
-    <View
-      testID={testID}
-      accessibilityLabel={[`${c.strike} ${put ? 'put' : 'call'}`, c.expiry, days, c.cost, c.liquidity ? LIQUIDITY_WORD[c.liquidity] : null]
-        .filter(Boolean).join(', ')}
-      style={{
-        // Two to a row. An odd third card keeps its half width rather than
-        // stretching the full width and reading as a different kind of object.
-        flexGrow: grow ? 1 : 0, flexBasis: '47%', minWidth: 128, gap: 5,
-        paddingVertical: 9, paddingHorizontal: 11, borderRadius: 11,
-        backgroundColor: alpha.ivory035, borderWidth: 0.5, borderColor: alpha.ivory10,
-      }}
-    >
-      {c.label ? <T size={8.5} weight="bold" c={color.dim} style={{ letterSpacing: 0.7 }}>{c.label.toUpperCase()}</T> : null}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Num size={15} weight="bold">{c.strike}</Num>
-        <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5, backgroundColor: tint, borderWidth: 0.5, borderColor: tone }}>
-          <T size={9.5} weight="semibold" c={tone}>{put ? 'Put' : 'Call'}</T>
-        </View>
-      </View>
-      <T size={10.5} c={color.muted}>{[c.expiry, days].filter(Boolean).join(' · ')}</T>
-      {c.cost || c.liquidity ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-          {c.cost ? <Num size={11} c={color.text}>{c.cost}</Num> : null}
-          {c.liquidity ? (
-            <T size={10} c={c.liquidity === 'thin' ? color.gold : color.muted}>{LIQUIDITY_WORD[c.liquidity]}</T>
-          ) : null}
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 /** State label carries a dot + word — never colour alone. */
 function stateTone(state: AlertCardState): string {
   if (state === 'entry_reached' || state === 'ready' || state === 'position_active') return color.green;
@@ -284,21 +243,14 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
         already the question "is this a contract-led card". A check on the mode
         would be a second answer to that, free to disagree with the data.
       */}
-      {contracts.length ? (
-        <View testID={`contracts-${alert.symbol}`} style={{ gap: 7 }}>
-          <Eyebrow c={color.muted}>THE CONTRACT THE FLOW BOUGHT</Eyebrow>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-            {contracts.map((c, i) => (
-              <ContractCard
-                key={`${c.strike}-${c.expiry}-${c.type}-${i}`}
-                c={c}
-                grow={contracts.length === 1}
-                testID={`contract-${alert.symbol}-${i}`}
-              />
-            ))}
-          </View>
-        </View>
-      ) : null}
+      {/*
+        Collapsed, the graphic is COMPACT: the strike rail, the runway of days
+        left, the cost and the one-line tradability verdict — enough to decide
+        whether to open it. Expanding the card fills the same object in with
+        implied volatility, the two score blocks and their evidence, rather than
+        moving the contract or duplicating it lower down.
+      */}
+      <ContractSection contracts={contracts} symbol={alert.symbol} compact={!open} />
 
       {open ? (
         <>
@@ -702,33 +654,15 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
         ) : null}
 
         {/*
-          The contract, where the engine named one — compact, and still a
-          contract rather than a sentence: strike and premium are numerals, the
-          side is a word. What the contract went on to do is not here because
-          nothing stores it (see the report); the cost is what was paid, and it
-          says so.
+          The contract, where the engine named one — ONE LINE, and it stays one
+          line. The active card got a full graphic on 7 Sept; this row did not,
+          because a record is read in a column of twenty-six other records and a
+          card there is not a record. Implied volatility joined the line (owner
+          named it) and nothing else did. What the contract went on to DO is
+          still not here, because nothing stores it (see the report); the cost
+          is what was paid, and it says so.
         */}
-        {contract ? (
-          <View
-            testID={`contract-${alert.symbol}`}
-            accessibilityLabel={`${contract.strike} ${contract.type}, ${contract.expiry}${contract.cost ? `, paid ${contract.cost}` : ''}`}
-            style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}
-          >
-            <Num size={12.5} weight="semibold">{contract.strike}</Num>
-            <T size={11} weight="semibold" c={contract.type === 'put' ? color.red : color.green}>
-              {contract.type === 'put' ? 'Put' : 'Call'}
-            </T>
-            <T size={11} c={color.dim}>·</T>
-            <T size={11} c={color.muted}>{contract.expiry}</T>
-            {contract.cost ? (
-              <>
-                <T size={11} c={color.dim}>·</T>
-                <T size={11} c={color.muted}>paid</T>
-                <Num size={12} c={color.text}>{contract.cost.startsWith('$') ? contract.cost : `$${contract.cost}`}</Num>
-              </>
-            ) : null}
-          </View>
-        ) : null}
+        {contract ? <ContractLine c={contract} symbol={alert.symbol} /> : null}
 
         {note ? <T size={10.5} c={color.dim} lh={15}>{note}</T> : null}
       </LinearGradient>
