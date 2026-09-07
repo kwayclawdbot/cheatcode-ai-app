@@ -74,6 +74,21 @@ const PAYLOAD: Partial<Record<ChartCommandName, Record<string, unknown>>> = {
   scroll_to_now: {},
   flash_annotation: { annotation_id: 'ann-1', pulses: 2 },
   pointer_hint: { price: 227.92, linger: true },
+  /**
+   * `show_symbol` NEEDS A SYMBOL, THE WAY `set_timeframe` NEEDS A TIMEFRAME.
+   *
+   * This table is not decoration: it is the minimum argument each command needs
+   * in order to resolve at all, and a command whose argument is missing here is
+   * indistinguishable from a command with no case in the switch — both come back
+   * null. `set_timeframe` has always been in this table for exactly that reason.
+   *
+   * `show_symbol` was added to `planCommand` without being added here, so the
+   * coverage loop called it with `{}`, the case correctly refused to offer a
+   * ticker nobody named, and this test reported it as dead code. That reading
+   * cost two lanes a hunt through a switch that was already right. The refusal
+   * itself is the correct behaviour and is asserted on its own below.
+   */
+  show_symbol: { symbol: 'AMKR', hook: 'the one you asked about' },
 };
 
 console.log('\nEvery command the server can send plans to something');
@@ -104,6 +119,27 @@ console.log('\nA camera move changes no annotation — it only moves the view');
   const plan = planCommand({ command: 'pointer_hint', payload: PAYLOAD.pointer_hint!, narration: null }, portal, []);
   ok('nothing is drawn', plan !== null && plan.upsert.length === 0 && plan.remove.length === 0, plan);
   ok('and no route is pushed', plan?.route === null, plan?.route);
+}
+
+console.log('\nA second ticker is OFFERED, never navigated to');
+{
+  const plan = planCommand({ command: 'show_symbol', payload: PAYLOAD.show_symbol!, narration: null }, portal, []);
+  ok('the offer carries the symbol', plan?.offer?.symbol === 'AMKR', plan?.offer);
+  ok('and the hook that came with it', plan?.offer?.hook === 'the one you asked about', plan?.offer?.hook);
+  /**
+   * THE WHOLE POINT OF THE COMMAND. `alert_from_level` and `prepare_trade` set a
+   * route because the user asked for the thing; nobody asked to leave this
+   * chart. A route here would take the chart out from under somebody mid-read.
+   */
+  ok('no route — the chart does not move on Kai’s say-so', plan?.route === null, plan?.route);
+  ok('and nothing is drawn on the chart that is up', plan?.upsert.length === 0 && plan?.remove.length === 0, plan?.upsert);
+}
+{
+  // The refusals. Both are correct answers, not dead code.
+  const noSymbol = planCommand({ command: 'show_symbol', payload: {}, narration: null }, portal, []);
+  ok('a command naming no ticker offers nothing', noSymbol === null, noSymbol);
+  const itself = planCommand({ command: 'show_symbol', payload: { symbol: 'nvda' }, narration: null }, portal, []);
+  ok('and the chart already on screen is never offered back', itself === null, itself);
 }
 
 console.log('\nA served annotation is still drawn exactly as the server sent it');
