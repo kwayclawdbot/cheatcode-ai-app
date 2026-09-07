@@ -92,10 +92,18 @@ export function StackHeader({
  * Member avatar: 34px circle, tinted by role (never by performance).
  *
  * A PICTURE IF THERE IS ONE, THE INITIAL IF THERE IS NOT. `url` is
- * `profiles.avatar_url`, which is null on every account today — the upload
- * that fills it is the media lane's (`POST /api/v1/media`, purpose `avatar`)
- * and this lane deliberately did not build a second one. The image path is
- * here so that the day it lands, nothing in the community has to change.
+ * `profiles.avatar_url`. That column stayed null on every account until 7 Sept,
+ * when the Account board's "Profile picture" row was wired to the upload that
+ * fills it (`features/account/useAvatar.ts` → `POST /api/v1/media` with purpose
+ * `avatar` → `PUT /api/v1/settings`). Nothing in the community had to change
+ * when it landed, which was the point of building the image path early.
+ *
+ * NO `Authorization` HEADER, AND THAT IS LOAD-BEARING. `url` is a stable
+ * address on our own API that 302s to a freshly signed storage link. That route
+ * used to require a bearer token, which an `<Image>` cannot send — every saved
+ * picture would have rendered as a blank disc. Avatars are now fetchable with
+ * the address alone; the reasoning, and what it costs, is written out in full
+ * in `apps/api/src/app/api/v1/media/[id]/route.ts`.
  */
 export function Avatar({ initial, size = 34, tone = 'neutral', url = null }: {
   initial: string; size?: number; tone?: 'neutral' | 'educator' | 'market' | 'kai'; url?: string | null;

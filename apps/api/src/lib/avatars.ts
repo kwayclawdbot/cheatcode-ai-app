@@ -23,19 +23,38 @@
  * the column is read months later and by then the signature has expired and
  * every member's picture is a broken image.
  *
- * So the avatar's address must be stable: either the `avatars` bucket is made
- * public and `getPublicUrl` is what lands here, or the column holds the asset
- * id and the API signs it on the way out. That is the media lane's call to
- * make and it has not been made yet. Until it is, this function accepts an
- * address only if it is on OUR OWN storage origin, so nothing but our storage
- * can end up on a member's screen, and the decision above stays open.
+ * THAT DECISION HAS SINCE BEEN MADE, AND IT IS THE THIRD ANSWER.
+ * `GET /api/v1/media/:id` (media lane) is a permanent address ON THIS API that
+ * 302s to a freshly signed storage URL on every fetch. So the value that ends
+ * up in `profiles.avatar_url` is `<this api>/api/v1/media/<asset id>` — never a
+ * Supabase URL at all.
+ *
+ * WHICH IS WHY THIS FILE USED TO REFUSE THE ONE URL THE UPLOAD RETURNS.
+ * `allowedOrigins()` listed SUPABASE_URL and PUBLIC_STORAGE_ORIGIN and nothing
+ * else, so `POST /api/v1/media` handed back an address on the API's own origin
+ * and `PUT /api/v1/settings` then rejected it with "A profile picture has to be
+ * one you uploaded here." — about a picture that had just been uploaded here.
+ * The API's own media address is by definition one "you uploaded here", so it
+ * is now accepted explicitly — and only at the `/api/v1/media/` path that mints
+ * these. See `selfOrigin` below.
+ *
+ * THE SAME CHECK, WRITTEN THE SAME WAY, ALREADY EXISTS FOR ROOM PICTURES in
+ * `app/api/v1/admin/rooms/[id]/avatar/route.ts` (`mediaAssetIdFrom`). That one
+ * was written when the admin board landed and it is the reason room pictures
+ * saved and profile pictures did not. This follows it deliberately, including
+ * the decision to compare HOST rather than full origin, so the two do not drift.
  */
 import { env } from './env';
 import { ApiError } from './errors';
 
+/** The only path on this API that hands out a storable picture address. */
+const SELF_MEDIA_PREFIX = '/api/v1/media/';
+
 /**
- * The origins an avatar may live on: the app's Supabase project, and (in local
- * development only) the address a phone can actually reach this machine at.
+ * The storage origins an avatar may live on: the app's Supabase project, and
+ * (in local development only) the address a phone can actually reach this
+ * machine at. This API's own address is handled separately, below, because it
+ * is allowed for one PATH rather than wholesale.
  */
 function allowedOrigins(): string[] {
   const out: string[] = [];
@@ -52,6 +71,44 @@ function allowedOrigins(): string[] {
 }
 
 /**
+ * Is this the address `POST /api/v1/media` handed back on this same request's
+ * host?
+ *
+ * `selfOrigin` comes from the route (`new URL(req.url).origin`) rather than an
+ * env var, for the reason `POST /api/v1/media` builds `stable_url` the same
+ * way: localhost, a preview deployment and production are then all correct with
+ * nothing to keep in step, and whatever host minted the address is the host
+ * that accepts it back.
+ *
+ * COMPARED ON HOST, NOT ORIGIN. A proxy that terminates TLS hands this function
+ * an `http://` request URL while the member is holding a perfectly good
+ * `https://` address, and failing that on the scheme alone would be a refusal
+ * with no cause. The web build of this app reaches the API through exactly such
+ * a same-origin rewrite, so this is not hypothetical.
+ *
+ * THE PATH IS CHECKED BECAUSE THE HOST IS NOT ENOUGH. The host says whose
+ * server serves the bytes; the path says whether the address is a picture at
+ * all. `/api/v1/media/<id>` is the one address the upload mints — anything else
+ * on this host is a route, and putting a route in an `<img>` every member's
+ * screen loads is at best a broken image and at worst a way to make their phone
+ * fire a GET at an endpoint on their behalf.
+ */
+function isOurMediaAddress(url: URL, selfOrigin?: string | null): boolean {
+  if (!selfOrigin) return false;
+  let self: URL;
+  try {
+    self = new URL(selfOrigin);
+  } catch {
+    return false;
+  }
+  if (url.host !== self.host) return false;
+  if (!url.pathname.startsWith(SELF_MEDIA_PREFIX)) return false;
+  // A query, a fragment or embedded credentials are not part of what the
+  // upload route returns, so their presence means this is not that address.
+  return !(url.search || url.hash || url.username || url.password);
+}
+
+/**
  * Check an avatar address and return what to store, or throw the sentence the
  * member should read.
  *
@@ -61,7 +118,7 @@ function allowedOrigins(): string[] {
  * host that sees the club's traffic, or something worse. The column is not a
  * free-text field just because it is typed as text.
  */
-export function avatarForStorage(raw: string): string {
+export function avatarForStorage(raw: string, selfOrigin?: string | null): string {
   const value = (raw ?? '').trim();
   if (!value) return '';
 
@@ -77,6 +134,11 @@ export function avatarForStorage(raw: string): string {
   if (value.length > 2048) {
     throw new ApiError('VALIDATION_FAILED', 'That image address is too long.');
   }
+
+  // Our own media address is checked FIRST, because in practice it is the only
+  // value this function ever sees: it is what `POST /api/v1/media` returns and
+  // the Account board saves it back unchanged.
+  if (isOurMediaAddress(url, selfOrigin)) return value;
 
   const allowed = allowedOrigins();
   if (allowed.length && !allowed.includes(url.origin)) {

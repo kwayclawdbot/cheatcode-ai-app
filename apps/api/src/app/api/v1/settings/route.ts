@@ -53,9 +53,16 @@ export const PUT = authed(async (req: NextRequest, ctx: Ctx) => {
    * NOT upload anything and must not grow an upload — `POST /api/v1/media`
    * with purpose `avatar` is the one upload path in this app. All that happens
    * here is that the address is checked to be ours and written down.
+   *
+   * THE REQUEST'S OWN ORIGIN IS PASSED IN because that upload returns an
+   * address on THIS API (`<origin>/api/v1/media/<id>`), not on Supabase. Read
+   * the header of `lib/avatars.ts`: without this argument the check rejected
+   * the exact URL the upload had just handed the member.
    */
   if (body.avatar_url !== undefined) {
-    profilePatch.avatar_url = body.avatar_url === null ? null : avatarForStorage(body.avatar_url);
+    profilePatch.avatar_url = body.avatar_url === null
+      ? null
+      : avatarForStorage(body.avatar_url, new URL(req.url).origin);
   }
 
   // Round 4: the Account board's Kai-profile rows. `experience` is the word the

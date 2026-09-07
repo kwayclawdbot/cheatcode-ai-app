@@ -18,6 +18,8 @@ import { api } from '../../lib/api';
 import { env } from '../../lib/env';
 import { useSession } from '../../lib/session';
 import { useKaiProfile, useMe, useSettingsWriter } from '../../features/account/useAccount';
+import { useAvatar } from '../../features/account/useAvatar';
+import { Avatar } from '../../features/community/ui/Chrome';
 import { FOCUS_CHIP, FOCUS_ORDER } from '../../features/account/profile';
 import { ModeSheet, MODE_LABEL } from '../../features/trade/ModeSheet';
 import { PaperChip } from '../../features/trade/components';
@@ -104,6 +106,22 @@ export default function Account() {
   const handle = identity?.handle ?? data?.profile.handle ?? profile?.handle ?? null;
   const name = data?.profile.display_name ?? profile?.display_name ?? handle ?? 'You';
   const needsHandle = identity ? identity.needs_handle : handle === null;
+  /**
+   * THE PICTURE, READ THE SAME WAY THE NAME IS.
+   *
+   * `/me` answers with it in two places — `identity` is the block the identity
+   * lane owns and `profile` is the older shape — and the session's cached
+   * profile is the third, for the moment before `/me` comes back. First one
+   * that is a real string wins; anything else is "no picture", which is a
+   * complete answer and draws the initial.
+   */
+  const avatarUrl =
+    identity?.avatar_url?.trim()
+    || data?.profile.avatar_url?.trim()
+    || profile?.avatar_url?.trim()
+    || null;
+  const avatar = useAvatar(reload);
+
   const mode = (data?.profile.primary_mode ?? profile?.primary_mode ?? 'day_trade') as GoalMode;
   const involvement = (data?.risk_policy.involvement ?? profile?.involvement ?? 'hands_on') as 'hands_on' | 'guided';
   const policy = data?.risk_policy ?? null;
@@ -152,14 +170,48 @@ export default function Account() {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
-          <LinearGradient
-            colors={gradient.avatar as unknown as readonly [string, string, ...string[]]}
-            start={gradientAngle.start}
-            end={gradientAngle.end}
-            style={{ width: 54, height: 54, borderRadius: 27, borderWidth: 0.5, borderColor: alpha.ivory20, alignItems: 'center', justifyContent: 'center' }}
+          {/*
+            YOUR OWN FACE, AT THE TOP OF YOUR OWN BOARD.
+            This drew the gradient initial disc and read `avatar_url` nowhere,
+            so a member who had just set a picture saw it next to their posts
+            and not on the one screen that is about them.
+
+            TWO BRANCHES, AND THEY ARE NOT THE SAME COMPONENT ON PURPOSE.
+            · A PICTURE goes through the shared `Avatar`, which is what draws
+              every member's picture in the rooms, the feed, the call cards and
+              the leaderboard. One implementation of "a photo in a circle"
+              means this screen cannot drift from the rest of the app.
+            · NO PICTURE keeps this board's own `gradient.avatar` disc. That
+              gradient is not decoration a component library could supply — it
+              is the signed-off pixel of this header (proof/), it is warmer and
+              larger than the neutral disc `Avatar` falls back to, and swapping
+              it would change a screen nobody asked to change in order to
+              tidy up a branch nobody sees.
+            The whole thing is tappable either way: the fastest place to reach
+            "set a picture" is the picture-shaped hole where one should be.
+          */}
+          <Pressable
+            testID="account-avatar"
+            accessibilityRole="button"
+            accessibilityLabel={avatarUrl ? 'Your profile picture. Change it.' : 'Add a profile picture.'}
+            accessibilityState={{ busy: avatar.busy }}
+            disabled={avatar.busy}
+            onPress={avatar.choose}
+            style={({ pressed }) => ({ opacity: avatar.busy ? 0.5 : pressed ? 0.75 : 1 })}
           >
-            <T size={22} weight="bold">{name.slice(0, 1).toUpperCase()}</T>
-          </LinearGradient>
+            {avatarUrl ? (
+              <Avatar initial={name.slice(0, 1).toUpperCase()} url={avatarUrl} size={54} />
+            ) : (
+              <LinearGradient
+                colors={gradient.avatar as unknown as readonly [string, string, ...string[]]}
+                start={gradientAngle.start}
+                end={gradientAngle.end}
+                style={{ width: 54, height: 54, borderRadius: 27, borderWidth: 0.5, borderColor: alpha.ivory20, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <T size={22} weight="bold">{name.slice(0, 1).toUpperCase()}</T>
+              </LinearGradient>
+            )}
+          </Pressable>
           <View style={{ flex: 1 }}>
             <T size={20} weight="bold" numberOfLines={1}>{name}</T>
             {/* The username, under the name, exactly as a post is signed. A
@@ -214,21 +266,67 @@ export default function Account() {
               <ArrowRight size={12} color={color.dim} />
             </Row>
           </Pressable>
+          {/*
+            THE ROW THE OWNER ASKED FOR.
+            It used to say "Picking a photo arrives with the next release" and
+            was not even pressable — which was honest at the time and is not
+            any more: the picker, the upload and the save all existed, they had
+            only ever been wired together on the admin rooms board.
+
+            IT SAYS WHAT IS HAPPENING WHILE IT HAPPENS. Sending a photo over a
+            phone connection is not instant, and a row that looked identical
+            during the wait would read as a tap that did nothing.
+          */}
           <Row last>
-            <View style={{ flex: 1 }}>
-              <T size={14}>Profile picture</T>
-              {/* SAYS WHAT IS TRUE TODAY. The column exists, the upload is
-                  another lane's and has not landed; a button that opened a
-                  picker and then failed would be worse than this sentence. */}
-              <T size={11.5} c={color.muted} style={{ marginTop: 2 }}>
-                {identity?.avatar_url
-                  ? 'Shown next to your posts.'
-                  : 'Not set. Picking a photo arrives with the next release.'}
-              </T>
-            </View>
-            <T size={13} c={color.dim}>{identity?.avatar_url ? 'Set' : 'None'}</T>
+            <Pressable
+              testID="identity-avatar"
+              accessibilityRole="button"
+              accessibilityLabel={avatarUrl ? 'Profile picture. Choose a different one.' : 'Add a profile picture.'}
+              accessibilityState={{ busy: avatar.busy }}
+              disabled={avatar.busy}
+              onPress={avatar.choose}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11, minHeight: 44 }}
+            >
+              <View style={{ flex: 1 }}>
+                <T size={14}>Profile picture</T>
+                <T size={11.5} c={avatar.busy ? color.volt : color.muted} style={{ marginTop: 2 }}>
+                  {avatar.working
+                    ?? (avatarUrl
+                      ? 'Shown next to your posts.'
+                      : 'Members with a picture are easier to recognise in a room.')}
+                </T>
+              </View>
+              {avatarUrl ? (
+                <Avatar initial={name.slice(0, 1).toUpperCase()} url={avatarUrl} size={28} />
+              ) : (
+                <T size={13} weight="semibold" c={color.volt}>Add one</T>
+              )}
+              <ArrowRight size={12} color={color.dim} />
+            </Pressable>
           </Row>
         </RowList>
+
+        {/* REMOVING IT IS A SEPARATE, QUIETER ACT.
+            It only exists when there is something to remove, and it is a ghost
+            row rather than a button: taking your picture down is a decision a
+            member makes deliberately, not one the board should invite. */}
+        {avatarUrl && !avatar.busy ? (
+          <Pressable
+            testID="identity-avatar-remove"
+            accessibilityRole="button"
+            accessibilityLabel="Remove your profile picture"
+            onPress={avatar.remove}
+            style={({ pressed }) => ({ minHeight: 32, justifyContent: 'center', marginTop: -6, opacity: pressed ? 0.6 : 1 })}
+          >
+            <T size={11.5} c={color.muted}>Remove my picture</T>
+          </Pressable>
+        ) : null}
+
+        {avatar.error ? (
+          <T size={11.5} lh={17} c={color.red} testID="identity-avatar-error" style={{ marginTop: -4 }}>
+            {avatar.error}
+          </T>
+        ) : null}
 
         {/* WHAT THE CLUB SEES.
             Its own section, directly under YOU, because it is a privacy answer

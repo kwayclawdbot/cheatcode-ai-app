@@ -50,9 +50,49 @@ import { Platform } from 'react-native';
 export const MAX_EDGE = 2048;
 /** JPEG quality. 1.0 is no compression. */
 export const QUALITY = 0.8;
-/** Matches the API's ceiling in apps/api/src/lib/media/limits.ts. */
+/** Matches the API's `message` ceiling in apps/api/src/lib/media/limits.ts. */
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 export const MAX_PER_POST = 4;
+
+/**
+ * THE AVATAR CEILING IS HALF THE MESSAGE CEILING AND NOTHING HERE KNEW IT.
+ *
+ * `apps/api/src/lib/media/limits.ts` sets `avatar.maxBytes` to 2 MiB — "an
+ * avatar renders at 40pt; anything larger is waste" — while `message.maxBytes`
+ * is 4 MiB. This file only ever knew the 4 MiB number, so a picture between the
+ * two sizes sailed past every check on the phone, went up the wire on the
+ * member's data plan, and came back refused by the server. That is a slow
+ * failure for something the phone could have known instantly.
+ *
+ * Two things close it, in this order:
+ *   1. `AVATAR_EDGE` — an avatar is drawn at 54 points, so 512 pixels is
+ *      already three times what any screen shows at 3x. A 512-pixel JPEG at
+ *      quality 0.8 lands around 60 KB, which means the ceiling below is a
+ *      backstop rather than something a member will meet.
+ *   2. `maxBytes` on the pick options — measured after the re-encode, so the
+ *      sentence a member reads is written here in their own words instead of
+ *      arriving from the server after the upload.
+ */
+export const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+export const AVATAR_EDGE = 512;
+
+/**
+ * How the pick is shaped for the thing it is for.
+ *
+ * Defaults are the post's — this is the older caller and it must keep behaving
+ * exactly as it did.
+ */
+export type PickOptions = {
+  /** Longest edge of the re-encoded JPEG. */
+  maxEdge?: number;
+  /** Refuse anything larger than this AFTER the re-encode. */
+  maxBytes?: number;
+  /**
+   * What the member is picking, in their words, for the "too big" sentence:
+   * "That picture is too big to use as a profile picture."
+   */
+  what?: string;
+};
 
 export type PickedPhoto = {
   uri: string;
@@ -85,7 +125,11 @@ export type PickOutcome =
  * which is a YES — the picker shows the selection they chose and nothing here
  * should treat it as a refusal.
  */
-export async function pickPhotos(remaining: number): Promise<PickOutcome> {
+export async function pickPhotos(remaining: number, options?: PickOptions): Promise<PickOutcome> {
+  const maxEdge = options?.maxEdge ?? MAX_EDGE;
+  const maxBytes = options?.maxBytes ?? MAX_UPLOAD_BYTES;
+  const what = options?.what ?? null;
+
   if (remaining <= 0) {
     return { ok: false, reason: 'failed', plain: `You can add ${MAX_PER_POST} pictures to a post.` };
   }
@@ -124,7 +168,14 @@ export async function pickPhotos(remaining: number): Promise<PickOutcome> {
       const blocked = webCannotDecode(asset);
       if (blocked) { skipped.push(blocked); continue; }
       try {
-        photos.push(await downscale(asset));
+        const photo = await downscale(asset, maxEdge);
+        // Measured on what is actually going up, not on what was picked. A
+        // 12-megapixel photo is 5 MB in the camera roll and 300 KB after the
+        // re-encode above, so refusing on the original size would turn away
+        // pictures that are perfectly fine.
+        const tooBig = await overSize(photo.uri, maxBytes, asset, what);
+        if (tooBig) { skipped.push(tooBig); continue; }
+        photos.push(photo);
       } catch (e) {
         skipped.push(plainFailure(asset, e));
       }
@@ -172,6 +223,50 @@ function webCannotDecode(asset: ImagePicker.ImagePickerAsset): string | null {
   return `${subject} could not be opened by this browser. JPEG and PNG always work.`;
 }
 
+/**
+ * Is the re-encoded file over the ceiling? Returns the sentence to show, or
+ * null when it is fine or when the size could not be established.
+ *
+ * WHY `fetch` AND NOT A FILESYSTEM CALL. On the web the picked uri is a
+ * `blob:` URL and `fetch` is the only way to read it back — it is already what
+ * `api.uploadAvatar` does to build the multipart part, so this adds no new
+ * mechanism. On the phone the uri is `file://`; React Native's fetch usually
+ * reads one, and where it does not, this returns null.
+ *
+ * A NULL IS NOT A PASS, IT IS A "DO NOT KNOW". Nothing here decides anything:
+ * the server measures the bytes it actually received and refuses with its own
+ * plain sentence (`apps/api/src/lib/media/limits.ts`). This exists so that in
+ * the common case the member is told before the upload rather than after it.
+ */
+async function overSize(
+  uri: string,
+  maxBytes: number,
+  asset: ImagePicker.ImagePickerAsset,
+  what: string | null,
+): Promise<string | null> {
+  let size = 0;
+  try {
+    const blob = await (await fetch(uri)).blob();
+    size = blob.size ?? 0;
+  } catch {
+    return null;
+  }
+  if (!size || size <= maxBytes) return null;
+
+  const name = (asset.fileName ?? '').trim();
+  const subject = name ? `“${name}”` : 'That picture';
+  const limit = `${Math.round(maxBytes / (1024 * 1024))} MB`;
+  const forWhat = what ? ` to use as ${what}` : '';
+  return `${subject} is still too big${forWhat} — ${limit} is the limit and it comes to ${plainBytes(size)}. A smaller photo, or a screenshot of it, will go up fine.`;
+}
+
+/** A file size in the words a person uses for one. */
+function plainBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} bytes`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /** What to say when the re-encode itself failed. */
 function plainFailure(asset: ImagePicker.ImagePickerAsset, e: unknown): string {
   const name = (asset.fileName ?? '').trim();
@@ -189,13 +284,13 @@ function plainFailure(asset: ImagePicker.ImagePickerAsset, e: unknown): string {
  * is told to keep the aspect ratio. Passing both would silently distort a
  * screenshot, and a squashed chart is worse than a large one.
  */
-async function downscale(asset: ImagePicker.ImagePickerAsset): Promise<PickedPhoto> {
+async function downscale(asset: ImagePicker.ImagePickerAsset, maxEdge: number): Promise<PickedPhoto> {
   const longest = Math.max(asset.width ?? 0, asset.height ?? 0);
   const context = ImageManipulator.manipulate(asset.uri);
 
-  if (longest > MAX_EDGE) {
-    if ((asset.width ?? 0) >= (asset.height ?? 0)) context.resize({ width: MAX_EDGE });
-    else context.resize({ height: MAX_EDGE });
+  if (longest > maxEdge) {
+    if ((asset.width ?? 0) >= (asset.height ?? 0)) context.resize({ width: maxEdge });
+    else context.resize({ height: maxEdge });
   }
 
   const rendered = await context.renderAsync();
