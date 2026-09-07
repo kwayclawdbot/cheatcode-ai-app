@@ -11,6 +11,7 @@ import { T, Num, Eyebrow } from '../../../ui/Text';
 import { TickerMark } from '../../../ui/Ticker';
 import { family } from '../../../ui/fonts';
 import { alpha, color, gradient, gradientAngle, radius } from '../../../ui/tokens';
+import { useSession } from '../../../lib/session';
 import { CommunityCallCard, usePublishCall } from '../../../features/social';
 import { NOT_ADVICE_COMMUNITY_CALL } from '../../../features/legal/disclaimers';
 import type { CommunityCall, SocialDirection } from '../../../lib/types';
@@ -40,6 +41,22 @@ import type { CommunityCall, SocialDirection } from '../../../lib/types';
  * it a stop." The same rule is checked here as you type, so in the ordinary
  * case the refusal never has to travel; the translation in `useSocial.ts` is
  * the backstop for everything this screen cannot see.
+ *
+ * ── THIS SCREEN USED TO PROMISE A ROOM, AND THERE IS NO ROOM ─────────────
+ * The preview was headed "WHAT THE ROOM WILL SEE", the publish button said it
+ * put the call "in the club", the confirmation said "It is in the club", and
+ * afterwards the author was sent to `/community?feed=following`. None of that
+ * was true. A call is not a room post: `community_calls` has no `room_id` and
+ * no `circle_id`, nothing in a room ever renders one, and the Following feed
+ * is the people you follow — and the database will not let you follow
+ * yourself (`follows_not_self`, migration 0038), so the one place a published
+ * call could never appear is the place the author was being sent.
+ *
+ * WHERE IT ACTUALLY GOES, which is what the copy says now: onto the author's
+ * own profile with their name on it, and into the feed of everybody who
+ * follows them (`fanOutToFollowers` in the publish route). So the confirmation
+ * describes those two places, and both ways out of the sheet land on the
+ * author's profile — the one screen where the call they just wrote is.
  */
 
 const THESIS_MAX = 280;
@@ -121,6 +138,9 @@ function levelProblem(
 export default function NewCommunityCall() {
   const router = useRouter();
   const params = useLocalSearchParams<{ symbol?: string }>();
+  /** Read the same way every other screen reads it — see `(tabs)/community.tsx`. */
+  const { session } = useSession();
+  const myUserId = session?.user?.id ?? null;
   const [symbol, setSymbol] = useState(
     typeof params.symbol === 'string' ? params.symbol.toUpperCase() : '',
   );
@@ -163,6 +183,19 @@ export default function NewCommunityCall() {
     time_label: 'now',
     resolved_at: null,
   }), [cleanSymbol, direction, entry, stop, target, thesis, scoreable]);
+
+  /**
+   * Out of the sheet and onto the call. The author's own profile is where a
+   * published call is, so that is where both exits go. If the session has not
+   * given us an id there is no profile route to build, and `/contributor/`
+   * with nothing after it is a broken screen — the club is the honest
+   * fallback, and the label below changes to match rather than promising a
+   * profile it is not about to open.
+   */
+  const leave = () => {
+    setDone(null);
+    router.replace((myUserId ? `/contributor/${myUserId}` : '/community') as never);
+  };
 
   const publish = async () => {
     const call = await publisher.publish({
@@ -333,8 +366,10 @@ export default function NewCommunityCall() {
           </T>
         </View>
 
-        {/* WHAT THE ROOM WILL SEE. The card itself, not a picture of it. */}
-        <Eyebrow c={color.volt}>WHAT THE ROOM WILL SEE</Eyebrow>
+        {/* WHAT PEOPLE WILL SEE. The card itself, not a picture of it — and
+            not "what the room will see", because a call never goes to a
+            room. */}
+        <Eyebrow c={color.volt}>WHAT PEOPLE WILL SEE</Eyebrow>
         <View pointerEvents="none" testID="composer-preview">
           <CommunityCallCard call={preview} testID="community-call-preview" />
         </View>
@@ -351,7 +386,7 @@ export default function NewCommunityCall() {
           disabled={!ready}
           loading={publisher.busy}
           onPress={publish}
-          accessibilityHint="Puts this call in the club with your name on it. It stays on your record."
+          accessibilityHint="Puts this call on your profile with your name on it, and in the feed of everybody who follows you. It stays on your record."
         />
 
         <Pressable
@@ -367,20 +402,20 @@ export default function NewCommunityCall() {
 
       <Sheet
         visible={!!done}
-        onClose={() => { setDone(null); router.replace('/community?feed=following'); }}
+        onClose={leave}
         title="Published"
         testID="sheet-call-published"
       >
         <T size={13} lh={20} c={color.muted}>
           {done?.scoreable
-            ? 'It is in the club, and it counts. It resolves when price reaches your stop or your target.'
-            : 'It is in the club. Without an entry and a stop or a target it will not score — you can publish another with levels any time.'}
+            ? 'It is on your profile with your name on it, and in the feed of everybody who follows you. It counts — it resolves when price reaches your stop or your target.'
+            : 'It is on your profile with your name on it, and in the feed of everybody who follows you. Without an entry and a stop or a target it will not score — you can publish another with levels any time.'}
         </T>
         <Button
-          label="Back to the club"
+          label={myUserId ? 'See it on your profile' : 'Back to the club'}
           kind="volt"
           height={48}
-          onPress={() => { setDone(null); router.replace('/community?feed=following'); }}
+          onPress={leave}
         />
       </Sheet>
     </Screen>

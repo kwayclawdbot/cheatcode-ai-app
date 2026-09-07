@@ -54,7 +54,7 @@ function NavRow({
  */
 export default function Account() {
   const router = useRouter();
-  const { profile, signOut, patchProfile } = useSession();
+  const { profile, session, signOut, patchProfile } = useSession();
   const { data, loading, isFixture, notAvailable, reload } = useMe();
   const settings = useSettingsWriter(reload);
   const [memory, setMemory] = useState<boolean>(profile?.memory_enabled ?? true);
@@ -351,6 +351,21 @@ export default function Account() {
 
         <Eyebrow>SETTINGS</Eyebrow>
         <RowList>
+          {/* THE ONE DOOR TO YOUR OWN PROFILE. `/contributor/:id` is where a
+              member's published calls, their record and their belt live, and
+              until this row existed there was no way into it for your own id
+              from anywhere in the app — you could reach everybody else's
+              profile by tapping their name, and never your own. It is drawn
+              only once the session has given us an id, because
+              `/contributor/` with nothing after it is a broken screen. */}
+          {session?.user?.id ? (
+            <NavRow
+              testID="nav-profile"
+              icon={<Bars size={14} color={color.muted} />}
+              label="Your profile and calls"
+              onPress={() => router.push(`/contributor/${session.user.id}` as never)}
+            />
+          ) : null}
           <NavRow testID="nav-settings" icon={<Gear size={14} color={color.muted} />} label="How Kai talks to you" onPress={() => router.push('/account/settings')} />
           <NavRow testID="nav-notifications" icon={<Bell size={14} color={color.muted} />} label="Notifications" onPress={() => router.push('/account/notifications')} />
           <NavRow testID="nav-memory" icon={<KaiOrb size={14} glow={false} />} label="What Kai remembers" onPress={() => router.push('/account/memory')} />

@@ -114,6 +114,25 @@ async function request<T>(path: string, init?: RequestInit, retried = false): Pr
   return json as T;
 }
 
+/**
+ * PUBLISHING AND WITHDRAWING ANSWER `{ call, plain }`, NOT A BARE CALL.
+ *
+ * Both write routes wrap the row alongside the sentence the server wants said
+ * about what just happened, so the call has to be lifted out of the wrapper
+ * before an adapter that reads `id`, `symbol` and `scoreable` off the top
+ * level is handed it. Passing the wrapper straight through does not throw and
+ * does not log — every field simply misses, the symbol falls back to an em
+ * dash and `scoreable` falls back to false, and somebody who published a call
+ * with a real entry and a real stop is told on the next screen that it will
+ * not be scored. That is the worst kind of wrong: confident and quiet.
+ *
+ * `x.call ?? x` is the same shape `adaptFollowState` uses for `f.follow ?? f`
+ * and `adaptCommunityCalls` uses for `o.calls ?? o.items`, so a stack that
+ * ever hands back the bare call still reads correctly here.
+ */
+const unwrapCall = (v: unknown): unknown =>
+  (v && typeof v === 'object' ? (v as Record<string, unknown>).call ?? v : v);
+
 export const api = {
   /** False in fixtures mode or before the env is wired — screens fall back to fixtures. */
   available: () => !offlineMode && env.hasApi,
@@ -590,7 +609,11 @@ export const api = {
       body: JSON.stringify(symbol ? { symbol } : {}),
     }),
 
-  /* ---------------- the social layer (migrations 0038 + 0039) ---------- */
+  /* ---------------- the social layer (migrations 0038 + 0039) ----------
+   *
+   * See `unwrapCall` below the object for why the two write routes here take
+   * their answer apart before the adapter sees it.
+   */
 
   /**
    * Follow / unfollow. BOTH ANSWER THE WHOLE BUTTON STATE — following, the
@@ -620,10 +643,10 @@ export const api = {
 
   /** `POST /community/calls`. Levels are optional; a thesis is not. */
   createCommunityCall: async (body: CreateCommunityCallBody): Promise<CommunityCall> =>
-    adaptCommunityCall(await request<unknown>('/community/calls', {
+    adaptCommunityCall(unwrapCall(await request<unknown>('/community/calls', {
       method: 'POST',
       body: JSON.stringify(body),
-    })),
+    }))),
 
   /** `GET /community/calls?user_id=` — everything, or one member's. */
   communityCalls: async (userId?: string): Promise<CommunityCall[]> =>
@@ -635,11 +658,20 @@ export const api = {
    * Withdraw a call. It is NOT a delete: the row stays with status
    * `withdrawn`, so a member cannot quietly remove a call that went against
    * them and leave a record that only contains the good ones.
+   *
+   * THE PATH IS `/community/calls/:id`, WITH NO `/withdraw` ON THE END. This
+   * used to post to `/community/calls/:id/withdraw`, which is not a route the
+   * server has ever had — `apps/api/.../community/calls/[id]/route.ts` exports
+   * DELETE and POST on the id itself and treats both as the withdraw. So every
+   * withdraw from the phone answered 404 and the member was told something
+   * vague had gone wrong with a call that was still sitting on their profile.
+   * DELETE is the verb that says what this does; POST is there for clients that
+   * cannot send one, and this one can.
    */
   withdrawCommunityCall: async (id: string): Promise<CommunityCall> =>
-    adaptCommunityCall(await request<unknown>(
-      `/community/calls/${encodeURIComponent(id)}/withdraw`, { method: 'POST', body: '{}' },
-    )),
+    adaptCommunityCall(unwrapCall(await request<unknown>(
+      `/community/calls/${encodeURIComponent(id)}`, { method: 'DELETE' },
+    ))),
 
   /**
    * `GET /leaderboard?period=` — the board, plus the caller's own row when it

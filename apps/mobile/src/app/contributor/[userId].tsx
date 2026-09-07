@@ -8,6 +8,7 @@ import { ObjectCard } from '../../ui/Panel';
 import { Check } from '../../ui/Icons';
 import { alpha, color, radius } from '../../ui/tokens';
 import { communityApi } from '../../lib/community-api';
+import { useSession } from '../../lib/session';
 import { Avatar, DisclosureChip, RoleChip, Sheet, SheetRow, StackHeader } from '../../features/community/ui/Chrome';
 import { Flag, MuteGlyph } from '../../features/community/ui/Icons';
 import {
@@ -37,6 +38,18 @@ import type { ContributorProfile } from '../../features/community/types';
  *
  * The feedback bars stay ivory rather than the artboard's volt, unchanged:
  * volt means "your action", and a rating other people gave is not one.
+ *
+ * ── THIS SCREEN IS ALSO YOUR OWN PROFILE ────────────────────────────────
+ * It is the only place a member's published calls are drawn, so it is where a
+ * member has to be able to go and look at their own. It used to be written as
+ * if the person on it were always somebody else: the header said
+ * "Contributor", it drew a Follow button pointed at you (the database refuses
+ * that — `follows_not_self`, migration 0038 — so the button could only ever
+ * fail), and it offered to mute and report you. Comparing the route's id
+ * against the signed-in one fixes all three, and adds the one thing that was
+ * missing: when it is your profile and you have published nothing, the calls
+ * block says so out loud instead of rendering nothing, because somebody who
+ * has just published and arrived here must never be left reading a gap.
  */
 
 function StatCell({ label, value }: { label: string; value: string }) {
@@ -77,6 +90,15 @@ export default function Contributor() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  /**
+   * Is this me? The comparison has to survive a missing session — signed out,
+   * or the id not loaded yet — as "not me", because drawing somebody else's
+   * screen for a moment is recoverable and hiding a Follow button that should
+   * be there is not obvious to anybody.
+   */
+  const { session } = useSession();
+  const isMe = !!id && id === session?.user?.id;
+
   const [profile, setProfile] = useState<ContributorProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [muted, setMuted] = useState(false);
@@ -110,10 +132,10 @@ export default function Contributor() {
     <View style={{ flex: 1, backgroundColor: color.bg }} testID="screen-contributor">
       <Wash variant="corner" />
       <StackHeader
-        title="Contributor"
+        title={isMe ? 'Your profile' : 'Contributor'}
         onBack={() => router.back()}
-        onRight={() => setSheet(true)}
-        rightLabel="Contributor options"
+        onRight={isMe ? undefined : () => setSheet(true)}
+        rightLabel={isMe ? undefined : 'Contributor options'}
       />
 
       {loading || !profile ? (
@@ -180,8 +202,10 @@ export default function Contributor() {
 
           {/* THE PRIMARY ACTION, up here where the identity is, because that
               is the question this screen answers first: do I want to see what
-              this person publishes? */}
-          <FollowButton userId={id} initial={follow} testID="follow-contributor" />
+              this person publishes? On your own profile there is no such
+              question and no such button — following yourself is not a thing
+              the database will do. */}
+          {isMe ? null : <FollowButton userId={id} initial={follow} testID="follow-contributor" />}
 
           {/* THE RECORD. Outcomes, and the ladder they add up to. */}
           {record ? (
@@ -238,13 +262,29 @@ export default function Contributor() {
           ) : null}
 
           {/* THEIR CALLS. The same card the feed draws, so a call read here is
-              the call read there. */}
+              the call read there.
+
+              ON YOUR OWN PROFILE THE EMPTY CASE IS SAID, NOT SKIPPED. This is
+              where you are sent after publishing, and a heading that simply
+              is not drawn looks exactly like a call that did not save. On
+              somebody else's profile the block still disappears: "they have
+              not published anything" is not news you came here for. The line
+              is drawn only once the answer has arrived — while it is loading
+              there is nothing honest to say about how many calls exist. */}
           {social.data?.calls.length ? (
             <>
               <Eyebrow c={color.volt}>PUBLISHED CALLS</Eyebrow>
               <View style={{ gap: 10 }} testID="contributor-calls">
                 {social.data.calls.map((c) => <CommunityCallCard key={c.id} call={c} />)}
               </View>
+            </>
+          ) : isMe && social.data ? (
+            <>
+              <Eyebrow c={color.volt}>PUBLISHED CALLS</Eyebrow>
+              <T size={12.5} lh={18.5} c={color.muted} testID="contributor-calls-empty">
+                You have not published a call yet. When you do it lands here, and in the feed of
+                everybody who follows you.
+              </T>
             </>
           ) : null}
 
@@ -312,33 +352,38 @@ export default function Contributor() {
           ) : null}
 
           {/* Mute and report keep their places; Save and its device-local
-              notice are gone with the follows table's arrival. */}
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 2, justifyContent: 'flex-end' }}>
-            <Pressable
-              testID="mute-contributor"
-              accessibilityRole="button"
-              accessibilityLabel={muted ? 'Unmute contributor' : 'Mute contributor'}
-              onPress={() => { setMuted(!muted); setNotice(!muted ? 'Muted. Their posts stay in the room, quietly.' : 'Unmuted.'); }}
-              style={({ pressed }) => ({
-                width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
-                borderWidth: 0.5, borderColor: muted ? alpha.gold50 : alpha.ivory24, opacity: pressed ? 0.8 : 1,
-              })}
-            >
-              <MuteGlyph size={16} color={muted ? color.gold : color.muted} />
-            </Pressable>
-            <Pressable
-              testID="report-contributor"
-              accessibilityRole="button"
-              accessibilityLabel="Report contributor"
-              onPress={() => setSheet(true)}
-              style={({ pressed }) => ({
-                width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
-                borderWidth: 0.5, borderColor: alpha.red40, opacity: pressed ? 0.8 : 1,
-              })}
-            >
-              <Flag size={16} />
-            </Pressable>
-          </View>
+              notice are gone with the follows table's arrival. Neither is
+              offered on your own profile — muting yourself does nothing and
+              reporting yourself sends a moderator a report about the person
+              who filed it. */}
+          {isMe ? null : (
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 2, justifyContent: 'flex-end' }}>
+              <Pressable
+                testID="mute-contributor"
+                accessibilityRole="button"
+                accessibilityLabel={muted ? 'Unmute contributor' : 'Mute contributor'}
+                onPress={() => { setMuted(!muted); setNotice(!muted ? 'Muted. Their posts stay in the room, quietly.' : 'Unmuted.'); }}
+                style={({ pressed }) => ({
+                  width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
+                  borderWidth: 0.5, borderColor: muted ? alpha.gold50 : alpha.ivory24, opacity: pressed ? 0.8 : 1,
+                })}
+              >
+                <MuteGlyph size={16} color={muted ? color.gold : color.muted} />
+              </Pressable>
+              <Pressable
+                testID="report-contributor"
+                accessibilityRole="button"
+                accessibilityLabel="Report contributor"
+                onPress={() => setSheet(true)}
+                style={({ pressed }) => ({
+                  width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
+                  borderWidth: 0.5, borderColor: alpha.red40, opacity: pressed ? 0.8 : 1,
+                })}
+              >
+                <Flag size={16} />
+              </Pressable>
+            </View>
+          )}
 
           <T size={10} lh={15} c={color.dim} testID="contributor-footer">
             Outcomes only. A call counts when it had an entry and a level to be wrong at — nothing here is

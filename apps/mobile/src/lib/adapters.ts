@@ -2293,15 +2293,49 @@ export function adaptLeaderboard(v: unknown, fallbackPeriod: LeaderboardPeriod =
   };
 }
 
-/** `GET /contributors/:id`, the community half. Absent blocks stay absent. */
+/**
+ * `GET /contributors/:id`, the community half. Absent blocks stay absent.
+ *
+ * ── THE NAMES HERE WERE NOT THE NAMES ON THE WIRE ───────────────────────
+ * This read `c.record ?? c.social_record` for the record and `c.author ??
+ * c.profile` for the person, and the route sends neither of those. It sends
+ * the record as `rankings`, and it sends the person FLAT — `user_id`,
+ * `handle`, `display_name`, `avatar_url` sitting at the top level of the
+ * response beside the calls and the trades. So against a real server both came
+ * back null and the profile silently lost its belt chip, its points and
+ * accuracy panel, its belt progress bar and its follower count, with nothing
+ * on screen to say anything had gone missing. Fixtures use the old names,
+ * which is why none of this showed up in a proof run, so the old names stay
+ * here as fallbacks rather than being deleted.
+ *
+ * ── THE BELT LIVES ON THE RECORD, NOT ON THE PERSON ─────────────────────
+ * The flat identity carries no belt; `rankings.belt` is the only one this
+ * route sends, so it is read across onto the author. A member who has never
+ * resolved a call has no `rankings` at all and stays White — which is what
+ * they are, not a failure to load.
+ */
 export function adaptContributorSocial(v: unknown, userId = ''): ContributorSocial {
   const c = r4obj(v);
+  const nested = r4obj(c.author);
   const profile = r4obj(c.profile);
-  const authorSrc = c.author ?? (Object.keys(profile).length ? profile : null);
+  /** Nested first, then the old fixture shape, then the response itself. */
+  const authorSrc: R4Obj | null = Object.keys(nested).length
+    ? nested
+    : Object.keys(profile).length
+      ? profile
+      : r4str(c.user_id) || r4str(c.display_name) || r4str(c.handle)
+        ? c
+        : null;
+
+  const record = adaptSocialRecord(c.rankings ?? c.record ?? c.social_record);
+  const author = authorSrc ? adaptSocialAuthor(authorSrc) : null;
+
   return {
-    author: authorSrc ? adaptSocialAuthor(authorSrc) : null,
+    author: author && record && !r4str(authorSrc?.belt)
+      ? { ...author, belt: record.belt.key }
+      : author,
     follow: adaptFollowState(c.follow ?? c, userId),
-    record: adaptSocialRecord(c.record ?? c.social_record),
+    record,
     calls: adaptCommunityCalls(c.calls),
     trades: adaptSharedTrades(c.shared_trades ?? c.trades),
   };

@@ -115,8 +115,24 @@ export default function Community() {
     params.belt === '1' ? PREVIEW_BELT : null,
   );
 
-  /** Which feed is on screen. `?feed=following` lands here from the composer. */
+  /**
+   * Which feed is on screen. `?feed=following` picks the Following half.
+   *
+   * THE PARAM IS WATCHED, NOT READ ONCE. A `useState` initializer runs the
+   * first time this component mounts and never again, and this is a TAB — it
+   * is already mounted long before anything links into it. So a
+   * `router.replace('/community?feed=following')` from somewhere else in the
+   * app changed the address bar, re-rendered this screen, and left the reader
+   * looking at Rooms, which is the feed they were already on. Nothing errored
+   * and nothing was missing; the app simply ignored where it had been asked to
+   * go. The effect below makes the param mean what it says every time it
+   * changes, while leaving the segmented control free the rest of the time.
+   */
   const [feed, setFeed] = useState<FeedKey>(params.feed === 'following' ? 'following' : 'rooms');
+  useEffect(() => {
+    if (params.feed === 'following') setFeed('following');
+    else if (params.feed === 'rooms') setFeed('rooms');
+  }, [params.feed]);
   const following = useFollowFeed();
 
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -449,7 +465,11 @@ export default function Community() {
         }
       >
         {feed === 'following' ? (
-          <FollowingFeed feed={following} onPublish={() => router.push('/community/call/new' as never)} />
+          <FollowingFeed
+            feed={following}
+            myUserId={myUserId}
+            onPublish={() => router.push('/community/call/new' as never)}
+          />
         ) : loading ? (
           <View style={{ paddingVertical: 40, alignItems: 'center' }}>
             <ActivityIndicator color={color.violet} />
@@ -674,11 +694,21 @@ export default function Community() {
  * Newest first, and the two object types keep their different weights: a call
  * is a volt card because somebody is making an argument, a shared trade is a
  * plain row because it is a record.
+ *
+ * YOUR OWN CALLS ARE NOT IN THIS FEED, AND THE EMPTY STATE SAYS WHERE THEY
+ * ARE. Following means the people you chose; the database will not even let
+ * you follow yourself (`follows_not_self`, migration 0038), so a call you just
+ * published can never appear here. Before the "Your calls" offer below there
+ * was no route to your own profile anywhere in the app, so somebody who
+ * published a call and landed on an empty Following feed had no way to reach
+ * the thing they had just written and reasonably concluded it had not saved.
  */
 function FollowingFeed({
-  feed, onPublish,
+  feed, myUserId, onPublish,
 }: {
   feed: ReturnType<typeof useFollowFeed>;
+  /** Null before the session has loaded — the offer is simply not drawn. */
+  myUserId: string | null;
   onPublish: () => void;
 }) {
   const router = useRouter();
@@ -734,6 +764,27 @@ function FollowingFeed({
               {nobody ? 'Read the rooms' : 'Publish a call'}
             </T>
           </Pressable>
+          {/* THE WAY BACK TO YOUR OWN CALLS. This feed is the people you
+              chose and never you, so without this there is no door from here
+              to the thing you published a minute ago. Quiet outline, not
+              volt: volt is the action you are being offered, and reading your
+              own record is not the one this screen is asking for. */}
+          {myUserId ? (
+            <Pressable
+              testID="following-empty-mine"
+              accessibilityRole="button"
+              accessibilityLabel="Your calls"
+              onPress={() => router.push(`/contributor/${myUserId}` as never)}
+              style={({ pressed }) => ({
+                height: 38, paddingHorizontal: 15, borderRadius: radius.pill,
+                alignItems: 'center', justifyContent: 'center',
+                borderWidth: 0.5, borderColor: alpha.ivory24,
+                opacity: pressed ? 0.75 : 1,
+              })}
+            >
+              <T size={12.5} weight="semibold" c={color.muted}>Your calls</T>
+            </Pressable>
+          ) : null}
           <Pressable
             testID="following-empty-board"
             accessibilityRole="button"
