@@ -14,9 +14,44 @@
  * already persisted, or from the alert/plan/setup on screen.
  */
 import type {
-  Annotation, ChartCommand, PortalTimeframe, TradePortal,
+  Annotation, ChartCommand, ChartCommandName, PortalTimeframe, TradePortal,
 } from './types';
-import { KIND_LABEL } from './types';
+import { CHART_COMMAND_NAMES, KIND_LABEL } from './types';
+
+/**
+ * One frame off the wire → the command it names, or null.
+ *
+ * IT LIVES HERE FOR THE REASON THE PLANNER DOES, and it earned the move the
+ * same way. It sat inside `useKaiPortal.ts`, which cannot be imported by a test
+ * process, so the gate it applies had no test — and it has now silently dropped
+ * commands twice: the five camera commands LIVE-1 added, and then `mark_zone`
+ * and `mark_pattern`. Both times the server resolved the command, persisted the
+ * annotations, sent the frame, and the client threw it away with no error
+ * anywhere, which on screen is indistinguishable from Kai lying about what he
+ * drew.
+ *
+ * THE GATE ITSELF IS STILL RIGHT. A closed list is what stops a malformed or
+ * hostile frame reaching the chart. What was wrong was that nothing could see it
+ * fall behind. It can now: `chart-command-path-test.mts` walks every name in
+ * `ChartCommandName` through this function and the planner together, so a
+ * command that either of them drops fails a test instead of a chart.
+ */
+export function readCommand(f: unknown): ChartCommand | null {
+  const r = (f ?? {}) as Record<string, unknown>;
+  const inner = (r.chart_command ?? r.payload ?? r) as Record<string, unknown>;
+  const name = String(r.command ?? inner.command ?? '');
+  if (!(CHART_COMMAND_NAMES as string[]).includes(name)) return null;
+  const payload = { ...((inner.payload ?? inner) as Record<string, unknown>) };
+  // The frame carries the annotations the server ALREADY persisted. Those are
+  // the authoritative geometry — the client draws them rather than re-deriving
+  // a level from the payload.
+  if (Array.isArray(r.annotations) && r.annotations.length) payload.annotations = r.annotations;
+  return {
+    command: name as ChartCommandName,
+    payload,
+    narration: typeof r.narration === 'string' && r.narration ? r.narration : null,
+  };
+}
 
 /** Every spelling of a timeframe the server or a client may use, as the rail names it. */
 const TIMEFRAME_ALIAS: Record<string, PortalTimeframe> = {
@@ -135,7 +170,19 @@ export function planCommand(c: ChartCommand, p: TradePortal | null, existing: An
       // a chart block threw a TypeError out of a pure function, and in a
       // DIRECTED ANSWER that throw rejects the runner's promise and kills every
       // action after it, not just this one.
-      const ts = String(c.payload.ts ?? p?.chart?.focus_ts ?? '');
+      /**
+       * `focus_ts` IS WHAT THE SERVER ACTUALLY SENDS.
+       *
+       * `executeChartCommand` has emitted `focus_ts` for `zoom_trigger` since
+       * LIVE-1, and this read only ever looked at `ts` — so every zoom the
+       * server produced was dropped here unless the portal happened to already
+       * carry a focus timestamp of its own. The choreography layer next door
+       * (`choreoInput` in features/chart/apply.ts) reads both spellings, which
+       * is why the bug survived: the half that runs on the stage worked, and the
+       * half that runs in the portal did not. Third command dropped by a client
+       * mismatch in this file's history, and the same shape as the other two.
+       */
+      const ts = String(c.payload.focus_ts ?? c.payload.ts ?? p?.chart?.focus_ts ?? '');
       if (!ts) return null;
       return { ...empty, focusTs: ts, narration: c.narration ?? 'Focused on the candle that triggered the alert.' };
     }
@@ -250,6 +297,21 @@ export function planCommand(c: ChartCommand, p: TradePortal | null, existing: An
       return { ...empty, narration: c.narration ?? '' };
 
     case 'flash_annotation':
+      return { ...empty, narration: c.narration ?? '' };
+
+    /**
+     * A ZONE OR A PATTERN THAT DREW NOTHING STILL HAS SOMETHING TO SAY.
+     *
+     * Both normally arrive carrying the annotations the server persisted, and
+     * the block above this switch draws exactly those whatever the command was.
+     * They reach the switch in one case only: when there was nothing to draw —
+     * Kai refusing a pattern he has no honest detector for. Without a case here
+     * that frame hit `default: return null` and the refusal was swallowed, so
+     * asking for order blocks got silence rather than the sentence explaining
+     * why. Silence is the one response that reads as the app being broken.
+     */
+    case 'mark_zone':
+    case 'mark_pattern':
       return { ...empty, narration: c.narration ?? '' };
 
     case 'zoom_range':

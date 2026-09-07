@@ -21,7 +21,8 @@ import type { GoalMode } from '../../lib/types';
 import type {
   Annotation, ChartCommand, ChartCommandName, PortalTimeframe, TradePortal,
 } from './types';
-import { CHART_COMMAND_NAMES, KIND_LABEL } from './types';
+import { KIND_LABEL } from './types';
+import { readCommand } from './plan-command';
 import { subscribeAsk } from './ask-bus';
 import { runChartAnswer, type AnswerRun } from '../chart/answer';
 import { playAnswer } from '../chart/answer-audio';
@@ -72,25 +73,10 @@ const nid = () => `p${++n}`;
 const isCommandFrame = (f: KaiFrame): boolean =>
   (f as { type?: string }).type === 'chart_command';
 
-function readCommand(f: unknown): ChartCommand | null {
-  const r = (f ?? {}) as Record<string, unknown>;
-  const inner = (r.chart_command ?? r.payload ?? r) as Record<string, unknown>;
-  const name = String(r.command ?? inner.command ?? '');
-  // `CHART_COMMAND_NAMES` rather than a list kept here: this one had fallen a
-  // whole release behind and silently rejected every camera command LIVE-1
-  // added, which is most of what a directed answer is made of.
-  if (!(CHART_COMMAND_NAMES as string[]).includes(name)) return null;
-  const payload = { ...((inner.payload ?? inner) as Record<string, unknown>) };
-  // The frame carries the annotations the server ALREADY persisted. Those are
-  // the authoritative geometry — the client draws them rather than re-deriving
-  // a level from the payload.
-  if (Array.isArray(r.annotations) && r.annotations.length) payload.annotations = r.annotations;
-  return {
-    command: name as ChartCommandName,
-    payload,
-    narration: typeof r.narration === 'string' && r.narration ? r.narration : null,
-  };
-}
+// `readCommand` moved to ./plan-command so a test process can reach it. It is
+// the gate every frame passes through, and it had fallen behind twice while
+// being untestable from here — this file needs React and a native audio module
+// to import at all.
 
 /**
  * A whole answer, directed server-side (LIVE-8).

@@ -7,6 +7,8 @@
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo-google-fonts/space-grotesk": "^0.4.1",
     "@expo/ui": "~57.0.16",
+    "@gluestack-ui/core": "^5.0.15",
+    "@gluestack-ui/utils": "^5.0.6",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.112.4",
     "expo": "^57.0.0",
@@ -41,12 +43,14 @@
     "react-native-url-polyfill": "^4.0.0",
     "react-native-web": "~0.21.0",
     "react-native-webview": "13.16.1",
-    "react-native-worklets": "0.10.1"
+    "react-native-worklets": "0.10.1",
+    "uniwind": "^1.12.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.10",
     "lightweight-charts": "^5.2.1",
     "playwright": "^1.62.1",
+    "tailwindcss": "^4.3.3",
     "tsx": "^4.23.13",
     "typescript": "~6.0.3"
   },
@@ -57,7 +61,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test": "tsx scripts/wakeup-test.mts && tsx scripts/mode-tab-test.mts && tsx scripts/answer-runner-test.mts && tsx scripts/plan-command-test.mts && tsx scripts/trade-read-test.mts && tsx scripts/desk-thesis-test.mts && tsx scripts/plan-honesty-test.mts && tsx scripts/social-naming-test.mts && node scripts/route-gate-test.mjs && node scripts/chart-gestures-test.mjs && tsx scripts/chart-indicators-test.mts && tsx scripts/chart-drawing-test.mts"
+    "test": "tsx scripts/theme-bridge-test.mts && tsx scripts/wakeup-test.mts && tsx scripts/mode-tab-test.mts && tsx scripts/answer-runner-test.mts && tsx scripts/plan-command-test.mts && tsx scripts/trade-read-test.mts && tsx scripts/desk-thesis-test.mts && tsx scripts/plan-honesty-test.mts && tsx scripts/social-naming-test.mts && node scripts/route-gate-test.mjs && node scripts/chart-gestures-test.mjs && tsx scripts/chart-indicators-test.mts && tsx scripts/chart-drawing-test.mts && tsx scripts/chart-command-path-test.mts"
   },
   "private": true
 }
