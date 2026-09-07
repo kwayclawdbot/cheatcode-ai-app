@@ -1169,9 +1169,17 @@ export function buildCard(input: BuildCardInput): AlertCard {
      * describing different spans, sat next to each other with no way to tell.
      * Where a measurement exists, the hold is the measurement's own window;
      * only where nothing was measured does the alert's own life answer.
+     *
+     * "Exists" is `resolvedOutcome?.value != null`, NOT the presence of the
+     * outcome object. The object is written whenever an alert resolves, and it
+     * carries a null `value` when nothing could actually be measured — so
+     * testing the object alone counted an empty result as a measurement and
+     * printed the five-session `MEASURED_HOLD` beside intraday day-trades that
+     * had been open for an afternoon. A blank does not mean zero here; it means
+     * there is nothing to say, and the alert's own life is the honest answer.
      */
     held: input.state === 'closed' || input.state === 'invalidated'
-      ? (resolvedOutcome
+      ? (resolvedOutcome?.value != null
         ? MEASURED_HOLD
         : heldPlain(input.triggeredAt ?? input.createdAt, input.resolvedAt ?? null))
       : null,
