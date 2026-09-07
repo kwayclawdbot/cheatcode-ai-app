@@ -47,6 +47,10 @@ const STACK_GROUPS = new Set([
   // `thread` hit above and which fixtures mode cannot see, because fixtures
   // skip the gate entirely.
   'community', 'leaderboard',
+  // Training Mode. Pushed from the Home "Continue Training" object and from the
+  // Account board's Training & Mastery row — never a tab, so the gate is the
+  // only thing standing between those two entries and a bounce to Home.
+  'training',
 ]);
 
 /**
