@@ -1708,6 +1708,189 @@ export const MessageQuote = z.object({
 });
 export type MessageQuote = z.infer<typeof MessageQuote>;
 
+/* ===========================================================================
+ * SOCIAL: following, shared trades, member calls, belts and the board.
+ * Schema: supabase/migrations/0038 (objects) and 0039 (scoring).
+ *
+ * The one rule that governs every shape below: A SHARED TRADE CARRIES LEVELS
+ * AND NEVER SIZE. There is no quantity, no notional and no dollar P/L in any
+ * type here, because there is none in the table either — 0038 enforces the
+ * promise by not having the columns. If a field like that ever appears in this
+ * section, the table it came from is wrong, not this file.
+ * ======================================================================== */
+
+/** The ladder. Ordered white → black; `belt_for()` in 0039 is the authority. */
+export const Belt = z.enum(['white', 'blue', 'purple', 'brown', 'black']);
+export type Belt = z.infer<typeof Belt>;
+
+export const BeltBlock = z.object({
+  key: Belt,
+  label: z.string(),
+  /** Points needed for the belt above this one. Null at black. */
+  next_at: z.number().nullable(),
+  next_label: z.string().nullable(),
+  /** 0–1 toward the next belt. Null at black, where there is nothing to fill. */
+  progress: z.number().nullable(),
+});
+export type BeltBlock = z.infer<typeof BeltBlock>;
+
+/**
+ * The formula, in the words the app prints. Served from the API rather than
+ * hardcoded on the phone so that the numbers a user reads are the numbers the
+ * database actually used — a scoring system nobody can check reads as rigged,
+ * and two copies of it is how the printed one starts lying.
+ */
+export const PointsExplainer = z.object({
+  lines: z.array(z.string()),
+  belts: z.array(z.object({ key: Belt, label: z.string(), min_points: z.number() })),
+});
+export type PointsExplainer = z.infer<typeof PointsExplainer>;
+
+/** Author identity, as every social surface renders it. */
+export const SocialAuthor = z.object({
+  user_id: z.string(),
+  handle: z.string().nullable(),
+  display_name: z.string(),
+  avatar_url: z.string().nullable(),
+  initial: z.string(),
+  belt: Belt,
+});
+export type SocialAuthor = z.infer<typeof SocialAuthor>;
+
+/**
+ * A member's own published call. `graded: false` always — this is the ungraded
+ * AlertCard path, and there is no letter and no score bar anywhere on it,
+ * because nothing graded it. See 0038 on why `scoreable` is generated.
+ */
+export const CommunityCall = z.object({
+  id: z.string(),
+  author: SocialAuthor,
+  symbol: z.string(),
+  direction: z.enum(['long', 'short']),
+  entry: z.number().nullable(),
+  stop: z.number().nullable(),
+  target: z.number().nullable(),
+  thesis: z.string(),
+  /**
+   * The desk this call is for (0040). It decides which core room the call posts
+   * into and which board's Community tab it appears on. `.default('day_trade')`
+   * so a payload from an API build older than 0040 still parses.
+   */
+  mode: AppMode.default('day_trade'),
+  /** The room message this call became, when it reached one. */
+  message_id: z.string().nullable().default(null),
+  /** Entry plus a stop or a target. Only these can ever score. */
+  scoreable: z.boolean(),
+  status: z.enum(['open', 'target', 'stop', 'expired', 'withdrawn']),
+  result_pct: z.number().nullable(),
+  /** "Hit target" · "Stopped" · "Still open" · "Expired unresolved". */
+  outcome_label: z.string().nullable(),
+  published_at: z.string(),
+  time_label: z.string(),
+  resolved_at: z.string().nullable(),
+});
+export type CommunityCall = z.infer<typeof CommunityCall>;
+
+/**
+ * An executed paper trade its owner chose to show. NOTE WHAT IS NOT HERE:
+ * quantity, notional, dollar risk, dollar P/L. `result_pct` is a percentage
+ * move off the entry — a fact about the instrument, not about the account.
+ */
+export const SharedTrade = z.object({
+  id: z.string(),
+  author: SocialAuthor,
+  symbol: z.string(),
+  direction: z.enum(['long', 'short']),
+  entry: z.number(),
+  stop: z.number().nullable(),
+  target: z.number().nullable(),
+  outcome: z.enum(['open', 'target', 'stop', 'closed']),
+  outcome_label: z.string().nullable(),
+  result_pct: z.number().nullable(),
+  opened_at: z.string(),
+  time_label: z.string(),
+  closed_at: z.string().nullable(),
+});
+export type SharedTrade = z.infer<typeof SharedTrade>;
+
+/** One row in the Following feed. Discriminated so the list can render either. */
+export const FollowFeedItem = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('call'), at: z.string(), call: CommunityCall }),
+  z.object({ kind: z.literal('trade'), at: z.string(), trade: SharedTrade }),
+]);
+export type FollowFeedItem = z.infer<typeof FollowFeedItem>;
+
+export const FollowFeedResponse = z.object({
+  items: z.array(FollowFeedItem),
+  /** Shown when you follow nobody — a different sentence from "they posted nothing". */
+  follows_nobody: z.boolean(),
+  empty_plain: z.string().nullable(),
+});
+export type FollowFeedResponse = z.infer<typeof FollowFeedResponse>;
+
+/** The follow button's whole state, so the phone never infers it. */
+export const FollowState = z.object({
+  user_id: z.string(),
+  following: z.boolean(),
+  follower_count: z.number(),
+  following_count: z.number(),
+});
+export type FollowState = z.infer<typeof FollowState>;
+
+/**
+ * The record shown on a profile. `accuracy` is the one number beside every
+ * board row, present so the board teaches that being right is what is measured.
+ */
+export const SocialRecord = z.object({
+  points: z.number(),
+  wins: z.number(),
+  losses: z.number(),
+  resolved: z.number(),
+  accuracy: z.number().nullable(),
+  belt: BeltBlock,
+  /** True while the first five resolutions still count at face value. */
+  in_warmup: z.boolean(),
+});
+export type SocialRecord = z.infer<typeof SocialRecord>;
+
+export const LeaderboardPeriod = z.enum(['week', 'month', 'all']);
+export type LeaderboardPeriod = z.infer<typeof LeaderboardPeriod>;
+
+export const LeaderboardRow = z.object({
+  rank: z.number(),
+  author: SocialAuthor,
+  points: z.number(),
+  wins: z.number(),
+  resolved: z.number(),
+  accuracy: z.number().nullable(),
+  is_you: z.boolean(),
+});
+export type LeaderboardRow = z.infer<typeof LeaderboardRow>;
+
+export const LeaderboardResponse = z.object({
+  period: LeaderboardPeriod,
+  rows: z.array(LeaderboardRow),
+  /**
+   * The caller's own row when it is not in `rows`, so it can be pinned. Null
+   * when they are already on screen or have never scored.
+   */
+  you: LeaderboardRow.nullable(),
+  explainer: PointsExplainer,
+  empty_plain: z.string().nullable(),
+});
+export type LeaderboardResponse = z.infer<typeof LeaderboardResponse>;
+
+/** Body of POST /community/calls. Levels are optional; a thesis is not. */
+export const CreateCommunityCallBody = z.object({
+  symbol: z.string().min(1).max(10),
+  direction: z.enum(['long', 'short']),
+  entry: z.number().positive().nullable().optional(),
+  stop: z.number().positive().nullable().optional(),
+  target: z.number().positive().nullable().optional(),
+  thesis: z.string().min(1).max(280),
+});
+export type CreateCommunityCallBody = z.infer<typeof CreateCommunityCallBody>;
+
 export const MessageRow = z.object({
   id: z.string(),
   room_id: z.string(),
@@ -1724,6 +1907,20 @@ export const MessageRow = z.object({
   author: MessageAuthor.nullable(),
   /** kind='kai_object' → the resolved envelope, so the client renders an object. */
   kai_object: KaiObjectEnvelope.nullable(),
+  /**
+   * `refs.community_call_id` → the resolved call, so the room renders the volt
+   * COMMUNITY TRADE card in the conversation rather than a link to it.
+   *
+   * The exact shape of `kai_object` above, on purpose: a member's call and a
+   * Kai object are the same species of thing — a first-class object carried by
+   * a message that is otherwise ordinary text — and 0040 chose `refs` over a
+   * new `message_kind` so that a client which does not understand this field
+   * still renders the message's body, which is a readable sentence describing
+   * the trade rather than an empty bubble.
+   *
+   * `.default(null)` so a payload from an API build older than 0040 parses.
+   */
+  community_call: CommunityCall.nullable().default(null),
 
   /* --- added in the social round --- */
 
@@ -1998,180 +2195,6 @@ export const MuteResponse = z.object({
 });
 export type MuteResponse = z.infer<typeof MuteResponse>;
 
-/* ===========================================================================
- * SOCIAL: following, shared trades, member calls, belts and the board.
- * Schema: supabase/migrations/0038 (objects) and 0039 (scoring).
- *
- * The one rule that governs every shape below: A SHARED TRADE CARRIES LEVELS
- * AND NEVER SIZE. There is no quantity, no notional and no dollar P/L in any
- * type here, because there is none in the table either — 0038 enforces the
- * promise by not having the columns. If a field like that ever appears in this
- * section, the table it came from is wrong, not this file.
- * ======================================================================== */
-
-/** The ladder. Ordered white → black; `belt_for()` in 0039 is the authority. */
-export const Belt = z.enum(['white', 'blue', 'purple', 'brown', 'black']);
-export type Belt = z.infer<typeof Belt>;
-
-export const BeltBlock = z.object({
-  key: Belt,
-  label: z.string(),
-  /** Points needed for the belt above this one. Null at black. */
-  next_at: z.number().nullable(),
-  next_label: z.string().nullable(),
-  /** 0–1 toward the next belt. Null at black, where there is nothing to fill. */
-  progress: z.number().nullable(),
-});
-export type BeltBlock = z.infer<typeof BeltBlock>;
-
-/**
- * The formula, in the words the app prints. Served from the API rather than
- * hardcoded on the phone so that the numbers a user reads are the numbers the
- * database actually used — a scoring system nobody can check reads as rigged,
- * and two copies of it is how the printed one starts lying.
- */
-export const PointsExplainer = z.object({
-  lines: z.array(z.string()),
-  belts: z.array(z.object({ key: Belt, label: z.string(), min_points: z.number() })),
-});
-export type PointsExplainer = z.infer<typeof PointsExplainer>;
-
-/** Author identity, as every social surface renders it. */
-export const SocialAuthor = z.object({
-  user_id: z.string(),
-  handle: z.string().nullable(),
-  display_name: z.string(),
-  avatar_url: z.string().nullable(),
-  initial: z.string(),
-  belt: Belt,
-});
-export type SocialAuthor = z.infer<typeof SocialAuthor>;
-
-/**
- * A member's own published call. `graded: false` always — this is the ungraded
- * AlertCard path, and there is no letter and no score bar anywhere on it,
- * because nothing graded it. See 0038 on why `scoreable` is generated.
- */
-export const CommunityCall = z.object({
-  id: z.string(),
-  author: SocialAuthor,
-  symbol: z.string(),
-  direction: z.enum(['long', 'short']),
-  entry: z.number().nullable(),
-  stop: z.number().nullable(),
-  target: z.number().nullable(),
-  thesis: z.string(),
-  /** Entry plus a stop or a target. Only these can ever score. */
-  scoreable: z.boolean(),
-  status: z.enum(['open', 'target', 'stop', 'expired', 'withdrawn']),
-  result_pct: z.number().nullable(),
-  /** "Hit target" · "Stopped" · "Still open" · "Expired unresolved". */
-  outcome_label: z.string().nullable(),
-  published_at: z.string(),
-  time_label: z.string(),
-  resolved_at: z.string().nullable(),
-});
-export type CommunityCall = z.infer<typeof CommunityCall>;
-
-/**
- * An executed paper trade its owner chose to show. NOTE WHAT IS NOT HERE:
- * quantity, notional, dollar risk, dollar P/L. `result_pct` is a percentage
- * move off the entry — a fact about the instrument, not about the account.
- */
-export const SharedTrade = z.object({
-  id: z.string(),
-  author: SocialAuthor,
-  symbol: z.string(),
-  direction: z.enum(['long', 'short']),
-  entry: z.number(),
-  stop: z.number().nullable(),
-  target: z.number().nullable(),
-  outcome: z.enum(['open', 'target', 'stop', 'closed']),
-  outcome_label: z.string().nullable(),
-  result_pct: z.number().nullable(),
-  opened_at: z.string(),
-  time_label: z.string(),
-  closed_at: z.string().nullable(),
-});
-export type SharedTrade = z.infer<typeof SharedTrade>;
-
-/** One row in the Following feed. Discriminated so the list can render either. */
-export const FollowFeedItem = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('call'), at: z.string(), call: CommunityCall }),
-  z.object({ kind: z.literal('trade'), at: z.string(), trade: SharedTrade }),
-]);
-export type FollowFeedItem = z.infer<typeof FollowFeedItem>;
-
-export const FollowFeedResponse = z.object({
-  items: z.array(FollowFeedItem),
-  /** Shown when you follow nobody — a different sentence from "they posted nothing". */
-  follows_nobody: z.boolean(),
-  empty_plain: z.string().nullable(),
-});
-export type FollowFeedResponse = z.infer<typeof FollowFeedResponse>;
-
-/** The follow button's whole state, so the phone never infers it. */
-export const FollowState = z.object({
-  user_id: z.string(),
-  following: z.boolean(),
-  follower_count: z.number(),
-  following_count: z.number(),
-});
-export type FollowState = z.infer<typeof FollowState>;
-
-/**
- * The record shown on a profile. `accuracy` is the one number beside every
- * board row, present so the board teaches that being right is what is measured.
- */
-export const SocialRecord = z.object({
-  points: z.number(),
-  wins: z.number(),
-  losses: z.number(),
-  resolved: z.number(),
-  accuracy: z.number().nullable(),
-  belt: BeltBlock,
-  /** True while the first five resolutions still count at face value. */
-  in_warmup: z.boolean(),
-});
-export type SocialRecord = z.infer<typeof SocialRecord>;
-
-export const LeaderboardPeriod = z.enum(['week', 'month', 'all']);
-export type LeaderboardPeriod = z.infer<typeof LeaderboardPeriod>;
-
-export const LeaderboardRow = z.object({
-  rank: z.number(),
-  author: SocialAuthor,
-  points: z.number(),
-  wins: z.number(),
-  resolved: z.number(),
-  accuracy: z.number().nullable(),
-  is_you: z.boolean(),
-});
-export type LeaderboardRow = z.infer<typeof LeaderboardRow>;
-
-export const LeaderboardResponse = z.object({
-  period: LeaderboardPeriod,
-  rows: z.array(LeaderboardRow),
-  /**
-   * The caller's own row when it is not in `rows`, so it can be pinned. Null
-   * when they are already on screen or have never scored.
-   */
-  you: LeaderboardRow.nullable(),
-  explainer: PointsExplainer,
-  empty_plain: z.string().nullable(),
-});
-export type LeaderboardResponse = z.infer<typeof LeaderboardResponse>;
-
-/** Body of POST /community/calls. Levels are optional; a thesis is not. */
-export const CreateCommunityCallBody = z.object({
-  symbol: z.string().min(1).max(10),
-  direction: z.enum(['long', 'short']),
-  entry: z.number().positive().nullable().optional(),
-  stop: z.number().positive().nullable().optional(),
-  target: z.number().positive().nullable().optional(),
-  thesis: z.string().min(1).max(280),
-});
-export type CreateCommunityCallBody = z.infer<typeof CreateCommunityCallBody>;
 
 export const ContributorResponse = z.object({
   user_id: z.string(),
@@ -3754,12 +3777,37 @@ export type FamilyPerformance = z.infer<typeof FamilyPerformance>;
  * `plain` carries the disclosure the number needs. For the Kai scanner family
  * that is: close to close from the published trigger, held the whole way, with
  * no stop and no target — not the result of a trade anyone managed.
+ *
+ * `peak` and `basis` exist because History is read as a table of numbers, not
+ * as prose. `plain` is the paragraph and it stays — the detail view prints it —
+ * but a row that shows a big signed percentage needs the best point the move
+ * ever reached and the one line that says how both were measured, and neither
+ * of those can be a paragraph. Both are null wherever the measurement was not
+ * taken; a peak nobody measured is not drawn as a dash.
  */
 export const AlertCardOutcome = z.object({
   label: z.string(),
   value: z.string().nullable(),
   tone: z.enum(['good', 'bad', 'neutral']),
   plain: z.string(),
+  /**
+   * The best the move ever got, IN THE SAME FRAME AS `value` and preformatted
+   * the same way ("+8.9%"). On a long that is the position's own maximum
+   * favourable excursion. On a short `value` is deliberately the STOCK's move,
+   * so the peak is the stock's intraday LOW and carries a minus sign — the two
+   * numbers on one row must never be in opposite frames.
+   *
+   * It is measured off intraday highs and lows while `value` is close to close,
+   * which is why `basis` says so out loud.
+   */
+  peak: z.string().nullable().default(null),
+  /** What that number IS, in one or two words: "Peak" · "Stock low". */
+  peak_label: z.string().nullable().default(null),
+  /**
+   * One short line — the whole disclosure a stat row can carry. Never a
+   * paragraph: `plain` is the paragraph and it lives on the detail view.
+   */
+  basis: z.string().nullable().default(null),
 });
 export type AlertCardOutcome = z.infer<typeof AlertCardOutcome>;
 
@@ -3886,6 +3934,20 @@ export const AlertCard = z.object({
   outcome: AlertCardOutcome.nullable().default(null),
   /** History only — "Yesterday", "12 Aug". Null on a live card. */
   resolved_label: z.string().nullable().default(null),
+  /**
+   * How long the thing was held, alert to resolution — "Intraday", "7 days".
+   * Computed from the two timestamps the row already carries, so it exists for
+   * every resolved card including the ones that were never scored. Null when
+   * either end is missing; it is never guessed at.
+   */
+  held: z.string().nullable().default(null),
+  /**
+   * True when this row is the engine re-run over stored tape rather than an
+   * alert anybody was sent. It reached the card only inside the narration
+   * before — a stat row has no narration, and a rehearsal that does not say so
+   * is the one thing this card must never be, so it is a field now.
+   */
+  replay: z.boolean().default(false),
 
   primary_action: PlainAction,
   secondary_actions: z.array(PlainAction),
@@ -4130,6 +4192,14 @@ export const ChartCommandName = z.enum([
    * depending on a string.
    */
   'mark_zone',
+  /**
+   * Mark every recent instance of a named PATTERN — the unfilled gaps, the swing
+   * highs. Its own command rather than a `mark_zone` variant, because a zone is
+   * one shaded area built from two levels the model named, and a pattern is a
+   * SET the server went and found: the count is not known until the bars have
+   * been looked at, and the frame carries several annotations rather than one.
+   */
+  'mark_pattern',
 ]);
 export type ChartCommandName = z.infer<typeof ChartCommandName>;
 
