@@ -8,6 +8,16 @@ const KEY = 'ccai.training.profile.v1';
 type TrainingContextValue = {
   profile: TrainingProfile;
   ready: boolean;
+  /**
+   * True once this device has a STORED learner profile — i.e. the member has
+   * actually begun. It is not the same question as "is `profile` populated",
+   * because `profile` always holds the empty default while AsyncStorage is
+   * still being read and for anyone who never started. Home needs the
+   * difference: "Continue training" is a lie told to someone who has never
+   * opened a lesson, and "Start training" is a lie told to someone on lesson
+   * six. `ready` says whether we know yet; `enrolled` says what the answer is.
+   */
+  enrolled: boolean;
   completeLesson: (lessonId: string, skill: TrainingSkill, masteryGain?: number) => Promise<void>;
   setCurrentLesson: (lessonId: string) => Promise<void>;
   reset: () => Promise<void>;
@@ -18,17 +28,28 @@ const Ctx = createContext<TrainingContextValue | null>(null);
 export function TrainingProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState(DEFAULT_TRAINING_PROFILE);
   const [ready, setReady] = useState(false);
+  const [enrolled, setEnrolled] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem(KEY)
       .then((raw) => {
-        if (raw) setProfile({ ...DEFAULT_TRAINING_PROFILE, ...JSON.parse(raw) });
+        if (!raw) return;
+        // A row that will not parse is a corrupt row, not a reason to crash the
+        // provider that wraps the whole app. Fall back to "never started".
+        try {
+          setProfile({ ...DEFAULT_TRAINING_PROFILE, ...JSON.parse(raw) });
+          setEnrolled(true);
+        } catch {
+          /* keep the empty default */
+        }
       })
+      .catch(() => { /* storage unavailable — the app still runs, untrained */ })
       .finally(() => setReady(true));
   }, []);
 
   const persist = useCallback(async (next: TrainingProfile) => {
     setProfile(next);
+    setEnrolled(true);
     await AsyncStorage.setItem(KEY, JSON.stringify(next));
   }, []);
 
@@ -60,11 +81,13 @@ export function TrainingProvider({ children }: { children: React.ReactNode }) {
   }, [persist, profile]);
 
   const reset = useCallback(async () => {
-    await persist(DEFAULT_TRAINING_PROFILE);
-  }, [persist]);
+    setProfile(DEFAULT_TRAINING_PROFILE);
+    setEnrolled(false);
+    await AsyncStorage.removeItem(KEY);
+  }, []);
 
-  const value = useMemo(() => ({ profile, ready, completeLesson, setCurrentLesson, reset }), [
-    profile, ready, completeLesson, setCurrentLesson, reset,
+  const value = useMemo(() => ({ profile, ready, enrolled, completeLesson, setCurrentLesson, reset }), [
+    profile, ready, enrolled, completeLesson, setCurrentLesson, reset,
   ]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

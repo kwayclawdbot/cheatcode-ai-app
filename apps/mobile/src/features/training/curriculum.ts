@@ -110,15 +110,29 @@ export const TRAINING_UNITS: TrainingUnit[] = [
   },
 ];
 
+/**
+ * THE STARTING PROFILE IS EMPTY, AND THAT IS DELIBERATE.
+ *
+ * The design package shipped this seeded — three lessons complete, Market
+ * Basics at 80%, a three-day streak — because that is what makes a mockup
+ * screenshot look alive. On a real device it is a claim about work the learner
+ * has not done: they would open Training for the first time and be told they
+ * had already finished Welcome, How Stocks Work and Candlesticks, and the
+ * mastery dashboard would report a number nothing produced.
+ *
+ * The mockup's visual language is untouched — the path, the ring, the skill
+ * bars all render exactly as approved. They just start at zero, which is the
+ * honest reading of a learner who has not started.
+ */
 export const DEFAULT_TRAINING_PROFILE: TrainingProfile = {
-  completedLessonIds: ['welcome', 'stocks', 'candles'],
-  currentLessonId: 'market-structure',
-  streak: 3,
+  completedLessonIds: [],
+  currentLessonId: 'welcome',
+  streak: 0,
   readiness: 'beginner',
   mastery: {
-    market_basics: 80,
-    candles: 60,
-    market_structure: 40,
+    market_basics: 0,
+    candles: 0,
+    market_structure: 0,
     support_resistance: 0,
     entries: 0,
     risk_management: 0,

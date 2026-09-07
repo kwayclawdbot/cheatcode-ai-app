@@ -11,6 +11,7 @@ import { allLessons, lessonById, lessonIndex, nextLesson } from '../../features/
 import { TrainingChart } from '../../features/training/TrainingChart';
 import { KaiFeedbackCard, TrainingProgress } from '../../features/training/ui';
 import { useTraining } from '../../features/training/store';
+import { requestReview, type TrainingKaiResult } from '../../features/training/kai';
 
 type Stage = 'overview' | 'question' | 'correct' | 'video' | 'practice' | 'kai' | 'done';
 
@@ -21,7 +22,8 @@ export default function TrainingLesson() {
   const { profile, completeLesson, setCurrentLesson } = useTraining();
   const [stage, setStage] = useState<Stage>(lesson?.kind === 'video' ? 'video' : 'overview');
   const [answer, setAnswer] = useState<string | null>(null);
-  const [kaiAnswer, setKaiAnswer] = useState<string | null>(null);
+  const [review, setReview] = useState<TrainingKaiResult | null>(null);
+  const [reviewing, setReviewing] = useState(false);
   const lessons = useMemo(() => allLessons(), []);
 
   if (!lesson) return null;
@@ -31,6 +33,37 @@ export default function TrainingLesson() {
   const finish = async () => {
     await completeLesson(lesson.id, lesson.skill, 12);
     setStage('done');
+  };
+
+  /**
+   * The ONE Kai call in a lesson, and it fires only from this tap. It moves to
+   * the feedback stage first so the learner sees the surface come up while the
+   * stream runs, then replaces the pending state with whatever Kai actually
+   * said. If Kai cannot answer — no API, no network, or the Anthropic account
+   * out of credit — the card says so in Kai's own words and the Complete
+   * Lesson button below it stays live. Being unable to get feedback must never
+   * be the thing that blocks a learner from finishing.
+   */
+  const submitForReview = async () => {
+    if (reviewing) return;
+    setStage('kai');
+    setReviewing(true);
+    setReview(null);
+    try {
+      const result = await requestReview(lesson, profile, {
+        stage: 'practice',
+        symbol: 'TSLA',
+        timeframe: '1D',
+        learnerAnswer: answer,
+        // The generated SVG chart has no gesture capture yet — real drawing
+        // capture is on the README's production list — so we say there was no
+        // markup rather than describing one the learner never made.
+        chartMarkup: null,
+      });
+      setReview(result);
+    } finally {
+      setReviewing(false);
+    }
   };
 
   const goNext = async () => {
@@ -164,25 +197,46 @@ export default function TrainingLesson() {
               <T size={12.5} weight="bold">Draw the trendline that best represents the current trend.</T>
               <T size={11.5} c={color.muted}>Prototype: the chart interaction engine should capture user drawings and send them to Kai.</T>
             </ObjectCard>
-            <Button label="Submit for Review" onPress={() => setStage('kai')} />
+            <Button
+              testID="training-submit-review"
+              label="Submit for Review"
+              onPress={() => { void submitForReview(); }}
+            />
           </>
         ) : null}
 
         {stage === 'kai' ? (
           <>
+            {/* The package shipped this card with Kai's praise written into
+                it — three ticks and a tip, identical for every learner and
+                every answer. That is the one thing a tutoring surface must
+                never do, so the card now holds only what Kai actually said,
+                and admits it when Kai said nothing. */}
             <KaiFeedbackCard>
-              <T size={13} lh={20}>Good work. You correctly identified the uptrend. Your trendline captures the higher lows accurately.</T>
+              {reviewing ? (
+                <T size={13} lh={20} c={color.muted} testID="training-kai-pending">Reading your chart…</T>
+              ) : review?.status === 'ok' ? (
+                <T size={13} lh={20} testID="training-kai-reply">{review.text}</T>
+              ) : (
+                <T size={13} lh={20} c={color.muted} testID="training-kai-unavailable">
+                  {review?.text ?? 'Kai has not reviewed this yet.'}
+                </T>
+              )}
             </KaiFeedbackCard>
             <TrainingChart annotated />
             <ObjectCard r={radius.xl} style={{ padding: 14, gap: 8 }}>
-              <T size={12.5} weight="bold">What you did well:</T>
-              <T size={11.5} c={color.green}>✓ Correct trend direction</T>
-              <T size={11.5} c={color.green}>✓ Accurate placement</T>
-              <T size={11.5} c={color.green}>✓ Clean line</T>
-              <T size={12.5} weight="bold" style={{ marginTop: 6 }}>Next time:</T>
-              <T size={11.5} c={color.gold}>↗ Extend the line to confirm more touch points.</T>
+              <T size={12.5} weight="bold">Key Takeaway</T>
+              <T size={12.5} lh={19} c={color.muted}>
+                An uptrend is a series of higher highs and higher lows. A trendline is only
+                worth drawing where price has actually turned.
+              </T>
             </ObjectCard>
-            <Button label="Complete Lesson" onPress={finish} />
+            <Button
+              testID="training-complete-lesson"
+              label="Complete Lesson"
+              disabled={reviewing}
+              onPress={finish}
+            />
           </>
         ) : null}
 

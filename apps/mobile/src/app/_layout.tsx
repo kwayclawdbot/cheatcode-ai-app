@@ -7,6 +7,7 @@ import { useAppFonts } from '../ui/fonts';
 import { lockPortrait } from '../features/chart/orientation';
 import { color } from '../ui/tokens';
 import { SessionProvider, useSession } from '../lib/session';
+import { TrainingProvider } from '../features/training/store';
 import { env } from '../lib/env';
 import { KaiSheetHost } from '../features/kai-sheet';
 import { NotificationBridge } from '../features/notifications';
@@ -137,6 +138,14 @@ export default function RootLayout() {
         <StatusBar style="light" />
         {blocking ? null : (
           <SessionProvider>
+            {/* The learner profile is read on Home and on the Account board,
+                which are both OUTSIDE `/training`. The package shipped this
+                provider inside `src/app/training/_layout.tsx`; left there, Home
+                would mount a SECOND copy of the state, hydrated from the same
+                AsyncStorage key but blind to every write the lesson screen
+                makes — the "Continue Training" object would sit on a stale
+                lesson until the app was restarted. One provider, at the root. */}
+            <TrainingProvider>
             <Gate>
               <Stack
                 screenOptions={{
@@ -165,6 +174,7 @@ export default function RootLayout() {
                     place you go, so it slides in from the side. */}
                 <Stack.Screen name="community/call/new" options={{ animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="leaderboard" options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="training" options={{ animation: 'slide_from_right' }} />
               </Stack>
               {/* Kai's contextual sheet lives above every route: it opens OVER
                   the current screen and never navigates the user away (audit §5). */}
@@ -173,6 +183,7 @@ export default function RootLayout() {
                   warm, cold, native or from the service worker (round 5 §8). */}
               <NotificationBridge />
             </Gate>
+            </TrainingProvider>
           </SessionProvider>
         )}
       </View>
