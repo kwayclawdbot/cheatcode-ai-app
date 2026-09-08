@@ -128,7 +128,35 @@ with one caller, so the blast radius was a single screen. **The adapter is the
 real deliverable** — it is the piece every later step reuses, and it is the only
 place the two vocabularies are allowed to meet.
 
-**Step 4 — the conversation. DECISION MADE: it does not move.** `RoomMessage`
+**Step 4 — the conversation. REVERSED 8 September, and it moved.** The decision
+below was that it could not, and the reasoning was sound about the shape it was
+arguing against: putting `ConversationPreview` where `MessageRow` is would have
+deleted a dozen shipped features from three screens to gain a shared shell.
+
+What changed is the shape. `ConversationRow` owns the SHELL and takes the rest
+as SLOTS, so the room passes the components it already ships — the reaction bar,
+the media strip, the quote block, the claim chip, the call card, the structured
+idea, the Kai object, the follow button — and none of them is reimplemented.
+The kit still has eight fields it renders and will never have twenty.
+
+`MessageRow` and `ClubMessage` are both compositions of it now. What moved into
+the kit is what two hand-maintained author lines were most likely to drift on,
+and this codebase already had the receipts: the follow button was added twice,
+the call card was added twice, and `$TICKER` was drawn two different ways until
+`PostBody` was extracted. Shared now: the row geometry, the header order, the
+belt law on the name, and the refusal to draw a removed message's body,
+reactions, media or thread line — seven `!deleted &&` guards across two files
+reduced to one rule, and `conversationBody` / `quotedText` / `nameInk` in the
+shared model make it a tested function rather than a habit.
+
+Proven by running `scripts/proof-chat-on-the-kit.mjs` on BOTH sides of the
+change: a presence check that only runs afterwards can show the new code draws
+things, never that the old code did not draw more. The tallies are identical.
+
+*The original decision is kept below, because it is still the argument anyone
+should have to answer before putting a second chat implementation anywhere.*
+
+**Step 4 (original) — DECISION MADE: it does not move.** `RoomMessage`
 carries twenty-odd fields — reactions, reply counts, media, Kai verification,
 structured ideas, position disclosure, community calls, deleted-author states.
 `ConversationMessage` has eight. Putting `ConversationPreview` where `MessageRow`
@@ -178,10 +206,17 @@ the rendered card rather than at a green test:
   it lives in `TradeMap` now, so it outlives the next component that draws a
   level.
 
-**Step 5b — the ticker page.** Not moved. `/symbol/[symbol]` is a company page
-with its own chart lane (`features/chart`, `usePortalCandles`) and its own
-sections; it is a different object from a trade idea, and folding it onto the
-kit is its own decision rather than a leftover from this one.
+**Step 5b — the ticker page. DONE, 8 September.** "On the desk now" draws the
+kit's levels through `features/ticker/trade-idea.ts`. It deliberately does NOT
+take the map: the page already has a chart, and a second one would be two
+pictures of the same prices arguing about which is real. `TradeLevels` was
+extracted from `TradeMap` for exactly this, and the page keeps its own `Block`
+shell because a card inside a block is a card inside a card.
+
+`ReadLevel` is the one wire of the three that already carried numbers AND
+already modelled a zone (`price2`), so there is nothing to parse. `trigger` is
+not mapped onto anything — a trigger is not an entry — and comes back as
+`extraLevels` to be printed in its own words.
 
 **Step 6 — the quoted post.** `QuoteBlock` is the one place in chat where a
 member's identity is flat muted text, because `MessageQuote` carries no
