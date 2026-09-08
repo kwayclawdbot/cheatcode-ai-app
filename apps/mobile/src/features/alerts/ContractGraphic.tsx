@@ -778,7 +778,17 @@ export function ContractSection({ contracts, symbol, compact }: {
  * volatility earns its place because the owner named it; what the contract went
  * on to DO is still absent, because nothing stores it.
  */
-export function ContractLine({ c, symbol }: { c: AlertOptionContract; symbol: string }) {
+export function ContractLine({ c, symbol, showLiquidity = false }: {
+  c: AlertOptionContract;
+  symbol: string;
+  /**
+   * The one-word tradability tag, for a surface where this line is the ONLY
+   * contract object on screen — the collapsed alert card. Off by default,
+   * because a history row and the ticker page both print the full verdict
+   * elsewhere and would otherwise say it twice.
+   */
+  showLiquidity?: boolean;
+}) {
   const put = c.type === 'put';
   const paid = c.cost ? (c.cost.startsWith('$') ? c.cost : `$${c.cost}`) : null;
   const dot = <T size={11} c={color.dim}>·</T>;
@@ -801,6 +811,19 @@ export function ContractLine({ c, symbol }: { c: AlertOptionContract; symbol: st
       {c.dte != null ? (<>{dot}<Num size={11} c={color.muted}>{`${c.dte}d`}</Num></>) : null}
       {c.iv != null ? (<>{dot}<T size={11} c={color.muted}>IV</T><Num size={11} c={color.muted}>{pctOf(c.iv)}</Num></>) : null}
       {paid ? (<>{dot}<T size={11} c={color.muted}>paid</T><Num size={12} c={color.text}>{paid}</Num></>) : null}
+      {showLiquidity && c.liquidity ? (
+        <View
+          testID={`contract-liquidity-${symbol}`}
+          style={{
+            paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5, borderWidth: 0.5,
+            borderColor: c.liquidity === 'good' ? alpha.green40 : alpha.gold40,
+          }}
+        >
+          <T size={9.5} weight="semibold" c={c.liquidity === 'good' ? color.green : color.gold}>
+            {c.liquidity === 'good' ? 'Liquid' : 'Thin'}
+          </T>
+        </View>
+      ) : null}
     </View>
   );
 }

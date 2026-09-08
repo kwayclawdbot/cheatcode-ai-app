@@ -220,6 +220,7 @@ export function TradeMap({
   annotation,
   beforeLevels,
   levelText,
+  showLevels = true,
 }: {
   idea: TradeIdea;
   compact?: boolean;
@@ -249,6 +250,15 @@ export function TradeMap({
    * what a particular caller happens to know about the state around them.
    */
   beforeLevels?: ReactNode;
+  /**
+   * Off where the caller draws `TradeLevels` itself.
+   *
+   * The collapsed alert card has the levels and no chart, and the expanded one
+   * has both — so the two cannot be welded together inside this component
+   * without the collapsed card either losing its levels or growing a chart it
+   * was asked not to have.
+   */
+  showLevels?: boolean;
 }) {
   const [width, setWidth] = useState(340);
   const g = tradeGeometry(idea, compact);
@@ -398,7 +408,7 @@ export function TradeMap({
         <T c={color.muted}>Price history unavailable</T>
       )}
       {beforeLevels}
-      {!compact && (
+      {!compact && showLevels && (
         <TradeLevels
           idea={idea}
           levelText={levelText}
@@ -432,11 +442,13 @@ export function TradeLevels({
   levelText,
   selectedLevel = "entry",
   onLevelSelect,
+  dense = false,
 }: {
   idea: TradeIdea;
   levelText?: Partial<Record<LevelKind, string | null>>;
   selectedLevel?: LevelKind;
   onLevelSelect?: (level: LevelKind) => void;
+  dense?: boolean;
 }) {
   const drawn = (["entry", "stop", "target"] as const).filter(
     (kind) => typeof idea[kind] === "number" && Number.isFinite(idea[kind] as number),
@@ -451,7 +463,7 @@ export function TradeLevels({
             <T size={12} c={ink[kind]}>
               {LEVEL_LABEL[kind]}
             </T>
-            <Num size={16} c={ink[kind]} style={{ marginTop: 6 }}>
+            <Num size={dense ? 15 : 16} c={ink[kind]} style={{ marginTop: dense ? 3 : 6 }}>
               {shown}
             </Num>
           </>
@@ -472,7 +484,7 @@ export function TradeLevels({
             {content}
           </Focusable>
         ) : (
-          <View key={kind} style={s.level}>
+          <View key={kind} style={[s.level, dense && { paddingVertical: 7 }]}>
             {content}
           </View>
         );
@@ -480,11 +492,11 @@ export function TradeLevels({
     </View>
   );
 }
-export function RiskRewardRuler({ idea }: { idea: TradeIdea }) {
+export function RiskRewardRuler({ idea, dense = false }: { idea: TradeIdea; dense?: boolean }) {
   const r = riskReward(idea);
   return r ? (
     <View
-      style={{ marginTop: 12 }}
+      style={{ marginTop: dense ? 9 : 12 }}
       accessible
       accessibilityLabel={`Planned risk 1R. Reward ${r.ratio.toFixed(1)}R.`}
     >
@@ -494,7 +506,7 @@ export function RiskRewardRuler({ idea }: { idea: TradeIdea }) {
           style={{ flex: 1 - r.riskFraction, backgroundColor: color.green }}
         />
       </View>
-      <View style={[s.row, { marginTop: 8 }]}>
+      <View style={[s.row, { marginTop: dense ? 6 : 8 }]}>
         <T c={color.red}>
           Risk <Num c={color.red}>1R</Num>
         </T>
@@ -531,9 +543,22 @@ export function TradeStatusStrip({
   hint,
   onPress,
   testID,
+  dense = false,
+  trailing,
 }: {
   status: TradeStatus;
   variant?: "steps" | "pill";
+  /** Board density: shorter, since a non-tappable pill needs no 44pt target. */
+  dense?: boolean;
+  /**
+   * Drawn at the right-hand end of the pill.
+   *
+   * The board puts the reward ratio here rather than on a row of its own: the
+   * state and what the idea is worth are the same question asked twice — where
+   * is this now, and is it worth taking — and answering them on one line is
+   * forty pixels a member gets to spend on seeing the next card instead.
+   */
+  trailing?: ReactNode;
   /**
    * The caller's own word for this state, when it has one.
    *
@@ -576,6 +601,7 @@ export function TradeStatusStrip({
         ) : (
           <View style={s.flex} />
         )}
+        {trailing}
         {onPress && (
           <T size={16} c={color.muted}>
             ›
@@ -599,7 +625,12 @@ export function TradeStatusStrip({
         {body}
       </Focusable>
     ) : (
-      <View accessible accessibilityLabel={a11y} testID={testID} style={s.pillStatus}>
+      <View
+        accessible
+        accessibilityLabel={a11y}
+        testID={testID}
+        style={[s.pillStatus, dense && { minHeight: 34, paddingHorizontal: 11 }]}
+      >
         {body}
       </View>
     );
@@ -683,7 +714,9 @@ export function SetupPreview({
   plan,
   children,
   showMap = true,
+  showSummary = true,
   showSource = true,
+  dense = false,
   unframed = false,
   testID,
   levelText,
@@ -701,6 +734,25 @@ export function SetupPreview({
   children?: ReactNode;
   /** Off for a family with no price plan at all, so nothing draws an empty chart. */
   showMap?: boolean;
+  /**
+   * The sentence under the headline.
+   *
+   * Off on a board, where three cards a member can compare beats one card that
+   * explains itself — the explanation is one tap away and the decision values
+   * are not.
+   */
+  showSummary?: boolean;
+  /**
+   * BOARD DENSITY. The same object, sized for comparing rather than reading.
+   *
+   * A card that fills the screen is a card a member meets one at a time, which
+   * turns a board into a slideshow — the owner's words after reading one:
+   * "they are taking up more than full screen without expanding." Nothing is
+   * removed by this flag; the type comes down, the logo comes down, and the
+   * margins stop being the ones a full-page object needs. Two to three cards
+   * fit a phone, which is what makes them comparable.
+   */
+  dense?: boolean;
   /** The source/as-of line. Off where the caller draws its own footer below
    *  the fold — the alert card keeps freshness under its expander, where it
    *  has always been, so the story still runs straight into the button. */
@@ -714,7 +766,14 @@ export function SetupPreview({
   const hasPlan = riskReward(idea) !== null;
   return (
     <View style={unframed ? undefined : s.setup} testID={testID}>
-      {eyebrow ? (
+      {/*
+        DENSE PUTS THE SETUP TYPE ON THE TICKER'S OWN LINE rather than giving it
+        a row of its own. The logo and the symbol already say which company this
+        is, so the sub-line is better spent on the thing a member is actually
+        comparing across a board of cards — swing or day trade, long or short.
+        The company's name is one tap away, on a card that has room to say it.
+      */}
+      {eyebrow && !dense ? (
         <T
           size={typeScale.eyebrow.size}
           weight="bold"
@@ -725,30 +784,43 @@ export function SetupPreview({
           {eyebrow.toUpperCase()}
         </T>
       ) : null}
-      <T size={24} weight="medium" ls={-0.7} lh={29}>
+      <T
+        size={dense ? 17 : 24}
+        weight={dense ? "semibold" : "medium"}
+        ls={dense ? -0.2 : -0.7}
+        lh={dense ? 22 : 29}
+        numberOfLines={dense ? 2 : undefined}
+      >
         {idea.title}
       </T>
-      {idea.summary ? (
+      {showSummary && idea.summary ? (
         <T c={color.muted} size={15} lh={22} style={{ marginTop: 8 }}>
           {idea.summary}
         </T>
       ) : null}
-      <View style={[s.row, { marginTop: 16 }]}>
+      <View style={[s.row, { marginTop: dense ? 9 : 16 }]}>
         <Ticker
           symbol={idea.symbol}
-          size={44}
-          sub={idea.company || undefined}
+          size={dense ? 30 : 44}
+          sub={(dense ? eyebrow : idea.company) || idea.company || undefined}
           style={s.flex}
         />
         <GradeBadge grade={idea.grade} whenAbsent={gradeWhenAbsent} />
       </View>
       {lead}
+      {/*
+        THE LEVELS ARE NOT PART OF THE CHART, and this is where that stopped
+        being a detail. They used to be drawn inside `TradeMap`, which meant a
+        card without a chart was a card without an entry, a stop or a target —
+        exactly what audit F06 exists to prevent. The map is now optional and
+        the levels are not.
+      */}
       {showMap ? (
-        <TradeMap idea={idea} beforeLevels={status} levelText={levelText} />
-      ) : status ? (
-        <View style={{ marginTop: 12 }}>{status}</View>
+        <TradeMap idea={idea} levelText={levelText} showLevels={false} />
       ) : null}
-      {plan ?? (hasPlan ? <RiskRewardRuler idea={idea} /> : null)}
+      {status}
+      <TradeLevels idea={idea} levelText={levelText} dense={dense} />
+      {plan ?? (hasPlan ? <RiskRewardRuler idea={idea} dense={dense} /> : null)}
       {children}
       {onExplore && (
         <Focusable
@@ -757,6 +829,7 @@ export function SetupPreview({
           testID={testID ? `${testID}-action` : undefined}
           style={[
             s.primary,
+            dense && { marginTop: 10, minHeight: 44 },
             actionFilled ? null : { backgroundColor: "transparent", borderWidth: 1, borderColor: alpha.ivory24 },
           ]}
           ringRadius={12}

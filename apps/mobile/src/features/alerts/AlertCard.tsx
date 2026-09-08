@@ -246,7 +246,8 @@ export function StandardAlertCard({ alert, testID, candles }: {
   const idea = useMemo(() => ideaFromAlertCard(alert, { candles }), [alert, candles]);
   const notes = useMemo(() => notesFromAlert(alert), [alert]);
   const hasLevels = idea.entry != null || idea.stop != null || idea.target != null;
-  const hasPlan = riskReward(idea) !== null;
+  const rr = riskReward(idea);
+  const hasPlan = rr !== null;
   const contractLed = contracts.length > 0;
   /**
    * A ZONE IS NOT A PRICE, AND A RATIO MEASURED OFF ITS EDGE IS A BEST CASE.
@@ -294,13 +295,37 @@ export function StandardAlertCard({ alert, testID, candles }: {
    * so a resting order reads "Order pending" and not "Entry reached".
    */
   const statusSlot = (
-    <View style={{ gap: 9, marginTop: 12 }}>
+    <View style={{ gap: 9, marginTop: open ? 12 : 9 }}>
       <TradeStatusStrip
         variant="pill"
+        dense={!open}
         status={idea.status}
         label={alert.state_label}
         hint={alert.progress?.label ?? alert.triggered_at_label ?? undefined}
         testID={`alert-state-${alert.symbol}`}
+        /*
+          THE REWARD RIDES ON THE STATE ROW when the board is dense. Collapsed,
+          a separate ruler cost a whole row to say a number that belongs to the
+          same question the pill is already answering. Expanded, the proportional
+          ruler comes back — there the picture is worth the space, because a
+          member is deciding rather than comparing.
+        */
+        /*
+          A ZONE IS ASKED FIRST, and the order is the whole point.
+          Written the other way round this read the computed ratio off the near
+          edge of a range and printed 2.7R on a card whose server had said
+          2.4:1 — the exact best-case-dressed-as-the-case that the zone rule
+          exists to refuse, reintroduced by a convenience.
+        */
+        trailing={open ? null : zoned ? (trade.rr ? (
+          <Num size={13} weight="semibold" c={color.text} testID={`alert-rr-stated-${alert.symbol}`}>
+            {trade.rr}
+          </Num>
+        ) : null) : rr ? (
+          <Num size={13} weight="semibold" c={color.green} testID={`alert-rr-${alert.symbol}`}>
+            {`${rr.ratio.toFixed(1)}R`}
+          </Num>
+        ) : null}
       />
       {alert.progress ? (
         <View
@@ -332,9 +357,27 @@ export function StandardAlertCard({ alert, testID, candles }: {
     volatility, the two score blocks and their evidence, rather than moving the
     contract or drawing it twice.
   */
+  /*
+    THE CONTRACT, AT TWO DEPTHS (owner, 8 September: the collapsed card was
+    taking more than a full screen).
+
+    Collapsed, this family leads with the contract as ONE LINE — strike, side,
+    expiry, days left, what it cost, and whether it can be traded at a fair
+    price. That is the whole of what a member needs to decide whether to open
+    it, and it is forty pixels instead of three hundred.
+
+    Expanding restores the graphic in full: the strike rail, the runway, the
+    two score blocks and their evidence. Nothing about the contract was
+    deleted, and it is still the FIRST object on this family's card at both
+    depths, which is what page 7 asks for.
+  */
   const lead = contractLed ? (
     <View style={{ marginTop: 14 }}>
-      <ContractSection contracts={contracts} symbol={alert.symbol} compact={!open} />
+      {open ? (
+        <ContractSection contracts={contracts} symbol={alert.symbol} />
+      ) : (
+        <ContractLine c={contracts[0]} symbol={alert.symbol} showLiquidity />
+      )}
     </View>
   ) : undefined;
 
@@ -350,7 +393,7 @@ export function StandardAlertCard({ alert, testID, candles }: {
   const plan = hasPlan && !zoned ? undefined : zoned && trade.rr ? (
     <View
       testID={`alert-rr-stated-${alert.symbol}`}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: open ? 12 : 9 }}
     >
       <T size={12.5} c={color.muted}>Planned risk/reward</T>
       <Num size={14} c={color.text}>{trade.rr}</Num>
@@ -361,7 +404,7 @@ export function StandardAlertCard({ alert, testID, candles }: {
       size={12.5}
       c={color.muted}
       lh={18}
-      style={{ marginTop: 12 }}
+      style={{ marginTop: open ? 12 : 9 }}
       testID={`alert-no-plan-${alert.symbol}`}
     >
       {trade.note ?? 'No exit plan supplied.'}
@@ -544,14 +587,35 @@ export function StandardAlertCard({ alert, testID, candles }: {
      The two components below are the same object at two depths; everything
      passed to them is passed to both, so expanding changes depth and not
      layout. */
+  /*
+    WHAT THE COLLAPSED CARD IS FOR, restated after the owner read a board of
+    them: "the alert cards are good but they are taking up more than full
+    screen without expanding."
+
+    He was right, and the fix is not smaller type. A board is for COMPARING —
+    three cards a member can see at once beats one card that explains itself —
+    so the natural state carries only what a decision needs: who, what setup,
+    the headline, the three levels, where it is in its life, what it is worth,
+    and one action. The chart, the sentence under the headline, Kai's note and
+    every piece of evidence move behind the expander, which is where audit F06
+    always said the evidence belonged. F06's own requirement is untouched: the
+    entry, the stop and the target are still readable without expanding, which
+    is why the levels had to come out of `TradeMap` rather than go with it.
+  */
   const shared = {
     idea,
     eyebrow,
     lead,
-    plan,
+    /*
+      Collapsed, the ratio rides on the state row above, so the row that would
+      otherwise repeat it is suppressed — but ONLY when there is a ratio to
+      ride there. A family with no exit plan keeps its sentence, because that
+      sentence is the whole of what it has to say about risk.
+    */
+    plan: !open && (zoned ? !!trade.rr : hasPlan) ? <View /> : plan,
     levelText,
     status: statusSlot,
-    showMap,
+    showMap: open && showMap,
     unframed: true as const,
     showSource: false as const,
     gradeWhenAbsent: 'state' as const,
@@ -563,7 +627,7 @@ export function StandardAlertCard({ alert, testID, candles }: {
       colors={[band.cardVeil, alpha.surface70]}
       start={gradientAngle.start}
       end={gradientAngle.end}
-      style={{ borderRadius: radius.xxxl, borderWidth: 1, borderColor: band.cardBorder, padding: 15, gap: 11 }}
+      style={{ borderRadius: radius.xxxl, borderWidth: 1, borderColor: band.cardBorder, padding: open ? 15 : 13, gap: open ? 11 : 7 }}
     >
       {open ? (
         <TradeDetail
@@ -580,7 +644,7 @@ export function StandardAlertCard({ alert, testID, candles }: {
           {evidence}
         </TradeDetail>
       ) : (
-        <SetupPreview {...shared} />
+        <SetupPreview {...shared} showSummary={false} dense />
       )}
 
       {/*
@@ -596,6 +660,15 @@ export function StandardAlertCard({ alert, testID, candles }: {
         Only the contract-led family gets it, and by `contracts.length` rather
         than a mode check, for the reason ContractSection already documents.
       */}
+      {/*
+        It stays on the COLLAPSED card, and that is the point of it: the rule is
+        explain before PLAN, and the plan — "Open Trade Portal" — is offered
+        here. Moving the explanation behind the expander would leave a member
+        able to act on a contract without ever being offered the sentence that
+        says what a contract is. It is a line rather than a filled control at
+        this density, so it costs about twenty pixels of the height budget
+        instead of sixty.
+      */}
       {contractLed ? (
         <Pressable
           onPress={() => openKaiSheet({
@@ -604,12 +677,10 @@ export function StandardAlertCard({ alert, testID, candles }: {
           })}
           accessibilityRole="button"
           testID={`alert-explain-${alert.symbol}`}
-          style={{
-            height: 44, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
-            borderWidth: 1, borderColor: alpha.violet45, backgroundColor: alpha.violet08,
-          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{ alignSelf: 'center', paddingVertical: 2 }}
         >
-          <T size={13.5} weight="semibold" c={color.violetLight}>Explain this signal ↗</T>
+          <T size={12.5} weight="semibold" c={color.violetLight}>Explain this signal ↗</T>
         </Pressable>
       ) : null}
 

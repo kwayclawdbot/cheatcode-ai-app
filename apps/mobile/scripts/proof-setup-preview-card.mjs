@@ -177,7 +177,9 @@ if (LABEL !== 'before') {
     would be the card going quiet about the thing it exists to tell you.
   */
   const says = [
-    [/Risk\b/.test(t) && /Reward\b/.test(t), 'the measured risk/reward ruler'],
+    /* Collapsed, the measured ratio rides on the lifecycle row as one number;
+       expanded, it becomes the proportional ruler. Either is the same claim. */
+    [(await has(`alert-rr-${sym}`)) || (/Risk\b/.test(t) && /Reward\b/.test(t)), 'the measured risk/reward'],
     [await has(`alert-rr-stated-${sym}`), "the server's stated ratio, because the entry is a zone"],
     [await has(`alert-no-plan-${sym}`), 'a sentence saying no exit plan was supplied'],
   ].filter(([on]) => on).map(([, what]) => what);
@@ -187,6 +189,34 @@ if (LABEL !== 'before') {
   /* Evidence stays behind the fold — that is the other half of F06. */
   note(!(await has(`bars-${sym}`)), 'the score breakdown is collapsed');
   note(!(await has(`alert-story-${sym}`)), 'and so is the story');
+
+  /*
+    THE HEIGHT IS A FEATURE, and this is the assertion that says so.
+
+    Owner, 8 September, reading a board of the first version: "the alert cards
+    are good but they are taking up more than full screen without expanding."
+    They were ~800pt against an 844pt phone, which makes a board a slideshow —
+    a member meets one card at a time and can compare none of them.
+
+    So the chart and the sentence under the headline moved behind the expander,
+    and the budget is checked rather than trusted. 380 is the ceiling and not
+    the target: an options card legitimately carries one more object than a
+    stock card (its contract line), and the stock cards land near 300. What
+    this catches is the next thing that gets added to the natural state without
+    anybody measuring what it cost.
+  */
+  const heights = await cards.evaluateAll((ns) =>
+    ns.map((n) => ({ id: n.dataset.testid, h: Math.round(n.getBoundingClientRect().height) })));
+  const tallest = heights.reduce((a, b) => (b.h > a.h ? b : a));
+  note(tallest.h <= 380, `every collapsed card is inside the height budget — tallest ${tallest.id} at ${tallest.h}pt`);
+  note(heights.every((c) => c.h < 844), 'and none of them fills the phone on its own');
+  console.log(`     ${heights.map((c) => `${c.id.replace('alert-card-', '')} ${c.h}`).join(' · ')}`);
+
+  /* The chart is the single biggest thing that left, so its absence is what
+     the budget above is actually made of. */
+  note((await first.locator('svg').count()) === 0
+    || !(await first.locator('svg').first().getAttribute('viewBox') ?? '').includes('292'),
+    'no price map on the collapsed card');
 
   console.log('\nexpanded — the same object, one depth further in');
   await first.locator(`[data-testid="alert-expand-${sym}"]`).click();
@@ -199,6 +229,10 @@ if (LABEL !== 'before') {
     note(/Ask Kai about/i.test(e), 'and Kai can be asked about the selected level');
     note((await has(`bars-${sym}`)) || (await has(`hold-plan-${sym}`)) || /No grade/i.test(e),
       'the evidence is now on screen');
+    /* And everything the collapsed card gave up came back. */
+    note((await first.locator('svg').count()) > 0, 'the price map is back');
+    const grew = Math.round((await first.boundingBox()).height);
+    note(grew > tallest.h, `and the card grew to hold it — ${grew}pt`);
   }
 }
 
