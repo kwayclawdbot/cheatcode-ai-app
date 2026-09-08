@@ -265,14 +265,35 @@ async function captureApp(browser) {
    * order assertion above proves nothing is BEFORE the story that should not
    * be; this proves nothing is AFTER it either. The family record used to sit
    * in exactly this gap, so the gap is what gets measured.
+   *
+   * UPDATED 8 September, when the card moved onto the trade UI kit. ONE thing
+   * is now legitimately between the two — "Ask Kai about this <symbol> setup",
+   * which arrived with `TradeDetail` and is the expanded card's own action on
+   * the level a member has selected. It belongs there: it is the last thing
+   * offered about the IDEA, immediately before the button that leaves for the
+   * portal.
+   *
+   * So the measurement is now made against the Kai action rather than widened
+   * to swallow it. Widening the tolerance to ~110px would have kept one green
+   * line and quietly given back the thing the assertion exists to prevent —
+   * room for a second block to reappear in the gap. Two tight measurements
+   * still say "nothing else got in", and they say which of the two moved when
+   * one of them fails.
    */
   {
-    const story = await page.getByTestId('alert-story-META').first().boundingBox();
-    const cta = await page.getByTestId('alert-cta-META').first().boundingBox();
-    const gap = story && cta ? cta.y - (story.y + story.height) : null;
-    const tight = gap != null && gap >= 0 && gap < 60;
-    console.log(`  ${tight ? '✓' : '✗'} alerts · the story runs straight into the button (${gap}px)`);
-    if (!tight) failures.push(`alerts · ${gap}px between the story toggle and the CTA — something is in the gap`);
+    const box = async (id) => (await page.getByTestId(id).first().boundingBox());
+    const story = await box('alert-story-META');
+    const ask = await page.locator('text=/Ask Kai about this/').first().boundingBox();
+    const cta = await box('alert-cta-META');
+    const between = (a, b) => (a && b ? b.y - (a.y + a.height) : null);
+    for (const [gap, what] of [
+      [between(story, ask), 'the story runs straight into the Kai action'],
+      [between(ask, cta), 'and the Kai action into the button'],
+    ]) {
+      const tight = gap != null && gap >= 0 && gap < 60;
+      console.log(`  ${tight ? '✓' : '✗'} alerts · ${what} (${gap}px)`);
+      if (!tight) failures.push(`alerts · ${gap}px — ${what} is not tight; something is in the gap`);
+    }
   }
 
   await assertNoFractions(page, 'alerts · active (expanded)');
