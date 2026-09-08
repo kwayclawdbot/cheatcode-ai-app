@@ -1,6 +1,6 @@
 import { api } from '../../lib/api';
 import type { GoalMode } from '../../lib/types';
-import type { TrainingLesson, TrainingProfile } from './types';
+import type { TrainingLessonNode, TrainingProfile } from './types';
 
 /**
  * THE LESSON-CONTEXT KAI CALL.
@@ -8,7 +8,10 @@ import type { TrainingLesson, TrainingProfile } from './types';
  * The rebuild package's README asks for lesson context rather than generic
  * chat, and gives the contract:
  *
- *   { surface, lesson_id, unit_id, skill, stage, symbol, timeframe,
+ * (`unit_id` in the original contract is `day_id` here — the product's unit of
+ * organisation is the DAY, per the 7-day spec, and the pin should say so.)
+ *
+ *   { surface, lesson_id, day_id, skill, stage, symbol, timeframe,
  *     learner_answer, chart_markup, mastery_before }
  *
  * That goes out over the app's EXISTING Kai path — `POST /kai/conversations`
@@ -27,7 +30,7 @@ import type { TrainingLesson, TrainingProfile } from './types';
 export type TrainingKaiContext = {
   surface: 'training';
   lesson_id: string;
-  unit_id: string;
+  day_id: string;
   skill: string;
   stage: string;
   symbol: string;
@@ -42,14 +45,14 @@ export type TrainingKaiResult =
   | { status: 'unavailable'; text: string };
 
 export function buildTrainingContext(
-  lesson: TrainingLesson,
+  lesson: TrainingLessonNode,
   profile: TrainingProfile,
   opts: { stage: string; symbol: string; timeframe: string; learnerAnswer: string | null; chartMarkup: string | null },
 ): TrainingKaiContext {
   return {
     surface: 'training',
     lesson_id: lesson.id,
-    unit_id: lesson.unitId,
+    day_id: lesson.dayId,
     skill: lesson.skill,
     stage: opts.stage,
     symbol: opts.symbol,
@@ -68,11 +71,11 @@ export function buildTrainingContext(
 const FALLBACK = 'Kai could not review this right now. Your work is saved — finish the lesson and ask again later.';
 
 /** Turn the contract into the message Kai actually reads. */
-function tutorPrompt(ctx: TrainingKaiContext, lesson: TrainingLesson): string {
+function tutorPrompt(ctx: TrainingKaiContext, lesson: TrainingLessonNode): string {
   return [
     `You are tutoring inside Cheat Code AI Training Mode. Teach first — do not create an alert or a trade.`,
     ``,
-    `Lesson: ${lesson.title} (${ctx.lesson_id}, unit ${ctx.unit_id})`,
+    `Lesson: ${lesson.title} (${ctx.lesson_id}, ${ctx.day_id})`,
     `Skill: ${ctx.skill} — the learner is at ${ctx.mastery_before}% mastery before this attempt.`,
     `Stage: ${ctx.stage}. Chart: ${ctx.symbol} on the ${ctx.timeframe}.`,
     ctx.learner_answer ? `The learner answered: ${ctx.learner_answer}` : `The learner has not answered in words.`,
@@ -90,7 +93,7 @@ function tutorPrompt(ctx: TrainingKaiContext, lesson: TrainingLesson): string {
  * cannot speak, the surface says so.
  */
 export async function requestReview(
-  lesson: TrainingLesson,
+  lesson: TrainingLessonNode,
   profile: TrainingProfile,
   opts: { stage: string; symbol: string; timeframe: string; learnerAnswer: string | null; chartMarkup: string | null; mode?: GoalMode },
 ): Promise<TrainingKaiResult> {
@@ -99,10 +102,24 @@ export async function requestReview(
   const ctx = buildTrainingContext(lesson, profile, opts);
 
   try {
+    // NO `context` PIN, DELIBERATELY.
+    //
+    // The obvious thing is `{ kind: 'training', id: lesson_id }`, and it was
+    // written that way first. `KaiContextKind` in packages/shared/api.ts is a
+    // CLOSED enum — symbol, setup, alert, order, position, room, home — so the
+    // server rejected the whole request with a 400 before Kai ever saw it, and
+    // the lesson showed "Something in context.kind wasn't right" in Kai's voice
+    // for a mistake that was entirely ours. Adding `training` to that enum is
+    // an API change and a deploy; this lane is client-only.
+    //
+    // Nothing is lost by leaving it out: the full contract from the README
+    // travels in the message body, which is what the model actually reads. The
+    // pin only decides which server-side object gets loaded into the system
+    // prompt, and a lesson is not one of those objects yet. When the enum and a
+    // loader land, pass the pin here and the tutor gets the lesson row too.
     const conversation = await api.createConversation(
       opts.mode ?? 'swing',
-      { symbols: [ctx.symbol] },
-      { kind: 'training', id: ctx.lesson_id, symbol: ctx.symbol },
+      ctx.symbol ? { symbols: [ctx.symbol] } : undefined,
     );
 
     let text = '';

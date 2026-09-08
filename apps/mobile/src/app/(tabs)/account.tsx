@@ -18,6 +18,7 @@ import { api } from '../../lib/api';
 import { env } from '../../lib/env';
 import { useSession } from '../../lib/session';
 import { useKaiProfile, useMe, useSettingsWriter } from '../../features/account/useAccount';
+import { useTraining } from '../../features/training/store';
 import { useAvatar } from '../../features/account/useAvatar';
 import { Avatar } from '../../features/community/ui/Chrome';
 import { FOCUS_CHIP, FOCUS_ORDER } from '../../features/account/profile';
@@ -64,6 +65,17 @@ export default function Account() {
   const [simResult, setSimResult] = useState<string | null>(null);
   const [modeOpen, setModeOpen] = useState(false);
   const [focusOpen, setFocusOpen] = useState(false);
+
+  // Overall mastery, averaged across the skills the curriculum tracks. Shown
+  // only to a member who has actually begun: `enrolled` is the "is there a
+  // stored profile" question, which is not the same as "is the profile
+  // populated" — everyone holds the empty default until storage is read.
+  const training = useTraining();
+  const masteryValues = Object.values(training.profile.mastery);
+  const overallMastery = masteryValues.length
+    ? Math.round(masteryValues.reduce((a, b) => a + b, 0) / masteryValues.length)
+    : 0;
+  const trainingValue = training.enrolled ? `${overallMastery}%` : null;
 
   React.useEffect(() => {
     setMemory(data?.memory_enabled ?? profile?.memory_enabled ?? true);
@@ -473,6 +485,17 @@ export default function Account() {
               lives. It sits here because the tab bar is five items and stays
               five items, not because it is an afterthought. */}
           <NavRow testID="nav-desk" icon={<KaiOrb size={14} glow={false} />} label="Research desk" onPress={() => router.push('/desk')} />
+          {/* Training is the other thing that is not a setting. The value is
+              the member's own mastery, or nothing at all — a learner who has
+              never opened a lesson is shown no number rather than a zero,
+              because a zero here reads as a grade. */}
+          <NavRow
+            testID="nav-training"
+            icon={<Bars size={14} color={color.muted} />}
+            label="Training & Mastery"
+            value={trainingValue}
+            onPress={() => router.push('/training' as never)}
+          />
           {/* Credits sit ABOVE the plan on purpose: "how many questions have
               I got left" is asked far more often than "what am I paying", and
               the value is a real balance read from the server — never a

@@ -24,6 +24,7 @@ import { env } from '../../lib/env';
 import { useMe } from '../../features/account/useAccount';
 import { CreditStrip } from '../../features/account/credit-instruments';
 import { fixtureCreditsCeiling, fixtureCreditsOut, fixtureCreditsWarning } from '../../lib/fixtures';
+import { ContinueTrainingObject } from '../../features/training/HomeObject';
 import type { ConversationRow, GoalMode, WallItem } from '../../lib/types';
 
 const Hamburger = ({ onPress }: { onPress: () => void }) => (
@@ -259,6 +260,17 @@ export default function Home() {
             animate={!wake.seenBefore}
             onDirection={onDirection}
           />
+        ) : null}
+
+        {/* Training rides with Kai's one message, not in the conversation
+            below it: it is a standing invitation, not a thing he just said.
+            It draws only on Today — scrolled back into an older thread it
+            would be an interruption from the present. */}
+        {thread.kind === 'today' ? (
+          <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+            <View style={{ width: 30 }} />
+            <View style={{ flex: 1 }}><ContinueTrainingObject /></View>
+          </View>
         ) : null}
 
         {/* Then the conversation. */}

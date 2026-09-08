@@ -1,9 +1,32 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { DEFAULT_TRAINING_PROFILE, nextLesson } from './curriculum';
-import type { TrainingProfile, TrainingSkill } from './types';
+import { DEFAULT_TRAINING_PROFILE, nextLessonNode } from './curriculum';
+import { nextOpenLessonId } from './gates';
+import type {
+  CompetencySignal,
+  LessonRunResult,
+  TrainingProfile,
+  TrainingSkill,
+} from './types';
 
-const KEY = 'ccai.training.profile.v1';
+/**
+ * The stored key is versioned. `v2` is the seven-day profile — it carries
+ * `competencies` and `dayProgress`, which `v1` did not have. A `v1` row is not
+ * migrated: it belonged to a ten-lesson curriculum whose lesson ids no longer
+ * exist, so carrying it forward would credit a member with lessons that are
+ * not in the product. Reading nothing and starting at zero is the honest
+ * outcome, and it is what a member who has not done Day 1 should see.
+ */
+const KEY = 'ccai.training.profile.v2';
+
+/** A stronger signal never gets overwritten by a weaker one on a re-run. */
+const SIGNAL_RANK: Record<CompetencySignal, number> = {
+  unproven: 0,
+  developing: 1,
+  passed: 2,
+  strong: 3,
+  mastered: 4,
+};
 
 type TrainingContextValue = {
   profile: TrainingProfile;
@@ -18,7 +41,8 @@ type TrainingContextValue = {
    * six. `ready` says whether we know yet; `enrolled` says what the answer is.
    */
   enrolled: boolean;
-  completeLesson: (lessonId: string, skill: TrainingSkill, masteryGain?: number) => Promise<void>;
+  /** The full result of one walk through a lesson. Written once, on completion. */
+  completeLessonRun: (result: LessonRunResult) => Promise<void>;
   setCurrentLesson: (lessonId: string) => Promise<void>;
   reset: () => Promise<void>;
 };
@@ -37,7 +61,16 @@ export function TrainingProvider({ children }: { children: React.ReactNode }) {
         // A row that will not parse is a corrupt row, not a reason to crash the
         // provider that wraps the whole app. Fall back to "never started".
         try {
-          setProfile({ ...DEFAULT_TRAINING_PROFILE, ...JSON.parse(raw) });
+          const stored = JSON.parse(raw) as Partial<TrainingProfile>;
+          setProfile({
+            ...DEFAULT_TRAINING_PROFILE,
+            ...stored,
+            // Merged rather than replaced: a row written before a new skill
+            // existed must not leave that skill undefined on the profile.
+            mastery: { ...DEFAULT_TRAINING_PROFILE.mastery, ...(stored.mastery ?? {}) },
+            competencies: { ...(stored.competencies ?? {}) },
+            dayProgress: { ...(stored.dayProgress ?? {}) },
+          });
           setEnrolled(true);
         } catch {
           /* keep the empty default */
@@ -53,27 +86,52 @@ export function TrainingProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(KEY, JSON.stringify(next));
   }, []);
 
-  const completeLesson = useCallback(async (
-    lessonId: string,
-    skill: TrainingSkill,
-    masteryGain = 12,
-  ) => {
-    const completed = profile.completedLessonIds.includes(lessonId)
+  const completeLessonRun = useCallback(async (result: LessonRunResult) => {
+    const completed = profile.completedLessonIds.includes(result.lessonId)
       ? profile.completedLessonIds
-      : [...profile.completedLessonIds, lessonId];
-    const after = nextLesson(lessonId);
-    const mastery = {
+      : [...profile.completedLessonIds, result.lessonId];
+
+    const mastery: Record<TrainingSkill, number> = {
       ...profile.mastery,
-      [skill]: Math.min(100, (profile.mastery[skill] ?? 0) + masteryGain),
+      [result.skill]: Math.min(100, (profile.mastery[result.skill] ?? 0) + result.masteryGain),
     };
-    const avg = Object.values(mastery).reduce((a, b) => a + b, 0) / Object.values(mastery).length;
-    await persist({
+
+    const competencies = { ...profile.competencies };
+    for (const [key, signal] of Object.entries(result.competencies)) {
+      const held = competencies[key];
+      if (!held || SIGNAL_RANK[signal] > SIGNAL_RANK[held]) competencies[key] = signal;
+    }
+
+    const day = profile.dayProgress[result.dayId] ?? { completedLessonIds: [], bestScorePct: null };
+    const dayProgress = {
+      ...profile.dayProgress,
+      [result.dayId]: {
+        completedLessonIds: day.completedLessonIds.includes(result.lessonId)
+          ? day.completedLessonIds
+          : [...day.completedLessonIds, result.lessonId],
+        bestScorePct:
+          result.scorePct === null
+            ? day.bestScorePct
+            : Math.max(day.bestScorePct ?? 0, result.scorePct),
+      },
+    };
+
+    const next: TrainingProfile = {
       ...profile,
       completedLessonIds: completed,
-      currentLessonId: after?.id ?? lessonId,
       mastery,
-      readiness: avg >= 82 ? 'assisted' : avg >= 60 ? 'guided' : 'beginner',
-    });
+      competencies,
+      dayProgress,
+      readiness: readinessFor(mastery),
+      currentLessonId: profile.currentLessonId,
+    };
+
+    // Point the member at whatever is genuinely open next — which respects the
+    // gates, so a locked Day 2 does not become "your current lesson".
+    next.currentLessonId =
+      nextOpenLessonId(next) ?? nextLessonNode(result.lessonId)?.id ?? result.lessonId;
+
+    await persist(next);
   }, [persist, profile]);
 
   const setCurrentLesson = useCallback(async (lessonId: string) => {
@@ -86,11 +144,18 @@ export function TrainingProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.removeItem(KEY);
   }, []);
 
-  const value = useMemo(() => ({ profile, ready, enrolled, completeLesson, setCurrentLesson, reset }), [
-    profile, ready, enrolled, completeLesson, setCurrentLesson, reset,
-  ]);
+  const value = useMemo(
+    () => ({ profile, ready, enrolled, completeLessonRun, setCurrentLesson, reset }),
+    [profile, ready, enrolled, completeLessonRun, setCurrentLesson, reset],
+  );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+function readinessFor(mastery: Record<TrainingSkill, number>): TrainingProfile['readiness'] {
+  const values = Object.values(mastery);
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  return avg >= 82 ? 'assisted' : avg >= 60 ? 'guided' : 'beginner';
 }
 
 export function useTraining() {
