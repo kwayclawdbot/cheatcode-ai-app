@@ -11,7 +11,7 @@ import { T, Num } from "../Text";
 import { Ticker } from "../Ticker";
 import { KaiOrb } from "../KaiOrb";
 import { family } from "../fonts";
-import { color, alpha, belt } from "../tokens";
+import { color, alpha, belt, radius, type as typeScale } from "../tokens";
 import {
   LEVEL_LABEL,
   STATUS_LABEL,
@@ -38,14 +38,49 @@ export type { TradeIdea, LevelKind, TradeStatus, KaiNote, ConversationMessage };
  * `word` is off for the compact preview, where the row beside it is already
  * short of horizontal room and "B+" alone is unambiguous.
  */
-function GradeBadge({
+export function GradeBadge({
   grade,
   word = true,
+  whenAbsent = "hide",
 }: {
   grade?: string | null;
   word?: boolean;
+  /**
+   * What to draw when there is no grade. `hide` is the default because the
+   * room's pinned setup has always drawn nothing there and changing a shipped
+   * surface is not this component's business; the alert card opts into `state`.
+   */
+  whenAbsent?: "hide" | "state";
 }) {
-  if (!grade) return null;
+  /**
+   * NO GRADE IS A STATE, NOT AN ABSENCE.
+   *
+   * This used to return `null`, which was right while the badge only ever sat
+   * beside a `GradeMedallion` that drew the ungraded case itself. On the alert
+   * card the badge IS the grade, and a card that simply omits it is a card a
+   * member reads as ungraded-looking rather than as ungraded — the difference
+   * that matters for the unusual-options family, which is honestly ungraded
+   * because nothing behind it ever scored a stock setup.
+   *
+   * The two testIDs are `GradeMedallion`'s, carried over deliberately: the
+   * proofs assert an ungraded card shows the ring and the words "No grade" and
+   * never a number, and that guarantee should hold wherever the grade is drawn
+   * rather than being tied to one component. The dashes are the medallion's
+   * argument in a smaller frame — a dotted outline has no amount to misread.
+   */
+  if (!grade) {
+    if (whenAbsent === "hide") return null;
+    return (
+      <View
+        testID="grade-ungraded-ring"
+        style={[s.grade, { borderColor: alpha.ivory20, borderStyle: "dashed" }]}
+      >
+        <T c={color.dim} size={13} testID="grade-none">
+          No grade
+        </T>
+      </View>
+    );
+  }
   const top = grade.startsWith("A");
   return (
     <View style={[s.grade, { borderColor: top ? alpha.gold40 : alpha.ivory20 }]}>
@@ -118,12 +153,22 @@ export function TradeMap({
   selectedLevel = "entry",
   onLevelSelect,
   annotation,
+  beforeLevels,
 }: {
   idea: TradeIdea;
   compact?: boolean;
   selectedLevel?: LevelKind;
   onLevelSelect?: (level: LevelKind) => void;
   annotation?: KaiNote;
+  /**
+   * Drawn between the chart and the three level cells.
+   *
+   * The alert card's lifecycle row sits exactly here on the owner's board, and
+   * this is a slot rather than a `status` prop for the reason `PinnedTradePreview`
+   * already documents: the kit owns what the three levels ARE, it does not own
+   * what a particular caller happens to know about the state around them.
+   */
+  beforeLevels?: ReactNode;
 }) {
   const [width, setWidth] = useState(340);
   const g = tradeGeometry(idea, compact);
@@ -262,6 +307,7 @@ export function TradeMap({
       {g && !g.candles.length && (
         <T c={color.muted}>Price history unavailable</T>
       )}
+      {beforeLevels}
       {!compact && (
         <View style={s.levels}>
           {(["entry", "stop", "target"] as const).map((kind) => {
@@ -325,19 +371,111 @@ export function RiskRewardRuler({ idea }: { idea: TradeIdea }) {
     <T c={color.muted}>Risk/reward unavailable · Check trade levels</T>
   );
 }
-export function TradeStatusStrip({ status }: { status: TradeStatus }) {
+/**
+ * THE LIFECYCLE, AT TWO SIZES.
+ *
+ * `steps` is the four-dot rail from the trade-idea board — it is worth a
+ * screen's width because on the detail page the member is deciding, and seeing
+ * the three states this idea has NOT reached yet is most of what tells them
+ * whether it is an idea or an order.
+ *
+ * `pill` is the same fact in one line, for the alert card, where four labelled
+ * dots per card down a scrolling list would be four times the furniture and a
+ * quarter of the information. It is the row the owner's board draws under the
+ * chart. Both read from `STATUS_LABEL`, so the word a member learns on the card
+ * is the word they meet again on the page.
+ *
+ * Terminal states have no "next", so the pill goes muted and drops the chevron
+ * rather than implying somewhere left to go.
+ */
+export function TradeStatusStrip({
+  status,
+  variant = "steps",
+  label,
+  hint,
+  onPress,
+  testID,
+}: {
+  status: TradeStatus;
+  variant?: "steps" | "pill";
+  /**
+   * The caller's own word for this state, when it has one.
+   *
+   * The kit's six statuses are a shape — where a trade sits on its lifecycle —
+   * and the alert wire's nine `AlertCardState`s collapse onto them. Collapsing
+   * is right for the geometry and wrong for the label: "Forming" and "Order
+   * pending" both land on this kit's `watching`/`active`, and printing the
+   * kit's word instead of the server's would tell a member their resting order
+   * is merely an idea. The server names the state; the kit places it.
+   */
+  label?: string;
+  /** Caller-supplied detail, e.g. "Entry approaching". Never inferred here. */
+  hint?: string;
+  onPress?: () => void;
+  testID?: string;
+}) {
+  const word = label ?? STATUS_LABEL[status];
   const index = STATUS_STEPS.indexOf(status);
+  if (variant === "pill") {
+    const live = index >= 0 && status !== "closed";
+    const tone = live
+      ? color.volt
+      : status === "invalidated" || status === "expired"
+        ? color.red
+        : color.muted;
+    const body = (
+      <>
+        <View style={[s.pillDot, { borderColor: tone }]}>
+          {(status === "active" || status === "entry_reached") && (
+            <View style={[s.pillDotCore, { backgroundColor: tone }]} />
+          )}
+        </View>
+        <T size={14} weight="semibold" c={tone}>
+          {word}
+        </T>
+        {hint ? (
+          <T size={14} c={color.muted} style={s.flex} numberOfLines={1}>
+            · {hint}
+          </T>
+        ) : (
+          <View style={s.flex} />
+        )}
+        {onPress && (
+          <T size={16} c={color.muted}>
+            ›
+          </T>
+        )}
+      </>
+    );
+    const a11y = `Trade status: ${word}${hint ? `. ${hint}` : ""}`;
+    return onPress ? (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={a11y}
+        onPress={onPress}
+        testID={testID}
+        style={s.pillStatus}
+      >
+        {body}
+      </Pressable>
+    ) : (
+      <View accessible accessibilityLabel={a11y} testID={testID} style={s.pillStatus}>
+        {body}
+      </View>
+    );
+  }
   if (index < 0)
     return (
-      <T c={color.muted} style={{ paddingVertical: 18 }}>
-        {STATUS_LABEL[status]}
+      <T c={color.muted} testID={testID} style={{ paddingVertical: 18 }}>
+        {word}
       </T>
     );
   return (
     <View
       style={s.status}
+      testID={testID}
       accessible
-      accessibilityLabel={`Trade status: ${STATUS_LABEL[status]}`}
+      accessibilityLabel={`Trade status: ${word}`}
     >
       {STATUS_STEPS.map((step, i) => (
         <View key={step} style={s.statusStep}>
@@ -369,44 +507,106 @@ export function TradeStatusStrip({ status }: { status: TradeStatus }) {
     </View>
   );
 }
+/**
+ * THE DEFAULT TRADE OBJECT (audit F06).
+ *
+ * The order below is the owner's board, and it is an argument, not a taste:
+ * the setup type and the headline say what was found, the identity says what it
+ * was found in, and the map, the levels and the ruler are the plan. Everything
+ * a member needs to decide is above the fold — where the entry is, where the
+ * idea fails, what it is worth, and whether this is an idea or an order — and
+ * nothing below the fold is needed to make that decision.
+ *
+ * Every slot exists because a family genuinely differs, not to make the
+ * template configurable:
+ *
+ *   `lead`      replaces the price map, for a family whose object is not a
+ *               stock path — an options card leads with the contract.
+ *   `status`    the lifecycle row, drawn between the chart and the levels.
+ *   `plan`      what stands in for the ruler when a family has no exit plan.
+ *               A blank ruler would read as a broken ruler; the server's own
+ *               sentence reads as the truth.
+ *   `children`  the evidence, once a member has asked for it.
+ *
+ * A caller that omits `unframed` gets the bordered panel; the alert card draws
+ * its own grade-banded frame and passes it, because a panel inside a panel is
+ * the thing the house style spends most of its time refusing.
+ */
 export function SetupPreview({
   idea,
   onExplore,
+  eyebrow,
+  actionLabel,
+  actionFilled = true,
+  lead,
+  status,
+  plan,
+  children,
+  unframed = false,
+  testID,
+  gradeWhenAbsent = "hide",
 }: {
   idea: TradeIdea;
   onExplore?: (idea: TradeIdea) => void;
+  /** The setup type, e.g. "SWING SETUP · LONG". Caller's words. */
+  eyebrow?: string;
+  actionLabel?: string;
+  actionFilled?: boolean;
+  lead?: ReactNode;
+  status?: ReactNode;
+  plan?: ReactNode;
+  children?: ReactNode;
+  unframed?: boolean;
+  testID?: string;
+  gradeWhenAbsent?: "hide" | "state";
 }) {
+  const hasPlan = riskReward(idea) !== null;
   return (
-    <View style={s.setup}>
-      <View style={s.row}>
+    <View style={unframed ? undefined : s.setup} testID={testID}>
+      {eyebrow ? (
+        <T
+          size={typeScale.eyebrow.size}
+          weight="bold"
+          ls={typeScale.eyebrow.ls}
+          c={color.muted}
+          style={s.eyebrow}
+        >
+          {eyebrow.toUpperCase()}
+        </T>
+      ) : null}
+      <T size={24} weight="medium" ls={-0.7} lh={29}>
+        {idea.title}
+      </T>
+      {idea.summary ? (
+        <T c={color.muted} size={15} lh={22} style={{ marginTop: 8 }}>
+          {idea.summary}
+        </T>
+      ) : null}
+      <View style={[s.row, { marginTop: 16 }]}>
         <Ticker
           symbol={idea.symbol}
           size={44}
-          sub={idea.company}
+          sub={idea.company || undefined}
           style={s.flex}
         />
-        <GradeBadge grade={idea.grade} />
+        <GradeBadge grade={idea.grade} whenAbsent={gradeWhenAbsent} />
       </View>
-      <T size={24} weight="medium" ls={-0.7} style={{ marginTop: 22 }}>
-        {idea.title}
-      </T>
-      <TradeMap idea={idea} />
-      <RiskRewardRuler idea={idea} />
-      <T c={color.muted} size={15} lh={23} style={{ marginTop: 18 }}>
-        {idea.summary}
-      </T>
-      <T size={12} c={color.muted} style={{ marginTop: 10 }}>
-        {idea.direction === "long" ? "Long" : "Short"} ·{" "}
-        {STATUS_LABEL[idea.status]}
-      </T>
+      {lead ?? <TradeMap idea={idea} beforeLevels={status} />}
+      {lead && status ? <View style={{ marginTop: 12 }}>{status}</View> : null}
+      {plan ?? (hasPlan ? <RiskRewardRuler idea={idea} /> : null)}
+      {children}
       {onExplore && (
         <Pressable
           accessibilityRole="button"
           onPress={() => onExplore(idea)}
-          style={s.primary}
+          testID={testID ? `${testID}-action` : undefined}
+          style={[
+            s.primary,
+            actionFilled ? null : { backgroundColor: "transparent", borderWidth: 1, borderColor: alpha.ivory24 },
+          ]}
         >
-          <T c={color.bg} weight="semibold" size={16}>
-            Explore this idea →
+          <T c={actionFilled ? color.bg : color.text} weight="semibold" size={16}>
+            {actionLabel ?? "Explore this idea →"}
           </T>
         </Pressable>
       )}
@@ -614,6 +814,27 @@ const s = StyleSheet.create({
     backgroundColor: alpha.violet08,
   },
   touch: { minHeight: 44, justifyContent: "center" },
+  pillStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    minHeight: 44,
+    paddingHorizontal: 13,
+    borderWidth: 1,
+    borderColor: alpha.ivory12,
+    borderRadius: radius.lg,
+    backgroundColor: alpha.ivory035,
+  },
+  pillDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pillDotCore: { width: 6, height: 6, borderRadius: 3 },
+  eyebrow: { marginBottom: 10 },
   status: { flexDirection: "row", marginVertical: 26 },
   statusStep: { flex: 1, alignItems: "center", gap: 10 },
   statusLine: {

@@ -2,21 +2,50 @@ import React, { useState, type ReactNode } from "react";
 import { View, Pressable, StyleSheet } from "react-native";
 import { T } from "../Text";
 import { Ticker } from "../Ticker";
-import { color, alpha } from "../tokens";
+import { color, alpha, radius, type as typeScale } from "../tokens";
 import {
   TradeMap,
   RiskRewardRuler,
   TradeStatusStrip,
+  GradeBadge,
   type TradeIdea,
   type LevelKind,
 } from "./index";
 
-/** Drop-in composition. Caller supplies real Kai notes and handles the action. */
+/**
+ * THE TRADE IDEA, EXPANDED.
+ *
+ * This is `SetupPreview` after a member has asked for more, and the difference
+ * between the two is exactly one thing: here the three levels are SELECTABLE,
+ * and choosing one puts Kai's sentence about that level on the chart. A
+ * preview answers "what is this and should I care"; this answers "why is the
+ * stop there".
+ *
+ * Which is why it is the same object rather than a second page. The card's
+ * "view setup details" grows the preview into this in place — same identity,
+ * same headline, same chart in the same position — so nothing jumps and a
+ * member never has to re-find what they were looking at. `children` is where
+ * the evidence goes, below the idea and above the action.
+ *
+ * `notes` is real Kai text or nothing. A level with no note simply draws no
+ * annotation; the component never writes a sentence about a level on Kai's
+ * behalf, because a made-up rationale is worse than a missing one.
+ */
 export function TradeDetail({
   idea,
   notes,
   onAsk,
   composer,
+  children,
+  eyebrow,
+  askLabel,
+  statusVariant = "steps",
+  statusLabel,
+  statusHint,
+  unframed = false,
+  showIdentity = true,
+  gradeWhenAbsent = "hide",
+  testID,
 }: {
   idea: TradeIdea;
   notes?: Partial<Record<LevelKind, string>>;
@@ -27,15 +56,53 @@ export function TradeDetail({
     value: number | null;
   }) => void;
   composer?: ReactNode;
+  /** Evidence and longer discussion, drawn under the idea. */
+  children?: ReactNode;
+  eyebrow?: string;
+  askLabel?: string;
+  statusVariant?: "steps" | "pill";
+  statusLabel?: string;
+  statusHint?: string;
+  /** Drop the page padding and ground, for use inside a card that has its own. */
+  unframed?: boolean;
+  showIdentity?: boolean;
+  gradeWhenAbsent?: "hide" | "state";
+  testID?: string;
 }) {
   const [selected, setSelected] = useState<LevelKind>("entry");
   const note = notes?.[selected];
   return (
-    <View style={s.root}>
-      <Ticker symbol={idea.symbol} sub={idea.company} size={44} />
-      <T size={28} weight="medium" style={s.heading}>
+    <View style={unframed ? undefined : s.root} testID={testID}>
+      {eyebrow ? (
+        <T
+          size={typeScale.eyebrow.size}
+          weight="bold"
+          ls={typeScale.eyebrow.ls}
+          c={color.muted}
+          style={{ marginBottom: 10 }}
+        >
+          {eyebrow.toUpperCase()}
+        </T>
+      ) : null}
+      {showIdentity ? (
+        <View style={s.identity}>
+          <Ticker
+            symbol={idea.symbol}
+            sub={idea.company || undefined}
+            size={44}
+            style={s.flex}
+          />
+          <GradeBadge grade={idea.grade} whenAbsent={gradeWhenAbsent} />
+        </View>
+      ) : null}
+      <T size={28} weight="medium" ls={-0.8} lh={33} style={s.heading}>
         {idea.title}
       </T>
+      {idea.summary ? (
+        <T c={color.muted} size={15} lh={22} style={{ marginTop: 8 }}>
+          {idea.summary}
+        </T>
+      ) : null}
       <TradeMap
         idea={idea}
         selectedLevel={selected}
@@ -43,10 +110,18 @@ export function TradeDetail({
         annotation={note ? { level: selected, text: note } : undefined}
       />
       <RiskRewardRuler idea={idea} />
-      <TradeStatusStrip status={idea.status} />
+      <TradeStatusStrip
+        status={idea.status}
+        variant={statusVariant}
+        label={statusLabel}
+        hint={statusHint}
+        testID={testID ? `${testID}-status` : undefined}
+      />
+      {children}
       {onAsk && (
         <Pressable
           accessibilityRole="button"
+          testID={testID ? `${testID}-ask` : undefined}
           style={s.ask}
           onPress={() =>
             onAsk({
@@ -58,7 +133,7 @@ export function TradeDetail({
           }
         >
           <T c={color.violetLight} size={16}>
-            Ask Kai about this {selected} ↗
+            {askLabel ?? `Ask Kai about this ${selected} ↗`}
           </T>
         </Pressable>
       )}
@@ -71,14 +146,22 @@ export function TradeDetail({
 }
 const s = StyleSheet.create({
   root: { backgroundColor: color.bg, padding: 18 },
+  flex: { flex: 1, minWidth: 0 },
+  identity: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
   heading: { marginTop: 20 },
   ask: {
     minHeight: 48,
+    alignItems: "center",
     justifyContent: "center",
     padding: 12,
     borderWidth: 1,
-    borderColor: alpha.violet20,
-    borderRadius: 12,
+    borderColor: alpha.violet45,
+    borderRadius: radius.lg,
   },
   source: { marginTop: 16 },
 });
