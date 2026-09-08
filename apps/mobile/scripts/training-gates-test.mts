@@ -13,6 +13,7 @@
  * lets the real curriculum data be imported here rather than a copy of it.
  */
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 
 const req = createRequire(import.meta.url);
 for (const ext of ['.jpg', '.png']) {
@@ -320,6 +321,128 @@ ok(
 head('An unknown id is never quietly unlocked');
 ok('no such day', !isDayUnlocked(fresh, 'day-99'));
 ok('no such lesson', !isLessonUnlocked(fresh, 'nope'));
+
+/* ══════════ THE THREE-STEP PATH, AND THE SMALLER PROMISE (audit F09) ══════ */
+
+const { PATH_STEPS, currentStep, nextWrittenLesson, stepState, writtenProgress } =
+  await import('../src/features/training/path.ts');
+
+head('The path a member is shown is three steps, not seven days');
+ok('three steps', PATH_STEPS.length === 3);
+ok(
+  'and they are the board’s three',
+  PATH_STEPS.map((s) => s.title).join(' · ') === 'Market basics · Read a chart · Build a plan',
+);
+ok(
+  'every day in the curriculum belongs to exactly one step',
+  TRAINING_DAYS.every(
+    (d) => PATH_STEPS.filter((s) => s.dayIds.includes(d.id)).length === 1,
+  ),
+);
+ok('a new member is standing in step 01', currentStep(fresh).index === '01');
+ok('step 01 is ready, because something in it is written', stepState(fresh, PATH_STEPS[0]) === 'ready');
+ok(
+  'steps 02 and 03 are honestly marked “coming” — nothing in them is authored',
+  stepState(fresh, PATH_STEPS[1]) === 'coming' && stepState(fresh, PATH_STEPS[2]) === 'coming',
+);
+
+head('The button never offers a lesson that does not exist');
+ok('a new member is offered d1l1', nextWrittenLesson(fresh)?.id === 'd1l1');
+ok(
+  'and once it is done they are offered nothing rather than an apology screen',
+  nextWrittenLesson(afterL1) === null,
+);
+ok(
+  'while the curriculum’s own “next” is still d1l2, which has no content',
+  nextOpenLessonId(afterL1) === 'd1l2',
+  'that is the difference this function exists for',
+);
+
+head('Progress is measured against the lessons that EXIST');
+ok('one lesson is written', writtenProgress(fresh).total === 1);
+ok('a new member has done none of it', writtenProgress(fresh).done === 0);
+ok(
+  'and finishing it reads as done, not as 3% of a plan',
+  writtenProgress(afterL1).done === 1 && writtenProgress(afterL1).total === 1,
+);
+
+/* ═══════ PROGRESS BELONGS TO THE LEARNER, NOT THE HANDSET (audit F10) ═════ */
+
+/**
+ * `store.tsx` cannot be imported here — it is a React provider that pulls in
+ * AsyncStorage and the session — so its two load-bearing promises are checked
+ * as source text, the way `route-gate-test.mjs` checks the session gate. Both
+ * of them are invisible failures: a key that loses its account id, or a guest
+ * write, would look completely normal on every screen while two accounts on one
+ * handset quietly shared a trader profile.
+ */
+const storeSrc = readFileSync(
+  new URL('../src/features/training/store.tsx', import.meta.url),
+  'utf8',
+);
+
+head('The device cache is keyed on the ACCOUNT, and a guest writes nothing');
+ok(
+  'every device key carries the user id',
+  /const cacheKey = \(userId: string\) => `ccai\.training\.v3\.\$\{userId\}`/.test(storeSrc) &&
+    /const queueKey = \(userId: string\) => `ccai\.training\.queue\.v3\.\$\{userId\}`/.test(storeSrc),
+);
+ok(
+  'no setItem anywhere writes to a key without one',
+  !/setItem\('ccai/.test(storeSrc) && !/setItem\("ccai/.test(storeSrc),
+);
+ok(
+  'the pre-account key is read and removed, never written',
+  storeSrc.includes('getItem(LEGACY_KEY)') &&
+    storeSrc.includes('removeItem(LEGACY_KEY)') &&
+    !storeSrc.includes('setItem(LEGACY_KEY'),
+);
+ok(
+  'state is cleared before an account’s progress is read',
+  storeSrc.indexOf('setProfile(emptyProfile());') < storeSrc.indexOf('getItem(cacheKey(userId))'),
+);
+ok(
+  'and a claim is offered, never assumed',
+  storeSrc.includes('claimUnclaimed') && storeSrc.includes('dismissUnclaimed'),
+);
+
+head('MASTERY DOES NOT INFLATE ON A REPLAY (audit F12)');
+ok(
+  'the local view takes the held gain when the lesson is already done',
+  /const heldGain = done\s*\?/.test(storeSrc),
+  'a `+= masteryGain` here is the bug F12 describes',
+);
+ok(
+  'nothing adds masteryGain unconditionally any more',
+  storeSrc
+    .split('\n')
+    // Comment lines are excluded on purpose: the file QUOTES the old
+    // `mastery[skill] + result.masteryGain` line in its own explanation of the
+    // bug, and deleting that explanation to satisfy a grep would be the wrong
+    // way round.
+    .filter((l) => !l.trimStart().startsWith('*') && !l.trimStart().startsWith('//'))
+    .filter((l) => l.includes('+ result.masteryGain'))
+    .every((l) => l.includes('const heldGain')),
+);
+ok(
+  'and the XP ledger still takes the best of each kind rather than summing',
+  storeSrc.includes('bestOfEach(day.lessonXp?.[result.lessonId], result.xp)'),
+);
+
+head('A LESSON CAN BE LEFT AND PICKED UP (audit F11)');
+const runnerSrc = readFileSync(
+  new URL('../src/features/training/engine/LessonRunner.tsx', import.meta.url),
+  'utf8',
+);
+ok('the runner reads a checkpoint at mount', runnerSrc.includes('checkpointFor(node.id)'));
+ok('and writes one on every advance', runnerSrc.includes('checkpoint({'));
+ok('there is a Back control', runnerSrc.includes('training-lesson-back'));
+ok('and a way to start the run over', runnerSrc.includes('training-lesson-start-over'));
+ok(
+  'a screen already answered is never scored twice',
+  runnerSrc.includes('!answers[id]'),
+  'without this, Back-then-forward is a scoring exploit',
+);
 
 console.log(failures ? `\ntraining gates FAILED (${failures})` : '\ntraining gates OK');
 process.exit(failures ? 1 : 0);

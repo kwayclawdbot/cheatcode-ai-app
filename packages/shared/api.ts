@@ -6094,3 +6094,323 @@ export const MeRound6Response = MeRound4Response.extend({
   credits: CreditsBlock.nullable().default(null),
 });
 export type MeRound6Response = z.infer<typeof MeRound6Response>;
+
+/* ==========================================================================
+ * TRAINING PROGRESS AND THE MERGED BELT (0046 · 0047)
+ * ==========================================================================
+ *
+ * APPENDED, NEVER EDITED. Everything above this banner was in the contract
+ * before the belt merge and other lanes are compiling against it right now, so
+ * nothing here renames, removes or reshapes any of it.
+ *
+ * The owner's decision of 8 September 2026 — "merge belt system so that user
+ * gains belt xp via lessons and/or trade calls but has to take and pass a test
+ * to earn the belt itself" — is written out in
+ * docs/audit-2026-09-08/BELT-MERGE-spec.md. These are the wire shapes for it,
+ * plus the shapes that finally give training progress somewhere to live that is
+ * not one AsyncStorage key on one handset (audit F10).
+ * ======================================================================== */
+
+/** The four ways training XP is earned, kept apart so provenance survives. */
+export const TrainingXpLedger = z.object({
+  interactive: z.number().default(0),
+  video: z.number().default(0),
+  practice: z.number().default(0),
+  assessment: z.number().default(0),
+});
+export type TrainingXpLedger = z.infer<typeof TrainingXpLedger>;
+
+export const CompetencySignal = z.enum([
+  'unproven',
+  'developing',
+  'passed',
+  'strong',
+  'mastered',
+]);
+export type CompetencySignal = z.infer<typeof CompetencySignal>;
+
+/** Where a member stopped inside a lesson they have not finished (audit F11). */
+export const TrainingCheckpoint = z.object({
+  screen_index: z.number(),
+  /** Opaque to the server: the shape belongs to the lesson runner. */
+  answers: z.record(z.string(), z.unknown()).default({}),
+  correct: z.number().default(0),
+  answered: z.number().default(0),
+  assessment_passed: z.boolean().default(false),
+  updated_at: z.string().nullable().default(null),
+});
+export type TrainingCheckpoint = z.infer<typeof TrainingCheckpoint>;
+
+export const TrainingDayProgressRow = z.object({
+  completed_lesson_ids: z.array(z.string()).default([]),
+  best_score_pct: z.number().nullable().default(null),
+  lesson_xp: z.record(z.string(), TrainingXpLedger).default({}),
+});
+export type TrainingDayProgressRow = z.infer<typeof TrainingDayProgressRow>;
+
+/**
+ * `GET /api/v1/training/progress` — the learner's profile, from the server.
+ *
+ * This is the shape the phone used to keep under `ccai.training.profile.v2`
+ * with no account id on it. It is the same shape on purpose: the screens that
+ * render it do not change, only where it comes from.
+ */
+export const TrainingProgressResponse = z.object({
+  curriculum_version: z.number(),
+  completed_lesson_ids: z.array(z.string()).default([]),
+  /** Per skill, 0-100. DERIVED from the completion rows, never accumulated. */
+  mastery: z.record(z.string(), z.number()).default({}),
+  day_progress: z.record(z.string(), TrainingDayProgressRow).default({}),
+  competencies: z.record(z.string(), CompetencySignal).default({}),
+  checkpoints: z.record(z.string(), TrainingCheckpoint).default({}),
+  xp: TrainingXpLedger,
+  xp_training: z.number().default(0),
+  xp_calls: z.number().default(0),
+});
+export type TrainingProgressResponse = z.infer<typeof TrainingProgressResponse>;
+
+/** `POST /api/v1/training/lessons/:lessonId/complete` */
+export const TrainingCompleteRequest = z.object({
+  day_id: z.string(),
+  skill: z.string(),
+  score_pct: z.number().nullable().default(null),
+  mastery_gain: z.number().default(0),
+  xp: TrainingXpLedger,
+  assessment_passed: z.boolean().default(false),
+  competencies: z.record(z.string(), CompetencySignal).default({}),
+});
+export type TrainingCompleteRequest = z.infer<typeof TrainingCompleteRequest>;
+
+export const TrainingCompleteResponse = z.object({
+  /** What this walk actually paid. Zero on a replay - see 0046 §5. */
+  xp_awarded: z.number(),
+  /** True when the lesson had already been paid for. Not an error. */
+  repeat: z.boolean(),
+  progress: TrainingProgressResponse,
+});
+export type TrainingCompleteResponse = z.infer<typeof TrainingCompleteResponse>;
+
+/** `PUT /api/v1/training/lessons/:lessonId/checkpoint` */
+export const TrainingCheckpointRequest = z.object({
+  screen_index: z.number().int().min(0),
+  answers: z.record(z.string(), z.unknown()).default({}),
+  correct: z.number().int().min(0).default(0),
+  answered: z.number().int().min(0).default(0),
+  assessment_passed: z.boolean().default(false),
+});
+export type TrainingCheckpointRequest = z.infer<typeof TrainingCheckpointRequest>;
+
+/**
+ * `POST /api/v1/training/claim` — one handset's stored profile, claimed once.
+ *
+ * The stored blob carries no account id (that is the bug), so nothing about it
+ * can prove whose it is. The server honours a claim only when the account has
+ * no training rows of its own, and the app asks the member out loud first.
+ */
+export const TrainingClaimRequest = z.object({
+  lessons: z
+    .array(
+      z.object({
+        lesson_id: z.string(),
+        day_id: z.string(),
+        skill: z.string(),
+        score_pct: z.number().nullable().default(null),
+        mastery_gain: z.number().default(0),
+        xp: TrainingXpLedger,
+        assessment_passed: z.boolean().default(false),
+        competencies: z.record(z.string(), CompetencySignal).default({}),
+      })
+    )
+    .default([]),
+});
+export type TrainingClaimRequest = z.infer<typeof TrainingClaimRequest>;
+
+export const TrainingClaimResponse = z.object({
+  claimed: z.boolean(),
+  lessons: z.number(),
+  /** `already_has_progress` when the account had rows of its own. */
+  reason: z.string().nullable().default(null),
+  progress: TrainingProgressResponse,
+});
+export type TrainingClaimResponse = z.infer<typeof TrainingClaimResponse>;
+
+/* ─────────────────────────── the merged belt ─────────────────────────────── */
+
+/**
+ * One line of the next rung's checklist. Every one of them carries what the
+ * member HAS beside what it NEEDS, because a locked door with no sign on it is
+ * a bug — the same argument `evaluateDayGate` makes about the day gates.
+ */
+export const BeltCheck = z.object({
+  kind: z.enum(['competency', 'applied', 'calls_resolved', 'xp_calls']),
+  label: z.string(),
+  met: z.boolean(),
+  /** Present on the two countable checks. */
+  have: z.union([z.number(), z.string()]).nullable().default(null),
+  need: z.number().nullable().default(null),
+  /** Competency checks only: the lesson that would measure it. */
+  taught_by: z.string().nullable().default(null),
+  key: z.string().nullable().default(null),
+});
+export type BeltCheck = z.infer<typeof BeltCheck>;
+
+export const BeltNextRung = z.object({
+  key: Belt,
+  label: z.string(),
+  title: z.string(),
+  /** True above Blue: the rung's numbers are a proposal, not a settled bar. */
+  proposed: z.boolean().default(false),
+  checks: z.array(BeltCheck),
+  /** Every check met. Eligibility, NOT the belt. */
+  eligible: z.boolean(),
+  /** Null when nobody has written this rung's exam yet. */
+  exam: z
+    .object({
+      version: z.number(),
+      pass_pct: z.number(),
+      questions: z.number(),
+      applied: z.number(),
+    })
+    .nullable()
+    .default(null),
+  exam_written: z.boolean().default(false),
+  attempts_30d: z.number().default(0),
+  attempts_cap: z.number().default(0),
+  cooldown_until: z.string().nullable().default(null),
+  /** Eligible AND the exam exists AND no cooldown AND under the cap. */
+  may_sit: z.boolean().default(false),
+});
+export type BeltNextRung = z.infer<typeof BeltNextRung>;
+
+/** `GET /api/v1/belts/me` — everything the Belt Profile screen draws. */
+export const BeltProfileResponse = z.object({
+  belt: Belt,
+  /** `legacy_points` = earned under 0039, before the exam existed. */
+  belt_source: z.enum(['legacy_points', 'exam']),
+  xp_calls: z.number(),
+  xp_training: z.number(),
+  calls_resolved: z.number(),
+  clean_paper_plans: z.number(),
+  /** Null at Black, where there is no next rung to describe. */
+  next: BeltNextRung.nullable().default(null),
+  /** A legacy holder may sit their own rung's exam to convert it (spec §7). */
+  may_convert_legacy: z.boolean().default(false),
+  /**
+   * 0-1, and it is the share of the NEXT RUNG'S CHECKS that are met - not a
+   * distance to a points total. The ring on the screen fills to *eligible*, and
+   * the member still has to sit down and pass. Null at Black, where there is no
+   * next rung and a full ring would be a lie.
+   */
+  progress_to_eligible: z.number().nullable().default(null),
+  /** The scoring rules, printed verbatim. Five lines now: the fifth is the exam. */
+  explainer: PointsExplainer,
+  /** The stage this belt implies, already applied server-side (spec §9). */
+  stage: ReadinessStage.nullable().default(null),
+});
+export type BeltProfileResponse = z.infer<typeof BeltProfileResponse>;
+
+/** One bar of the schematic chart an applied task is set on. */
+export const ExamCandle = z.object({
+  t: z.number(),
+  o: z.number(),
+  h: z.number(),
+  l: z.number(),
+  c: z.number(),
+});
+export type ExamCandle = z.infer<typeof ExamCandle>;
+
+export const ExamOption = z.object({
+  id: z.string(),
+  label: z.string(),
+  /** `level_choice` only: the price this option would put the level at. */
+  value: z.number().nullable().default(null),
+  /** `plan_choice` only: the one-line reading under the option. */
+  detail: z.string().nullable().default(null),
+});
+export type ExamOption = z.infer<typeof ExamOption>;
+
+export const ExamKnowledgeItem = z.object({
+  id: z.string(),
+  prompt: z.string(),
+  options: z.array(ExamOption),
+});
+export type ExamKnowledgeItem = z.infer<typeof ExamKnowledgeItem>;
+
+/**
+ * AN APPLIED TASK — the half of the exam that is not optional.
+ *
+ * Spec §5.2: "Knowledge questions alone produce a belt you can get by reading."
+ * These are set against a chart: mark the entry, put the stop where the idea is
+ * wrong, size the position, say which of two plans is the sound one.
+ *
+ * NOTE WHAT IS NOT IN THIS SHAPE: the answer. `expected` and `because` are
+ * stripped by the route and live only in `belt_exams.blueprint`, which no
+ * client role can read.
+ */
+export const ExamAppliedItem = z.object({
+  id: z.string(),
+  kind: z.enum(['level_choice', 'position_size', 'plan_choice']),
+  prompt: z.string(),
+  /** `level_choice`: which level the member is being asked to place. */
+  level: z.enum(['entry', 'stop', 'target']).nullable().default(null),
+  direction: z.enum(['long', 'short']).nullable().default(null),
+  entry: z.number().nullable().default(null),
+  stop: z.number().nullable().default(null),
+  target: z.number().nullable().default(null),
+  /** `position_size` only. */
+  balance: z.number().nullable().default(null),
+  risk_pct: z.number().nullable().default(null),
+  options: z.array(ExamOption).default([]),
+});
+export type ExamAppliedItem = z.infer<typeof ExamAppliedItem>;
+
+export const ExamPaper = z.object({
+  belt: Belt,
+  version: z.number(),
+  pass_pct: z.number(),
+  /** Schematic, and it says so on its face. There is no real instrument here. */
+  series: z.array(ExamCandle).default([]),
+  series_label: z.string(),
+  knowledge: z.array(ExamKnowledgeItem),
+  applied: z.array(ExamAppliedItem),
+});
+export type ExamPaper = z.infer<typeof ExamPaper>;
+
+/** `POST /api/v1/belts/exams/:belt/start` */
+export const ExamStartResponse = z.object({
+  attempt_id: z.string(),
+  /** True when an unfinished sitting was picked up rather than a new one drawn. */
+  resumed: z.boolean(),
+  paper: ExamPaper,
+});
+export type ExamStartResponse = z.infer<typeof ExamStartResponse>;
+
+/** `POST /api/v1/belts/exams/:belt/submit` */
+export const ExamSubmitRequest = z.object({
+  attempt_id: z.string(),
+  /** Item id -> chosen option id, or the typed number as a string. */
+  answers: z.record(z.string(), z.string()),
+});
+export type ExamSubmitRequest = z.infer<typeof ExamSubmitRequest>;
+
+export const ExamSubmitResponse = z.object({
+  score_pct: z.number(),
+  pass_pct: z.number(),
+  passed: z.boolean(),
+  /** Both counted separately because the applied half is a condition of its own. */
+  applied_correct: z.number(),
+  applied_total: z.number(),
+  belt: Belt,
+  belt_changed: z.boolean(),
+  /** Per item, so a failed sitting can say why rather than just how much. */
+  review: z.array(
+    z.object({
+      id: z.string(),
+      kind: z.enum(['knowledge', 'applied']),
+      correct: z.boolean(),
+      because: z.string(),
+    })
+  ),
+  plain: z.string(),
+});
+export type ExamSubmitResponse = z.infer<typeof ExamSubmitResponse>;

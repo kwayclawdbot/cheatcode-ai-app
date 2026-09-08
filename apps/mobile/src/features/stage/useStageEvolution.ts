@@ -1,83 +1,96 @@
 /**
- * The bridge that lets a stage actually evolve (0042).
+ * THE STAGE FOLLOWS THE BELT NOW (BELT-MERGE-spec.md §9).
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * WHY A HOOK AND NOT A CALL INSIDE `completeLessonRun`
+ * WHAT THIS HOOK USED TO DO, AND WHY IT HAD TO STOP
  * ─────────────────────────────────────────────────────────────────────────────
- * The natural place to report a finished lesson is the moment one finishes,
- * inside the training store's `completeLessonRun`. That store belongs to the
- * training lane and this work does not edit it, so instead this WATCHES the
- * store's public value from outside and reports when it changes. The effect is
- * the same and the coupling runs one way: training knows nothing about stages.
+ * It watched the local training profile and POSTed it to `/stage/evaluate` as
+ * READINESS EVIDENCE — per-skill mastery and per-day scores — for the server to
+ * re-grade. That was the right design for the architecture it was written
+ * against, and its own header said so: training progress lived only in
+ * AsyncStorage, the phone was the only thing that knew, and the choice was
+ * between believing the phone's evidence and believing its conclusions.
  *
- * It also turns out to be the more robust of the two. Reporting on the event
- * loses the report if the request fails or the app dies mid-lesson; reporting
- * on the STATE re-reports the same evidence next time the screen mounts, and
- * the server's ratchet makes a repeat call a no-op. A member who graduates on a
- * plane is promoted the next time they open the app.
+ * The architecture changed underneath it. Two things happened:
+ *
+ *   1. TRAINING PROGRESS IS ON THE SERVER (0046). The evidence argument is
+ *      gone: the server can read the rows itself. `lib/stage/rules.ts` predicted
+ *      this exactly — "when training gets server persistence, the evidence
+ *      argument disappears".
+ *   2. THE BELT BECAME THE MEASURED LADDER (0047). It has an exam behind it.
+ *      Stage measures roughly what the belt measures, and the spec's §9 refuses
+ *      to let the product carry the same ladder twice: stage DERIVES from belt —
+ *      white → beginner, blue/purple → developing, brown/black → trade ready —
+ *      and `grade_belt_exam` is what writes it.
+ *
+ * That leaves the old path actively harmful rather than merely redundant. The
+ * local profile was the CONTAMINATED one: one AsyncStorage key with no account
+ * id, so two accounts on one handset inherited each other's learning (audit
+ * F10), and this hook was the pipe that carried the contamination into
+ * `profiles.stage`. Sending it at all is the bug.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * WHAT IT SENDS, AND WHAT IT DOES NOT
+ * SO WHAT IS LEFT
  * ─────────────────────────────────────────────────────────────────────────────
- * Evidence — per-skill mastery and per-day scores and completions. Never a
- * conclusion: the server re-grades it against its own copy of the gates, for
- * the reasons argued in `apps/api/src/lib/stage/rules.ts`.
+ * A READ. The server has already decided; this asks what it decided and tells
+ * the caller when the answer differs from the profile the app is holding, so
+ * Home can refresh and redraw for the new stage. It sends nothing, claims
+ * nothing, and cannot promote anybody.
  *
- * It is deliberately silent. A promotion is a nice thing to be told about and
- * this is not the thing that tells you — Home redraws for the new stage and the
- * tag beside your name changes. A toast that fired on app-open because a
- * retried request finally landed would be worse than no toast.
+ * The signature is unchanged — `app/(tabs)/home.tsx` calls
+ * `useStageEvolution(refreshProfile)` and keeps working — and it stays
+ * deliberately silent. A promotion is a nice thing to be told about and this is
+ * not the thing that tells you: Home redraws and the tag beside your name
+ * changes. A toast firing on app-open because a request finally landed would be
+ * worse than no toast.
  */
 import { useEffect, useRef } from 'react';
-import { api } from '../../lib/api';
-import { useTraining } from '../training/store';
+import { useSession } from '../../lib/session';
+import { fetchBeltProfile, trainingApiAvailable } from '../training/remote';
 
 /**
- * @param onChanged called only when the server actually moved the stage, so the
- *        caller can refresh the profile that Home and the community line read.
+ * @param onChanged called only when the server's stage differs from the one the
+ *        app is currently showing, so the caller can refresh the profile that
+ *        Home and the community line read.
  */
 export function useStageEvolution(onChanged?: () => void) {
-  const { profile, ready, enrolled } = useTraining();
-  // What we last sent. Prevents a re-render storm from becoming a request
-  // storm, and makes the "report the state" design above cheap.
-  const lastSent = useRef<string | null>(null);
+  const { session, profile } = useSession();
+  const userId = session?.user?.id ?? null;
+  const held = profile?.stage ?? null;
+
   // Held in a ref rather than named in the dependency list. Callers pass things
   // like `refreshProfile`, which is a new function on every render — as a
   // dependency it would re-run this effect on every render of Home forever.
   const onChangedRef = useRef(onChanged);
   onChangedRef.current = onChanged;
 
+  // What we last saw the server say, per account. Stops a re-render storm from
+  // becoming a request storm, and resets when the account changes.
+  const lastSeen = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!ready || !enrolled) return;
-    if (!api.available()) return;
-
-    const day_progress = Object.fromEntries(
-      Object.entries(profile.dayProgress ?? {}).map(([dayId, d]) => [
-        dayId,
-        { completed_lesson_ids: d.completedLessonIds ?? [], best_score_pct: d.bestScorePct ?? null },
-      ])
-    );
-    const body = { mastery: profile.mastery ?? {}, day_progress };
-
-    const signature = JSON.stringify(body);
-    if (signature === lastSent.current) return;
-    lastSent.current = signature;
+    if (!userId || !trainingApiAvailable()) return;
+    const signature = `${userId}:${held ?? '-'}`;
+    if (signature === lastSeen.current) return;
+    lastSeen.current = signature;
 
     let cancelled = false;
     void (async () => {
       try {
-        const res = await api.evaluateStage(body);
-        if (!cancelled && res?.changed) onChangedRef.current?.();
+        const belt = await fetchBeltProfile();
+        if (cancelled) return;
+        // The server applied the stage when the exam was passed. If what it
+        // holds is not what this app is showing, the app is stale.
+        if (belt.stage && belt.stage !== held) onChangedRef.current?.();
       } catch {
-        // Never surface this. A member who just finished a lesson is not the
-        // person to hand a networking error to, and the next mount retries the
-        // same evidence anyway — so allow the retry rather than blocking it.
-        lastSent.current = null;
+        // Never surface this. Allow the next mount to retry rather than
+        // pinning a failure signature that would block it.
+        lastSeen.current = null;
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [ready, enrolled, profile]);
+  }, [userId, held]);
 }

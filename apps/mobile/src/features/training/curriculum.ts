@@ -518,6 +518,9 @@ export const DEFAULT_TRAINING_PROFILE: TrainingProfile = {
   },
   competencies: {},
   dayProgress: {},
+  // Nowhere inside a lesson, because none has been opened. A checkpoint only
+  // ever describes work in progress (audit F11).
+  checkpoints: {},
 };
 
 /* ─────────────────────────────── lookups ────────────────────────────────── */

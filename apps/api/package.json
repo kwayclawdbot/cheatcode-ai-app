@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx scripts/push-policy-test.ts && tsx scripts/social-points-test.ts && tsx scripts/message-author-belt-test.ts && tsx scripts/peak-tracking-test.ts && tsx scripts/freshness-test.ts && tsx scripts/quote-basis-test.ts && tsx scripts/daily-bar-test.ts && tsx scripts/live-quote-test.ts && tsx scripts/answer-on-chart-test.mts && tsx scripts/chart-vocabulary-test.mts && tsx scripts/history-slots-test.ts && tsx scripts/swing-ingest-test.ts && tsx scripts/swing-publish-test.ts && tsx scripts/desk-test.ts && tsx scripts/plan-suggestion-test.ts && tsx scripts/model-routing-test.mts && tsx scripts/handles-proof.ts && tsx scripts/media-strip-proof.mts",
+    "test": "tsx scripts/push-policy-test.ts && tsx scripts/social-points-test.ts && tsx scripts/belt-merge-test.ts && tsx scripts/message-author-belt-test.ts && tsx scripts/peak-tracking-test.ts && tsx scripts/freshness-test.ts && tsx scripts/quote-basis-test.ts && tsx scripts/daily-bar-test.ts && tsx scripts/live-quote-test.ts && tsx scripts/answer-on-chart-test.mts && tsx scripts/chart-vocabulary-test.mts && tsx scripts/history-slots-test.ts && tsx scripts/swing-ingest-test.ts && tsx scripts/swing-publish-test.ts && tsx scripts/desk-test.ts && tsx scripts/plan-suggestion-test.ts && tsx scripts/model-routing-test.mts && tsx scripts/handles-proof.ts && tsx scripts/media-strip-proof.mts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
