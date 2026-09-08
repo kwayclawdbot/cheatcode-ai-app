@@ -48,10 +48,18 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
   const empty = env.FIXTURES && params.fixture === 'empty';
 
   const load = useCallback(() => api.deskWatchlist(), []);
+  /*
+    ONE REQUEST FOR THE WHOLE LIST, ON THE QUOTE CADENCE.
+    `/desk/watchlist` returns every row with its price already attached — the
+    server batches the symbols into a single snapshot call behind it — so the
+    board refreshes by asking that one endpoint again. A per-row poll would be
+    the same data at twenty times the cost and is never worth writing.
+  */
   const res = useResource<DeskWatchlistResponse>(
     load,
     empty ? fixtureDeskWatchlistEmpty : fixtureDeskWatchlist,
     [empty],
+    { kind: 'quote' },
   );
 
   const [symbol, setSymbol] = useState('');

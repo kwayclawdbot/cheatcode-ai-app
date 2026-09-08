@@ -1053,6 +1053,16 @@ export type AlertCard = {
   community?: AlertCommunity | null;
   progress?: AlertProgress;
   primary_action: { label: string; kind: AlertCardState };
+  /**
+   * The quote behind `trade.current`.
+   *
+   * It exists so the Current cell can carry a freshness mark like every other
+   * price in the app does (`src/ui/Price.tsx` — "no price without freshness").
+   * `freshness_line` below is the server's own SENTENCE and it only renders on
+   * an expanded card; the mark has to be next to the number, because the number
+   * is what a person reads when deciding whether to take the trade.
+   */
+  quote?: Quote | null;
   freshness_line?: string | null;   // "Quote 9:41:02 ET · live · received 8s ago"
   outcome?: AlertOutcome | null;    // History only
   resolved_label?: string | null;   // History only ("Yesterday")

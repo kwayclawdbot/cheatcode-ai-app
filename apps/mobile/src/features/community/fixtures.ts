@@ -71,6 +71,10 @@ const META_SETUP: RoomSetup = {
   target: '540',
   invalid: '460',
   freshness: 'delayed',
+  // A fixture price is sample data and says so, rather than borrowing a
+  // timestamp it would then have to keep pretending was recent.
+  quote_at: null,
+  delay_reason: 'seed',
   price: '502.40',
   change_pct: '+0.98%',
   headline: 'Buyers are defending an important level.',

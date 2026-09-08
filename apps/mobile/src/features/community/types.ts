@@ -7,7 +7,7 @@
  * format. Enum values follow the Postgres enums in
  * supabase/migrations/0001_extensions_enums.sql.
  */
-import type { Belt, CommunityCall, Stage } from '../../lib/types';
+import type { Belt, CommunityCall, DelayReason, Stage } from '../../lib/types';
 
 export type RoomType = 'core' | 'setup' | 'announcement';
 export type MemberRole = 'member' | 'moderator' | 'educator' | 'expert';
@@ -30,6 +30,15 @@ export type RoomSetup = {
   invalid: string | null;
   /** delayed/live/stale/closed — a price never renders without it. */
   freshness: 'live' | 'delayed' | 'stale' | 'closed' | 'unknown';
+  /**
+   * The instant the price happened, and why it is not live.
+   *
+   * The mark used to get the WORD and nothing else, so it could never print a
+   * time and could never decay: "Live" stayed "Live" for as long as the room
+   * was open. Both come off the same quote the price did.
+   */
+  quote_at: string | null;
+  delay_reason: DelayReason | null;
   price: string | null;
   change_pct: string | null;
   headline: string | null;

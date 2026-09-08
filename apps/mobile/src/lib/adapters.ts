@@ -1524,6 +1524,17 @@ export function adaptAlertCard(raw: unknown, i = 0): AlertCard {
       return pct != null ? { pct, label: r4str(p.label, '') } : null;
     })(),
     primary_action: { label: r4str(action.label, PRIMARY_ACTION[state]), kind: state },
+    /**
+     * The quote that `trade.current` came from, kept so the Current cell can
+     * wear its freshness mark. Nothing is invented: with no price there is no
+     * quote, and the cell then draws nothing either.
+     */
+    quote: (() => {
+      const q = adaptQuoteLoose(Object.keys(quote).length ? quote : o.quote);
+      // No price is no quote. A mark beside an empty cell would be a freshness
+      // claim about nothing, and the cell itself is not drawn either.
+      return q && q.price != null ? { ...q, symbol: q.symbol ?? symbol } : null;
+    })(),
     freshness_line: r4nul(quote.label_plain ?? o.freshness_line),
     outcome: (() => {
       const out = r4obj(o.outcome);

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from './api';
+import { useMarketRefresh } from './useMarketRefresh';
+import type { MarketSession, RefreshKind } from './market-session';
+import type { MarketStatus } from './types';
 
 export type Resource<T> = {
   data: T | null;
@@ -11,7 +14,28 @@ export type Resource<T> = {
   /** True when the endpoint isn't deployed on this stack yet. */
   notAvailable: boolean;
   reload: () => void;
+  /**
+   * A refetch that never shows a spinner and never throws away good data.
+   * This is what the market poller calls; `reload` is what a person's tap does.
+   */
+  refresh: () => void;
 };
+
+/**
+ * How often this resource is worth asking for again — see
+ * `src/lib/useMarketRefresh.ts`. Omitted entirely, nothing polls, which is the
+ * behaviour every screen had before and is still right for anything that is
+ * not a price (a profile, a lesson, a room).
+ */
+export type RefreshPolicy = {
+  kind?: RefreshKind;
+  timeframe?: string | null;
+  /** This payload's own `market` block, when it has one. */
+  market?: MarketStatus | { status: MarketStatus['status'] } | null;
+  enabled?: boolean;
+};
+
+export type { MarketSession };
 
 /**
  * One loading contract for every round-2 screen.
@@ -21,11 +45,20 @@ export type Resource<T> = {
  * has not shipped yet reports `notAvailable` so the screen can say so, because
  * sample balances and sample "what Kai remembers" entries rendered against a
  * live account would be fabricated records, not placeholders.
+ *
+ * ── LOUD RELOAD vs QUIET REFRESH ─────────────────────────────────────────────
+ * A first load and a person's pull-to-refresh should show that something is
+ * happening. A background price poll must not: fifteen seconds is short enough
+ * that a spinner on every tick would make the screen strobe, and a network blip
+ * mid-poll must not blank a board full of good numbers. So a quiet refresh
+ * keeps the last good data on screen and lets the freshness marks say how old
+ * it is — which they now do, honestly, on their own.
  */
 export function useResource<T>(
   load: () => Promise<T>,
   fallback: T | null,
   deps: unknown[] = [],
+  refreshPolicy?: RefreshPolicy,
 ): Resource<T> {
   const offline = !api.available();
   const [data, setData] = useState<T | null>(offline ? fallback : null);
@@ -35,6 +68,8 @@ export function useResource<T>(
   const [isFixture, setIsFixture] = useState(offline);
   const [tick, setTick] = useState(0);
   const alive = useRef(true);
+  /** Set immediately before a poll's tick, read once by the effect below. */
+  const quiet = useRef(false);
 
   useEffect(() => {
     alive.current = true;
@@ -49,7 +84,9 @@ export function useResource<T>(
       setLoading(false);
       return;
     }
-    setLoading(true);
+    const isQuiet = quiet.current;
+    quiet.current = false;
+    if (!isQuiet) setLoading(true);
     load()
       .then((d) => {
         if (!alive.current) return;
@@ -60,6 +97,10 @@ export function useResource<T>(
       })
       .catch((e: unknown) => {
         if (!alive.current) return;
+        // A failed BACKGROUND poll is not news. The numbers already on screen
+        // are the last true ones and their freshness marks decay on their own,
+        // so replacing them with an error would lose real data to a blip.
+        if (isQuiet) return;
         const code = e instanceof ApiError ? e.code : '';
         const missing = code === 'NOT_FOUND' || code === 'NO_API';
         setData(null);
@@ -71,11 +112,24 @@ export function useResource<T>(
             : e instanceof Error ? e.message : 'Something went wrong. Please try again.',
         );
       })
-      .finally(() => { if (alive.current) setLoading(false); });
+      .finally(() => { if (alive.current && !isQuiet) setLoading(false); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offline, tick, ...deps]);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
+  const refresh = useCallback(() => {
+    quiet.current = true;
+    setTick((t) => t + 1);
+  }, []);
 
-  return { data, loading, error, isFixture, notAvailable, reload };
+  // Fixtures never poll: there is no server behind them to ask.
+  useMarketRefresh({
+    onRefresh: refresh,
+    kind: refreshPolicy?.kind,
+    timeframe: refreshPolicy?.timeframe,
+    market: refreshPolicy?.market,
+    enabled: !!refreshPolicy && refreshPolicy.enabled !== false && !offline,
+  });
+
+  return { data, loading, error, isFixture, notAvailable, reload, refresh };
 }

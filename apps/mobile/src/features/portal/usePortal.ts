@@ -5,10 +5,18 @@
  * the annotation set as LOCAL STATE afterwards, because Kai's chart commands and
  * the user's hide/delete both mutate it in place — the chart must never wait for
  * a refetch to show a level Kai just drew.
+ *
+ * ── AND IT REFRESHES ─────────────────────────────────────────────────────────
+ * The portal header carries the working price, so it re-asks on the quote
+ * cadence while it is the visible screen. A REFRESH IS NOT A RELOAD: it never
+ * raises the spinner, it never replaces the annotations (they are the local
+ * truth, and a poll landing on top of a line Kai has just drawn would erase it
+ * mid-conversation), and a failed one leaves the last good payload where it is.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { portalApi } from '../../lib/trade-api';
 import { TradeApiError } from '../../lib/trade-api';
+import { useMarketRefresh } from '../../lib/useMarketRefresh';
 import type { Candle, GoalMode } from '../../lib/types';
 import type { Annotation, PortalContext, PortalTimeframe, TradePortal } from './types';
 
@@ -23,17 +31,25 @@ export function usePortal(
   /** True when the refusal was about the PLAN, not about a fault. */
   const [locked, setLocked] = useState(false);
   const { alert, setup, ctx, mode } = opts;
+  /** Only the newest request may write — polls and reloads can overlap. */
+  const seq = useRef(0);
 
-  const load = useCallback(async () => {
+  const run = useCallback(async (quiet: boolean) => {
     if (!symbol) return;
-    setLoading(true);
-    setError(null);
-    setLocked(false);
+    const mine = ++seq.current;
+    if (!quiet) {
+      setLoading(true);
+      setError(null);
+      setLocked(false);
+    }
     try {
       const p = await portalApi.portal(symbol, { alert, setup, ctx, mode });
+      if (seq.current !== mine) return;
       setData(p);
-      setAnnotations(p.annotations);
+      // A quiet poll leaves the marks alone — see the header.
+      if (!quiet) setAnnotations(p.annotations);
     } catch (e) {
+      if (seq.current !== mine || quiet) return;
       setData(null);
       /**
        * "YOUR PLAN DOES NOT COVER THIS" IS NOT "SOMETHING WENT WRONG".
@@ -46,11 +62,20 @@ export function usePortal(
       setLocked(e instanceof TradeApiError && e.code === 'ENTITLEMENT_REQUIRED');
       setError(e instanceof TradeApiError ? e.message : 'I could not open that chart just now.');
     } finally {
-      setLoading(false);
+      if (seq.current === mine && !quiet) setLoading(false);
     }
   }, [symbol, alert, setup, ctx, mode]);
 
+  const load = useCallback(() => run(false), [run]);
   useEffect(() => { void load(); }, [load]);
+
+  useMarketRefresh({
+    onRefresh: useCallback(() => { void run(true); }, [run]),
+    kind: 'quote',
+    // A locked portal has no price to refresh and asking again would only
+    // collect another 402 every fifteen seconds.
+    enabled: !!symbol && !locked,
+  });
 
   /** Add or replace one annotation (a Kai chart command, or a user level). */
   const upsertAnnotation = useCallback((a: Annotation) => {
@@ -121,27 +146,54 @@ export function usePortal(
   };
 }
 
-/** Candles for the selected timeframe. `exact` is false when the stack had to
- *  answer with a coarser resolution — the rail says so rather than lying. */
+/**
+ * Candles for the selected timeframe. `exact` is false when the stack had to
+ * answer with a coarser resolution — the rail says so rather than lying.
+ *
+ * ── THE LAST BAR IS STILL BEING WRITTEN ──────────────────────────────────────
+ * So the series is re-asked on a cadence that matches the bar's width: 30s on
+ * 1-minute candles, a minute on 5s and 15s, five minutes on hourlies and dailies,
+ * a quarter of an hour on the 4-hour. Two reasons it refetches the SERIES rather
+ * than merging a partial bar onto the end: the server is cache-first so the call
+ * is cheap, and a bar this side assembled from a quote is a candle nobody
+ * printed. Nothing polls while the market is closed — the last bar is finished.
+ */
 export function usePortalCandles(symbol: string, tf: PortalTimeframe | null) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [exact, setExact] = useState(true);
   const [loading, setLoading] = useState(true);
   const seq = useRef(0);
+  const [tick, setTick] = useState(0);
+  /** Reset on every (symbol, tf) change — a new series loads loudly. */
+  const drawn = useRef(false);
+
+  useEffect(() => { drawn.current = false; }, [symbol, tf]);
 
   useEffect(() => {
     if (!symbol || !tf) return;
     const mine = ++seq.current;
-    setLoading(true);
+    const quiet = drawn.current;
+    if (!quiet) setLoading(true);
     portalApi.candles(symbol, tf)
       .then((r) => {
         if (seq.current !== mine) return;
-        setCandles(r.candles);
+        // An empty answer to a refresh does not blank a chart that is already
+        // drawn; the bars on it were real when they arrived.
+        if (r.candles.length || !quiet) setCandles(r.candles);
         setExact(r.exact);
+        drawn.current = true;
       })
-      .catch(() => { if (seq.current === mine) setCandles([]); })
-      .finally(() => { if (seq.current === mine) setLoading(false); });
-  }, [symbol, tf]);
+      .catch(() => { if (seq.current === mine && !quiet) setCandles([]); })
+      .finally(() => { if (seq.current === mine && !quiet) setLoading(false); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, tf, tick]);
+
+  useMarketRefresh({
+    onRefresh: useCallback(() => setTick((t) => t + 1), []),
+    kind: 'candles',
+    timeframe: tf,
+    enabled: !!symbol && !!tf,
+  });
 
   return { candles, exact, loading };
 }

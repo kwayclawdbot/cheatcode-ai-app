@@ -57,7 +57,18 @@ export function PinnedSetup({
           {setup.change_pct ? <Num size={11} weight="regular" c={color.muted}>{setup.change_pct}</Num> : null}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-          <FreshnessMark freshness={setup.freshness} size={10} testID={`pinned-freshness-${setup.symbol}`} />
+          {/*
+            The WORD alone could never print a time and could never decay, so
+            the mark said "Live" for as long as the room stayed open. It gets
+            the whole quote now: the instant, and the reason it is not live.
+          */}
+          <FreshnessMark
+            freshness={setup.freshness}
+            at={setup.quote_at}
+            delayReason={setup.delay_reason}
+            size={10}
+            testID={`pinned-freshness-${setup.symbol}`}
+          />
           {watching != null ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
               <Eye size={11} />

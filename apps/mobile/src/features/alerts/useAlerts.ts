@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { useResource } from '../../lib/useResource';
+import { useMarketRefresh } from '../../lib/useMarketRefresh';
 import {
   fixtureAlertDetail, fixtureAlertLifecycle, fixtureAlertsRound4, fixtureAlertsRound4Empty,
   fixtureAlertsSimple,
@@ -180,6 +181,13 @@ export function useAlertsRound4(mode: GoalMode, fixture: 'default' | 'empty' = '
   const [loading, setLoading] = useState(!offline);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  /**
+   * Set immediately before a POLL bumps the tick. A background refresh must not
+   * raise the board's loading state — a list of trade cards that flashes into a
+   * spinner every fifteen seconds is unusable — and must not throw away good
+   * cards when one request fails. Read once, at the top of the effect.
+   */
+  const quiet = useRef(false);
 
   /**
    * THE MODE THE HELD CARDS ARE ABOUT, adjusted during render rather than in an
@@ -218,10 +226,12 @@ export function useAlertsRound4(mode: GoalMode, fixture: 'default' | 'empty' = '
 
   useEffect(() => {
     if (offline) { setData(seed); setLoading(false); return; }
+    const isQuiet = quiet.current;
+    quiet.current = false;
     if (!wanted.length) { setLoading(false); return; }
     let alive = true;
     const seq = ++seqRef.current;
-    setLoading(true);
+    if (!isQuiet) setLoading(true);
     Promise.all(wanted.map((t) => api.alertsRound4(t).then((incoming) => ({ t, incoming }))))
       .then((answers) => {
         if (!alive || seq !== seqRef.current) return;
@@ -250,11 +260,14 @@ export function useAlertsRound4(mode: GoalMode, fixture: 'default' | 'empty' = '
       })
       .catch((e: unknown) => {
         if (!alive || seq !== seqRef.current) return;
+        // A poll that failed leaves the cards that are already on screen. They
+        // were true when they arrived and their freshness marks age honestly.
+        if (isQuiet) return;
         setError(e instanceof ApiError && e.code === 'NOT_FOUND'
           ? "That part of the service isn't live yet."
           : e instanceof Error ? e.message : 'Something went wrong. Please try again.');
       })
-      .finally(() => { if (alive && seq === seqRef.current) setLoading(false); });
+      .finally(() => { if (alive && seq === seqRef.current && !isQuiet) setLoading(false); });
     return () => { alive = false; };
     // `wanted` is derived from `tab` and rebuilt every render; `tab` is the dep.
     // `mode` is a dep because the board is ONE MODE'S BOARD and the server
@@ -272,6 +285,18 @@ export function useAlertsRound4(mode: GoalMode, fixture: 'default' | 'empty' = '
    * loading state.
    */
   const forShownMode = data && (!data.mode || data.mode === mode) ? data : null;
+
+  /**
+   * EVERY CARD ON THIS BOARD CARRIES A PRICE, so the board is a price surface.
+   * It refreshes on the quote cadence and by asking `/alerts?tab=` again —
+   * one request per visible bucket, never one per card. The Community tab
+   * fetches nothing here, so it polls nothing either.
+   */
+  useMarketRefresh({
+    onRefresh: useCallback(() => { quiet.current = true; setTick((t) => t + 1); }, []),
+    kind: 'quote',
+    enabled: !offline && tab !== 'community',
+  });
 
   return {
     data: forShownMode,

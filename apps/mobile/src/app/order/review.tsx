@@ -398,8 +398,16 @@ export default function ReviewOrder() {
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
           <Lock size={11} color={color.muted} />
           <T size={11} c={color.muted} numberOfLines={1} testID="confirm-footer">
-            {/* The freshness word is dropped here because the mark below says it. */}
-            {(preview.footer_plain ?? `Nothing is sent until you confirm · quote ${preview.quote_clock ?? '—'}`)
+            {/*
+              The freshness word is dropped here because the mark below says it.
+              A ticket with NO quote clock says nothing about when — an em-dash
+              in a time slot invites the reader to fill it in, and the honest
+              sentence is the one that does not raise the question.
+            */}
+            {(preview.footer_plain
+              ?? (preview.quote_clock
+                ? `Nothing is sent until you confirm · quote ${preview.quote_clock}`
+                : 'Nothing is sent until you confirm'))
               .replace(/\s*·\s*(live|delayed|stale|closed)\s*$/i, '')}
           </T>
         </View>

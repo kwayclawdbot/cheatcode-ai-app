@@ -876,6 +876,8 @@ export const fixtureAlertCards: AlertCard[] = [
     score_components: [],
     kai_interpretation: 'Somebody paid up for two days of room. That is a statement about timing, not about the company.',
     primary_action: { label: 'Open Trade Portal', kind: 'ready' },
+    /* Sample data, and the mark beside the Current price says exactly that. */
+    quote: { freshness: 'delayed', delay_reason: 'seed', price: null, source_ts: null },
     freshness_line: 'Quote 10:04:11 ET · live · received 6s ago',
   },
   {
@@ -911,6 +913,8 @@ export const fixtureAlertCards: AlertCard[] = [
     fit: { risk_amount: '$58', cap_line: 'fits daily cap', conflicts: 'No conflicts' },
     community: { sample: 41, bullish_pct: 62, common_level: '504', verification: 'verified' },
     primary_action: { label: 'Open Trade Portal', kind: 'entry_reached' },
+    /* Sample data, and the mark beside the Current price says exactly that. */
+    quote: { freshness: 'delayed', delay_reason: 'seed', price: null, source_ts: null },
     freshness_line: 'Quote 9:41:02 ET · live · received 8s ago',
   },
   {
@@ -934,6 +938,8 @@ export const fixtureAlertCards: AlertCard[] = [
     fit: { risk_amount: '$44', cap_line: 'fits daily cap', conflicts: 'No conflicts' },
     community: { sample: 26, bullish_pct: 55, common_level: '242', verification: 'unverified' },
     primary_action: { label: 'Review trade', kind: 'ready' },
+    /* Sample data, and the mark beside the Current price says exactly that. */
+    quote: { freshness: 'delayed', delay_reason: 'seed', price: null, source_ts: null },
     freshness_line: 'Quote 9:41:02 ET · live · received 8s ago',
   },
   {
@@ -957,6 +963,8 @@ export const fixtureAlertCards: AlertCard[] = [
     fit: { risk_amount: '$31', cap_line: 'fits daily cap', conflicts: 'No conflicts' },
     community: { sample: 18, bullish_pct: 44, common_level: '152', verification: 'unverified' },
     primary_action: { label: 'See what changed', kind: 'invalidated' },
+    /* Sample data, and the mark beside the Current price says exactly that. */
+    quote: { freshness: 'delayed', delay_reason: 'seed', price: null, source_ts: null },
     freshness_line: 'Quote 9:41:02 ET · delayed 15m',
   },
 ];
@@ -984,6 +992,8 @@ export const fixtureWatchingCards: AlertCard[] = [
     community: { sample: 63, bullish_pct: 58, common_level: '934', verification: 'verified' },
     progress: { pct: 38, label: '1.4% away' },
     primary_action: { label: 'Keep watching', kind: 'forming' },
+    /* Sample data, and the mark beside the Current price says exactly that. */
+    quote: { freshness: 'delayed', delay_reason: 'seed', price: null, source_ts: null },
     freshness_line: 'Quote 9:41:02 ET · live · received 8s ago',
   },
   {
@@ -1007,6 +1017,8 @@ export const fixtureWatchingCards: AlertCard[] = [
     fit: { risk_amount: '$38', cap_line: 'fits daily cap', conflicts: 'No conflicts' },
     community: { sample: 22, bullish_pct: 51, common_level: '191', verification: 'unverified' },
     primary_action: { label: 'Open chart', kind: 'watching' },
+    /* Sample data, and the mark beside the Current price says exactly that. */
+    quote: { freshness: 'delayed', delay_reason: 'seed', price: null, source_ts: null },
     freshness_line: 'Quote 9:41:02 ET · live · received 8s ago',
   },
   {
@@ -1030,6 +1042,8 @@ export const fixtureWatchingCards: AlertCard[] = [
     fit: { risk_amount: '$0', cap_line: 'nothing at risk yet', conflicts: 'No conflicts' },
     community: { sample: 88, bullish_pct: 49, common_level: '562', verification: 'verified' },
     primary_action: { label: 'Open chart', kind: 'watching' },
+    /* Sample data, and the mark beside the Current price says exactly that. */
+    quote: { freshness: 'delayed', delay_reason: 'seed', price: null, source_ts: null },
     freshness_line: 'Quote 9:41:02 ET · live · received 8s ago',
   },
 ];

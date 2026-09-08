@@ -43,6 +43,7 @@ import {
   fixtureClosedPositions, fixturePositionDetail, fixturePositions,
 } from '../features/positions/fixtures';
 import { fixtureLanding } from '../features/trade/fixtures';
+import { etStamp } from './when';
 
 export class TradeApiError extends Error {
   code: string;
@@ -275,8 +276,19 @@ function adaptPreview(v: unknown, ticket?: OrderTicket): OrderPreview {
     buying_power: num(pick(est, 'buying_power')) ?? num(pick(src, 'buying_power')) ?? num(account.buying_power),
     buying_power_after: num(pick(est, 'buying_power_after')) ?? num(pick(src, 'buying_power_after')),
     quote,
+    /**
+     * WHEN THE PRICE ON THIS TICKET HAPPENED — or nothing at all.
+     *
+     * This used to fall back to `new Date()`, which stamps an order ticket with
+     * the CURRENT time when the server sent no timestamp. That is the app
+     * inventing freshness on the one screen where freshness is money: a quote
+     * of unknown age rendered as "quote 10:04:11 ET" reads as a price from a
+     * second ago. There is no honest clock to print when nothing was sent, so
+     * nothing is printed and the screens drop the clause (see
+     * `app/order/review.tsx` and `portal2/Take.tsx`).
+     */
     quote_clock: str(pick(src, 'quote_clock'))
-      || clockLabel(quote?.source_ts ? new Date(quote.source_ts) : new Date()),
+      || (quote?.source_ts ? etStamp(quote.source_ts) : null),
     risk: adaptRisk(src),
     stop_attached: stop,
     first_target: target,

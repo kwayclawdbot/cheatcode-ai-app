@@ -9,6 +9,7 @@ import { KaiOrb } from '../../ui/KaiOrb';
 // A ticker is never plain text and never a letter in a gradient square — the
 // one shared mark lives in the design system now (see src/ui/Ticker.tsx).
 import { TickerMark } from '../../ui/Ticker';
+import { FreshnessMark } from '../../ui/FreshnessMark';
 import { GradeMedallion, GradeChip, gradeBand } from '../grade';
 // The contract is a graphic now, not a tile of label/value rows — see the
 // header of ContractGraphic.tsx for why the half-width box had to go.
@@ -38,11 +39,24 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-function LevelCell({ label, value, c, bg, border }: { label: string; value: string; c: string; bg: string; border: string }) {
+/**
+ * `mark` is the freshness of a LIVE number, and only "Current" has one.
+ *
+ * Entry, stop and target are levels the engine decided; they do not go stale,
+ * they get hit or they do not. "Current" is the market's own number and the
+ * house rule (`src/ui/Price.tsx` — "no price without freshness") applies to it
+ * exactly as it does everywhere else. It was the one price-bearing cell in the
+ * app that omitted the mark, which is how a nine-thirty print sat in a Current
+ * box at two in the afternoon with nothing on the card saying so.
+ */
+function LevelCell({ label, value, c, bg, border, mark }: {
+  label: string; value: string; c: string; bg: string; border: string; mark?: React.ReactNode;
+}) {
   return (
     <View style={{ flex: 1, paddingVertical: 7, paddingHorizontal: 3, borderRadius: 10, backgroundColor: bg, borderWidth: 0.5, borderColor: border, alignItems: 'center' }}>
       <T size={8.5} c={color.muted}>{label}</T>
       <Num size={12} weight="semibold" c={c} style={{ marginTop: 2 }}>{value}</Num>
+      {mark ? <View style={{ marginTop: 3 }}>{mark}</View> : null}
     </View>
   );
 }
@@ -272,7 +286,24 @@ export function StandardAlertCard({ alert, testID }: { alert: AlertCardModel; te
               is where an absence belongs.
             */
             <View style={{ flexDirection: 'row', gap: 6 }}>
-              {trade.current ? <LevelCell label="Current" value={trade.current} c={color.text} bg={alpha.ivory04} border={alpha.ivory10} /> : null}
+              {trade.current ? (
+                <LevelCell
+                  label="Current"
+                  value={trade.current}
+                  c={color.text}
+                  bg={alpha.ivory04}
+                  border={alpha.ivory10}
+                  mark={(
+                    <FreshnessMark
+                      freshness={alert.quote?.freshness ?? 'unknown'}
+                      delayReason={alert.quote?.delay_reason}
+                      at={alert.quote?.source_ts}
+                      size={8}
+                      testID={`alert-current-freshness-${alert.symbol}`}
+                    />
+                  )}
+                />
+              ) : null}
               {trade.entry ? <LevelCell label="Entry" value={trade.entry} c={color.cyan} bg={color.cyanTint} border={alpha.cyan40} /> : null}
               {trade.stop ? <LevelCell label="Stop" value={trade.stop} c={color.red} bg={color.redTint} border={alpha.red40} /> : null}
               {trade.target ? <LevelCell label="Target" value={trade.target} c={color.green} bg={color.greenTint} border={alpha.green40} /> : null}

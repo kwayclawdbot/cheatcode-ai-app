@@ -164,6 +164,10 @@ function mapSetup(raw: any): RoomSetup | null {
     target: level(firstTarget),
     invalid: level(raw.stop ?? raw.invalidation?.level),
     freshness: freshnessOf(q.freshness),
+    quote_at: typeof q.source_ts === 'string' && q.source_ts ? q.source_ts : null,
+    delay_reason: typeof q.delay_reason === 'string' && q.delay_reason
+      ? (q.delay_reason as RoomSetup['delay_reason'])
+      : null,
     price: price(q.price),
     change_pct: raw.change_pct != null ? `${asNum(raw.change_pct)! >= 0 ? '+' : ''}${asNum(raw.change_pct)!.toFixed(2)}%` : null,
     headline: raw.thesis_plain ?? raw.headline ?? null,
