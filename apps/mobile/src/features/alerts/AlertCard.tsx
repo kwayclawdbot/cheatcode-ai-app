@@ -19,7 +19,7 @@ import { ContractSection, ContractLine } from './ContractGraphic';
 // of StandardAlertCard below, and docs/trade-ui-MIGRATION.md step 5.
 import { SetupPreview, TradeStatusStrip, riskReward, price } from '../../ui/trade';
 import { TradeDetail } from '../../ui/trade/TradeDetail';
-import { ideaFromAlertCard, notesFromAlert } from './trade-adapter';
+import { ideaFromAlertCard, isZone, notesFromAlert } from './trade-adapter';
 import { openKaiSheet } from '../kai-sheet';
 import type {
   AlertCard as AlertCardModel, AlertCardState, AlertScoreComponent, Candle,
@@ -248,6 +248,25 @@ export function StandardAlertCard({ alert, testID, candles }: {
   const hasLevels = idea.entry != null || idea.stop != null || idea.target != null;
   const hasPlan = riskReward(idea) !== null;
   const contractLed = contracts.length > 0;
+  /**
+   * A ZONE IS NOT A PRICE, AND A RATIO MEASURED OFF ITS EDGE IS A BEST CASE.
+   *
+   * The wire sends entries as zones — `'504–507'` — and the kit's ruler works
+   * from one number per level. Feeding it the near edge would produce a
+   * confident risk/reward that is arithmetically fine and quietly flattering:
+   * it prices a fill at the best end of a range the member has not got yet.
+   *
+   * So a card with a zone in it does not draw the computed ruler. It shows the
+   * server's own ratio, which was measured by whatever actually knows how this
+   * engine sizes a zone, and it says where that number came from.
+   */
+  const zoned = isZone(trade.entry) || isZone(trade.stop) || isZone(trade.target);
+  /** The wire's words for each level, so a zone prints as the zone it is. */
+  const levelText = {
+    entry: trade.entry ?? null,
+    stop: trade.stop ?? null,
+    target: trade.target ?? null,
+  };
   /* No levels and no bars is nothing to draw. The kit would say so in words,
      but a chart frame reporting its own emptiness on every card of a family
      that never has one is furniture, not information. */
@@ -328,7 +347,16 @@ export function StandardAlertCard({ alert, testID, candles }: {
    * honest object here; the fallback names the absence plainly rather than
    * leaving the space blank, because a blank reads as nothing to say.
    */
-  const plan = hasPlan ? undefined : (
+  const plan = hasPlan && !zoned ? undefined : zoned && trade.rr ? (
+    <View
+      testID={`alert-rr-stated-${alert.symbol}`}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}
+    >
+      <T size={12.5} c={color.muted}>Planned risk/reward</T>
+      <Num size={14} c={color.text}>{trade.rr}</Num>
+      <T size={11.5} c={color.muted} style={{ flex: 1 }}>from Kai's plan</T>
+    </View>
+  ) : (
     <T
       size={12.5}
       c={color.muted}
@@ -521,6 +549,7 @@ export function StandardAlertCard({ alert, testID, candles }: {
     eyebrow,
     lead,
     plan,
+    levelText,
     status: statusSlot,
     showMap,
     unframed: true as const,

@@ -11,14 +11,14 @@ import type { TradeIdea, TradeStatus, LevelKind } from '../../ui/trade';
  *
  * Three differences, and all three are about honesty rather than plumbing.
  *
- * ── THE LEVELS ARE MONEY-FORMATTED STRINGS ─────────────────────────────────
+ * ── THE LEVELS ARE DISPLAY STRINGS, AND SOME OF THEM ARE ZONES ─────────────
  * The room sends `"178.40"`. The alert wire sends whatever reads well on a
- * card — `"$178.40"`, `"1,204.50"` — because until today those strings were
- * printed, never measured. The kit measures them: it lays out a chart and
- * computes a risk/reward from them. So `num` strips currency and separators
- * before parsing, and still refuses to produce NaN or a silent zero. A level
- * it cannot read becomes `null`, which the kit draws as no level at all —
- * never as a line at 0, which would put a stop at the bottom of every chart.
+ * card — `"$178.40"`, `"> 504"`, `"504–507"` — because until today those
+ * strings were printed and never measured. The kit measures them: it lays out
+ * a chart and computes a risk/reward from them. `priceNum` and `zoneNum` below
+ * carry the full argument for how that is done without inventing anything; the
+ * short version is that one number is a price, two is a zone, and neither is
+ * ever assembled out of the digits of the other.
  *
  * ── NINE STATES COLLAPSE ONTO SIX, AND THE LABEL DOES NOT ──────────────────
  * `AlertCardState` has nine values; the kit has six. The collapse below is
@@ -38,19 +38,63 @@ import type { TradeIdea, TradeStatus, LevelKind } from '../../ui/trade';
  */
 
 /**
- * A displayed price becomes a number, or nothing.
+ * THE NUMBERS INSIDE A DISPLAYED LEVEL.
  *
- * `$1,204.50` → 1204.5. `—` → null. `` → null. Note the guard against a bare
- * sign or separator parsing as something: `Number('')` is 0 and `Number('$')`
- * is NaN, and only one of those is caught by `Number.isFinite`.
+ * Every number in the string, in order, with currency and thousands
+ * separators removed. Nothing is welded together and nothing is guessed: the
+ * caller decides what a string with two numbers in it means.
+ */
+const numbersIn = (v: string | null | undefined): number[] =>
+  v == null
+    ? []
+    : (String(v).match(/-?\d[\d,]*(?:\.\d+)?/g) ?? [])
+        .map((n) => Number(n.replace(/,/g, '')))
+        .filter((n) => Number.isFinite(n));
+
+/**
+ * ONE NUMBER MEANS ONE NUMBER. TWO MEANS A ZONE. THIS IS NOT A DETAIL.
+ *
+ * The first version of this stripped every character that was not a digit and
+ * parsed what was left, which is the kind of code that looks defensive and is
+ * the opposite. The wire sends entries as ZONES — `'504–507'` is a real value
+ * on a real fixture — and stripping the en-dash turned it into `504507.00`: a
+ * confidently wrong price, printed in the entry cell, drawn as a line a
+ * thousand times above the stop, and silently rescaling the whole chart.
+ *
+ * So: exactly one number is a price. Two numbers is a zone, and `zoneNum`
+ * answers for it separately. Anything else is `null` and draws nothing.
+ * `'> 504'` still reads as 504 — one number, with a word about it.
  */
 export const priceNum = (v: string | null | undefined): number | null => {
-  if (v == null) return null;
-  const cleaned = String(v).replace(/[$,\s]/g, '').replace(/[^\d.\-+eE]/g, '');
-  if (!/\d/.test(cleaned)) return null;
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
+  const ns = numbersIn(v);
+  return ns.length === 1 ? ns[0] : null;
 };
+
+/**
+ * A two-number level is an entry ZONE, and its NEAR edge is the geometry.
+ *
+ * The kit draws one line per level, so a zone has to become a number
+ * somewhere. The near edge is the honest choice for where the line goes — it
+ * is where the zone begins — but it is emphatically NOT what the card prints:
+ * `levelText` puts the wire's own `'504–507'` in the cell, so a member reads
+ * the zone they were given and the chart draws the edge of it.
+ *
+ * What this deliberately does NOT do is compute a risk/reward from it. A ratio
+ * measured off one edge of a zone is a best case dressed as the case, so a
+ * card with a zone shows the server's own ratio instead. See `zoned` in
+ * AlertCard.
+ */
+export const zoneNum = (v: string | null | undefined): number | null => {
+  const ns = numbersIn(v);
+  return ns.length === 2 ? ns[0] : null;
+};
+
+export const isZone = (v: string | null | undefined): boolean =>
+  numbersIn(v).length === 2;
+
+/** The number the chart draws for a level, whether it was a price or a zone. */
+export const levelNum = (v: string | null | undefined): number | null =>
+  priceNum(v) ?? zoneNum(v);
 
 /**
  * Where each alert state sits on the kit's four-step lifecycle.
@@ -126,9 +170,9 @@ export function ideaFromAlertCard(
   alert: AlertCard,
   opts?: { candles?: readonly Candle[] },
 ): TradeIdea {
-  const entry = priceNum(alert.trade.entry);
-  const stop = priceNum(alert.trade.stop);
-  const target = priceNum(alert.trade.target);
+  const entry = levelNum(alert.trade.entry);
+  const stop = levelNum(alert.trade.stop);
+  const target = levelNum(alert.trade.target);
   return {
     id: alert.alert_id ?? alert.id,
     symbol: alert.symbol,

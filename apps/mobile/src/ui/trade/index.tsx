@@ -158,12 +158,27 @@ export function TradeMap({
   onLevelSelect,
   annotation,
   beforeLevels,
+  levelText,
 }: {
   idea: TradeIdea;
   compact?: boolean;
   selectedLevel?: LevelKind;
   onLevelSelect?: (level: LevelKind) => void;
   annotation?: KaiNote;
+  /**
+   * WHAT THE CELL PRINTS, when the caller's own words are truer than the number.
+   *
+   * The chart needs a number for every level; the cell does not. A wire that
+   * sends an entry ZONE — `'504–507'` — is telling a member something the
+   * geometry cannot hold, and printing the near edge alone would quietly
+   * narrow a zone into a price. So the line is drawn at the number and the
+   * cell prints the string, and the two never disagree because neither is
+   * derived from the other.
+   *
+   * Absent, or absent for one level, the cell prints the formatted number as
+   * it always did.
+   */
+  levelText?: Partial<Record<LevelKind, string | null>>;
   /**
    * Drawn between the chart and the three level cells.
    *
@@ -176,6 +191,24 @@ export function TradeMap({
 }) {
   const [width, setWidth] = useState(340);
   const g = tradeGeometry(idea, compact);
+  /**
+   * A LEVEL WITH NO NUMBER IS NOT DRAWN.
+   *
+   * These three used to render unconditionally and fall back to an em-dash,
+   * which puts a red cell labelled "Stop" on a card that has no stop — and a
+   * red cell labelled Stop is read as a stop, whatever is printed inside it.
+   * For an engine that produces no exit levels at all (the unusual-options
+   * family) that is not cosmetic: it is the kit implying a risk plan nothing
+   * behind it ever computed.
+   *
+   * This is the alert card's own long-standing rule, moved into the kit when
+   * the card moved onto the kit — the rule outlived the component that used to
+   * enforce it, which is the whole argument for the shared layer. The caller
+   * explains the absence in a sentence, which is where an absence belongs.
+   */
+  const drawn = (["entry", "stop", "target"] as const).filter(
+    (kind) => typeof idea[kind] === "number" && Number.isFinite(idea[kind] as number),
+  );
   const labels =
     g?.levels.filter(
       (l) =>
@@ -312,16 +345,16 @@ export function TradeMap({
         <T c={color.muted}>Price history unavailable</T>
       )}
       {beforeLevels}
-      {!compact && (
+      {!compact && drawn.length > 0 && (
         <View style={s.levels}>
-          {(["entry", "stop", "target"] as const).map((kind) => {
+          {drawn.map((kind) => {
             const content = (
               <>
                 <T size={12} c={ink[kind]}>
                   {LEVEL_LABEL[kind]}
                 </T>
                 <Num size={16} c={ink[kind]} style={{ marginTop: 6 }}>
-                  {price(idea[kind], idea.pricePrecision)}
+                  {levelText?.[kind] ?? price(idea[kind], idea.pricePrecision)}
                 </Num>
               </>
             );
@@ -329,7 +362,7 @@ export function TradeMap({
               <Pressable
                 key={kind}
                 accessibilityRole="button"
-                accessibilityLabel={`${LEVEL_LABEL[kind]} ${price(idea[kind], idea.pricePrecision)}`}
+                accessibilityLabel={`${LEVEL_LABEL[kind]} ${levelText?.[kind] ?? price(idea[kind], idea.pricePrecision)}`}
                 accessibilityState={{ selected: selectedLevel === kind }}
                 onPress={() => onLevelSelect(kind)}
                 style={[s.level, selectedLevel === kind && s.selected]}
@@ -550,6 +583,7 @@ export function SetupPreview({
   showSource = true,
   unframed = false,
   testID,
+  levelText,
   gradeWhenAbsent = "hide",
 }: {
   idea: TradeIdea;
@@ -570,6 +604,8 @@ export function SetupPreview({
   showSource?: boolean;
   unframed?: boolean;
   testID?: string;
+  /** See `TradeMap`. The caller's words for a level the number cannot hold. */
+  levelText?: Partial<Record<LevelKind, string | null>>;
   gradeWhenAbsent?: "hide" | "state";
 }) {
   const hasPlan = riskReward(idea) !== null;
@@ -605,7 +641,7 @@ export function SetupPreview({
       </View>
       {lead}
       {showMap ? (
-        <TradeMap idea={idea} beforeLevels={status} />
+        <TradeMap idea={idea} beforeLevels={status} levelText={levelText} />
       ) : status ? (
         <View style={{ marginTop: 12 }}>{status}</View>
       ) : null}

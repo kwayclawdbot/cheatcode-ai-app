@@ -44,6 +44,7 @@ export function TradeDetail({
   status,
   showMap = true,
   showSource = true,
+  levelText,
   unframed = false,
   showIdentity = true,
   gradeWhenAbsent = "hide",
@@ -86,6 +87,8 @@ export function TradeDetail({
   /** Drop the page padding and ground, for use inside a card that has its own. */
   unframed?: boolean;
   showIdentity?: boolean;
+  /** See `TradeMap`. The caller's words for a level the number cannot hold. */
+  levelText?: Partial<Record<LevelKind, string | null>>;
   gradeWhenAbsent?: "hide" | "state";
   testID?: string;
 }) {
@@ -131,6 +134,7 @@ export function TradeDetail({
           onLevelSelect={setSelected}
           annotation={note ? { level: selected, text: note } : undefined}
           beforeLevels={status}
+          levelText={levelText}
         />
       ) : status ? (
         <View style={{ marginTop: 12 }}>{status}</View>
