@@ -179,6 +179,7 @@ export default function Contributor() {
               <MemberName
                 name={profile.display_name}
                 belt={author?.belt}
+                stage={author?.stage}
                 size={20}
                 testID="contributor-name"
               />

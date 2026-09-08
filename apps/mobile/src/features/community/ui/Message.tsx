@@ -127,6 +127,7 @@ export function MessageRow({
               name={m.author.display_name}
               userId={m.author.user_id}
               belt={m.author.belt}
+              stage={m.author.stage}
               handle={m.author.handle}
               showHandle
               size={13.5}

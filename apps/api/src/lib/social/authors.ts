@@ -101,7 +101,9 @@ export async function loadAuthors(userIds: string[], _requestId = '-'): Promise<
 
   const db = serviceClient();
   const [profiles, belts] = await Promise.all([
-    db.from('profiles_public').select('user_id,handle,display_name,avatar_url').in('user_id', ids),
+    // `stage` is one more column on a query that was already running - 0044
+    // put it on the view precisely so this costs no extra round trip.
+    db.from('profiles_public').select('user_id,handle,display_name,avatar_url,stage').in('user_id', ids),
     beltsFor(ids),
   ]);
 
@@ -115,6 +117,10 @@ export async function loadAuthors(userIds: string[], _requestId = '-'): Promise<
       avatar_url: (r.avatar_url as string) ?? null,
       initial: initialFor(display),
       belt: belts.get(id) ?? 'white',
+      // Null rather than 'beginner' when the column is empty: a profile written
+      // before 0042 has no stage, and guessing one is how a veteran ends up
+      // wearing a beginner's tag.
+      stage: (r.stage as SocialAuthor['stage']) ?? null,
     });
   }
   return out;

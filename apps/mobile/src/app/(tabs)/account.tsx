@@ -17,6 +17,7 @@ import { NOT_ADVICE_LONG } from '../../features/legal/disclaimers';
 import { api } from '../../lib/api';
 import { env } from '../../lib/env';
 import { useSession } from '../../lib/session';
+import { StageTag, STAGE_NEXT } from '../../features/stage';
 import { useKaiProfile, useMe, useSettingsWriter } from '../../features/account/useAccount';
 import { useTraining } from '../../features/training/store';
 import { useAvatar } from '../../features/account/useAvatar';
@@ -116,6 +117,10 @@ export default function Account() {
    */
   const identity = data?.identity ?? null;
   const handle = identity?.handle ?? data?.profile.handle ?? profile?.handle ?? null;
+  /* Readiness stage (0042). `/me` and the session both carry it; either will
+     do, and null means an API build that predates the column — in which case
+     the block below draws nothing rather than claiming a rung. */
+  const stage = data?.profile.stage ?? profile?.stage ?? null;
   const name = data?.profile.display_name ?? profile?.display_name ?? handle ?? 'You';
   const needsHandle = identity ? identity.needs_handle : handle === null;
   /**
@@ -231,6 +236,26 @@ export default function Account() {
             <T size={12} c={handle ? color.muted : color.volt} numberOfLines={1} testID="account-handle">
               {handle ? `@${handle}` : 'No username yet'}
             </T>
+            {/* Where they are on the ladder (0042), on their own profile and in
+                the same quiet ink it wears beside their name in a room. It is
+                READ-ONLY here on purpose: unlike the mode chip below it, this
+                is not a preference — it is earned, and a control that let
+                somebody set it would be a lie about what it means. What moves
+                it is said underneath, in `STAGE_NEXT`. */}
+            {stage ? (
+              <View style={{ marginTop: 3 }} testID="account-stage">
+                <StageTag stage={stage} />
+                {/* The tag is two words and two words cannot explain
+                    themselves. This is the one surface with room to say what
+                    moves it, so it does — a stage nobody can see the exit from
+                    is a label, which is the thing it is explicitly not. */}
+                {STAGE_NEXT[stage] ? (
+                  <T size={11} c={color.dim} style={{ marginTop: 2 }} testID="account-stage-next">
+                    {STAGE_NEXT[stage]}
+                  </T>
+                ) : null}
+              </View>
+            ) : null}
             <View style={{ flexDirection: 'row', gap: 5, marginTop: 4, alignItems: 'center' }}>
               {/* Mode is global context, so it is CHANGEABLE wherever it is shown
                   (audit §6) — the same sheet Trade uses, writing PUT /mode. */}

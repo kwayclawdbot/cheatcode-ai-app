@@ -1823,6 +1823,17 @@ export const SocialAuthor = z.object({
   avatar_url: z.string().nullable(),
   initial: z.string(),
   belt: Belt,
+  /**
+   * Readiness stage (0042), carried so the room can see who is new — which is
+   * the whole reason the Beginners room works: an experienced member who cannot
+   * tell a novice from a veteran answers both the same way.
+   *
+   * Nullable and optional so a response from an API build older than 0044 still
+   * parses; the tag simply does not draw. Absent means "not known here", never
+   * "beginner" — inventing a stage for somebody the server never described is
+   * worse than showing none.
+   */
+  stage: ReadinessStage.nullable().optional(),
 });
 export type SocialAuthor = z.infer<typeof SocialAuthor>;
 

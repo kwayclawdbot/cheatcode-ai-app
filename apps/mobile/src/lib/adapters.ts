@@ -31,7 +31,7 @@ import type {
 import type {
   Belt, BeltBlock, CommunityCall, CommunityCallStatus, ContributorSocial, FollowFeed,
   FollowFeedItem, FollowState, Leaderboard, LeaderboardPeriod, LeaderboardRow, PointsExplainer,
-  SharedTrade, SharedTradeOutcome, SocialAuthor, SocialDirection, SocialRecord,
+  SharedTrade, SharedTradeOutcome, SocialAuthor, SocialDirection, SocialRecord, Stage,
 } from './types';
 import { isBelt } from '../features/social/belts';
 import type {
@@ -2245,6 +2245,25 @@ export const adaptAuthorBelt = (v: unknown): Belt | null => {
   if (v == null) return null;
   const s = r4str(v).toLowerCase();
   return isBelt(s) ? s : null;
+};
+
+const STAGES: Stage[] = ['beginner', 'developing', 'trade_ready'];
+
+/**
+ * The author's readiness stage (0042), guarded exactly as the belt above is and
+ * for the same reason.
+ *
+ * A stage this build has never heard of comes back null and no tag draws. That
+ * matters more here than for most fields because the ladder is explicitly
+ * unfinished — the owner's note ends it with "higher status later" — so an old
+ * app meeting a new rung is a thing that WILL happen rather than a hypothetical,
+ * and the right behaviour is to say nothing rather than to round somebody down
+ * to the nearest rung it recognises.
+ */
+export const adaptAuthorStage = (v: unknown): Stage | null => {
+  if (v == null) return null;
+  const s = r4str(v).toLowerCase();
+  return (STAGES as string[]).includes(s) ? (s as Stage) : null;
 };
 
 const BELT_LABEL: Record<Belt, string> = {

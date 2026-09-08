@@ -1504,6 +1504,13 @@ export type SocialAuthor = {
   avatar_url: string | null;
   initial: string;
   belt: Belt;
+  /**
+   * Readiness stage (0042), carried on the same payload as the belt so a room
+   * can tell who is new. Optional and nullable: absent means the server did not
+   * say — an API build older than 0044 — and no tag draws. Never defaulted to
+   * `beginner`; a guessed stage on a veteran's name is worse than none.
+   */
+  stage?: Stage | null;
 };
 
 export type SocialDirection = 'long' | 'short';

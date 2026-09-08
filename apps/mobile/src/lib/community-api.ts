@@ -26,7 +26,7 @@ import { EMPTY_REACTIONS, trimQuote } from '../features/community/types';
 import {
   fixtureAssist, fixtureContributor, fixtureMessages, fixtureRooms, fixtureThread,
 } from '../features/community/fixtures';
-import { adaptAuthorBelt, adaptCommunityCall } from './adapters';
+import { adaptAuthorBelt, adaptAuthorStage, adaptCommunityCall } from './adapters';
 import type { ClosedPosition, Debrief } from '../features/debrief/types';
 import { fixtureClosedPositions, fixtureDebriefs } from '../features/debrief/fixtures';
 
@@ -439,6 +439,9 @@ function mapMessage(raw: any, kaiObjects?: Record<string, any>): RoomMessage {
              * shown at the wrong rank, which nobody would report as a bug.
              */
             belt: adaptAuthorBelt(author?.belt),
+            // Same guard, same reason: an unrecognised or missing stage draws
+            // no tag rather than the bottom rung.
+            stage: adaptAuthorStage(author?.stage),
           },
     body: raw.deleted ? null : raw.body ?? null,
     refs,

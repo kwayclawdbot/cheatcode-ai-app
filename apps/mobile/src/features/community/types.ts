@@ -7,7 +7,7 @@
  * format. Enum values follow the Postgres enums in
  * supabase/migrations/0001_extensions_enums.sql.
  */
-import type { Belt, CommunityCall } from '../../lib/types';
+import type { Belt, CommunityCall, Stage } from '../../lib/types';
 
 export type RoomType = 'core' | 'setup' | 'announcement';
 export type MemberRole = 'member' | 'moderator' | 'educator' | 'expert';
@@ -81,6 +81,15 @@ export type Author = {
    * deleted author.
    */
   belt?: Belt | null;
+  /**
+   * Readiness stage (0042), so the room can tell who is new.
+   *
+   * OPTIONAL FOR THE SAME REASON THE BELT IS: absent means the server did not
+   * say, and no tag draws. It never defaults to `beginner` — the point of the
+   * tag is that somebody answering a question knows who they are talking to,
+   * and a guessed one is worse than none.
+   */
+  stage?: Stage | null;
   /**
    * The author deleted their account. `user_id` is null on these rows and
    * WITHOUT this flag that null reads as "posted by Kai" (migration 0010's
