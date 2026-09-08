@@ -225,3 +225,31 @@ export function shownAtLabel(iso: string): string {
   if (Number.isNaN(d.getTime())) return 'earlier today';
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
+
+/**
+ * THE OPENING IS COMPACT NOW, SO THE REPORT HAS TO BE REACHABLE (audit F03).
+ *
+ * F03's complaint: "a beginner reads market status and an explanation about an
+ * empty watchlist before reaching something they can use", and its acceptance
+ * test is that at 390px the first actionable object AND its button are visible
+ * without scrolling. The only way to win that is to stop drawing the market
+ * paragraph above the object — the state sentence, the evidence and the aside
+ * are three blocks of prose between a greeting and the one thing to do.
+ *
+ * They are not deleted. `Wakeup` in compact mode holds them back and this
+ * guarantees the offer that brings them out, so nothing Kai wrote this morning
+ * becomes unreachable — it just stops being the first thing in the way.
+ *
+ * It stays at three directions (the wake-up's own limit) by dropping the LAST
+ * one, which `directionsFor` orders as the least specific: the primary action
+ * and "what else moved" are about this member's own account, the generic tab
+ * routes at the tail are not.
+ */
+export function withBriefingOffer(message: Wakeup, hasBriefing: boolean): Wakeup {
+  const worthReading = hasBriefing || !!message.state || !!message.evidence || !!message.aside;
+  if (!worthReading) return message;
+  if (message.directions.some((d) => d.kind === 'briefing')) return message;
+  const offer: WakeDirection = { id: 'wd-briefing', kind: 'briefing', label: 'Read the briefing' };
+  const kept = message.directions.length >= 3 ? message.directions.slice(0, 2) : message.directions;
+  return { ...message, directions: [...kept, offer] };
+}

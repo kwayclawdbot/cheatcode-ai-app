@@ -16,6 +16,16 @@ export type Freshness = 'live' | 'delayed' | 'stale' | 'closed' | 'unknown';
  *   delayed ring           gold
  *   stale   square         red
  *   closed  bar            muted
+ *
+ * ── ITS SIBLING, AND WHERE THE LINE BETWEEN THEM FALLS ───────────────────────
+ * `ui/CapabilityState.tsx` is the same grammar applied one level up: this is
+ * about ONE PRICE and whether the number beside it can be trusted; that is
+ * about a WHOLE CAPABILITY — a list, a board, a plan — and whether asking for
+ * it worked at all (loading · quiet · stale · offline · blocked · failed,
+ * audit F18). They share `stale`'s red square deliberately, so a member who has
+ * learned the mark once has learned it everywhere. A price still gets a
+ * freshness even inside a surface that is offline: the two answer different
+ * questions and neither substitutes for the other.
  */
 const SPEC: Record<Freshness, { label: string; c: string; shape: 'dot' | 'ring' | 'square' | 'bar' }> = {
   live: { label: 'Live', c: color.cyan, shape: 'dot' },

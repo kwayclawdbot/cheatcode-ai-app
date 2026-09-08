@@ -1,4 +1,5 @@
 import { BeltChip, Chip, KaiSays, MemberName, Panel, ScreenHead, StagedNote, Stack, Ticker, k } from './kit';
+import { isAvailable } from '@/sim/capabilities';
 import c from './learn.module.css';
 
 /* ── 1. Kai asks where you are ─────────────────────────────────────────── */
@@ -44,49 +45,63 @@ export function KaiIntro() {
   );
 }
 
-/* ── 2. the 7-day path ─────────────────────────────────────────────────── */
+/* ── 2. the path, as three steps ───────────────────────────────────────── */
 
-/** The path exactly as the app ships it — seven days, about five hours total. */
-const DAYS = [
-  { n: 1, title: 'Market Basics', meta: '4 lessons · 30 min', state: 'now' },
-  { n: 2, title: 'Read the Chart', meta: '5 lessons · 40 min', state: 'locked' },
-  { n: 3, title: 'Find the Setup', meta: '5 lessons · 45 min', state: 'locked' },
-  { n: 4, title: 'Build the Trade', meta: '5 lessons · 50 min', state: 'locked' },
-  { n: 5, title: 'Execute the Plan', meta: '5 lessons · 40 min', state: 'locked' },
-  { n: 6, title: 'Trade With Kai', meta: '4 lessons · 60 min', state: 'locked' },
-  { n: 7, title: 'Get Trade Ready', meta: '3 lessons · 60 min', state: 'locked' },
-] as const;
+/**
+ * THE PATH THE APP ACTUALLY SHIPS.
+ *
+ * This surface used to render "Zero to Trade Ready in 7 Days" over seven day
+ * rows, six of them locked. Audit F02 (P1) is that promise: one lesson of
+ * thirty-one is written, and a marketing page selling five and a half hours of
+ * curriculum against nine minutes of it is the gap a beginner cannot see.
+ *
+ * The app fixed its side first — `apps/mobile/src/features/training/path.ts`
+ * reframes the same curriculum as three steps with 02 and 03 marked "Coming
+ * next" — and this is the site agreeing with it rather than a second opinion.
+ * The state of each step comes from `sim/capabilities.ts`, so if step 02 is
+ * written the day after this comment, the row changes here and in the app from
+ * one edit.
+ *
+ * The seven days are not deleted anywhere; they are still the curriculum. They
+ * are just not the first thing a stranger is asked to believe.
+ */
+const STEPS = [
+  { n: '01', id: 'training_basics' as const, title: 'Market basics', meta: 'What you are looking at, and what you are actually buying.' },
+  { n: '02', id: 'training_read_chart' as const, title: 'Read a chart', meta: 'Up, down or sideways — and where price has reacted before.' },
+  { n: '03', id: 'training_build_plan' as const, title: 'Build a plan', meta: 'An entry, a stop where the idea is wrong, and a size that fits.' },
+];
 
-export function SevenDayPath() {
+export function PathThreeSteps() {
   return (
     <>
       <ScreenHead
-        title="Zero to Trade Ready in 7 Days"
-        sub="Seven days. About 5 hours total. Kai with you the whole way."
+        title="Three steps, one written"
+        sub="Step 01 is ready now. The other two are being written — you will see them the day they land."
       />
       <div className={c.pathHead}>
-        <span className={k.eyebrow}>Day 1 of 7</span>
+        <span className={k.eyebrow}>Step 01 of 3</span>
         <span className={c.pathProgress}>0%</span>
       </div>
       <div className={c.trainBar} aria-hidden="true">
         <span className={c.trainFill} style={{ width: '2%' }} />
       </div>
       <div className={c.days}>
-        {DAYS.map((d) => (
-          <div
-            key={d.n}
-            className={`${c.day} ${d.state === 'now' ? c.dayNow : ''} ${
-              d.state === 'locked' ? c.dayLocked : ''
-            }`}
-          >
-            <span className={c.dayNum}>{d.n}</span>
-            <span className={c.dayBody}>
-              <span className={c.dayTitle}>{d.title}</span>
-              <span className={c.dayMeta}>{d.meta}</span>
-            </span>
-            {d.state === 'now' ? <Chip tone="violet">Start</Chip> : null}
-          </div>
-        ))}
+        {STEPS.map((d) => {
+          const planned = !isAvailable(d.id);
+          return (
+            <div
+              key={d.n}
+              className={`${c.day} ${planned ? c.dayLocked : c.dayNow}`}
+            >
+              <span className={c.dayNum}>{d.n}</span>
+              <span className={c.dayBody}>
+                <span className={c.dayTitle}>{d.title}</span>
+                <span className={c.dayMeta}>{d.meta}</span>
+              </span>
+              <Chip tone={planned ? 'plain' : 'violet'}>{planned ? 'Coming next' : 'Start'}</Chip>
+            </div>
+          );
+        })}
       </div>
       <StagedNote>
         A walkthrough with staged data. Nothing here is a live quote.

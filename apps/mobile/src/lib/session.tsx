@@ -3,7 +3,18 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase, plainAuthError } from './supabase';
 import { env } from './env';
 import { fixtureProfile } from './fixtures';
-import type { Experience, FocusKey, GoalMode, Involvement, Profile, RiskAnswer, FundingChoice, StartAnswer } from './types';
+import type { Profile, RiskAnswer } from './types';
+import {
+  BALANCE_MAX,
+  BALANCE_MIN,
+  DEFAULT_BALANCE,
+  EMPTY_ANSWERS,
+  clampBalance,
+  isEmptyAnswers,
+} from '../features/onboarding/draft-codec';
+import { prefillFromIntent, type OnboardingAnswers } from '../features/onboarding/steps';
+import type { FunnelIntent } from '../features/onboarding/intent';
+import { clearDraft, readDraft, readIntent, writeDraft, writeIntent } from '../features/onboarding/storage';
 
 type AuthResult = { ok: boolean; error?: string; needsConfirmation?: boolean };
 
@@ -22,59 +33,71 @@ type SessionValue = {
 
 const Ctx = createContext<SessionValue | null>(null);
 
-/** Onboarding answers live here until POST /onboarding/complete accepts them. */
-export type OnboardingDraft = {
-  /**
-   * "Where are you right now?" — the first thing onboarding asks, because every
-   * screen after it is pitched differently depending on the answer. It sets the
-   * starting readiness stage (0042), pre-selects the mode on the goal screen,
-   * and decides which room is recommended. Null means not answered.
-   */
-  start_answer: StartAnswer | null;
-  goal_mode: GoalMode | null;
-  funding: FundingChoice | null;
-  risk_answer: RiskAnswer | null;
-  involvement: Involvement | null;
-  /** Round 4 "How much have you traded?" — drives Kai's voice, not just a label. */
-  experience: Experience;
-  /** Round 4 "What should Kai watch?" chips. */
-  focus: FocusKey[];
-  starting_balance: number;
-};
 /**
- * Practice money.
+ * Onboarding answers live here until POST /onboarding/complete accepts them —
+ * AND ON DISK, WHICH IS THE CHANGE.
  *
- * $10,000 is not a decoration — it is the schema trigger's own default for a new
- * paper account, and `POST /onboarding/complete` clamps whatever we send into
- * $1k–$100k. Starting the draft anywhere else meant a brand-new account was
- * created at $10,000 and then immediately lowered by onboarding: at $2,000, the
- * default 10%-per-position rule leaves $200 to work with, and the cheapest
- * seeded symbol is over $200. A new user could not place a single order.
+ * Audit F01 (P1) named this exact object: "the draft is in React state". It was
+ * a `useState` in this provider, so a phone call, a backgrounded app iOS chose
+ * to reclaim, a reload on Expo web, or a crash on any of the six screens ended
+ * signup and started it again from question one with every answer thrown away.
+ * The acceptance is "complete signup, close and reopen, resume the same step
+ * with the same choices", and none of the three halves of that were true.
+ *
+ * The shape, the validation and the disk are in `features/onboarding/` — free
+ * of React and (for the codec) of AsyncStorage, so the continuity test can
+ * round-trip them in Node. This provider does three things with them: load the
+ * right member's draft, persist every change, and keep the funnel INTENT in a
+ * separate place from the member's ANSWERS.
+ *
+ * THAT SEPARATION IS THE AUDIT'S, NOT A PREFERENCE. "Keep identity and intent
+ * separate until an account exists." The draft is keyed by user id; the intent
+ * is stored per device, holds nothing that identifies anybody, and is only ever
+ * allowed to prefill preferences — never the readiness placement. See
+ * `features/onboarding/steps.ts` → `prefillFromIntent`.
  */
-export const BALANCE_MIN = 1000;
-export const BALANCE_MAX = 100000;
-export const DEFAULT_BALANCE = 10000;
-export const BALANCE_CHOICES: number[] = [1000, 5000, 10000, 25000, 100000];
+export type OnboardingDraft = OnboardingAnswers;
 
-export function clampBalance(n: number): number {
-  if (!Number.isFinite(n)) return DEFAULT_BALANCE;
-  return Math.min(BALANCE_MAX, Math.max(BALANCE_MIN, Math.round(n)));
-}
+export { BALANCE_MIN, BALANCE_MAX, DEFAULT_BALANCE, clampBalance };
 
-const DEFAULT_DRAFT: OnboardingDraft = {
-  start_answer: null,
-  goal_mode: null, funding: null, risk_answer: null, involvement: null,
-  experience: 'new', focus: ['tech', 'ai'], starting_balance: DEFAULT_BALANCE,
+type DraftValue = {
+  draft: OnboardingDraft;
+  /**
+   * False until the disk has answered. A screen that renders before this is
+   * true would paint the empty draft and then jump to the restored one, which
+   * reads as the app having changed somebody's answer by itself — the same
+   * trap `features/community/last-room.ts` documents for the room memory.
+   */
+  ready: boolean;
+  set: (p: Partial<OnboardingDraft>) => void;
+  /** Signup finished. Clears the answers here and on the device. */
+  reset: () => void;
+  /** What the website funnel said, if anything. Never identity. */
+  intent: FunnelIntent | null;
+  /**
+   * Record an intent that just arrived — from a deep link, or from the claim
+   * route after sign-in. It prefills the preferences it implies, and it
+   * DELIBERATELY refuses to touch a draft somebody has already started: an
+   * answer a member gave outranks one a marketing page guessed.
+   */
+  adoptIntent: (i: FunnelIntent) => void;
 };
-
-type DraftValue = { draft: OnboardingDraft; set: (p: Partial<OnboardingDraft>) => void; reset: () => void };
 const DraftCtx = createContext<DraftValue | null>(null);
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(env.FIXTURES ? fixtureProfile : null);
-  const [draft, setDraft] = useState<OnboardingDraft>(DEFAULT_DRAFT);
+  const [draft, setDraft] = useState<OnboardingDraft>(EMPTY_ANSWERS);
+  const [draftReady, setDraftReady] = useState(false);
+  const [intent, setIntent] = useState<FunnelIntent | null>(null);
+  /**
+   * Whose draft is currently in state. A ref and not derived from `session`
+   * inside the persist effect, because the persist must never write one
+   * member's answers under another member's key during the frame after a
+   * sign-out — which is exactly what reading `session` there would do.
+   */
+  const draftUser = useRef<string | null>(null);
   const mounted = useRef(true);
 
   const loadProfile = useCallback(async (s: Session | null) => {
@@ -115,6 +138,52 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     });
     return () => { mounted.current = false; sub.subscription.unsubscribe(); };
   }, [loadProfile]);
+
+  /**
+   * LOAD. One member's answers, plus whatever the website told this device.
+   *
+   * Re-runs when the account changes, which covers the two real cases: the
+   * first read after a cold start, and a second account signing in on the same
+   * phone. `ready` goes false first so no screen paints the empty draft as if
+   * it were an answer.
+   */
+  useEffect(() => {
+    const userId = session?.user.id ?? null;
+    draftUser.current = userId;
+    let alive = true;
+    setDraftReady(false);
+    void (async () => {
+      const [storedIntent, stored] = await Promise.all([
+        readIntent(),
+        userId ? readDraft(userId) : Promise.resolve(null),
+      ]);
+      if (!alive) return;
+      setIntent(storedIntent);
+      // A stored draft wins outright. The intent only fills a draft that does
+      // not exist yet — and even then only the preferences it is allowed to
+      // touch, never the readiness placement (F01: do not silently promote
+      // readiness from a marketing persona).
+      setDraft(stored ?? { ...EMPTY_ANSWERS, ...(storedIntent ? prefillFromIntent(storedIntent) : {}) });
+      setDraftReady(true);
+    })();
+    return () => { alive = false; };
+  }, [session?.user.id]);
+
+  /**
+   * PERSIST. Every change, immediately, and never awaited by a screen.
+   *
+   * An empty draft DELETES the key rather than storing it: an empty draft reads
+   * back identically to no draft, so keeping it would be storing a fact about
+   * somebody that says nothing — and it is what makes `reset()` after a
+   * completed signup actually clear the device.
+   */
+  useEffect(() => {
+    if (!draftReady) return;
+    const userId = draftUser.current;
+    if (!userId) return;
+    if (isEmptyAnswers(draft)) { void clearDraft(userId); return; }
+    void writeDraft(userId, draft);
+  }, [draft, draftReady]);
 
   const value = useMemo<SessionValue>(() => ({
     loading,
@@ -179,9 +248,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const draftValue = useMemo<DraftValue>(() => ({
     draft,
+    ready: draftReady,
     set: (p) => setDraft((d) => ({ ...d, ...p })),
-    reset: () => setDraft(DEFAULT_DRAFT),
-  }), [draft]);
+    reset: () => setDraft(EMPTY_ANSWERS),
+    intent,
+    adoptIntent: (i) => {
+      setIntent(i);
+      void writeIntent(i);
+      // An answer somebody GAVE outranks one a marketing page guessed, always.
+      // Without this, a member who had already picked their placement and was
+      // sitting on step 2 would watch the goal screen change under them the
+      // moment a slow claim call came back.
+      setDraft((d) => (d.start_answer || d.confirmed_goal ? d : { ...d, ...prefillFromIntent(i) }));
+    },
+  }), [draft, draftReady, intent]);
 
   return (
     <Ctx.Provider value={value}>

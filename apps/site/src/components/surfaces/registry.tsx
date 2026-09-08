@@ -11,7 +11,7 @@ import * as P from './pro';
 const SURFACES: Record<PathId, Record<string, ComponentType>> = {
   learn: {
     'kai-intro': L.KaiIntro,
-    path: L.SevenDayPath,
+    path: L.PathThreeSteps,
     lesson: L.Lesson,
     pick: L.BeginnerPick,
     practice: L.Practice,

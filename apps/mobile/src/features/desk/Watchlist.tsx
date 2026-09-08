@@ -28,12 +28,15 @@ import { env } from '../../lib/env';
 import { fixtureDeskWatchlist, fixtureDeskWatchlistEmpty } from '../../lib/fixtures';
 import { useResource } from '../../lib/useResource';
 import { useSession } from '../../lib/session';
-import { GradeMark, StateChip, LinkRow, px } from './ui';
+import { GradeMark, StateChip, WatchStateHelp, px } from './ui';
+import { IDEA_GRADE_MEANS, horizonPlain } from './plain';
+import { Sheet } from '../../ui/Sheet';
+import { CapabilityNotice } from '../../ui/CapabilityState';
 import { FreshnessMark } from '../../ui/FreshnessMark';
 import { LevelTrack } from './instruments';
 import { ModeControl } from '../home/ModeSheet';
 import { secondTab } from '../nav/second-tab';
-import type { DeskWatchRow, DeskWatchlistResponse } from '@shared/desk';
+import type { DeskWatchRow, DeskWatchlistResponse, WatchState } from '@shared/desk';
 import type { GoalMode } from '../../lib/types';
 
 export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack' }) {
@@ -66,6 +69,8 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [added, setAdded] = useState<string | null>(null);
+  /** Which state chip was tapped. Null closes the explainer. */
+  const [explain, setExplain] = useState<WatchState | null>(null);
 
   const rows = res.data?.rows ?? [];
   const { picks, manual } = useMemo(() => ({
@@ -117,10 +122,26 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
           {onTab ? <ModeControl mode={mode} testID="desk-mode-chip" /> : null}
         </View>
 
+        {/*
+          THE TWO MARKS, NAMED BEFORE THEY APPEAR — audit F15.
+
+          This paragraph used to say "the chip is what the chart is doing, the
+          letter is how good the idea is". Both halves were true and neither was
+          usable: the chip printed `armed`, and "the letter" was a bare A− that
+          a member has already met on an alert card meaning something else
+          entirely. So the chip prints English now, the grade says the words
+          "Idea grade", and this line says what an idea grade IS rather than
+          what it is not.
+        */}
         <T size={14} lh={20} c={color.muted} style={{ marginTop: space.x10, maxWidth: 460 }}>
-          Every name the desk argued for, plus anything you added. The chip is
-          what the chart is doing. The letter is how good the idea is — which is
-          not a prediction about this quarter.
+          Every company the desk argued for, plus anything you added. Each one
+          has an <T size={14} lh={20} weight="semibold" c={color.text}>idea grade</T> — how
+          good the argument for the company is over the next few quarters — and a
+          line saying what its share price is doing. Tap either to have it
+          explained.
+        </T>
+        <T size={13} lh={19} c={color.dim} style={{ marginTop: space.x6, maxWidth: 460 }} testID="desk-grade-means">
+          {IDEA_GRADE_MEANS}
         </T>
 
         {onTab ? (
@@ -179,7 +200,22 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
             <ActivityIndicator color={color.violet} />
           </View>
         ) : res.error ? (
-          <T size={14} c={color.red} style={{ marginTop: space.x24 }}>{res.error}</T>
+          /*
+            A FAILED READ IS NOT AN EMPTY DESK — audit F18's rule, applied here
+            because this branch and the empty one sit next to each other and a
+            line of red text is not a state. A stack that never shipped the
+            route gets the same notice without a retry: asking again cannot
+            deploy an endpoint.
+          */
+          <View style={{ marginTop: space.x24 }}>
+            <CapabilityNotice
+              state="failed"
+              plain={res.error}
+              detail="Nothing here was checked and found empty."
+              onRetry={res.notAvailable ? undefined : res.reload}
+              testID="desk-failed"
+            />
+          </View>
         ) : rows.length === 0 ? (
           <Empty onThemes={() => router.push('/desk/themes')} onKai={() => router.push('/home')} />
         ) : (
@@ -189,6 +225,7 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
               sub="A pick is on the list from the day it is made until its horizon runs out."
               rows={picks}
               onPick={(t) => router.push(`/desk/pick/${t}`)}
+              onExplainState={setExplain}
             />
             {manual.length > 0 && (
               <Group
@@ -196,6 +233,7 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
                 sub="No written argument behind them yet — just a chart being watched."
                 rows={manual}
                 onPick={(t) => router.push(`/desk/pick/${t}`)}
+                onExplainState={setExplain}
               />
             )}
           </>
@@ -226,12 +264,142 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
           </T>
         ) : null}
       </ScrollView>
+
+      {/*
+        EACH WATCH STATE, EXPLAINED ON DEMAND — audit F15 asks for exactly this.
+        All nine are listed rather than only the one tapped, because the useful
+        question is "what are the possibilities"; the one tapped is highlighted
+        so the answer to "what does mine mean" is still one glance.
+      */}
+      <Sheet
+        visible={explain !== null}
+        onClose={() => setExplain(null)}
+        title="What the share price is doing"
+        testID="desk-state-sheet"
+      >
+        <WatchStateHelp highlight={explain ?? undefined} />
+      </Sheet>
     </Screen>
   );
 }
 
-function Group({ title, sub, rows, onPick }: {
-  title: string; sub: string; rows: DeskWatchRow[]; onPick: (ticker: string) => void;
+/**
+ * ONE COMPANY, LED BY THE COMPANY — audit F15.
+ *
+ * The row this replaces put the TICKER at 16 bold and its second line was the
+ * theme slug with the hyphens taken out ("humanoid robotics"), falling back to
+ * the company name only when there was no theme. So the name of the business
+ * was the thing most likely to be missing from a row about a business, and
+ * everything a beginner could actually use — what it is, why it is here, how
+ * long for — was either absent or in the desk's own shorthand.
+ *
+ * The order now is the order the board prints: who it is, what price is doing,
+ * why it is on the desk, how long the desk is giving it, and only then the
+ * state of the chart — which is a tappable explanation rather than a word.
+ *
+ * WHAT IS STILL NOT HERE, ON PURPOSE: a sentence about what the company does.
+ * `/desk/watchlist` does not carry one — the write-up does, and the pick screen
+ * one tap away leads with it. Inventing a description on this row from the
+ * theme and the ticker is exactly the fabrication the desk exists not to do.
+ */
+function WatchRow({ row, onPick, onExplainState }: {
+  row: DeskWatchRow; onPick: () => void; onExplainState: (state: WatchState) => void;
+}) {
+  const horizon = horizonPlain(row.horizon);
+  const theme = row.theme ? row.theme.replace(/-/g, ' ') : null;
+  return (
+    <View style={{ gap: space.x8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x12 }}>
+        <TickerMark symbol={row.ticker} size={34} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          {/* The NAME first, at a size somebody reads, with the ticker under
+              it — a person who chose investing knows "Apple", not "AAPL". */}
+          <T size={16} weight="bold" c={color.text} numberOfLines={2}>
+            {row.company ?? row.ticker}
+          </T>
+          <Num size={13} c={color.dim} style={{ marginTop: space.x2 }}>{row.ticker}</Num>
+        </View>
+        <View style={{ alignItems: 'flex-end', gap: space.x4 }}>
+          <Num size={17} weight="semibold" c={color.cyan}>{px(row.price)}</Num>
+          {/* The desk used to paint this number in market cyan with nothing
+              beside it, and it was whatever the brain last wrote — which could
+              be an hour or a fortnight ago. The mark says which, and when. */}
+          {row.quote ? (
+            <FreshnessMark
+              freshness={row.quote.freshness ?? 'unknown'}
+              delayReason={row.quote.delay_reason}
+              at={row.quote.source_ts}
+              size={10}
+              testID={`desk-freshness-${row.ticker}`}
+            />
+          ) : null}
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.x8 }}>
+        <GradeMark grade={row.grade} size={14} label testID={`desk-grade-${row.ticker}`} />
+        <StateChip
+          state={row.state}
+          onExplain={() => onExplainState(row.state)}
+          testID={`desk-state-${row.ticker}`}
+        />
+      </View>
+
+      {/* WHY IT IS ON THE DESK. The theme is the desk's own answer and it is
+          printed as one, rather than as a caption under the ticker where it
+          read like a category. A hand-added name says what it is instead. */}
+      <T size={13} lh={19} c={color.muted} testID={`desk-why-${row.ticker}`}>
+        {row.source === 'manual'
+          ? 'You added this one. There is no written argument behind it yet — the desk is only watching the chart.'
+          : theme
+          ? `On the desk because of its ${theme} theme.`
+          : 'The desk wrote an argument for this one. Open it to read why.'}
+      </T>
+
+      <T size={12} c={horizon.known ? color.muted : color.dim} testID={`desk-horizon-${row.ticker}`}>
+        {horizon.text}
+      </T>
+
+      {/* Where price sits between the level that kills it and the level that
+          arms it. Drawn only when the desk wrote both down — half a track
+          would be a picture of a guess. */}
+      <LevelTrack price={row.price} trigger={row.triggerPrice} invalidation={row.invalidation} />
+
+      <Pressable
+        onPress={onPick}
+        accessibilityRole="button"
+        accessibilityLabel={`Understand ${row.company ?? row.ticker}`}
+        accessibilityHint="Opens what the company does, why it is being watched and what could change"
+        testID={`desk-explore-${row.ticker}`}
+        style={({ pressed }) => ({
+          minHeight: 40, alignSelf: 'flex-start', paddingHorizontal: space.x14,
+          alignItems: 'center', justifyContent: 'center',
+          borderRadius: radius.pill, borderWidth: 1, borderColor: alpha.volt55,
+          backgroundColor: alpha.volt10, opacity: pressed ? 0.7 : 1,
+        })}
+      >
+        <T size={13} weight="semibold" c={color.volt}>
+          {`Understand ${row.ticker}`}
+        </T>
+      </Pressable>
+    </View>
+  );
+}
+
+/**
+ * THE ROW IS NOT A BUTTON ANY MORE, AND IT CANNOT BE.
+ *
+ * It used to be one `LinkRow` — the whole row a single tap target. It now
+ * carries TWO actions of its own (explain this state, understand this company)
+ * and on web react-native renders `accessibilityRole="button"` as a real
+ * `<button>`, which may not contain another. The same rule already governs the
+ * community call rows on the alerts board; the answer there and here is the
+ * same: the row is a container, and the things inside it that do something are
+ * the things you press.
+ */
+function Group({ title, sub, rows, onPick, onExplainState }: {
+  title: string; sub: string; rows: DeskWatchRow[];
+  onPick: (ticker: string) => void; onExplainState: (state: WatchState) => void;
 }) {
   if (!rows.length) return null;
   return (
@@ -240,41 +408,17 @@ function Group({ title, sub, rows, onPick }: {
       <T size={13} lh={19} c={color.dim} style={{ marginTop: space.x4 }}>{sub}</T>
       <View style={{ marginTop: space.x8 }}>
         {rows.map((r, i) => (
-          <LinkRow key={r.ticker} onPress={() => onPick(r.ticker)} last={i === rows.length - 1}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x12 }}>
-              <TickerMark symbol={r.ticker} size={30} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x8 }}>
-                  <Num size={16} weight="bold" c={color.text}>{r.ticker}</Num>
-                  <GradeMark grade={r.grade} size={13} />
-                </View>
-                <T size={12} c={color.dim} numberOfLines={1} style={{ marginTop: space.x2 }}>
-                  {r.theme ? r.theme.replace(/-/g, ' ') : r.company ?? '—'}
-                </T>
-              </View>
-              <View style={{ alignItems: 'flex-end', gap: space.x6 }}>
-                <Num size={15} weight="semibold" c={color.cyan}>{px(r.price)}</Num>
-                {/* The desk used to paint this number in market cyan with
-                    nothing beside it, and it was whatever the brain last
-                    wrote — which could be an hour or a fortnight ago. The
-                    mark says which, and when. */}
-                {r.quote ? (
-                  <FreshnessMark
-                    freshness={r.quote.freshness ?? 'unknown'}
-                    delayReason={r.quote.delay_reason}
-                    at={r.quote.source_ts}
-                    size={10}
-                    testID={`desk-freshness-${r.ticker}`}
-                  />
-                ) : null}
-                <StateChip state={r.state} />
-                {/* Where price sits between the level that kills it and the
-                    level that arms it. Drawn only when the desk wrote both
-                    down — half a track would be a picture of a guess. */}
-                <LevelTrack price={r.price} trigger={r.triggerPrice} invalidation={r.invalidation} />
-              </View>
-            </View>
-          </LinkRow>
+          <View
+            key={r.ticker}
+            testID={`desk-row-${r.ticker}`}
+            style={{
+              paddingVertical: space.x14,
+              borderBottomWidth: i === rows.length - 1 ? 0 : 1,
+              borderBottomColor: alpha.ivory08,
+            }}
+          >
+            <WatchRow row={r} onPick={() => onPick(r.ticker)} onExplainState={onExplainState} />
+          </View>
         ))}
       </View>
     </View>

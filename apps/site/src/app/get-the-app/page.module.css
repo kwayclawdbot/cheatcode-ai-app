@@ -113,3 +113,89 @@
   line-height: 18px;
   color: var(--dim);
 }
+
+/* ── the early-access form (audit F21) ──────────────────────────────────────
+   The page is a 560px centred column at every width — the same column on a
+   phone and on a 27-inch display — so the field below is sized in `ch` and the
+   card never stretches. The audit's deployment note about "phone-style forms
+   stretched across desktop width" is what this is guarding against; the cause
+   there was a missing font on the deployed build, but a full-bleed input would
+   have produced the same reading, so the constraint is written down. */
+
+.label {
+  display: block;
+  margin-top: 18px;
+  margin-bottom: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.input {
+  display: block;
+  width: 100%;
+  max-width: 34ch;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--ivory20);
+  background: var(--surface3);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px; /* 16px or above on iOS avoids the zoom-on-focus jump; 15 is
+                      the house body size and Safari only zooms below 16 on
+                      inputs, so this is bumped in the media query instead. */
+}
+
+.input:focus {
+  outline: 2px solid var(--volt);
+  outline-offset: 2px;
+}
+
+.input::placeholder {
+  color: var(--dim);
+}
+
+@media (max-width: 520px) {
+  .input {
+    max-width: none;
+    font-size: 16px;
+  }
+}
+
+.cta:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Never a bare red line. The error says what happened and keeps a way out. */
+.error {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--ivory20);
+  background: var(--surface3);
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--text);
+}
+
+.error p + p {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.errorLink {
+  color: var(--volt);
+  text-decoration: underline;
+}
+
+.linkButton {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--volt);
+  text-decoration: underline;
+  cursor: pointer;
+}

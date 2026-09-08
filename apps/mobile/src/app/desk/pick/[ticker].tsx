@@ -38,6 +38,8 @@ import {
   PotentialMove, Provenance, Scoreboard, Strip, ThemeGauges,
 } from '../../../features/desk/instruments';
 import { ThesisReader } from '../../../features/desk/ThesisReader';
+// The three plain-English rows the board leads a company with — audit F15.
+import { UnderstandBusiness } from '../../../features/desk/Understand';
 import { settlesOn, type DeskPickResponse } from '@shared/desk';
 
 export default function DeskPickDetail() {
@@ -87,6 +89,16 @@ export default function DeskPickDetail() {
             {pick.pickDate && <T size={11} c={color.dim}>written {pick.pickDate}</T>}
           </View>
         </View>
+
+        {/*
+          ── understand the business, FIRST ──────────────────────
+          Audit F15. What it does, why it is being watched, what could change,
+          how long for, and the grade with the word "idea" attached to it —
+          before any instrument, because a person who chose long-term investing
+          starts at the company and not at a six-step scale. Every line is
+          quoted from the write-up below; see `features/desk/plain.ts`.
+        */}
+        <UnderstandBusiness pick={pick} />
 
         {/* ── the idea in a breath ─────────────────────────────── */}
         {pick.hypothesis ? (

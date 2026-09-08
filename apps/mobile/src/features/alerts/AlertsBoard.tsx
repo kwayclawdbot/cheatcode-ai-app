@@ -8,6 +8,9 @@ import { Button } from '../../ui/Button';
 import { Sheet } from '../../ui/Sheet';
 import { ScreenLoading } from '../../ui/Loading';
 import { Num } from '../../ui/Text';
+// The six ways a surface can have nothing to show — audit F18, one vocabulary
+// for the whole app rather than a private empty state per board.
+import { CapabilityNotice, capabilityFor, updatedAtLabel } from '../../ui/CapabilityState';
 import { alpha, color, radius } from '../../ui/tokens';
 import { env } from '../../lib/env';
 import { AlertsEmpty, HistoryAlertRow, StandardAlertCard } from './AlertCard';
@@ -182,7 +185,7 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
    * answer to the old question — a day trader looking at swing picks until he
    * happened to change tab. Passing it here is what makes the board re-ask.
    */
-  const { data, loading, error, isFixture, reload, tab, setTab } = useAlertsRound4(
+  const { data, loading, error, isFixture, reload, tab, setTab, checkedAt } = useAlertsRound4(
     mode,
     env.FIXTURES && params.fixture === 'empty' ? 'empty' : 'default',
   );
@@ -252,6 +255,49 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
       ? [publishCall, lookUp]
       : [askKai];
 
+  /**
+   * QUIET IS NOT THE SAME AS UNANSWERED — audit F18.
+   *
+   * This board used to render the empty state whenever the list was short and
+   * print the error, if there was one, as a grey line UNDERNEATH it. So a
+   * failed load looked exactly like a verified quiet day plus a footnote, which
+   * is the one confusion the finding says must not be possible: "a failed load
+   * cannot be mistaken for a verified empty list."
+   *
+   * `capabilityFor` is the shared decision (`ui/CapabilityState.tsx`). Three of
+   * its inputs are the whole argument:
+   *
+   *   · `verified` is TRUE only when a payload actually arrived and the last
+   *     request did not fail. Nothing else may produce a "Nothing here" screen.
+   *   · `failed` with data in hand is STALE, not failed — a poll that missed
+   *     must not throw away cards that were true when they landed.
+   *   · Community is asked separately because it is a separate route. Its
+   *     `notAvailable` is a stack that never shipped the endpoint, which is a
+   *     real answer about the service and not an empty list of calls.
+   */
+  const visible: AlertCard[] | CommunityCall[] =
+    tab === 'history' ? (data?.history ?? []) : tab === 'community' ? callList : activeList;
+  const answered = tab === 'community' ? calls.data != null : !!data;
+  const failed = tab === 'community' ? !!calls.error || calls.notAvailable : !!error;
+  const capability = capabilityFor({
+    hasData: answered && visible.length > 0,
+    loading: tab === 'community' ? calls.loading : loading,
+    failed,
+    verified: answered && !failed,
+    empty: visible.length === 0,
+  });
+
+  /** The sentence is always this board's, never the shared component's. */
+  const failedPlain =
+    tab === 'community'
+      ? calls.notAvailable
+        ? "Member calls aren't live on this stack yet."
+        : (calls.error ?? 'I could not read what members have called.')
+      : (error ?? 'I could not read your alerts just now.');
+  const retry = tab === 'community' ? calls.reload : reload;
+  /* A stack that has not shipped the route cannot be retried into existence. */
+  const onRetry = tab === 'community' && calls.notAvailable ? undefined : retry;
+
   return (
     <Screen variant="corner" layout="tab" testID="screen-alerts">
       <View style={{ paddingTop: 8, paddingHorizontal: 16, paddingBottom: 6, gap: 10 }}>
@@ -293,48 +339,56 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
         keyboardShouldPersistTaps="handled"
         testID={`alerts-list-${tab}`}
       >
-        {tab === 'history' ? (
-          data?.history.length ? (
-            data.history.map((a) => <HistoryAlertRow key={a.id} alert={a} />)
-          ) : (
-            <AlertsEmpty
-              copy="Nothing has finished yet. Executed, closed and invalidated alerts land here, and the record is worth more than the list."
-              offers={offers}
-            />
-          )
-        ) : tab === 'community' ? (
-          callList.length ? (
-            callList.map((c) => <BoardCallRow key={c.id} call={c} />)
-          ) : (
-            <AlertsEmpty
-              // NOT the alerts payload's `empty_copy`. That sentence is about
-              // what Kai is or is not seeing, and this list is not Kai's.
-              copy={
-                calls.notAvailable
-                  ? "Member calls aren't live on this stack yet."
-                  : 'Nobody on this desk has published a call yet. A call is a member saying what they are doing and letting it be checked later — yours can be the first.'
-              }
-              offers={offers}
-            />
-          )
-        ) : activeList.length ? (
-          activeList.map((a) => <StandardAlertCard key={a.id} alert={a} />)
-        ) : (
+        {capability === 'failed' ? (
+          <CapabilityNotice
+            state="failed"
+            plain={failedPlain}
+            detail="Nothing here was checked and found empty — the request did not come back."
+            onRetry={onRetry}
+            testID="alerts-failed"
+          />
+        ) : capability === 'loading' ? (
+          <CapabilityNotice state="loading" plain="Checking what Kai is watching…" testID="alerts-loading" />
+        ) : capability === 'quiet' ? (
           <AlertsEmpty
-            // Active takes the server's sentence when there is one. The server
-            // is the half that knows which mode the board is in, and an empty
-            // Active tab means something different in Day Trade than it does in
-            // Swing. The string below is the fallback for an offline or fixture
-            // render, not a second opinion.
-            copy={data?.empty_copy ?? "Nothing needs a decision right now. Kai moves an alert here the moment a verified event happens — no alert is better than a made-up one."}
+            copy={
+              tab === 'history'
+                ? 'Nothing has finished yet. Executed, closed and invalidated alerts land here, and the record is worth more than the list.'
+                : tab === 'community'
+                // NOT the alerts payload's `empty_copy`. That sentence is about
+                // what Kai is or is not seeing, and this list is not Kai's.
+                ? 'Nobody on this desk has published a call yet. A call is a member saying what they are doing and letting it be checked later — yours can be the first.'
+                // Active takes the server's sentence when there is one. The
+                // server is the half that knows which mode the board is in, and
+                // an empty Active tab means something different in Day Trade
+                // than it does in Swing. The string below is the fallback for an
+                // offline or fixture render, not a second opinion.
+                : data?.empty_copy ?? 'Nothing needs a decision right now. Kai moves an alert here the moment a verified event happens — no alert is better than a made-up one.'
+            }
             offers={offers}
           />
+        ) : (
+          <>
+            {/* Cards that were true when they landed, and a refresh that did
+                not. Both facts on screen, neither pretending to be the other. */}
+            {capability === 'stale' ? (
+              <CapabilityNotice
+                state="stale"
+                plain={failedPlain}
+                detail="These are the cards from the last answer that arrived."
+                at={tab === 'community' ? null : updatedAtLabel(checkedAt, 'Last checked')}
+                onRetry={onRetry}
+                testID="alerts-stale"
+              />
+            ) : null}
+            {tab === 'history'
+              ? (data?.history ?? []).map((a) => <HistoryAlertRow key={a.id} alert={a} />)
+              : tab === 'community'
+              ? callList.map((c) => <BoardCallRow key={c.id} call={c} />)
+              : activeList.map((a) => <StandardAlertCard key={a.id} alert={a} />)}
+          </>
         )}
 
-        {tab === 'community' && calls.error ? (
-          <T size={11} c={color.muted} align="center">{calls.error}</T>
-        ) : null}
-        {error ? <T size={11} c={color.muted} align="center">{error}</T> : null}
         {actions.error ? <T size={11} c={color.red} align="center">{actions.error}</T> : null}
         {isFixture ? <T size={10} c={color.dim} align="center">Sample alerts — the alerts service is not connected here.</T> : null}
       </ScrollView>

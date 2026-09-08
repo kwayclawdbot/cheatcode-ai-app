@@ -14,13 +14,17 @@ import { Composer } from '../../ui/Composer';
 import { KeyboardDock } from '../../ui/KeyboardDock';
 import { alpha, color, radius } from '../../ui/tokens';
 import {
-  AlsoWatching, ConversationsDrawer, Wakeup, useConversations, useHomeV5, useWakeup,
+  AlsoWatching, ConversationsDrawer, PriorityObject, ReviewWatchlist, StandingCard, Wakeup,
+  openingFor, useConversations, useHomeV5, usePriorityCandles, useWakeup, withBriefingOffer,
 } from '../../features/home';
 import type { HomeFixture, WakeDirection } from '../../features/home';
+import { OfflineBanner, SavedPlanCard, recheck, useConnectivity, useDraft } from '../../features/offline';
+import { CapabilityMark } from '../../ui/CapabilityState';
+import { Button } from '../../ui/Button';
 import { DEFAULT_MODE } from '../../features/nav/second-tab';
 import { useSession } from '../../lib/session';
 import { useKaiWall } from '../../lib/useKai';
-import type { ThreadTarget } from '../../lib/kai-continuity';
+import type { FailedTurn, ThreadTarget } from '../../lib/kai-continuity';
 import { env } from '../../lib/env';
 import { useMe } from '../../features/account/useAccount';
 import { CreditStrip } from '../../features/account/credit-instruments';
@@ -78,6 +82,32 @@ const NewThread = ({ onPress }: { onPress: () => void }) => (
  * the Account board), or is one tap behind a direction Kai offers (the report,
  * the rest of the watchlist, the symbol itself). Nothing was deleted from the
  * product; it stopped being furniture.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WAVE 2 — THREE THINGS, ALL OF THEM ABOUT WHAT COMES FIRST
+ * ─────────────────────────────────────────────────────────────────────────────
+ * 1. THE OPENING OBJECT IS TOO LOW (audit F03). Kai's message was greeting +
+ *    market state + lead + evidence + aside + question before anything to do.
+ *    It is now greeting + one line + THE ACTION — a lesson for a beginner, a
+ *    setup or a position for a trader, the standing when there is neither —
+ *    and the prose is behind "Read the briefing". `openingFor` holds that
+ *    argument; `withBriefingOffer` guarantees the prose stays reachable.
+ *
+ * 2. QUIET IS NOW A FINDING, NOT AN ABSENCE (audit F18). The payload carries
+ *    `standing`: what the server actually checked and whether every read
+ *    answered. A morning where nothing is happening and a morning where the
+ *    positions read failed no longer look the same. `StandingCard` draws the
+ *    difference and refuses to say "your watchlist is up to date" unless the
+ *    server proved it.
+ *
+ * 3. LOSING THE NETWORK IS A STATE, NOT AN ERROR. `useConnectivity` answers
+ *    the question `api.available()` never did, the last good payload is
+ *    remembered with the instant it was fetched, and the saved plan's levels
+ *    stay readable under a banner that says exactly how old they are.
+ *
+ * THE KAI LANE'S WORK IS UNTOUCHED. The thread is still an explicit input to
+ * `useKaiWall`, the wall still owns the conversation, and the composer dock is
+ * where it was. Nothing here reaches into any of that.
  */
 export default function Home() {
   const { profile, session, refreshProfile } = useSession();
@@ -86,8 +116,9 @@ export default function Home() {
   const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? DEFAULT_MODE;
 
   /**
-   * What this member meets first (0042). Ordering only — Home draws the same
-   * objects for everybody, and which one is at the top is the whole change.
+   * What this member meets first (0042). `homeOrderFor` still decides which
+   * side of the wall the training object sits on for members who do NOT open
+   * with it; `openingFor` decides who opens with it at all (audit F03).
    * The "Today's Beginner Pick" object the funnel note describes is a separate
    * lane with its own data behind it and is not built here.
    */
@@ -98,13 +129,43 @@ export default function Home() {
   // ordering above change by itself.
   useStageEvolution(refreshProfile);
 
+  /** The network, answered properly for the first time. See `features/offline`. */
+  const { online } = useConnectivity();
+
   /** Fixtures preview only — lets the owner and Playwright see the quiet day. */
   const params = useLocalSearchParams<{ fixture?: string; credits?: string; ask?: string }>();
   const fixture: HomeFixture =
     env.FIXTURES && (params.fixture === 'quiet' || params.fixture === 'down') ? params.fixture : 'default';
 
   const home = useHomeV5(mode, fixture);
-  const { data, error, isFixture } = home;
+  const { data, error, isFixture, remembered } = home;
+
+  /**
+   * WHAT THE SCREEN IS ACTUALLY DRAWING, AND WHERE IT CAME FROM.
+   *
+   * `data` is the server's answer. `remembered` is the last one it gave, with
+   * the instant it gave it. They are never merged: `shown` is one or the other
+   * and `fetchedAt` is non-null exactly when it is the remembered one, which is
+   * what makes "Offline · Last updated 8:42 AM" a fact rather than a decoration.
+   */
+  const shown = data ?? remembered?.value ?? null;
+  const fetchedAt = data ? null : (remembered?.fetchedAt ?? null);
+  /**
+   * A REMEMBERED STANDING IS NOT A STANDING. "Nothing needs a decision, last
+   * checked 8:42" is a claim about a check that happened before the connection
+   * dropped, and re-drawing it now would present an old all-clear as a current
+   * one — the same mistake as a cached price under a live label. When we are
+   * showing remembered data the banner and the saved plan carry the story
+   * instead, and they say how old it is.
+   */
+  const standing = fetchedAt ? null : (shown?.standing ?? null);
+
+  /**
+   * The opening object (audit F03): a lesson for beginners, a setup or a
+   * position for traders, the standing when there is neither.
+   */
+  const opening = openingFor({ stage: profile?.stage, mode, hasPriority: !!shown?.priority });
+  const priorityCandles = usePriorityCandles(shown?.priority?.symbol, shown?.priority?.candles ?? []);
   const threads = useConversations();
   const [threadsOpen, setThreadsOpen] = useState(false);
   /** Which conversation the workspace is showing. 'today' is the one Kai woke into. */
@@ -175,7 +236,7 @@ export default function Home() {
 
   const {
     items, send, append, stop, retry, clearFailure,
-    streaming, loadingHistory, failed, suggestions, credits, setCredits,
+    streaming, loadingHistory, failed: liveFailure, suggestions, credits, setCredits,
   } = useKaiWall(mode, seed, target);
 
   /**
@@ -195,14 +256,56 @@ export default function Home() {
   }, [askText, thread.kind]);
 
   /**
-   * A failed turn's words go back into the composer. The nonce is what makes
-   * the SAME question restorable twice — a second failure of it must not be a
-   * no-op for the field.
+   * THEY ALSO SURVIVE THE APP CLOSING (board 07, "Draft saved").
+   *
+   * The Kai lane made a failed turn's words come back into the field; they
+   * still died with the screen. `useDraft` writes them to storage the moment a
+   * turn fails and hands them back on the next open.
+   */
+  const drafts = useDraft(session?.user?.id ?? profile?.user_id ?? 'anon', `kai.${mode}`);
+  useEffect(() => {
+    if (liveFailure?.restore && liveFailure.text.trim()) drafts.save(liveFailure.text);
+    // `drafts` is deliberately not a dependency: including it re-runs this on
+    // every storage state change, which would rewrite the record on its own
+    // restore.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveFailure]);
+
+  /**
+   * A SAVED DRAFT *IS* AN UNSENT TURN, SO IT ARRIVES THROUGH THE SAME DOOR.
+   *
+   * The alternative was a second channel into the composer, and two sources
+   * fighting over one `draft` prop is how a field ends up with the wrong words
+   * in it. A turn that failed and a turn that was never sent are the same
+   * situation one app-restart apart, so the stored copy is shaped as the
+   * `FailedTurn` it came from and `failed` is the two of them, live first.
+   *
+   * `generation: -1` never matches a live thread generation, which is exactly
+   * right: `retry()` resends the turn the WALL is holding, and the wall is
+   * holding nothing after a restart. So the recovery footer below stays keyed
+   * to `liveFailure` — a retry button that cannot retry would be worse than no
+   * button — and the restored words get the honest "Draft saved" note instead.
+   */
+  const savedTurn = useMemo<FailedTurn | null>(
+    () => (!liveFailure && drafts.restored && drafts.draft.trim()
+      ? { generation: -1, text: drafts.draft, plain: 'Saved from last time.', restore: true }
+      : null),
+    [liveFailure, drafts.restored, drafts.draft],
+  );
+  const failed = liveFailure ?? savedTurn;
+
+  /**
+   * The words go back into the composer. The nonce is what makes the SAME
+   * question restorable twice — a second failure of it must not be a no-op for
+   * the field, and neither must a restore after a retry.
    */
   const [draftNonce, setDraftNonce] = useState(0);
   useEffect(() => { if (failed?.restore) setDraftNonce((n) => n + 1); }, [failed]);
-  /** Retry sends the restored words, so the field must not keep a copy. */
-  const sendAgain = useCallback(() => { retry(); setDraftNonce((n) => n + 1); }, [retry]);
+
+  /** Retry sends the restored words, so neither the field nor storage keeps a copy. */
+  const sendAgain = useCallback(() => { retry(); setDraftNonce((n) => n + 1); drafts.clear(); }, [retry, drafts]);
+  /** A question that got out is no longer a draft. */
+  const sendAndClear = useCallback((text: string) => { drafts.clear(); void send(text); }, [drafts, send]);
 
   /**
    * THE BALANCE, SEEDED ONCE AND THEN LIVE.
@@ -245,28 +348,57 @@ export default function Home() {
   const onDirection = useCallback((d: WakeDirection) => {
     setUsed((u) => (u.includes(d.id) ? u : [...u, d.id]));
     if (d.kind === 'route') { router.push(d.route as never); return; }
-    if (d.kind === 'retry') { wake.clear(); home.reload(); return; }
-    if (d.kind === 'briefing' && data?.briefing) {
-      append([
-        { kind: 'kai_text', id: 'wake-brief-note', text: 'The full report, as I wrote it this morning.' },
-        { kind: 'briefing', id: 'wake-briefing', briefing: data.briefing },
-      ]);
+    // Ask the OS about the network before asking the server again: a reload
+    // over a dead connection is a spinner and a second identical failure.
+    if (d.kind === 'retry') { void recheck().finally(() => { wake.clear(); home.reload(); }); return; }
+    if (d.kind === 'briefing') {
+      /**
+       * THE PROSE THE COMPACT OPENING HELD BACK (audit F03).
+       *
+       * The market state, the evidence behind the lead and the overnight aside
+       * were three paragraphs above the first thing to do. They are not gone —
+       * this is where they arrive, in Kai's own words, when somebody asks for
+       * them. The written report follows if there is one; on a morning Kai's
+       * report failed there is still the state and the evidence, which are read
+       * off the account rather than written by him.
+       */
+      const prose = [wake.wakeup?.state, wake.wakeup?.evidence, wake.wakeup?.aside]
+        .filter((t): t is string => !!t && !!t.trim())
+        .join('\n\n');
+      const out: WallItem[] = [];
+      if (prose) out.push({ kind: 'kai_text', id: 'wake-brief-prose', text: prose });
+      if (shown?.briefing) {
+        out.push({ kind: 'kai_text', id: 'wake-brief-note', text: 'The full report, as I wrote it this morning.' });
+        out.push({ kind: 'briefing', id: 'wake-briefing', briefing: shown.briefing });
+      }
+      if (out.length) append(out);
       return;
     }
-    if (d.kind === 'watching' && data?.also_watching.length) {
+    if (d.kind === 'watching' && shown?.also_watching.length) {
       append([
         { kind: 'kai_text', id: 'wake-watch-note', text: 'The rest of what I am keeping an eye on for you.' },
-        { kind: 'watching', id: 'wake-watching', rows: data.also_watching },
+        { kind: 'watching', id: 'wake-watching', rows: shown.also_watching },
       ]);
     }
-  }, [append, data, home, router, wake]);
+  }, [append, shown, home, router, wake]);
 
-  /** The wake-up minus the offers already taken. */
+  /**
+   * The wake-up minus the offers already taken — and shaped for the compact
+   * opening.
+   *
+   * `wd-primary` is dropped when the priority OBJECT is drawn, because that
+   * object's own volt button is the same action and two of them is one too
+   * many. `withBriefingOffer` then guarantees the prose stays one tap away.
+   */
   const wakeMessage = useMemo(() => {
     if (!wake.wakeup) return null;
-    if (!used.length) return wake.wakeup;
-    return { ...wake.wakeup, directions: wake.wakeup.directions.filter((d) => !used.includes(d.id)) };
-  }, [wake.wakeup, used]);
+    const drop = new Set(used);
+    if (opening.kind === 'priority') drop.add('wd-primary');
+    const trimmed = drop.size
+      ? { ...wake.wakeup, directions: wake.wakeup.directions.filter((d) => !drop.has(d.id)) }
+      : wake.wakeup;
+    return withBriefingOffer(trimmed, !!shown?.briefing);
+  }, [wake.wakeup, used, opening.kind, shown]);
 
   const newThread = () => {
     setThread({ kind: 'new' });
@@ -296,13 +428,51 @@ export default function Home() {
    * this only decides where it sits. It returns null while it is loading, so
    * nothing here may reserve space or draw a divider around it.
    */
+  /**
+   * RETRY MEANS RETRY EVERYTHING (audit F18: "reconnect refreshes without
+   * losing the selected context"). It asks the OS about the network first,
+   * because a reload over a dead connection is a spinner and a second failure,
+   * and it leaves the thread, the drawer and the composer exactly where they
+   * were — nothing about which conversation is open depends on the payload.
+   */
+  const retryEverything = useCallback(() => {
+    void recheck().finally(() => { wake.clear(); home.reload(); });
+  }, [home, wake]);
+
   const trainingRow =
-    thread.kind === 'today' ? (
+    thread.kind === 'today' && !opening.trainingInOpening ? (
       <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
         <View style={{ width: 30 }} />
         <View style={{ flex: 1 }}><ContinueTrainingObject /></View>
       </View>
     ) : null;
+
+  /**
+   * THE ONE THING TO DO, DRAWN DIRECTLY UNDER KAI'S TWO LINES (audit F03).
+   *
+   * Whichever of the three it is, it carries its own button — that is the
+   * acceptance test: at 390px the first actionable object AND its button are
+   * above the fold. `ContinueTrainingObject` and `PriorityObject` both already
+   * end in one; the standing's button is the practice offer inside it.
+   */
+  const openingAction =
+    opening.kind === 'training' ? <ContinueTrainingObject />
+      : opening.kind === 'priority' && shown?.priority ? (
+        <PriorityObject priority={shown.priority} candles={priorityCandles} />
+      ) : standing ? (
+        <StandingCard standing={standing} onRetry={retryEverything}>
+          {standing.state === 'quiet' ? (
+            <View style={{ gap: 4 }}>
+              {/* A short practice is the quiet day's offer — the training
+                  object IS that offer, and it already knows whether this
+                  member has started. Drawing a second, invented one would be
+                  the app recommending something it has not got. */}
+              <ContinueTrainingObject testID="standing-practice" />
+              <ReviewWatchlist onPress={() => router.push('/trade' as never)} />
+            </View>
+          ) : null}
+        </StandingCard>
+      ) : null;
 
   return (
     <Screen variant="corner" layout="tab" testID="screen-home">
@@ -342,14 +512,76 @@ export default function Home() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* The one message. */}
+        {/*
+          OFFLINE, SAID ONCE, AT THE TOP (board 07, right screen). It draws
+          nothing at all until NetInfo has actually answered — a banner that
+          flashes on every cold start is a banner nobody reads.
+        */}
+        {thread.kind === 'today' ? (
+          <OfflineBanner online={online} fetchedAt={fetchedAt} onRetry={retryEverything} retrying={home.loading} />
+        ) : null}
+
+        {/* The one message, and then the one thing to do. */}
         {thread.kind === 'today' ? (
           <Wakeup
             message={wakeMessage}
             greeting={wake.greeting}
             animate={!wake.seenBefore}
             onDirection={onDirection}
+            compact
+            action={openingAction}
           />
+        ) : null}
+
+        {/*
+          THE CAVEAT, WHEN THE OPENING IS SOMETHING ELSE (audit F18).
+          A setup can be real and the rest of the read can still have failed.
+          The object above stays — it was found — but the screen must not let
+          it imply it is the whole picture. `StandingCard` draws nothing for a
+          quiet or a needs-you standing here; only the unverified one speaks.
+        */}
+        {thread.kind === 'today' && standing && opening.kind !== 'standing' && standing.state === 'unverified' ? (
+          <StandingCard standing={standing} onRetry={retryEverything} />
+        ) : null}
+
+        {/*
+          THE SAVED PLAN, WHEN THERE IS NO LIVE ANSWER AND WE REMEMBER ONE.
+          It is drawn from the remembered payload's own levels and bars, at the
+          instant they were fetched, and it says "not live" in the card rather
+          than relying on the banner above to be read. It never appears
+          alongside live data — `fetchedAt` is non-null only when `data` is not.
+        */}
+        {thread.kind === 'today' && fetchedAt && shown?.priority?.symbol ? (
+          <SavedPlanCard
+            symbol={shown.priority.symbol}
+            entry={shown.priority.levels.entry ?? null}
+            stop={shown.priority.levels.invalid ?? null}
+            target={shown.priority.levels.target ?? null}
+            candles={shown.priority.candles}
+            fetchedAt={fetchedAt}
+          />
+        ) : null}
+
+        {/*
+          "Retry connection", where the board puts it: under the saved plan, as
+          the one thing to do. The banner's own small retry is for the case
+          where there is nothing saved to sit above this.
+        */}
+        {thread.kind === 'today' && online === false && fetchedAt ? (
+          <View style={{ gap: 8 }}>
+            <Button
+              testID="offline-reconnect"
+              label="Retry connection"
+              height={48}
+              arrow
+              loading={home.loading}
+              onPress={retryEverything}
+            />
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+              <CapabilityMark state="quiet" size={13} />
+              <T size={12} c={color.muted} testID="offline-plan-safe">Your plan is saved.</T>
+            </View>
+          </View>
         ) : null}
 
         {/* Training rides with Kai's one message, not in the conversation
@@ -363,6 +595,7 @@ export default function Home() {
             course they finished sitting above it would read as the app not
             having noticed. `homeOrderFor` holds that argument in full. */}
         {homeOrder.training === 'above_wall' ? trainingRow : null}
+
 
         {/* Saved messages are being fetched. Stated, not mimed with a
             skeleton: an empty wall under a thread title is the one thing this
@@ -444,9 +677,9 @@ export default function Home() {
           sentence in the conversation and offers no retry, because retrying a
           refusal just spends the allowance twice.
         */}
-        {failed ? (
+        {liveFailure ? (
           <View style={{ gap: 6 }} testID="kai-failure">
-            <T size={11} lh={16} c={color.muted} align="center">{failed.plain}</T>
+            <T size={11} lh={16} c={color.muted} align="center">{liveFailure.plain}</T>
             <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
               <Pressable
                 testID="kai-retry"
@@ -497,7 +730,7 @@ export default function Home() {
                 testID="kai-suggestion"
                 accessibilityRole="button"
                 accessibilityLabel={q}
-                onPress={() => { void send(q); }}
+                onPress={() => { sendAndClear(q); }}
                 style={({ pressed }) => ({
                   paddingVertical: 6,
                   paddingHorizontal: 12,
@@ -513,9 +746,22 @@ export default function Home() {
           </View>
         ) : null}
 
+        {/*
+          "Draft saved" — and only when it is true. The mark appears when the
+          words in the field came out of storage, which is the one case where a
+          member needs to be told the app kept something for them. It is never
+          shown over an empty composer: claiming to have saved nothing is a
+          claim about nothing.
+        */}
+        {savedTurn ? (
+          <T size={11} c={color.dim} align="center" testID="composer-draft-saved">
+            Draft saved — this is the question you did not get to send.
+          </T>
+        ) : null}
+
         <Composer
           placeholder="Message Kai…"
-          onSend={send}
+          onSend={sendAndClear}
           streaming={streaming}
           onStop={stop}
           draft={failed?.restore ? failed.text : ''}

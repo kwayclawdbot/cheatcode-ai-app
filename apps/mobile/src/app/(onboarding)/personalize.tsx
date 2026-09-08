@@ -3,79 +3,61 @@ import { View, Pressable, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen } from '../../ui/Screen';
 import { T } from '../../ui/Text';
-import { ObjectCard } from '../../ui/Panel';
 import { Button } from '../../ui/Button';
-import { ProgressBars } from '../../ui/Progress';
-import { Check } from '../../ui/Icons';
 import { alpha, color, radius } from '../../ui/tokens';
 import { useOnboardingDraft } from '../../lib/session';
-import {
-  EXPERIENCE_CONSEQUENCE, EXPERIENCE_LABEL, FOCUS_CHIP, FOCUS_ORDER, focusSummary,
-} from '../../features/account/profile';
-import type { Experience, FocusKey } from '../../lib/types';
+import { FOCUS_CHIP, FOCUS_ORDER, focusSummary } from '../../features/account/profile';
+import type { FocusKey } from '../../lib/types';
 
 /**
- * Onboarding 3 of 4 — prototype board "Onboarding personalize".
+ * "What should Kai watch?" — OPTIONAL, and no longer a step.
  *
- * Two answers, and both of them change the product rather than decorate the
- * profile: experience sets Kai's VOICE (new = explains each term the first
- * time, some = plain and skips basics, pro = levels and numbers first), and
- * the focus chips set what Kai scans before anything else.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHAT CHANGED HERE
+ * ─────────────────────────────────────────────────────────────────────────────
+ * This screen used to be step 4 of 6 and asked two things. The first — "How
+ * much have you traded?" — is GONE, because it was the placement question from
+ * step 1 asked a second time in different words, which is the first half of
+ * audit F01. Guidance is now confirmed on step 2 beside the goal, in the words
+ * that describe its effect rather than the member (`GUIDANCE_LABEL`).
+ *
+ * The second — the focus chips — survives, and it is worth keeping: it changes
+ * what Kai scans first, which is a real effect and not a profile decoration.
+ * What it is not is a thing worth standing between a stranger and the product.
+ * F01: "Move focus and username to the moment they are useful." So it is a link
+ * on the plan screen that somebody may ignore, and Account edits the same
+ * setting afterwards through `PUT /settings`.
+ *
+ * NOTHING IS PRE-TICKED, which is the other correction. The draft used to start
+ * at `['tech', 'ai']`, so a member who never opened this screen was recorded as
+ * having asked Kai to watch big tech and semis — a preference nobody expressed,
+ * stored in their profile. `focusList` already reads an empty list as "the
+ * whole market", which is the truth about a member who has not answered.
+ *
+ * IT SAVES INTO THE DRAFT, not to the server, because it is reached before
+ * `POST /onboarding/complete` runs — the plan screen sends `focus` with the
+ * rest. The draft is on disk, so backing out of here and closing the app does
+ * not lose the chips.
  */
-const EXPERIENCES: Experience[] = ['new', 'some', 'pro'];
-
-/** The board's own wording for the third card. */
-const TITLE: Record<Experience, string> = {
-  new: 'New to this',
-  some: 'Some experience',
-  pro: 'I trade actively',
-};
-
 export default function Personalize() {
   const router = useRouter();
   const { draft, set } = useOnboardingDraft();
-  const experience = draft.experience;
   const focus = draft.focus;
 
   const toggle = (k: FocusKey) =>
     set({ focus: focus.includes(k) ? focus.filter((f) => f !== k) : [...focus, k] });
 
+  const done = () => (router.canGoBack() ? router.back() : router.replace('/kai-plan'));
+
   return (
     <Screen variant="dome" layout="stack" testID="screen-personalize">
-      <ProgressBars total={6} done={4} />
-      <T size={26} weight="bold" ls={-0.4} lh={31}>{'Let\u2019s tune Kai to you'}</T>
-      <T size={14} c={color.muted} style={{ marginTop: 8 }}>Two quick answers. You can change both later.</T>
+      <T size={26} weight="bold" ls={-0.4} lh={31}>What should Kai watch?</T>
+      <T size={14} c={color.muted} style={{ marginTop: 8 }}>
+        Optional. It changes what Kai looks at first, never what may be risked. Account edits it any time.
+      </T>
 
       <ScrollView style={{ flex: 1, marginTop: 24 }} contentContainerStyle={{ gap: 20 }} showsVerticalScrollIndicator={false}>
         <View>
-          <T size={12} weight="bold" ls={0.84} c={color.muted} style={{ marginBottom: 10 }}>HOW MUCH HAVE YOU TRADED?</T>
-          <View style={{ gap: 8 }}>
-            {EXPERIENCES.map((key) => {
-              const on = experience === key;
-              return (
-                <Pressable
-                  key={key}
-                  testID={`experience-${key}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${TITLE[key]}. ${EXPERIENCE_CONSEQUENCE[key]}`}
-                  accessibilityState={{ selected: on }}
-                  onPress={() => set({ experience: key })}
-                >
-                  <ObjectCard tone={on ? 'volt' : 'default'} r={15} style={{ paddingVertical: 13, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{ flex: 1 }}>
-                      <T size={15} weight="bold">{TITLE[key]}</T>
-                      <T size={12} c={color.muted} style={{ marginTop: 2 }}>{EXPERIENCE_CONSEQUENCE[key]}</T>
-                    </View>
-                    {on ? <Check size={16} color={color.volt} strokeWidth={2.6} /> : null}
-                  </ObjectCard>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        <View>
-          <T size={12} weight="bold" ls={0.84} c={color.muted} style={{ marginBottom: 10 }}>WHAT SHOULD KAI WATCH?</T>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {FOCUS_ORDER.map((k) => {
               const on = focus.includes(k);
@@ -102,14 +84,7 @@ export default function Personalize() {
         </View>
       </ScrollView>
 
-      <Button
-        testID="cta-continue"
-        label="Continue"
-        height={52}
-        arrow
-        onPress={() => router.push('/username')}
-        accessibilityHint={`Kai is set to ${EXPERIENCE_LABEL[experience]}`}
-      />
+      <Button testID="cta-continue" label="Done" height={52} onPress={done} />
     </Screen>
   );
 }

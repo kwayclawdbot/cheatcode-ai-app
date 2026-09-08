@@ -143,7 +143,7 @@ export function Walkthrough({
                     priority: priority?.id,
                   })}
                 >
-                  Explore early access
+                  Request early access
                 </a>
               </div>
             </div>

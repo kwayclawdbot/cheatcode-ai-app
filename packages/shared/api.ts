@@ -6414,3 +6414,144 @@ export const ExamSubmitResponse = z.object({
   plain: z.string(),
 });
 export type ExamSubmitResponse = z.infer<typeof ExamSubmitResponse>;
+
+/* ================================================================== */
+/* WAVE 2 — RETURN · REVIEW · RECOVER                                  */
+/*                                                                     */
+/* Everything below is ADDITIVE and nothing above it changed. Two      */
+/* facts the app could not previously state get a wire shape here:     */
+/*   1. whether a member followed their own plan (the trade review)    */
+/*   2. whether "nothing needs you" was VERIFIED or merely unanswered  */
+/*      (audit F18 — a failed load must never read as an empty list)   */
+/* ================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* Plan adherence — did you follow your own plan?                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THREE STATES, AND THE THIRD ONE IS THE POINT.
+ *
+ * `ProcessReceiptItem.ok` is a boolean, which is right for "did you write a
+ * plan" and wrong for "did you hit your target" — because a plan with no
+ * target has no target to miss. Marking that false would be the screen judging
+ * somebody for a fact that was never recorded.
+ *
+ *   followed     the plan said X and X is what happened
+ *   changed      the plan said X and something else happened — a real deviation
+ *   not_planned  the plan never said, so there is nothing to be right or wrong
+ *                about. NEVER counted as a failure anywhere.
+ */
+export const AdherenceStatus = z.enum(['followed', 'changed', 'not_planned']);
+export type AdherenceStatus = z.infer<typeof AdherenceStatus>;
+
+export const AdherenceCheck = z.object({
+  /** Which leg of the plan this line is about. */
+  key: z.enum(['entry', 'stop', 'exit']),
+  /** "Entry followed" / "Exit changed" / "No target was set" — the bold line. */
+  label: z.string(),
+  status: AdherenceStatus,
+  /** The sentence under it, with the numbers in it. Always computed. */
+  detail_plain: z.string(),
+  /** The planned level, when the plan carried one. */
+  planned: z.number().nullable(),
+  /** What actually happened, when a fill or an average says so. */
+  actual: z.number().nullable(),
+});
+export type AdherenceCheck = z.infer<typeof AdherenceCheck>;
+
+/**
+ * The hand-off out of a debrief into a targeted exercise.
+ *
+ * The API names the SKILL and the words on the button; it does not name a
+ * lesson, because which lesson teaches that skill — and whether it has been
+ * written yet — is the training lane's fact, not this one's.
+ */
+export const AdherencePractice = z.object({
+  /** Matches the training curriculum's skill keys. */
+  skill: z.enum(['entries', 'risk_management', 'trade_management']),
+  /** "Practise the exit" — the button. */
+  label: z.string(),
+  /** Why this is the one to practise. */
+  plain: z.string(),
+});
+export type AdherencePractice = z.infer<typeof AdherencePractice>;
+
+export const PlanAdherence = z.object({
+  /** "Risk respected. Exit improvised." — two clauses, both earned. */
+  headline: z.string(),
+  checks: z.array(AdherenceCheck),
+  /** null when there was no plan at all, or when nothing deviated. */
+  practice: AdherencePractice.nullable(),
+  /** The levels the plan actually carried, for drawing the closed trade. */
+  planned_levels: z.object({
+    entry: z.number().nullable(),
+    stop: z.number().nullable(),
+    target: z.number().nullable(),
+  }),
+  /** Where the member actually got in and out. */
+  actual_levels: z.object({
+    entry: z.number().nullable(),
+    exit: z.number().nullable(),
+  }),
+});
+export type PlanAdherence = z.infer<typeof PlanAdherence>;
+
+/** `DebriefPayload` plus the adherence block. A superset — old readers parse. */
+export const DebriefPayloadWithPlan = DebriefPayload.extend({
+  /** null when the position carries no plan to compare against. */
+  plan_adherence: PlanAdherence.nullable(),
+});
+export type DebriefPayloadWithPlan = z.infer<typeof DebriefPayloadWithPlan>;
+
+export const DebriefRowWithPlan = DebriefRow.extend({
+  payload: DebriefPayloadWithPlan,
+});
+export type DebriefRowWithPlan = z.infer<typeof DebriefRowWithPlan>;
+
+/* ------------------------------------------------------------------ */
+/* Home standing — quiet, or merely unanswered (audit F18)              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * ONE CHECK THE SERVER ACTUALLY PERFORMED.
+ *
+ * `ok:false` means the read failed, not that it came back empty. That
+ * distinction is the whole reason this exists: an empty watchlist and a
+ * watchlist we could not open look identical on a screen and mean opposite
+ * things to somebody deciding whether to trade today.
+ */
+export const StandingCheck = z.object({
+  key: z.enum(['setups', 'alerts', 'positions', 'plans', 'briefing']),
+  /** "Your setups" — what a person calls it. */
+  label: z.string(),
+  /** true = the read answered. false = it failed and we know nothing. */
+  ok: z.boolean(),
+  /** How many things came back. null when the read failed. */
+  count: z.number().nullable(),
+});
+export type StandingCheck = z.infer<typeof StandingCheck>;
+
+/**
+ *   needs_you    something is asking for a decision
+ *   quiet        every check answered, and every one of them came back empty
+ *   unverified   at least one check failed — so "nothing" is NOT a finding
+ */
+export const StandingState = z.enum(['needs_you', 'quiet', 'unverified']);
+export type StandingState = z.infer<typeof StandingState>;
+
+export const HomeStanding = z.object({
+  state: StandingState,
+  /** "Nothing needs a decision. Your watchlist is up to date." */
+  plain: z.string(),
+  /** ISO. The instant this answer was assembled — the "Last checked" stamp. */
+  checked_at: z.string(),
+  checks: z.array(StandingCheck),
+});
+export type HomeStanding = z.infer<typeof HomeStanding>;
+
+/** Round 4 plus the standing block. A superset — round-4 clients still parse. */
+export const HomeRound5Response = HomeRound4Response.extend({
+  standing: HomeStanding,
+});
+export type HomeRound5Response = z.infer<typeof HomeRound5Response>;

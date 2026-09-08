@@ -15,11 +15,16 @@
  * Anthropic failure → `briefing:null` + `degraded:true`. The priority object is
  * computed from database rows, not from a model, so Home still answers "what
  * needs my attention" when Kai is offline. That is the point of deriving it.
+ *
+ * `standing` (wave 2, audit F18) is the other half of that honesty: it reports
+ * what this request actually CHECKED, so the client can tell a verified quiet
+ * morning from one where a read failed. See `@/lib/v5/standing`. It is an
+ * additive key on a superset response — a round-4 client ignores it.
  */
 import type { NextRequest } from 'next/server';
 import {
   HomeQuery,
-  HomeRound4Response,
+  HomeRound5Response,
   PAPER_ACCOUNT_PLAIN,
   SETUP_CAPS,
   type BriefingPayload,
@@ -35,6 +40,7 @@ import { dailyRisk } from '@/lib/execution/risk';
 import { loadOpenPositions } from '@/lib/execution/positions-view';
 import { loadPaperAccount } from '@/lib/execution/engine';
 import { alsoWatching, choosePriority } from '@/lib/v5/priority';
+import { homeStanding } from '@/lib/v5/standing';
 import { loadFollowMarks } from '@/lib/v5/attention';
 import { ensureDevTicker } from '@/lib/execution/tick-dev';
 import { briefingTitle, loadConversations, toSummary } from '@/lib/round4/conversations';
@@ -133,8 +139,29 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
   const { rows: convRows, firstText } = await loadConversations({ userId: ctx.user.id, limit: 1 });
   const todays = convRows[0] ? toSummary(convRows[0], firstText.get(convRows[0].id) ?? null) : null;
 
+  /**
+   * WHAT THIS REQUEST ACTUALLY MANAGED TO LOOK AT (audit F18).
+   *
+   * `kctx.setups` is not listed as a possible failure because `rankedSetups`
+   * throws on a database error and `assembleContext` does not catch it — a
+   * failed setups read never reaches this line, it becomes a 500 and the client
+   * meets a failed load, which is the correct and distinct state. The other
+   * four are `maybeSingle`-style reads that report their own errors.
+   */
+  const standing = homeStanding({
+    checkedAt: new Date().toISOString(),
+    needsDecision: priority !== null,
+    reads: {
+      setups: { ok: true, count: kctx.setups.length },
+      alerts: { ok: !triggered.error, count: (triggered.data ?? []).length },
+      positions: { ok: !positions.degraded, count: positions.rows.length },
+      plans: { ok: !plans.error, count: (plans.data ?? []).length },
+      briefing: { ok: !briefingResult.degraded, present: Boolean(briefingResult.briefing) },
+    },
+  });
+
   return ok(
-    HomeRound4Response.parse({
+    HomeRound5Response.parse({
       mode,
       // Live already: `assembleContext` priced every setup on this screen in
       // one call and asked the exchange what session it is. Nothing here pays
@@ -161,6 +188,7 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
       degraded: briefingResult.degraded || positions.degraded,
       degraded_reason: briefingResult.reason ?? positions.degraded_reason,
       invest_mode_notice: mode === 'invest' ? INVEST_NOTICE : null,
+      standing,
       conversation: {
         id: todays?.id ?? null,
         title: todays?.title ?? briefingTitle(),

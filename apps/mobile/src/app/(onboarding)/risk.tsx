@@ -1,109 +1,55 @@
 import React from 'react';
-import { View, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen } from '../../ui/Screen';
-import { T, Num } from '../../ui/Text';
-import { ObjectCard } from '../../ui/Panel';
-import { Button, Tag } from '../../ui/Button';
-import { ProgressBars } from '../../ui/Progress';
-import { Check } from '../../ui/Icons';
-import { alpha, color, radius } from '../../ui/tokens';
-import { capFor, useOnboardingDraft } from '../../lib/session';
-import type { RiskAnswer } from '../../lib/types';
+import { T } from '../../ui/Text';
+import { color } from '../../ui/tokens';
+import { useOnboardingDraft } from '../../lib/session';
+import { RiskSetup } from '../../features/onboarding/RiskSetup';
+import { RISK_BEFORE_ORDER_SUB, RISK_BEFORE_ORDER_TITLE } from '../../features/onboarding/risk-gate';
 
 /**
- * S02-Risk.html — risk chosen by example, not by jargon.
- * Round 4: the involvement question is gone — the plan step states the rule
- * plainly ("Nothing reaches a broker without your confirmation"), which is
- * `hands_on`, and one screen asking one thing beats two half-questions.
+ * "How much risk feels right?" — NO LONGER A SIGNUP STEP.
  *
- * The dollar figures are the POINT of this screen, so they are the person's own
- * money, not a teaching example: every cap is `capFor` against the practice
- * balance in the draft. The artboard's "$2,000 account" numbers survive as the
- * ratios inside `RISK_EXAMPLES`.
+ * Audit F01: "Ask risk questions before paper execution." This was step 3 of
+ * six, and it asked a stranger to pick a daily loss cap in dollars before they
+ * had seen a price in the app or owned the account the dollars describe. The
+ * screen teaches by example, in the member's own money — which is exactly why
+ * asking it during signup wasted it.
+ *
+ * So signup finishes without it. `(onboarding)/kai-plan.tsx` completes with the
+ * neutral `balanced` default and says on its face that nobody has chosen yet,
+ * and `features/onboarding/risk-gate.ts` carries `needsRiskSetup(profile)` for
+ * the moment that matters — in front of the first paper order.
+ *
+ * The screen itself lives in `features/onboarding/RiskSetup.tsx` so it can be
+ * mounted at a route the session gate lets an onboarded member reach; this file
+ * is the onboarding-time entry, kept because the answer is still worth taking
+ * from anybody who wants to give it early. Nothing in the three required steps
+ * links here.
+ *
+ * NOTHING IS WRITTEN TO THE SERVER FROM THIS ROUTE. During onboarding the
+ * answer rides in the draft to `POST /onboarding/complete`, which is why the
+ * `onDone` below only navigates. Reached AFTER signup, `RiskSetup` posts to
+ * `POST /onboarding/risk` itself — see its header.
  */
-const RISKS: { key: RiskAnswer; title: string; tag?: string }[] = [
-  { key: 'careful', title: 'Careful' },
-  { key: 'balanced', title: 'Balanced' },
-  { key: 'aggressive', title: 'Aggressive', tag: 'Higher swings' },
-];
-
-const usd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
-
 export default function Risk() {
   const router = useRouter();
   const { draft, set } = useOnboardingDraft();
-  const risk = draft.risk_answer ?? 'balanced';
-  const account = usd(draft.starting_balance);
 
   return (
     <Screen variant="corner" layout="stack" testID="screen-risk">
-      <ProgressBars total={6} done={3} />
-      <T size={27} weight="bold" ls={-0.4} lh={32}>How much risk feels right?</T>
-      <T size={14} c={color.muted} style={{ marginTop: 8 }}>
-        {`Real examples, not jargon. This sets your daily loss cap on the ${account} you'll practice with.`}
-      </T>
+      <T size={27} weight="bold" ls={-0.4} lh={32}>{RISK_BEFORE_ORDER_TITLE}</T>
+      <T size={14} c={color.muted} style={{ marginTop: 8, marginBottom: 22 }}>{RISK_BEFORE_ORDER_SUB}</T>
 
-      <View style={{ gap: 10, marginTop: 22 }}>
-        {RISKS.map(({ key, title, tag }) => {
-          const on = risk === key;
-          const cap = capFor(key, draft.starting_balance);
-          return (
-            <Pressable
-              key={key}
-              testID={`risk-${key}`}
-              accessibilityRole="button"
-              accessibilityLabel={`${title}. On ${account}, a bad day costs about ${usd(cap)}.`}
-              accessibilityState={{ selected: on }}
-              onPress={() => set({ risk_answer: key })}
-            >
-              <ObjectCard tone={on ? 'volt' : 'default'} r={radius.xl} style={{ paddingVertical: 14, paddingHorizontal: 16 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                    <T size={15} weight="bold">{title}</T>
-                    {tag ? <Tag label={tag} c={color.gold} border={alpha.gold50} /> : null}
-                  </View>
-                  {on ? <Check size={16} color={color.volt} strokeWidth={2.6} /> : null}
-                </View>
-                <T size={12} c={color.muted} style={{ marginTop: 3 }}>
-                  On {account}, a bad day costs about <T size={12} weight="bold" c={color.text}>{usd(cap)}</T>.
-                </T>
-              </ObjectCard>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {/* What the choice actually produced — the cap in their own money, and
-          the honest state of the account it applies to. */}
-      <View
-        testID="risk-summary"
-        style={{
-          marginTop: 18, borderRadius: radius.xl, paddingVertical: 13, paddingHorizontal: 15,
-          backgroundColor: alpha.ivory06, borderWidth: 0.5, borderColor: alpha.ivory16, gap: 7,
+      <RiskSetup
+        balance={draft.starting_balance}
+        value={draft.risk_answer}
+        onChange={(risk_answer) => set({ risk_answer })}
+        onDone={(risk_answer) => {
+          set({ risk_answer });
+          if (router.canGoBack()) router.back();
+          else router.replace('/kai-plan');
         }}
-      >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <T size={13} c={color.muted}>Daily loss cap</T>
-          <Num size={13} weight="semibold" c={color.gold} testID="risk-cap">{usd(capFor(risk, draft.starting_balance))}</Num>
-        </View>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <T size={13} c={color.muted}>Practice mode</T>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color.cyan }} />
-            <T size={13} c={color.cyan}>Paper trading on</T>
-          </View>
-        </View>
-      </View>
-
-      <View style={{ flex: 1 }} />
-
-      <Button
-        testID="cta-continue"
-        label="Continue"
-        height={52}
-        arrow
-        onPress={() => { set({ risk_answer: risk, involvement: 'hands_on' }); router.push('/personalize'); }}
       />
     </Screen>
   );

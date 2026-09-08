@@ -153,3 +153,27 @@
   font-family: var(--font-mono-stack);
   color: var(--text);
 }
+
+/* A capability this build cannot do yet (audit F02). Still listed — somebody
+   choosing a plan is entitled to see where the product is going — but it never
+   wears the tick that means "yours today". */
+.getPlanned {
+  color: var(--muted);
+}
+
+.getPlanned .getTick {
+  color: var(--dim);
+}
+
+.plannedTag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  border: 0.5px solid var(--ivory20);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dim);
+  vertical-align: 1px;
+}

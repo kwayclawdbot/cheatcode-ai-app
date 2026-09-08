@@ -14,6 +14,7 @@
  * concurrent completes cannot both write.
  */
 import type { NextRequest } from 'next/server';
+import { z } from 'zod';
 import {
   EXPERIENCE_TO_LEVEL,
   OnboardingCompleteRound4Request,
@@ -28,6 +29,30 @@ import { writeKaiProfile } from '@/lib/round4/profile-round4';
 import { START_PLACEMENT } from '@/lib/stage/rules';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * The round-4 body plus ONE local field, and the field is here rather than in
+ * `packages/shared/api.ts` because it describes this route's bookkeeping and
+ * not the contract's vocabulary.
+ *
+ * `risk_confirmed` says whether a HUMAN picked the risk level that arrived in
+ * `risk_answer`. Audit F01 moved that question out of signup — it is asked
+ * before the first paper order now, where the dollar figures on it mean
+ * something (`features/onboarding/risk-gate.ts`) — so an ordinary completion
+ * sends the neutral `balanced` with this flag false.
+ *
+ * The flag matters because every account gets a risk policy whether or not
+ * anybody chose one: `complete_onboarding` cannot leave the columns empty. So
+ * without it there is no way to tell a cap somebody agreed to from one they
+ * were handed, and the app would either nag people who had already answered or
+ * silently enforce a limit nobody set. It defaults to false, which is the
+ * conservative reading: the cost of asking once more is a screen, and the cost
+ * of the other mistake is a limit governing somebody's orders that they never
+ * agreed to.
+ */
+const CompleteRequest = OnboardingCompleteRound4Request.extend({
+  risk_confirmed: z.boolean().optional(),
+});
 
 async function loadState(userId: string) {
   const db = serviceClient();
@@ -110,7 +135,7 @@ function num(v: unknown): number | null {
 }
 
 export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
-  const body = await parseBody(req, OnboardingCompleteRound4Request);
+  const body = await parseBody(req, CompleteRequest);
   const db = serviceClient();
 
   const dailyLossCap = Math.round(body.starting_balance * RISK_ANSWER_DAILY_LOSS_PCT[body.risk_answer] * 100) / 100;
@@ -191,9 +216,14 @@ export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
     // carries whichever it was. Writing the placement's mode here would throw
     // away an explicit choice in favour of the guess that preceded it.
     const placement = body.start_answer ? START_PLACEMENT[body.start_answer] : null;
-    const onboarding = body.start_answer
-      ? { ...written.onboarding, start_answer: body.start_answer }
-      : written.onboarding;
+    const onboarding = {
+      ...written.onboarding,
+      ...(body.start_answer ? { start_answer: body.start_answer } : {}),
+      // See `CompleteRequest` above. Written on every completion, including
+      // `false`, so that "nobody has answered yet" is a stored fact rather than
+      // a missing key that an older row and a newer one both produce.
+      risk_confirmed: body.risk_confirmed === true,
+    };
 
     await db
       .from('profiles')
