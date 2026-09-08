@@ -34,7 +34,7 @@ import {
   getFinancials,
   getNews,
   resolveQuote,
-  TF_DEFAULT_SPAN_DAYS,
+  defaultSpanFrom,
   type CandleTimeframe,
 } from '@/lib/market/polygon';
 import { computeTechnicals } from '@/lib/market/technicals';
@@ -58,12 +58,6 @@ const BARS_PER_TF: Record<CandleTimeframe, number> = {
   '1m': 90,
 };
 
-function daysAgo(n: number): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - n);
-  return d.toISOString().slice(0, 10);
-}
-
 export const GET = internalRoute(async (req: NextRequest) => {
   const url = new URL(req.url);
   const parsed = Query.safeParse(Object.fromEntries(url.searchParams));
@@ -84,7 +78,7 @@ export const GET = internalRoute(async (req: NextRequest) => {
   let dailyCandles: { ts: string; c: number | null }[] = [];
 
   for (const tf of tfs) {
-    const res = await getCandles(symbol, tf, daysAgo(TF_DEFAULT_SPAN_DAYS[tf]), to);
+    const res = await getCandles(symbol, tf, defaultSpanFrom(tf, to), to);
     const candles = res.candles.slice(-BARS_PER_TF[tf]);
     if (tf === '1d') dailyCandles = candles;
     const last = candles[candles.length - 1] ?? null;

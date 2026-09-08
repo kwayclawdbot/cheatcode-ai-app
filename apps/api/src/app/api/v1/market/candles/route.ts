@@ -27,7 +27,7 @@ import { authed, ok, parseQuery, type Ctx } from '@/lib/http';
 import { liveMarketBlock } from '@/lib/market/live';
 import {
   CANDLE_TIMEFRAMES,
-  TF_DEFAULT_SPAN_DAYS,
+  defaultSpanFrom,
   getCandles,
   freshnessFor,
   maxCandles,
@@ -41,17 +41,14 @@ const Tf = z.enum(CANDLE_TIMEFRAMES);
 const CandlesQueryTf = CandlesQuery.extend({ tf: Tf.default('1d') });
 const CandlesResponseTf = CandlesResponse.extend({ timeframe: Tf });
 
-function daysAgo(n: number): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - n);
-  return d.toISOString().slice(0, 10);
-}
-
 export const GET = authed(async (req: NextRequest, _ctx: Ctx) => {
   const q = parseQuery(req, CandlesQueryTf);
   const symbol = q.symbol.toUpperCase();
   const to = q.to ?? new Date().toISOString().slice(0, 10);
-  const from = q.from ?? daysAgo(TF_DEFAULT_SPAN_DAYS[q.tf]);
+  // TRADING SESSIONS, not calendar days. The old `daysAgo(3)` for 1m asked for
+  // Sep 5 → Sep 8 on Labor Day 2026 — a Saturday, a Sunday and a holiday, zero
+  // sessions, and an empty chart. See TF_DEFAULT_SPAN_SESSIONS.
+  const from = q.from ?? defaultSpanFrom(q.tf, to);
 
   const result = await getCandles(symbol, q.tf, from, to);
   // Keep the NEWEST bars: a chart that has to drop something drops history.

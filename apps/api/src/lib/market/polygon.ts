@@ -78,9 +78,23 @@
  *     `wss://socket.polygon.io/stocks` (auth_success + T/Q/AM subscriptions
  *     accepted, verified 2026-08-29) but nothing in this app consumes a push
  *     stream yet.
- *   - Still no holidays table (README gap 2): the ET clock is the session
- *     authority, `/v1/marketstatus/now` refines it opportunistically when it
- *     has been called recently, and every payload carries `holidays_known:false`.
+ *   - Still no holidays TABLE (README gap 2). The ET clock is the session
+ *     authority and `/v1/marketstatus/now` refines it. What is new since
+ *     2026-09-07 is that the refinement is REMEMBERED as a calendar fact:
+ *     `knownClosedDates` records the weekday dates the exchange itself told us
+ *     were shut, and `isTradingDate` skips them everywhere the session
+ *     arithmetic runs. That is an observation, not a hard-coded table — a
+ *     holiday this process was never awake for still costs a session, which
+ *     under-claims freshness, which is the safe direction.
+ *
+ * CHANGE % IS A PAIR
+ * ------------------
+ * A price and the close it is measured from must describe the same event.
+ * There is ONE rule and one implementation of it — `basisCloseFromDaily`: the
+ * basis is the close of the most recent session that had already ENDED when
+ * the price printed. Read the block above that function before touching any
+ * `prev_close` in this file; it records the −6.24% TSLA day that never
+ * happened, which is what the previous per-symbol heuristic printed.
  */
 import type {
   Freshness,
@@ -316,7 +330,7 @@ async function polyGet<T>(path: string, params: Record<string, string | number |
 }
 
 /* ------------------------------------------------------------------ */
-/* ET calendar helpers (weekends only — no holidays table, 00 §5)       */
+/* ET calendar helpers — weekends, plus the holidays we have OBSERVED   */
 /* ------------------------------------------------------------------ */
 
 function etParts(d: Date) {
@@ -349,11 +363,94 @@ function addDays(dateStr: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Previous weekday. Holidays are unknown, so a holiday reads as an empty day. */
+/**
+ * ET dates the exchange calendar has told us had NO regular session.
+ *
+ * THIS IS NOT A HOLIDAYS TABLE and nothing here is hard-coded — that gap is
+ * still open. It is a MEMORY OF OBSERVATIONS. `/v1/marketstatus/now` is the
+ * exchange's own answer and it does know about holidays; when it says `closed`
+ * on a WEEKDAY at an hour that would otherwise be trading (04:00–20:00 ET),
+ * that date had no session, and a date does not stop having been a holiday
+ * later in the day — so this memory deliberately outlives the ten minutes an
+ * observation counts as evidence about *right now*.
+ *
+ * WHY IT MATTERS, MEASURED. `sessionMinutesBetween` used to charge a full
+ * 390-minute session to every weekday, holiday or not. On Labor Day 2026
+ * (Mon Sep 7, shut all day) that made Friday's 19:55 print read 385 market
+ * minutes late by the evening, so `freshnessFor` graded every quote `stale` /
+ * `feed_gap` and the app told members "Data unavailable" — the product claiming
+ * its own pipe was broken when the exchange was simply closed. The market being
+ * shut is `market_closed`. `feed_gap` means the market is OPEN and nothing is
+ * arriving, and it may not mean anything else.
+ */
+const knownClosedDates = new Set<string>();
+
+/** The extended-hours window. Outside it, `closed` is just night-time. */
+const PREMARKET_OPEN_MIN = 4 * 60;
+const POSTMARKET_CLOSE_MIN = 20 * 60;
+
+/**
+ * Fold one `/v1/marketstatus/now` answer into the calendar.
+ *
+ * Only inside 04:00–20:00 ET on a weekday: at 21:00 on an ordinary Tuesday the
+ * exchange is closed too, and reading that as "Tuesday had no session" would
+ * erase a whole day of market time and make a genuinely abandoned morning quote
+ * look minutes old. The observation is also allowed to CLEAR a date, so a bad
+ * read can never pin a trading day shut for the life of the process.
+ *
+ * The evening a process wakes up on a holiday is covered separately and by
+ * stronger evidence — see the grouped-daily check in `getSnapshot`, where an
+ * empty market-wide day plus a snapshot that priced nothing says the same thing
+ * without having to guess what "closed at 9pm" means.
+ */
+function noteSessionObservation(status: MarketStatus, at = new Date()): void {
+  const { date, minutes } = etParts(at);
+  if (isWeekend(date)) return;
+  if (minutes < PREMARKET_OPEN_MIN || minutes >= POSTMARKET_CLOSE_MIN) return;
+  if (status === 'closed') knownClosedDates.add(date);
+  else knownClosedDates.delete(date);
+}
+
+/**
+ * TEST SEAM. States the exchange calendar the way a `/v1/marketstatus/now`
+ * observation would, so a holiday can be exercised without the wall clock
+ * being on one. Not used by any request path.
+ */
+export function noteNonTradingDate(dateStr: string): void {
+  knownClosedDates.add(dateStr);
+}
+
+/** A weekday the exchange has not told us was shut. */
+export function isTradingDate(dateStr: string): boolean {
+  return !isWeekend(dateStr) && !knownClosedDates.has(dateStr);
+}
+
+/** The previous date that had a session — weekends and observed holidays skipped. */
 export function prevTradingDate(dateStr: string): string {
   let d = addDays(dateStr, -1);
-  while (isWeekend(d)) d = addDays(d, -1);
+  // Guarded: the longest run of non-sessions the US calendar produces is a
+  // holiday against a weekend, and an unbounded walk in a request path is not
+  // something this file does.
+  for (let guard = 0; guard < 12 && !isTradingDate(d); guard++) d = addDays(d, -1);
   return d;
+}
+
+/**
+ * The ET date `sessions` trading sessions back from `to`, counting `to` itself
+ * when it is a session. This is the honest form of "how far back do we ask".
+ */
+export function tradingDaysBack(sessions: number, to: string): string {
+  const want = Math.max(1, Math.floor(sessions));
+  let date = to;
+  let counted = isTradingDate(date) ? 1 : 0;
+  // Five calendar days per session is more slack than any run of weekends and
+  // holidays can consume, and it keeps the walk bounded.
+  const maxSteps = Math.max(7, want * 5);
+  for (let i = 0; i < maxSteps && counted < want; i++) {
+    date = addDays(date, -1);
+    if (isTradingDate(date)) counted += 1;
+  }
+  return date;
 }
 
 /**
@@ -390,10 +487,14 @@ const MAX_SPAN_DAYS = 45;
  * Saturday is ZERO market minutes and reads as correct rather than broken,
  * while a print abandoned mid-session accrues lateness by the minute.
  *
- * Holidays are still unknown (README gap 2), so a holiday counts as a full
- * session here — a print from before a holiday looks up to 390 minutes later
- * than it is. `sessionNow()` covers the common case by preferring Polygon's own
- * market status when it is warm.
+ * A HOLIDAY NO LONGER COSTS 390 MINUTES. It used to: this loop skipped
+ * weekends and charged every other weekday a full session, so on Labor Day
+ * 2026 Friday's last print aged 385 minutes over a day on which the exchange
+ * produced nothing, and every quote came back `stale`. `isTradingDate` now
+ * skips the dates `/v1/marketstatus/now` has told us were shut as well. That
+ * knowledge only ever covers days this process has observed, so a holiday we
+ * were never awake for still costs a session — under-claiming freshness, which
+ * is the safe direction.
  */
 export function sessionMinutesBetween(from: Date, to: Date): number {
   const a = from.getTime();
@@ -405,7 +506,7 @@ export function sessionMinutesBetween(from: Date, to: Date): number {
   let date = etParts(from).date;
   const endDate = etParts(to).date;
   for (let guard = 0; guard <= MAX_SPAN_DAYS + 2; guard++) {
-    if (!isWeekend(date)) {
+    if (isTradingDate(date)) {
       const open = etInstant(date, SESSION_OPEN_MIN);
       const close = etInstant(date, SESSION_CLOSE_MIN);
       if (open && close) {
@@ -462,6 +563,9 @@ export async function refreshMarketStatus(): Promise<MarketStatus | null> {
               ? 'after'
               : 'closed';
       observedStatus = { status, at: Date.now() };
+      // The exchange's own verdict is the only holiday knowledge this file has.
+      // Remember it as a calendar fact, not just as an opinion about now.
+      noteSessionObservation(status);
       return status;
     } finally {
       statusInFlight = null;
@@ -489,7 +593,10 @@ export function sessionNow(now = new Date()): MarketStatus {
  */
 export function lastTradingDate(now = new Date()): string {
   const { date, minutes } = etParts(now);
-  if (!isWeekend(date) && minutes >= 16 * 60 + 45) return date;
+  // `isTradingDate`, not `!isWeekend`: after 16:45 on a holiday the old test
+  // named the holiday as the last trading date, and every lookup keyed on it
+  // then asked Polygon for a session that never happened.
+  if (isTradingDate(date) && minutes >= 16 * 60 + 45) return date;
   return prevTradingDate(date);
 }
 
@@ -718,15 +825,49 @@ const TF_PATH: Record<CandleTimeframe, { mult: number; span: string }> = {
   '1d': { mult: 1, span: 'day' },
 };
 
-/** How far back a request reaches when the caller does not say. */
-export const TF_DEFAULT_SPAN_DAYS: Record<CandleTimeframe, number> = {
+/**
+ * How far back a request reaches when the caller does not say — counted in
+ * TRADING SESSIONS, never in calendar days.
+ *
+ * IT USED TO BE CALENDAR DAYS AND IT EMPTIED THE CHART. `1m` was 3 days. Asked
+ * on Labor Day 2026 (Mon Sep 7) that is Sep 5 → Sep 8: a Saturday, a Sunday and
+ * a holiday. ZERO trading sessions in the window, `resultsCount: 0` back from
+ * Polygon, `source:"none"` out of the route, and a blank one-minute chart —
+ * every Monday holiday, and any 1m chart opened early on an ordinary Monday.
+ * `5m` at 5 calendar days was one day away from the same failure in a
+ * Thanksgiving or Christmas week.
+ *
+ * The counts below are the same intended windows stated honestly: three
+ * SESSIONS of one-minute bars, five of five-minute bars, ten of fifteens. The
+ * longer timeframes carry the session count their old calendar span actually
+ * worked out to (45 calendar days ≈ 31 sessions, 120 ≈ 83, 180 ≈ 124), so
+ * nothing widens.
+ *
+ * IT STILL RESPECTS THE CEILING. `tradingDaysBack` walks the calendar back over
+ * weekends and observed holidays, which costs about 1.4 calendar days per
+ * session, so the widest intraday span here lands inside the ~50-day limit
+ * `clampFrom` imposes from `baseAggregateLimit`. READ the block above
+ * `baseAggregateLimit` before raising any of these: `limit` bounds base
+ * one-minute aggregates SCANNED, not bars returned, and widening a window
+ * naively is exactly what truncated the 15-minute chart by nine days.
+ */
+export const TF_DEFAULT_SPAN_SESSIONS: Record<CandleTimeframe, number> = {
   '1m': 3,
   '5m': 5,
   '15m': 10,
-  '1h': 45,
-  '4h': 120,
-  '1d': 180,
+  '1h': 31,
+  '4h': 83,
+  '1d': 124,
 };
+
+/**
+ * The default `from` date for a timeframe: far enough back that the window
+ * holds `TF_DEFAULT_SPAN_SESSIONS[tf]` sessions whatever weekend or holiday it
+ * is asked over. Every caller that does not carry its own range uses this.
+ */
+export function defaultSpanFrom(tf: CandleTimeframe, to = new Date().toISOString().slice(0, 10)): string {
+  return tradingDaysBack(TF_DEFAULT_SPAN_SESSIONS[tf], to);
+}
 
 /** How many BARS we are willing to send back. A display cap, nothing else. */
 export function maxCandles(): number {
@@ -1061,9 +1202,15 @@ function nsToMs(ns: number | undefined): number | null {
  * anything.
  */
 function snapshotPrice(t: SnapTicker, now = new Date()): { price: number; ts: string; kind: PriceKind } | null {
+  // AN ALL-ZERO ROW IS NOT A QUOTE. With the market shut Polygon answers for
+  // every ticker with `updated:0`, `lastTrade.p:0`, `day.c:0` and only
+  // `prevDay` populated (verified 2026-09-07, Labor Day). Zero is not a price;
+  // a row carrying none must fall through to the daily bars rather than be
+  // published as one — and `updated:0` says outright that nothing was assembled.
+  if (typeof t.updated === 'number' && t.updated <= 0) return null;
   const trade = nsToMs(t.lastTrade?.t);
   const tradePrice = num(t.lastTrade?.p);
-  if (trade !== null && tradePrice !== null) {
+  if (trade !== null && tradePrice !== null && tradePrice > 0) {
     return { price: tradePrice, ts: new Date(trade).toISOString(), kind: 'print' };
   }
   const minClose = num(t.min?.c);
@@ -1227,9 +1374,28 @@ export async function getSnapshot(symbols: string[]): Promise<SnapshotResult> {
   for (const s of missing) {
     const row = snapped?.get(s);
     const priced = row ? snapshotPrice(row) : null;
-    // `prevDay.c` is the comparison Polygon itself uses for `todaysChange`, so
-    // last print against prior close is one consistent pair, not two sources.
-    const prevClose = num(row?.prevDay?.c);
+    // THE BASIS RULE, applied here exactly as `basisCloseFromDaily` applies it
+    // to a bar: a print is measured against the close of the most recent
+    // session that had ALREADY ENDED when it happened. Inside a running session
+    // that is `prevDay.c` — Polygon's own `todaysChange` pairing. Once the
+    // session has closed, the 19:55 print belongs to a finished day and
+    // `day.c` IS that day's close, so `prevDay.c` would be a session too old.
+    const prevDayClose = num(row?.prevDay?.c);
+    const dayClose = num(row?.day?.c);
+    const dayDate =
+      typeof row?.day?.t === 'number' && row.day.t > 0 ? etDateOf(new Date(row.day.t).toISOString()) : null;
+    const prevClose =
+      priced &&
+      // Only an actual print. When `snapshotPrice` fell through to `day.c` the
+      // price and the basis would be the same number and every change 0.00%.
+      priced.kind === 'print' &&
+      pastOwnSessionClose(priced.ts) &&
+      dayClose !== null &&
+      dayClose > 0 &&
+      dayDate !== null &&
+      dayDate === etDateOf(priced.ts)
+        ? dayClose
+        : prevDayClose;
     if (priced && prevClose !== null) {
       const q = buildQuote({
         symbol: s,
@@ -1273,6 +1439,20 @@ export async function getSnapshot(symbols: string[]): Promise<SnapshotResult> {
 
   // 2) Two grouped calls cover every remaining symbol.
   const [g0, g1] = [await groupedFor(d0), await groupedFor(d1)];
+
+  // POLYGON'S OWN CALENDAR, FOR FREE — and the only holiday signal that works
+  // in the EVENING. `/v1/marketstatus/now` answers `closed` at 9pm on an
+  // ordinary Tuesday exactly as it does all day on Labor Day, so a late
+  // observation cannot tell a holiday from a night; two independent zeroes can.
+  // When the ticker snapshot priced NOTHING for any symbol we asked about AND
+  // the grouped daily for `d0` came back with no rows for the entire US market,
+  // that weekday had no session. Both halves matter: an hour after the close on
+  // a real trading day the grouped file can still be empty, but the snapshot is
+  // full of prices, so the pair never fires there.
+  if (g0 !== null && g0.size === 0 && !isWeekend(d0) && afterSnapshot.length === missing.length) {
+    noteNonTradingDate(d0);
+  }
+
   let degraded = false;
   let reason: string | null = null;
 
@@ -1533,6 +1713,128 @@ function seriesReachesPresent(
   return behind <= width * slackBars + 1;
 }
 
+/* ------------------------------------------------------------------ */
+/* THE COMPARISON BASIS — what a change % is measured from              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A change % is a PAIR — a price and the close it is measured from — and both
+ * halves have to describe the same event or the number is invented. ONE RULE
+ * governs the pair everywhere in this file:
+ *
+ *   **prev_close is the close of the most recent regular session that had
+ *   already ENDED at the moment the price printed.**
+ *
+ * Read against the four cases the app actually meets:
+ *   - regular hours — an 11:00 Tuesday bar → Monday's close. Today's move.
+ *   - extended hours of an IN-PROGRESS session — an 08:00 Tuesday pre-market
+ *     bar → Monday's close. Tuesday has not closed, so it cannot be the basis.
+ *   - after-hours of a COMPLETED session — a Friday 19:55 print → FRIDAY's own
+ *     16:00 close. The session is over, its close is a fact, and the
+ *     after-hours print is a move away from it.
+ *   - weekend or holiday — the newest print is still that Friday 19:55 one, so
+ *     the basis does not move either: Friday's close.
+ *
+ * THE BUG THIS REPLACED. The old code asked whether the bar's ET date was later
+ * than the ET date of the snapshot quote's own `source_ts`, and took
+ * `snapshot.prev_close` whenever they matched. With the market shut Polygon's
+ * ticker snapshot answers all zeros, `getSnapshot` falls through to daily bars,
+ * and WHICH session that fallback lands on varies per symbol — so the pair came
+ * apart. Measured on Labor Day 2026: TSLA showed Friday's 19:55 after-hours
+ * print, 352.89, against WEDNESDAY's close of 376.365, and rendered a −6.24%
+ * day that never happened (the honest figure against Friday's 354.08 close is
+ * −0.34%). NVDA showed +0.46% where the truth was −0.38%. A fabricated
+ * multi-percent move in a ticker header is worse than stale data, so nothing
+ * below reads a per-symbol fallback date any more: the basis comes off the
+ * daily bar series, which states which session each close belongs to.
+ */
+export function basisCloseFromDaily(priceTs: string, daily: Candle[]): number | null {
+  const at = Date.parse(priceTs);
+  if (!Number.isFinite(at)) return null;
+  for (let i = daily.length - 1; i >= 0; i--) {
+    const bar = daily[i];
+    if (bar.c === null) continue;
+    const date = etDateOf(bar.ts);
+    if (!date) continue;
+    const close = etInstant(date, SESSION_CLOSE_MIN);
+    // `<=`, not `<`: the bar stamped 16:00 is the first bar of after-hours and
+    // is measured against the close that had just happened, while the 15:55 bar
+    // is still inside the session and reaches back to the day before.
+    if (close && close.getTime() <= at) return bar.c;
+  }
+  return null;
+}
+
+/** Had the regular session on this timestamp's own ET date already ended by it? */
+export function pastOwnSessionClose(ts: string): boolean {
+  const at = Date.parse(ts);
+  if (!Number.isFinite(at)) return false;
+  const close = etInstant(etParts(new Date(at)).date, SESSION_CLOSE_MIN);
+  return Boolean(close && close.getTime() <= at);
+}
+
+/** How far back the daily series has to reach to hold any bar's basis. */
+const BASIS_LOOKBACK_DAYS = 12;
+
+/**
+ * The daily close an intraday bar is measured against, for ONE symbol.
+ *
+ * Cache first — the daily bars are normally already stored by the snapshot that
+ * ran moments earlier — and only when the store has nothing does this pay for a
+ * refill, which is itself cache-first and cooldown-guarded inside `getCandles`.
+ * A fabricated change % is worth more than one daily call to avoid.
+ */
+async function intradayBasisClose(sym: string, barTs: string, snapshot: MarketQuote): Promise<number | null> {
+  const barDate = etDateOf(barTs) ?? utcToday();
+  const from = addDays(barDate, -BASIS_LOOKBACK_DAYS);
+  const stored = await readCachedCandles(sym, '1d', from, barDate);
+  const fromStore = basisCloseFromDaily(barTs, stored);
+  if (fromStore !== null) return fromStore;
+  const refilled = await getCandles(sym, '1d', from, barDate);
+  const fromRefill = basisCloseFromDaily(barTs, refilled.candles);
+  if (fromRefill !== null) return fromRefill;
+  // Still no daily close for the right session. While the session is still
+  // running the PRIOR close is the basis and the snapshot already carries it.
+  // Once the session has closed it is not, and a blank change is the honest
+  // answer — the app renders "—" rather than a move that did not happen.
+  return pastOwnSessionClose(barTs) ? null : snapshot.prev_close;
+}
+
+/**
+ * Recent daily closes for many symbols, ASCENDING per symbol, in ONE query.
+ *
+ * Read NEWEST-first with the limit and reversed on the way out, for the reason
+ * `readCachedCandles` spells out: ascending with a LIMIT keeps the OLDEST rows
+ * and silently drops the sessions the basis actually needs.
+ */
+async function readDailyBasisBars(symbols: string[], sinceDate: string): Promise<Map<string, Candle[]>> {
+  const out = new Map<string, Candle[]>();
+  if (!symbols.length) return out;
+  const db = serviceClient();
+  const { data, error } = await db
+    .from('candles')
+    .select('symbol,ts,c')
+    .in('symbol', symbols)
+    .eq('timeframe', '1d')
+    .gte('ts', `${sinceDate}T00:00:00Z`)
+    .order('ts', { ascending: false })
+    .limit(Math.min(2000, symbols.length * (BASIS_LOOKBACK_DAYS + 2)));
+  if (error) {
+    log('warn', '-', 'candles.daily_basis_failed', { message: error.message });
+    return out;
+  }
+  for (const r of data ?? []) {
+    const row = r as Record<string, unknown>;
+    const sym = String(row.symbol).toUpperCase();
+    const list = out.get(sym) ?? [];
+    // Newest-first in, so unshift to leave each list ascending like every other
+    // candle array this file hands around.
+    list.unshift({ ts: new Date(String(row.ts)).toISOString(), o: null, h: null, l: null, c: num(row.c), v: null });
+    out.set(sym, list);
+  }
+  return out;
+}
+
 function etDateOf(ts: string | null): string | null {
   if (!ts) return null;
   const d = new Date(ts);
@@ -1577,7 +1879,7 @@ export async function resolveQuote(
   let degradedReason: string | null = null;
 
   if (requested !== '1d') {
-    const intraday = await getCandles(sym, requested, opts.from ?? daysAgoUTC(TF_DEFAULT_SPAN_DAYS[requested]), to);
+    const intraday = await getCandles(sym, requested, opts.from ?? defaultSpanFrom(requested, to), to);
     const found = lastPriced(intraday.candles);
     // Reaches the present, not merely newer — see the block above this
     // function for why the strict test had to go.
@@ -1596,7 +1898,7 @@ export async function resolveQuote(
   }
 
   if (tf === '1d') {
-    const from = opts.from ?? daysAgoUTC(TF_DEFAULT_SPAN_DAYS['1d']);
+    const from = opts.from ?? defaultSpanFrom('1d', to);
     // Cache first: the daily bars are usually already stored by the snapshot
     // that just ran, and a refill is only worth a request when they are not.
     const stored = await readCachedCandles(sym, '1d', from, to);
@@ -1619,20 +1921,16 @@ export async function resolveQuote(
   }
 
   const found = lastPriced(bars);
+  const intradaySeries = tf !== '1d';
+  // THE BASIS, from the daily series — see `basisCloseFromDaily`. A daily
+  // series carries its own basis in the bar before, so only intraday asks.
+  const intradayBasis = found && intradaySeries ? await intradayBasisClose(sym, found.last.ts, snapshot) : null;
+
   const resolved: ResolvedQuote = found
     ? (() => {
-        const intradaySeries = tf !== '1d';
         const stamped = intradaySeries ? null : closeStampOf(found.last.ts);
         const sourceTs = stamped ? stamped.ts : found.last.ts;
-        const barDate = etDateOf(found.last.ts);
-        const snapDate = etDateOf(snapshot.source_ts);
-        const prevClose = intradaySeries
-          ? // A bar from a session AFTER the last daily close compares against
-            // that close; a bar from inside it compares against the one before.
-            barDate && snapDate && barDate > snapDate
-            ? snapshot.price
-            : snapshot.prev_close
-          : (found.prev?.c ?? snapshot.prev_close);
+        const prevClose = intradaySeries ? intradayBasis : (found.prev?.c ?? snapshot.prev_close);
         return {
           quote: buildQuote({
             symbol: sym,
@@ -1685,6 +1983,11 @@ export async function resolveQuotes(
   if (!opts.preferIntraday || tf === '1d' || !wanted.length) return snap;
 
   const latest = await readLatestBars(wanted, tf);
+  // THE BASIS comes off the DAILY series, never off whichever session the
+  // snapshot's per-symbol fallback happened to land on — see
+  // `basisCloseFromDaily` for the −6.24% that mismatch printed. One more
+  // database read for the whole set; still not one extra Polygon call.
+  const daily = await readDailyBasisBars(wanted, addDays(utcToday(), -BASIS_LOOKBACK_DAYS));
   const quotes = snap.quotes.map((q) => {
     const bar = latest.get(q.symbol);
     // Same test as the portal, for the same reason: a stored bar takes the
@@ -1692,9 +1995,15 @@ export async function resolveQuotes(
     // Strict newness would never fire once the snapshot began carrying a real
     // print time, and the list and the portal would drift apart again.
     if (!bar || bar.c === null || !seriesReachesPresent(bar.ts, tf, q.source_ts)) return q;
-    const barDate = etDateOf(bar.ts);
-    const snapDate = etDateOf(q.source_ts);
-    const prevClose = barDate && snapDate && barDate > snapDate ? q.price : q.prev_close;
+    const prevClose = basisCloseFromDaily(bar.ts, daily.get(q.symbol) ?? []);
+    if (prevClose === null) {
+      // No daily close this bar can honestly be measured against. Inside a
+      // running session the prior close IS the basis and the snapshot carries
+      // it; past the close it is not, and rather than invent a move we leave
+      // the snapshot's own already-consistent pair alone.
+      if (pastOwnSessionClose(bar.ts)) return q;
+      return buildQuote({ symbol: q.symbol, price: bar.c, prevClose: q.prev_close, sourceTs: bar.ts, bar: tf });
+    }
     return buildQuote({ symbol: q.symbol, price: bar.c, prevClose, sourceTs: bar.ts, bar: tf });
   });
   return { ...snap, quotes };
@@ -1915,6 +2224,7 @@ export function resetMarketCaches(): void {
   cooldownUntil = 0;
   observedStatus = null;
   statusInFlight = null;
+  knownClosedDates.clear();
   statedEntitlement = 'unknown';
   measuredLagMin = null;
   measuredLagAt = 0;
