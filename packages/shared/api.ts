@@ -3512,38 +3512,22 @@ export type OnboardingCompleteRound4Request = z.infer<typeof OnboardingCompleteR
 
 /* ─────────────────────────── readiness stage ─────────────────────────────── */
 
-/**
- * `POST /api/v1/stage/evaluate` — the phone reports what training has produced
- * and the server decides what it is worth.
- *
- * It sends EVIDENCE and not a conclusion, and the reason is in
- * `apps/api/src/lib/stage/rules.ts`: training progress lives only in
- * AsyncStorage today, so the server has nothing of its own to read, and a body
- * that simply said `{ stage: 'trade_ready' }` would make the whole ladder
- * self-serve. Scores and completed lessons are re-graded here against the
- * server's own copy of the gates.
- */
-export const StageEvaluateRequest = z.object({
-  mastery: z.record(z.string(), z.number()).default({}),
-  day_progress: z
-    .record(
-      z.string(),
-      z.object({
-        completed_lesson_ids: z.array(z.string()).default([]),
-        best_score_pct: z.number().nullable().default(null),
-      })
-    )
-    .default({}),
-});
-export type StageEvaluateRequest = z.infer<typeof StageEvaluateRequest>;
+/* ------------------------------------------------------------------ */
+/* POST /api/v1/stage/evaluate — REMOVED, 8 September 2026              */
+/*                                                                      */
+/* StageEvaluateRequest and StageEvaluateResponse lived here. The route  */
+/* graded training evidence a phone sent up, which is how a device-local */
+/* profile came to decide a member's readiness — the contamination       */
+/* migration 0046 exists to end. 0047 made stage derive from the belt    */
+/* instead (`sync_stage_from_belt`, section 7), so nothing sends the     */
+/* evidence, nothing serves the route, and the schemas described a       */
+/* conversation that no longer happens.                                  */
+/*                                                                      */
+/* The ratchet did not go with them: 0047 implements the same four       */
+/* outcomes — locked, promoted, unchanged, no_downgrade. See             */
+/* apps/api/src/lib/stage/rules.ts for the full argument.                */
+/* ------------------------------------------------------------------ */
 
-export const StageEvaluateResponse = z.object({
-  stage: ReadinessStage,
-  /** True when this call moved it. The client refreshes the profile if so. */
-  changed: z.boolean(),
-  reason: z.enum(['locked', 'promoted', 'unchanged', 'no_downgrade']),
-});
-export type StageEvaluateResponse = z.infer<typeof StageEvaluateResponse>;
 
 /**
  * `POST /api/v1/admin/users/:id/stage` — a staff override.

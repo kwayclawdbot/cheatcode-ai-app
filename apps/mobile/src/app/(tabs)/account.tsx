@@ -503,10 +503,20 @@ export default function Account() {
             value={data?.paper ? `$${Math.round(data.paper.equity).toLocaleString('en-US')}` : null}
             onPress={() => router.push('/account/paper')}
           />
-          <Row>
-            <T size={13} style={{ flex: 1 }}>Daily loss cap</T>
-            <Num size={13} c={color.gold}>{policy ? `$${policy.daily_loss_cap}` : '—'}</Num>
-          </Row>
+          {/*
+            A NAV ROW RATHER THAN A READING, because this number is now
+            changeable. Risk moved out of signup to the front of the first paper
+            order (audit F01, `features/onboarding/risk-gate.ts`), and somebody
+            who took the default should not have to start an order to be asked.
+            `/account/risk` mounts the same screen the order ticket detours to.
+          */}
+          <NavRow
+            testID="nav-risk"
+            icon={<Bars size={14} color={color.muted} />}
+            label="Daily loss cap"
+            value={policy ? `$${policy.daily_loss_cap}` : null}
+            onPress={() => router.push('/account/risk')}
+          />
           <Row>
             <T size={13} style={{ flex: 1 }}>Max position size</T>
             <Num size={13}>{policy ? `${policy.max_position_pct}% of balance` : '—'}</Num>

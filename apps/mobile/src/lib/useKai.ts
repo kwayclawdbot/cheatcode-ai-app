@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { api } from './api';
 import { offlineMode } from './env';
-import { supabase } from './supabase';
 import { fixtureReply, fixtureSetups, fixtureSheetReply } from './fixtures';
 import type { KaiFrame, KaiObjectEnvelope } from '@cheatcode/shared';
 import { adaptActionPreview, adaptCredits, adaptGradedSetup } from './adapters';
@@ -70,28 +69,22 @@ const HISTORY_EMPTY_PLAIN = 'Nothing was said in this conversation yet.';
 const HISTORY_OFFLINE_PLAIN = 'Saved messages need the service; this build is running on examples.';
 
 /**
- * Saved messages, read straight from `conversation_messages` under the owner
- * RLS policy (`supabase/migrations/0014_rls_grants.sql`).
+ * Saved messages, read from the API.
  *
- * WHY NOT THE API. There is no read route for a transcript: the conversations
- * endpoint has `GET` (the drawer) and `POST` (create), and `:id` has only
- * `PATCH`. Adding `GET /kai/conversations/:id/messages` is the right home for
- * this and it belongs to the API lane, not this one — see the handover note.
- * Until it exists the table is readable by its owner and by nobody else, which
- * is the same guarantee the route would give, so the transcript is fetched here
- * rather than left unfetched.
+ * THIS USED TO READ `conversation_messages` THROUGH THE SUPABASE CLIENT, because
+ * when the wall first needed a transcript there was no route to ask: the
+ * conversations endpoint had `GET` (the drawer) and `POST` (create), and `:id`
+ * had only `PATCH`. The owner-only policy in `0014_rls_grants.sql` made that a
+ * real guarantee rather than a hole, and there is precedent for it here, but it
+ * left the phone needing table knowledge to draw a conversation.
+ *
+ * `GET /kai/conversations/:id/messages` exists now and this reads it. The route
+ * scopes to the owner exactly as the policy did, and it can page, which a
+ * `.limit()` on the table could only truncate.
  */
 async function fetchTranscript(conversationId: string): Promise<WallItem[]> {
-  const db = supabase;
-  if (!db) throw new Error(HISTORY_FAILED_PLAIN);
-  const { data, error } = await db
-    .from('conversation_messages')
-    .select('seq,role,content')
-    .eq('conversation_id', conversationId)
-    .order('seq', { ascending: true })
-    .limit(TRANSCRIPT_LIMIT);
-  if (error) throw new Error(error.message);
-  const turns = readTranscript(data);
+  const { messages } = await api.conversationMessages(conversationId, { limit: TRANSCRIPT_LIMIT });
+  const turns = readTranscript(messages);
   if (!turns.length) {
     return [{ kind: 'notice', id: `h:${conversationId}:empty`, text: HISTORY_EMPTY_PLAIN }];
   }

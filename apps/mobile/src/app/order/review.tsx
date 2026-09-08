@@ -62,6 +62,12 @@ import {
 } from '../../features/trade/components';
 import type { OrderDuration, OrderPreview, OrderSide, OrderTicket, OrderType } from '../../features/orders/types';
 import { SIDE_LABEL, isBuySide } from '../../features/orders/types';
+import { useMe } from '../../features/account/useAccount';
+import {
+  RISK_BEFORE_ORDER_CTA,
+  RISK_BEFORE_ORDER_SUB,
+  needsRiskSetup,
+} from '../../features/onboarding/risk-gate';
 
 const readSide = (v: string | undefined): OrderSide => {
   const s = String(v ?? '');
@@ -115,6 +121,7 @@ function AccountStrip({ preview }: { preview: OrderPreview }) {
 
 export default function ReviewOrder() {
   const router = useRouter();
+  const me = useMe();
   const params = useLocalSearchParams<{
     symbol?: string; side?: string; qty?: string; amount?: string; order_type?: string;
     limit?: string; stop?: string; duration?: string; plan?: string; setup?: string; close?: string;
@@ -292,6 +299,23 @@ export default function ReviewOrder() {
   }
 
   const blocked = preview.risk.verdict === 'blocker';
+  /**
+   * RISK IS ASKED HERE, BECAUSE HERE IS WHERE IT MEANS SOMETHING (audit F01:
+   * "Ask risk questions before paper execution").
+   *
+   * It used to be step 3 of six during signup, which asked a stranger to pick a
+   * daily loss cap in dollars before they had seen a price. The cap is enforced
+   * by the server on every order, so this is the screen where the question has a
+   * visible consequence — see `features/onboarding/risk-gate.ts` for the full
+   * argument.
+   *
+   * IT IS A DETOUR, NOT A BLOCK. Somebody who never answered has a working cap
+   * already (`POST /onboarding/complete` has always written one); what they do
+   * not have is a cap they CHOSE. So this offers the choice once and the order
+   * survives it — `needsRiskSetup` answers false for a profile that has not
+   * loaded, so a slow `/me` never stands between a member and their order.
+   */
+  const askRisk = needsRiskSetup(me.data?.profile ?? null);
   const idea = ideaFromPreview(preview, candles);
   const budget = dailyBudget(preview);
   const q = preview.quote;
@@ -449,16 +473,31 @@ export default function ReviewOrder() {
           <Button
             label={phase === 'sending'
               ? PLACING_LABEL
-              : (closeId ? EXIT_PLACE_LABEL : ACTION_LABEL.place_paper_order)}
-            onPress={() => { void placeOrder(preview.preview_id); }}
+              : askRisk
+                ? RISK_BEFORE_ORDER_CTA
+                : (closeId ? EXIT_PLACE_LABEL : ACTION_LABEL.place_paper_order)}
+            onPress={() => {
+              if (askRisk) { router.push('/account/risk' as never); return; }
+              void placeOrder(preview.preview_id);
+            }}
             loading={phase === 'sending'}
             disabled={!canPlace}
             height={52}
             size={16}
             testID="cta-place"
-            accessibilityHint={blocked ? 'Blocked by a rule you set' : 'Sends the paper order'}
+            accessibilityHint={blocked
+              ? 'Blocked by a rule you set'
+              : askRisk
+                ? 'Choose your risk level first'
+                : 'Sends the paper order'}
           />
         )}
+
+        {askRisk && !blocked ? (
+          <T size={12} c={color.muted} align="center" lh={17} testID="risk-gate-line">
+            {RISK_BEFORE_ORDER_SUB}
+          </T>
+        ) : null}
 
         {blocked ? (
           <T size={11} c={color.red} align="center" testID="blocked-line">

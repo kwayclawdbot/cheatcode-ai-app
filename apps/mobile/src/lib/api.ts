@@ -580,6 +580,30 @@ export const api = {
   patchConversation: (id: string, body: { title?: string; pinned?: boolean }) =>
     request<unknown>(`/kai/conversations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
+  /**
+   * `GET /kai/conversations/:id/messages` — the saved transcript.
+   *
+   * This route did not exist when the wall first needed it, so `fetchTranscript`
+   * read `conversation_messages` through the Supabase client under the
+   * owner-only policy in `0014_rls_grants.sql`. That was a real guarantee, not a
+   * hole, but a transcript belongs on a route: the server can page it, and the
+   * phone stops needing table knowledge to draw a conversation.
+   *
+   * `content` is passed through as stored, so `readTranscript` takes it
+   * unchanged.
+   */
+  conversationMessages: (id: string, opts?: { since?: number; limit?: number }) =>
+    request<{
+      conversation_id: string;
+      messages: { seq: number; role: 'user' | 'kai'; content: unknown }[];
+      cursor: number;
+      more: boolean;
+      empty_copy: string;
+    }>(
+      `/kai/conversations/${encodeURIComponent(id)}/messages?limit=${opts?.limit ?? 200}`
+        + (opts?.since != null ? `&since=${opts.since}` : ''),
+    ),
+
   /** `GET /symbols/:symbol` → the ticker-page research payload (round-4 board). */
   tickerPage: async (symbol: string, mode: GoalMode): Promise<TickerPage> =>
     adaptTickerPage(await request<unknown>(`/symbols/${encodeURIComponent(symbol)}?mode=${mode}&view=ticker`), symbol),
@@ -607,23 +631,6 @@ export const api = {
     }
   ) => request<OnboardingCompleteResponse>('/onboarding/complete', { method: 'POST', body: JSON.stringify(body) }),
 
-  /**
-   * `POST /stage/evaluate` — report what training has produced and let the
-   * server decide what it is worth.
-   *
-   * This sends EVIDENCE, never a conclusion: `stage` is not writable from a
-   * client at all (0042 puts a trigger on the column), and the server re-grades
-   * these numbers against its own copy of the day gates. Safe to call as often
-   * as you like — the server's ratchet makes a repeat a no-op.
-   */
-  evaluateStage: (body: {
-    mastery: Record<string, number>;
-    day_progress: Record<string, { completed_lesson_ids: string[]; best_score_pct: number | null }>;
-  }) =>
-    request<{ stage: Stage; changed: boolean; reason: string }>('/stage/evaluate', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
 
   /** `PUT /settings` accepts experience + focus (round-4 personalize). */
   putKaiProfile: (body: { experience?: Experience; focus?: FocusKey[]; mode?: GoalMode }) =>

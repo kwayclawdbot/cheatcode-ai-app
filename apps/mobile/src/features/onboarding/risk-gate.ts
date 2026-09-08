@@ -70,5 +70,14 @@ export const RISK_DEFAULT_NOTE =
 /** The heading the screen wears when it is reached before an order. */
 export const RISK_BEFORE_ORDER_TITLE = 'Before your first paper order';
 
+/**
+ * What the order ticket's primary says when the member has not chosen a level.
+ *
+ * It names the detour rather than the order, because a button that says "Place
+ * paper order" and instead opens a settings screen is the surprise F16 spends a
+ * page objecting to. The order is not lost: the ticket is still behind it.
+ */
+export const RISK_BEFORE_ORDER_CTA = 'Set your risk level first';
+
 export const RISK_BEFORE_ORDER_SUB =
   'This sets the daily loss cap the app enforces on your practice account. You can change it any time.';
