@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { PathId } from '@/sim/personas';
 import { getAppHref } from '@/sim/handoff';
@@ -50,6 +50,13 @@ export function Landing() {
   const finderRef = useRef<HTMLDivElement>(null);
 
   const toFinder = () => finderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Picking a door swaps the selector for a phone that is taller than it was.
+  // Without this the page keeps its old offset and the top of the device —
+  // the progress rail — sits above the fold.
+  useEffect(() => {
+    if (path) finderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [path]);
 
   return (
     <div className={s.page}>
