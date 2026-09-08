@@ -30,7 +30,7 @@ if (!config.resolver.assetExts.includes('html')) config.resolver.assetExts.push(
  * eventually disagree about a gap.
  */
 const repoRoot = path.resolve(__dirname, '..', '..');
-config.watchFolders = [...(config.watchFolders ?? []), path.resolve(repoRoot, 'packages', 'shared')];
+config.watchFolders = [...(config.watchFolders ?? []), path.resolve(repoRoot, 'packages', 'shared'), path.resolve(repoRoot, 'packages', 'trade-ui')];
 config.resolver.extraNodeModules = {
   ...(config.resolver.extraNodeModules ?? {}),
   '@shared': path.resolve(repoRoot, 'packages', 'shared'),
