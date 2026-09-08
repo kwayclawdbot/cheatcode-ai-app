@@ -3,7 +3,7 @@ import { View, TextInput, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { alpha, color, gradient, gradientAngle, radius } from '../../../ui/tokens';
-import { family } from '../../../ui/fonts';
+import { family, fontStack } from '../../../ui/fonts';
 import { T } from '../../../ui/Text';
 import { Send } from './Icons';
 import { AttachmentTray, type Attachment } from '../../../ui/AttachmentTray';
@@ -216,7 +216,7 @@ export function RoomComposer({
             returnKeyType="send"
             style={{
               flex: 1,
-              fontFamily: family.regular,
+              fontFamily: fontStack(family.regular),
               fontSize: 14,
               color: color.text,
               ...(({ outlineStyle: 'none' } as unknown) as object),

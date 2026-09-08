@@ -52,6 +52,26 @@ const STACK_GROUPS = new Set([
   // Training Mode. Pushed from the Home "Continue Training" object and from the
   // Account board's Training & Mastery row — never a tab, so the gate is the
   // only thing standing between those two entries and a bounce to Home.
+  //
+  // THE BELT LIVES UNDER TRAINING AND THERE IS NO 'belt' ENTRY, ON PURPOSE.
+  // The belt lane put its two screens at `/training/belt` and
+  // `/training/belt/exam/[belt]` and noted that a top-level `belt` group would
+  // need a line here. It would work. It is the wrong shape:
+  //
+  //  - A BELT IS EARNED BY SITTING AN EXAM (migration 0047, whose own title is
+  //    "the belt is earned by passing a test"). The exam is a Training Mode
+  //    screen — same runner, same question types, same store. `/belt/exam/black`
+  //    would be a training screen at a URL that denies it is one.
+  //  - BOTH ENTRANCES ARE ALREADY INSIDE TRAINING: `/training` and
+  //    `/training/progress` are the only two screens that push to it. A
+  //    top-level group whose every caller sits under another group is a
+  //    directory, not a section.
+  //  - The belt does appear next to a name in a room, which is the argument FOR
+  //    promoting it — but that is a BADGE reading `user_points.belt`, not a
+  //    route. Nothing in the community navigates to the board.
+  //
+  // Promote it if a third entrance ever appears from outside training. Until
+  // then this comment is here so the question does not get asked twice.
   'training',
 ]);
 

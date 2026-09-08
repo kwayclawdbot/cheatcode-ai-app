@@ -1,5 +1,5 @@
-import React, { useState, type ReactNode } from "react";
-import { View, Pressable, StyleSheet, Image } from "react-native";
+import React, { useEffect, useRef, useState, type ReactNode } from "react";
+import { Animated, Easing, View, StyleSheet, Image } from "react-native";
 import Svg, {
   Line,
   Rect,
@@ -10,8 +10,10 @@ import Svg, {
 import { T, Num } from "../Text";
 import { Ticker } from "../Ticker";
 import { KaiOrb } from "../KaiOrb";
-import { family } from "../fonts";
+import { family, fontStack } from "../fonts";
 import { color, alpha, belt } from "../tokens";
+import { useMotion } from "../../features/a11y/context";
+import { Focusable } from "../Focus";
 import {
   LEVEL_LABEL,
   STATUS_LABEL,
@@ -80,6 +82,23 @@ const ink: Record<LevelKind, string> = {
   target: color.green,
 };
 
+/**
+ * A CHART ANNOTATION HAS A DEFINED MOTION BEHAVIOUR NOW (audit F19).
+ *
+ * F19's change asks for motion behaviour to be DEFINED "for sheets, chart
+ * annotations and feedback", and the acceptance criterion is that OS reduced
+ * motion is never overridden by anything in the app. This note is the chart
+ * annotation: Kai's sentence about a level, appearing over a trade map that has
+ * usually just moved underneath it.
+ *
+ * So the behaviour is stated rather than left to chance. It arrives — a short
+ * fade with six pixels of settle, so it reads as something Kai said about the
+ * chart rather than a paragraph that was always there and the eye missed. Under
+ * reduced motion the whole budget goes to zero and it is simply present: same
+ * text, same position, same everything, one frame instead of two hundred
+ * milliseconds. It never starts from `scale(0)`; things in this product do not
+ * appear out of nothing.
+ */
 export function KaiAnnotation({
   note,
   onAsk,
@@ -87,8 +106,35 @@ export function KaiAnnotation({
   note: KaiNote;
   onAsk?: (level: LevelKind) => void;
 }) {
+  const a = useRef(new Animated.Value(0)).current;
+  const { duration, distance } = useMotion();
+
+  // Keyed on the note's own text: a map that swaps which level Kai is talking
+  // about is a new annotation arriving, not the same one re-rendering.
+  useEffect(() => {
+    a.setValue(0);
+    const anim = Animated.timing(a, {
+      toValue: 1,
+      duration: duration(220),
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [a, duration, note.text, note.level]);
+
   return (
-    <View style={s.kai}>
+    <Animated.View
+      style={[
+        s.kai,
+        {
+          opacity: a,
+          transform: [
+            { translateY: a.interpolate({ inputRange: [0, 1], outputRange: [distance(6), 0] }) },
+          ],
+        },
+      ]}
+    >
       <KaiOrb size={24} glow={false} />
       <View style={s.flex}>
         <T size={12} c={color.violetLight}>
@@ -98,18 +144,20 @@ export function KaiAnnotation({
           {note.text}
         </T>
         {onAsk && (
-          <Pressable
+          <Focusable
             accessibilityRole="button"
             onPress={() => onAsk(note.level)}
             style={s.touch}
+            ringInset={2}
+            ringRadius={6}
           >
             <T size={14} c={color.violetLight}>
               Ask about this level ↗
             </T>
-          </Pressable>
+          </Focusable>
         )}
       </View>
-    </View>
+    </Animated.View>
   );
 }
 export function TradeMap({
@@ -218,8 +266,18 @@ export function TradeMap({
             ))}
             {labels.map((l) => (
               <React.Fragment key={l.kind}>
+                {/*
+                  THE PRICE ON THE MAP IS THE LAST BARE FAMILY ON THE CHART
+                  (audit F19/F20). `react-native-svg` on web emits a real
+                  `<text font-family="...">`, so a single-name family that has
+                  not loaded resolves to the browser default and the levels
+                  beside the trade map render in Times — on the one component
+                  in the product whose whole job is to make a number readable.
+                  `fontStack` puts the mono stack behind it; on native it is
+                  still the exact registered face name and nothing else.
+                */}
                 <SvgText
-                  fontFamily={family.monoMedium}
+                  fontFamily={fontStack(family.monoMedium, true)}
                   x={286}
                   y={l.y - 3}
                   fontSize={12}
@@ -228,7 +286,7 @@ export function TradeMap({
                   {price(l.value, idea.pricePrecision)}
                 </SvgText>
                 <SvgText
-                  fontFamily={family.regular}
+                  fontFamily={fontStack(family.regular)}
                   x={286}
                   y={l.y + 12}
                   fontSize={10}
@@ -276,16 +334,20 @@ export function TradeMap({
               </>
             );
             return onLevelSelect ? (
-              <Pressable
+              <Focusable
                 key={kind}
                 accessibilityRole="button"
                 accessibilityLabel={`${LEVEL_LABEL[kind]} ${price(idea[kind], idea.pricePrecision)}`}
                 accessibilityState={{ selected: selectedLevel === kind }}
                 onPress={() => onLevelSelect(kind)}
                 style={[s.level, selectedLevel === kind && s.selected]}
+                // Three columns 6px apart, so the ring stays tight; the level
+                // cells are square-cornered, so it traces a square.
+                ringInset={2}
+                ringRadius={0}
               >
                 {content}
-              </Pressable>
+              </Focusable>
             ) : (
               <View key={kind} style={s.level}>
                 {content}
@@ -400,15 +462,16 @@ export function SetupPreview({
         {STATUS_LABEL[idea.status]}
       </T>
       {onExplore && (
-        <Pressable
+        <Focusable
           accessibilityRole="button"
           onPress={() => onExplore(idea)}
           style={s.primary}
+          ringRadius={12}
         >
           <T c={color.bg} weight="semibold" size={16}>
             Explore this idea →
           </T>
-        </Pressable>
+        </Focusable>
       )}
       <T size={12} c={color.muted} style={{ marginTop: 14 }}>
         {idea.dataLabel}
@@ -476,14 +539,15 @@ export function PinnedTradePreview({
     </>
   );
   return onOpen ? (
-    <Pressable
+    <Focusable
       accessibilityRole="button"
       accessibilityLabel={`Open ${idea.symbol} trade`}
       onPress={() => onOpen(idea)}
       style={s.pin}
+      ringRadius={16}
     >
       {content}
-    </Pressable>
+    </Focusable>
   ) : (
     <View style={s.pin}>{content}</View>
   );

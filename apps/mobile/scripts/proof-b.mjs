@@ -61,20 +61,28 @@ const main = async () => {
   page.on('console', (m) => { if (m.type() === 'error') console.log('  ! console:', m.text().slice(0, 240)); });
 
   try {
-    // Community is three rooms (owner decision 2026-08-26): #day-trade, #swing,
-    // #investing, all visible to everyone. There is no mode chip row to tap any
-    // more, so [1] shoots the directory and then opens the second room from its
-    // own row — which is the only way in now.
-    console.log('\n[1] community home — three rooms, one switch');
+    // Community is THREE CHATS (owner, 8 Sept 2026; migration 0045): Traders,
+    // Investors, Beginners. It used to be one room per desk — #day-trade,
+    // #swing, #investing — and the first two were merged, so the slugs are now
+    // `traders`, `investors`, `beginners` and the surviving Traders row keeps
+    // the old `room-day-trade` id (see the header of
+    // `src/features/community/fixtures.ts`, which mirrors that on purpose).
+    // The ids below are therefore opaque keys, not descriptions.
+    console.log('\n[1] community home — three chats, one switch');
     await open(page, '/community');
     await shot(page, 'b-01-community');
     // The in-body room rail went on 7 Sept — it was a second day/swing/invest
     // switch under the one in the headbar. The headbar control is the way into
     // another room now, so that is what this taps.
+    //
+    // THE MODE IS STILL SWING AND THE ROOM IS NOW TRADERS. Day trading and
+    // swing trading share a chat after 0045 — the desk is what you trade, the
+    // chat is who you talk to — so tapping Swing lands in Traders Chat, and
+    // that is the point of the shot rather than a bug in it.
     await tap(page, 'mode-seg-swing', 1600);
-    await shot(page, 'b-02-room-swing');
+    await shot(page, 'b-02-room-traders-from-swing');
 
-    console.log('[2] the day-trade room, with its pinned setup');
+    console.log('[2] the traders chat, with its pinned setup');
     await open(page, '/room/room-day-trade');
     await shot(page, 'b-03-room-setup');
     await tap(page, 'composer-kai');
@@ -90,6 +98,7 @@ const main = async () => {
     await shot(page, 'b-06-room-verify');
 
     console.log('[4] a room with no setup attached');
+    // `room-investing` is Investors Chat's id. Same room, renamed by 0045.
     await open(page, '/room/room-investing');
     await shot(page, 'b-07-room-core');
     await tap(page, 'header-right');

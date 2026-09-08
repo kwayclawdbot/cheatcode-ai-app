@@ -134,6 +134,41 @@ function readFontFamilies(): Record<string, string> {
   return out;
 }
 
+/**
+ * THE WEB FALLBACK STACK, READ OUT OF THE SAME FILE (audit F19/F20).
+ *
+ * WHY THIS IS HERE AT ALL. The audit inspected the public `/welcome` and
+ * `/sign-up` on web and found them set in a SERIF face while the computed
+ * `font-family` said `SpaceGrotesk_400Regular`. The cause is that these are
+ * BARE, SINGLE-NAME FAMILIES with nothing behind them: the web build
+ * deliberately does not block on the font gate (blocking kills clicks after
+ * hydration), so between first paint and the woff2 arriving — and permanently
+ * if it 404s — the browser is handed a family it has never heard of and falls
+ * back to its default, which is Times.
+ *
+ * `fontStack()` in `src/ui/fonts.ts` fixed that for `T`, and therefore for the
+ * hand-rolled layer. It did NOT fix the gluestack chrome, which reads these
+ * variables and never touches `fontStack` — so every sheet, popover, form and
+ * table on web was still one slow network away from Times while the screen
+ * around it was correct. THAT is the bug this reader closes.
+ *
+ * The stacks are sliced out of `fonts.ts` rather than retyped here for the same
+ * reason the families are: two copies of a fallback list is two things to keep
+ * in step, and this file already exists to make sure there is one source.
+ */
+function readFallback(kind: 'SANS' | 'MONO'): string {
+  const src = readFileSync(FONTS, 'utf8');
+  const m = src.match(new RegExp(`const ${kind}_FALLBACK\\s*=\\s*\n?\\s*'([^']+)';`));
+  if (!m) {
+    throw new Error(
+      `gen-theme: could not find "const ${kind}_FALLBACK = '...'" in ${FONTS}. ` +
+        `The web fallback stack moved or was renamed — update this reader rather ` +
+        `than hardcoding a second copy of the stack here.`,
+    );
+  }
+  return m[1];
+}
+
 const family = readFontFamilies();
 
 /** name -> css colour. Order here is the order in the emitted file. */
@@ -211,15 +246,19 @@ const radii: Array<[string, number]> = [
   ['3xl', radius.xxxl],
 ];
 
-const fonts: Array<[string, string]> = [
-  ['ui', family.regular],
-  ['ui-medium', family.medium],
-  ['ui-semibold', family.semibold],
-  ['ui-bold', family.bold],
-  ['num', family.mono],
-  ['num-medium', family.monoMedium],
-  ['num-semibold', family.monoSemibold],
-  ['num-bold', family.monoBold],
+const SANS_FALLBACK = readFallback('SANS');
+const MONO_FALLBACK = readFallback('MONO');
+
+/** `[utility name, loaded face, the stack behind it on web]`. */
+const fonts: Array<[string, string, string]> = [
+  ['ui', family.regular, SANS_FALLBACK],
+  ['ui-medium', family.medium, SANS_FALLBACK],
+  ['ui-semibold', family.semibold, SANS_FALLBACK],
+  ['ui-bold', family.bold, SANS_FALLBACK],
+  ['num', family.mono, MONO_FALLBACK],
+  ['num-medium', family.monoMedium, MONO_FALLBACK],
+  ['num-semibold', family.monoSemibold, MONO_FALLBACK],
+  ['num-bold', family.monoBold, MONO_FALLBACK],
 ];
 
 function pad(s: string, n: number): string {
@@ -288,8 +327,15 @@ ${radii.map(([name, px]) => `  --radius-${pad(`${name}:`, 8)} ${px}px;`).join('\
    * family — and these utilities do the same. Use \`font-ui-semibold\`, never
    * \`font-semibold\`; use \`font-num\` for anything numeric, matching the rule
    * that prices and levels always go through Num.
+   *
+   * EVERY ONE OF THEM CARRIES A FALLBACK STACK. These variables are only ever
+   * read on the web, where a bare single-name family that has not loaded yet
+   * resolves to the browser default — Times. The stack is the same one
+   * \`fontStack()\` applies in \`src/ui/fonts.ts\`, read out of that file, so the
+   * chrome degrades to the platform sans exactly as the hand-rolled layer does
+   * instead of to a serif.
    */
-${fonts.map(([name, f]) => `  --font-${pad(`${name}:`, 14)} '${f}';`).join('\n')}
+${fonts.map(([name, f, fb]) => `  --font-${pad(`${name}:`, 14)} '${f}', ${fb};`).join('\n')}
 }
 `;
 

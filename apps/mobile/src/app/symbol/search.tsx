@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, ScrollView, TextInput, Pressable, ActivityIndicator } from 'react-native';
+import { View, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { openKaiSheet } from '../../features/kai-sheet';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,7 +9,8 @@ import { T, Num, Eyebrow } from '../../ui/Text';
 import { ObjectCard, RowList, Row } from '../../ui/Panel';
 import { KaiOrb } from '../../ui/KaiOrb';
 import { Search, ArrowRight } from '../../ui/Icons';
-import { family } from '../../ui/fonts';
+import { family, fontStack } from '../../ui/fonts';
+import { Focusable } from '../../ui/Focus';
 import { alpha, color, gradient, gradientAngle, radius } from '../../ui/tokens';
 import { useSymbolSearch } from '../../features/trade/useTrade';
 
@@ -48,7 +49,7 @@ export default function SymbolSearch() {
             placeholderTextColor={color.dim}
             autoFocus
             autoCorrect={false}
-            style={{ flex: 1, fontFamily: family.regular, fontSize: 15, color: color.text, ...(({ outlineStyle: 'none' } as unknown) as object) }}
+            style={{ flex: 1, fontFamily: fontStack(family.regular), fontSize: 15, color: color.text, ...(({ outlineStyle: 'none' } as unknown) as object) }}
           />
           {pending ? <ActivityIndicator size="small" color={color.muted} /> : null}
         </LinearGradient>
@@ -75,8 +76,10 @@ export default function SymbolSearch() {
             <RowList style={{ paddingVertical: 2 }}>
               {instruments.map((r, i) => (
                 <Row key={r.kind === 'instrument' ? r.symbol : i} last={i === instruments.length - 1} style={{ paddingVertical: 10 }}>
-                  <Pressable
+                  <Focusable
                     testID={`result-${r.kind === 'instrument' ? r.symbol : i}`}
+                    ringInset={2}
+                    ringRadius={9}
                     accessibilityRole="button"
                     accessibilityLabel={r.kind === 'instrument' ? `${r.symbol} ${r.name}` : ''}
                     onPress={() => r.kind === 'instrument' && router.push(`/symbol/${encodeURIComponent(r.symbol)}`)}
@@ -92,7 +95,7 @@ export default function SymbolSearch() {
                       </T>
                     </View>
                     <ArrowRight size={12} color={color.muted} />
-                  </Pressable>
+                  </Focusable>
                 </Row>
               ))}
             </RowList>
@@ -100,7 +103,8 @@ export default function SymbolSearch() {
         ) : null}
 
         {question ? (
-          <Pressable
+          <Focusable
+            ringRadius={radius.xl}
             testID="ask-kai-intent"
             accessibilityRole="button"
             accessibilityLabel={`Ask Kai: ${question.kind === 'kai_question' ? question.text : ''}`}
@@ -118,7 +122,7 @@ export default function SymbolSearch() {
               </View>
               <ArrowRight size={13} color={color.violetLight} />
             </ObjectCard>
-          </Pressable>
+          </Focusable>
         ) : null}
       </ScrollView>
     </Screen>

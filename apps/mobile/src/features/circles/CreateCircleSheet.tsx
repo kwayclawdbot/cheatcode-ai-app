@@ -16,7 +16,7 @@ import { Sheet } from '../../ui/Sheet';
 import { T } from '../../ui/Text';
 import { Button } from '../../ui/Button';
 import { alpha, color, radius } from '../../ui/tokens';
-import { family } from '../../ui/fonts';
+import { family, fontStack } from '../../ui/fonts';
 import { Segmented } from '../../ui/Segmented';
 import { TTL_OPTIONS, type CircleTtl } from './types';
 
@@ -73,7 +73,7 @@ export function CreateCircleSheet({
           style={{
             height: 46, borderRadius: radius.lg, paddingHorizontal: 14,
             borderWidth: 0.5, borderColor: alpha.ivory20, backgroundColor: alpha.ivory06,
-            fontFamily: family.regular, fontSize: 15, color: color.text,
+            fontFamily: fontStack(family.regular), fontSize: 15, color: color.text,
           }}
         />
       </View>

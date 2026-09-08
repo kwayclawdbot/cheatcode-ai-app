@@ -30,6 +30,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
 import { T, Num } from '../../ui/Text';
 import { color, alpha } from '../../ui/tokens';
+import { useMotion } from '../a11y/context';
 
 /** The curve the old show used for everything. One easing, so nothing fights. */
 const CURVE = Easing.bezier(0.22, 1, 0.36, 1);
@@ -74,23 +75,31 @@ const SENTIMENT: Record<string, string> = {
   neutral: color.dim,
 };
 
-/** A row that arrives a beat after the one above it. */
+/**
+ * A row that arrives a beat after the one above it.
+ *
+ * THE CASCADE IS THE FIRST THING REDUCED MOTION TAKES (F19). A stagger is
+ * movement in time and a translate is movement in space; under the preference
+ * both go to zero and every row is simply there, in the same final position it
+ * would have reached anyway.
+ */
 function Row({ index, children }: { index: number; children: React.ReactNode }) {
   const a = useRef(new Animated.Value(0)).current;
+  const { duration, distance, stagger } = useMotion();
   useEffect(() => {
     const t = Animated.timing(a, {
       toValue: 1,
-      duration: ROW_MS,
-      delay: Math.min(index, 6) * 55,
+      duration: duration(ROW_MS),
+      delay: Math.min(index, 6) * stagger(55),
       easing: CURVE,
       useNativeDriver: true,
     });
     t.start();
     return () => t.stop();
-  }, [a, index]);
+  }, [a, index, duration, stagger]);
   return (
     <Animated.View
-      style={{ opacity: a, transform: [{ translateX: a.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }}
+      style={{ opacity: a, transform: [{ translateX: a.interpolate({ inputRange: [0, 1], outputRange: [distance(14), 0] }) }] }}
     >
       {children}
     </Animated.View>
@@ -120,11 +129,21 @@ function Label({ children }: { children: React.ReactNode }) {
  */
 function Bar({ share, delay }: { share: number; delay: number }) {
   const a = useRef(new Animated.Value(0)).current;
+  const { duration, stagger } = useMotion();
+  // A bar that grows is a width change, which is movement. Under the preference
+  // it is drawn at its full length instead — the comparison between quarters is
+  // the information, and the growing was only ever the delivery.
   useEffect(() => {
-    const t = Animated.timing(a, { toValue: 1, duration: BAR_MS, delay, easing: CURVE, useNativeDriver: false });
+    const t = Animated.timing(a, {
+      toValue: 1,
+      duration: duration(BAR_MS),
+      delay: stagger(delay),
+      easing: CURVE,
+      useNativeDriver: false,
+    });
     t.start();
     return () => t.stop();
-  }, [a, delay]);
+  }, [a, delay, duration, stagger]);
   return (
     <View style={{ height: 3, backgroundColor: 'rgba(255,247,232,0.05)', marginTop: 7 }}>
       <Animated.View
@@ -256,11 +275,12 @@ function Scorecard({ payload }: { payload: Record<string, unknown> }) {
  */
 export function ShowPanel({ name, payload }: { name: PanelName; payload: Record<string, unknown> }) {
   const a = useRef(new Animated.Value(0)).current;
+  const { duration, distance } = useMotion();
   useEffect(() => {
-    const t = Animated.timing(a, { toValue: 1, duration: PANEL_MS, easing: CURVE, useNativeDriver: true });
+    const t = Animated.timing(a, { toValue: 1, duration: duration(PANEL_MS), easing: CURVE, useNativeDriver: true });
     t.start();
     return () => t.stop();
-  }, [a]);
+  }, [a, duration]);
 
   return (
     <Animated.View
@@ -282,7 +302,7 @@ export function ShowPanel({ name, payload }: { name: PanelName; payload: Record<
         borderLeftWidth: 2,
         borderLeftColor: color.violet,
         opacity: a,
-        transform: [{ translateX: a.interpolate({ inputRange: [0, 1], outputRange: [26, 0] }) }],
+        transform: [{ translateX: a.interpolate({ inputRange: [0, 1], outputRange: [distance(26), 0] }) }],
       }}
     >
       {name === 'fundamentals' ? <Fundamentals payload={payload} /> : null}

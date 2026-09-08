@@ -25,7 +25,7 @@ import { Pressable, TextInput, View } from 'react-native';
 import { Sheet } from '../../../ui/Sheet';
 import { T } from '../../../ui/Text';
 import { alpha, color, radius } from '../../../ui/tokens';
-import { family } from '../../../ui/fonts';
+import { family, fontStack } from '../../../ui/fonts';
 
 export type MessageActionsTarget = {
   messageId: string;
@@ -250,7 +250,7 @@ export function MessageActionsSheet({
                 borderWidth: 0.5,
                 borderColor: alpha.ivory20,
                 backgroundColor: alpha.ivory06,
-                fontFamily: family.regular,
+                fontFamily: fontStack(family.regular),
                 fontSize: 14,
                 color: color.text,
                 textAlignVertical: 'top',
