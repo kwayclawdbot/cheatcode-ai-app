@@ -53,7 +53,7 @@
     --loss-tint:                 #2E1517;
     --caution:                   #FFC857;          /* needs-attention */
     --grade-gold:                #FFD75E;          /* A-family grade medallion */
-    --dim:                       #6E675F;          /* the quietest legible ivory */
+    --dim:                       #8E867C;          /* the quietest legible ivory */
     --surface-veil:              rgba(23,23,28,0.60);  /* panel wash over the ground */
     --volt-veil:                 rgba(200,255,0,0.10);  /* volt tint for a selected surface */
     --kai-veil:                  rgba(139,77,255,0.14);  /* violet tint for a Kai surface */
@@ -95,7 +95,7 @@
     --loss-tint:                 #2E1517;
     --caution:                   #FFC857;          /* needs-attention */
     --grade-gold:                #FFD75E;          /* A-family grade medallion */
-    --dim:                       #6E675F;          /* the quietest legible ivory */
+    --dim:                       #8E867C;          /* the quietest legible ivory */
     --surface-veil:              rgba(23,23,28,0.60);  /* panel wash over the ground */
     --volt-veil:                 rgba(200,255,0,0.10);  /* volt tint for a selected surface */
     --kai-veil:                  rgba(139,77,255,0.14);  /* violet tint for a Kai surface */
@@ -168,13 +168,20 @@
    * family — and these utilities do the same. Use `font-ui-semibold`, never
    * `font-semibold`; use `font-num` for anything numeric, matching the rule
    * that prices and levels always go through Num.
+   *
+   * EVERY ONE OF THEM CARRIES A FALLBACK STACK. These variables are only ever
+   * read on the web, where a bare single-name family that has not loaded yet
+   * resolves to the browser default — Times. The stack is the same one
+   * `fontStack()` applies in `src/ui/fonts.ts`, read out of that file, so the
+   * chrome degrades to the platform sans exactly as the hand-rolled layer does
+   * instead of to a serif.
    */
-  --font-ui:            'SpaceGrotesk_400Regular';
-  --font-ui-medium:     'SpaceGrotesk_500Medium';
-  --font-ui-semibold:   'SpaceGrotesk_600SemiBold';
-  --font-ui-bold:       'SpaceGrotesk_700Bold';
-  --font-num:           'JetBrainsMono_400Regular';
-  --font-num-medium:    'JetBrainsMono_500Medium';
-  --font-num-semibold:  'JetBrainsMono_600SemiBold';
-  --font-num-bold:      'JetBrainsMono_700Bold';
+  --font-ui:            'SpaceGrotesk_400Regular', "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-ui-medium:     'SpaceGrotesk_500Medium', "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-ui-semibold:   'SpaceGrotesk_600SemiBold', "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-ui-bold:       'SpaceGrotesk_700Bold', "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-num:           'JetBrainsMono_400Regular', "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-num-medium:    'JetBrainsMono_500Medium', "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-num-semibold:  'JetBrainsMono_600SemiBold', "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-num-bold:      'JetBrainsMono_700Bold', "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }

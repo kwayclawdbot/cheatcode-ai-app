@@ -351,12 +351,18 @@ export function FeatureDemo({
       </div>
     );
   if (feature === "path")
+    // Three steps, not seven days. The app's path is `PATH_STEPS` in
+    // apps/mobile/src/features/training/path.ts — 01 written, 02 and 03 marked
+    // "Coming next" — and audit F02 is what happens when a demo promises the
+    // seven-day version of the same curriculum. The rail below shows all three
+    // rather than hiding the unwritten two: seeing where it is going is fine,
+    // being surprised in week one is not.
     return (
       <div className={s.demo}>
         <h1>
-          Your first week.
+          Your first step.
           <br />
-          <em>One clear next step.</em>
+          <em>Written and waiting.</em>
         </h1>
         <div className={s.learningPath}>
           <strong>01</strong>
@@ -366,13 +372,11 @@ export function FeatureDemo({
           </div>
           <i>02</i>
           <i>03</i>
-          <span>⋮</span>
-          <i>07</i>
         </div>
         <button className={s.action} onClick={act}>
-          {acted ? "Day 1 selected" : "Explore day 1"}
+          {acted ? "Step 01 selected" : "Open step 01"}
         </button>
-        {acted && <Kai>Learn what you own. Then practice explaining it.</Kai>}
+        {acted && <Kai>Learn what you own. Then practice explaining it. Steps 02 and 03 are being written.</Kai>}
       </div>
     );
   if (feature === "track")

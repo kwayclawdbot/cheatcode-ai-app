@@ -9,7 +9,7 @@ import { Sheet } from '../../../ui/Sheet';
 import { Segmented } from '../../../ui/Segmented';
 import { T, Num, Eyebrow } from '../../../ui/Text';
 import { TickerMark } from '../../../ui/Ticker';
-import { family } from '../../../ui/fonts';
+import { family, fontStack } from '../../../ui/fonts';
 import { alpha, color, gradient, gradientAngle, radius } from '../../../ui/tokens';
 import { useSession } from '../../../lib/session';
 import { CommunityCallCard, usePublishCall } from '../../../features/social';
@@ -92,7 +92,7 @@ function LevelField({
           keyboardType="decimal-pad"
           inputMode="decimal"
           style={{
-            fontFamily: family.mono,
+            fontFamily: fontStack(family.mono, true),
             fontSize: 15,
             color: value ? tint : color.text,
             paddingVertical: 0,
@@ -258,7 +258,7 @@ export default function NewCommunityCall() {
                 autoCapitalize="characters"
                 autoCorrect={false}
                 style={{
-                  fontFamily: family.bold,
+                  fontFamily: fontStack(family.bold),
                   fontSize: 17,
                   letterSpacing: 0.4,
                   color: color.text,
@@ -356,7 +356,7 @@ export default function NewCommunityCall() {
               multiline
               numberOfLines={3}
               style={{
-                fontFamily: family.regular,
+                fontFamily: fontStack(family.regular),
                 fontSize: 15,
                 lineHeight: 22,
                 color: color.text,

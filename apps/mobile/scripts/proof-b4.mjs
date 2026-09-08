@@ -219,15 +219,37 @@ const main = async () => {
     console.log('[9] Order confirmed — placed, then filled');
     await tap(page, 'cta-place', 700);
     await must(page, 'screen-order-confirmed', 'a placed order gets its own screen');
-    await mustText(page, 'confirmed-headline', /paper account/i, 'the headline names the paper account');
+    /*
+     * THE RECEIPT WAS REWRITTEN, DELIBERATELY, BY THE PAPER LANE.
+     *
+     * It used to say the order had gone to "your paper account" and offer
+     * "View pending order". Both are gone and neither was an accident:
+     *
+     *  - The headline is now "Paper order submitted." / "Paper order filled."
+     *    — the WORD "paper" is in the sentence and the STATE is in the same
+     *    sentence, so a screenshot of this screen cannot be mistaken for a
+     *    real fill. Naming the account said where it went and not what
+     *    happened.
+     *  - The primary is `ACTION_LABEL.view_order` — "View order". F08 fixes one
+     *    vocabulary for execution (`src/features/orders/vocabulary.ts`) and
+     *    "pending" is a status, not a verb: the same button has to read the
+     *    same way whether the order is working or done.
+     */
+    await mustText(page, 'confirmed-headline', /paper order (submitted|filled)/i,
+      'the headline names paper AND the state');
     await must(page, 'confirmed-recap', 'the order is recapped in one line');
-    await must(page, 'confirmed-primary', 'View pending order');
+    await mustText(page, 'confirmed-primary', /view order/i,
+      'the primary is the F08 vocabulary — View order');
     await must(page, 'confirmed-done', 'Done');
     await shot(page, 'p4b-11-order-confirmed');
 
     console.log('[10] pending is not filled');
     const headline1 = await page.getByTestId('confirmed-headline').last().innerText();
-    if (!/^Placed/i.test(headline1)) throw new Error(`first state should be Placed, got "${headline1}"`);
+    // "Placed" was the old first state. It is "Paper order submitted." now —
+    // submitted is what actually happened; placed reads like it is done.
+    if (!/submitted/i.test(headline1)) {
+      throw new Error(`first state should be "Paper order submitted.", got "${headline1}"`);
+    }
     console.log(`  · first state: ${headline1}`);
     await shot(page, 'p4b-12-order-pending');
     await page.getByTestId('confirmed-headline').last()

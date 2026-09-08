@@ -12,7 +12,8 @@
  * Process before outcome (07 §7): a losing trade with a defined invalidation
  * and a respected stop is a good trade, and the receipt says so.
  */
-import type { DebriefPayload, ProcessReceiptItem, TimelineItem, DebriefOutcome } from '@shared/api';
+import type { DebriefPayloadWithPlan, ProcessReceiptItem, TimelineItem, DebriefOutcome } from '@shared/api';
+import { computeAdherence } from './debrief-adherence';
 import { log } from '../log';
 import { buildSystemPrompt } from './system-prompt';
 import { anthropicConfigured, completeOnce } from './stream';
@@ -231,12 +232,12 @@ function deterministicJudgement(
 export async function generateDebrief(
   s: DebriefSources,
   requestId: string
-): Promise<{ payload: DebriefPayload; degraded: boolean; reason: string | null }> {
+): Promise<{ payload: DebriefPayloadWithPlan; degraded: boolean; reason: string | null }> {
   const outcome = computeOutcome(s);
   const process_receipt = computeReceipt(s);
   const timeline = computeTimeline(s);
 
-  const base: DebriefPayload = {
+  const base: DebriefPayloadWithPlan = {
     position_id: s.position.id,
     symbol: s.position.symbol,
     direction: s.position.direction,
@@ -244,6 +245,13 @@ export async function generateDebrief(
     process_receipt,
     timeline,
     simulated: s.position.simulated,
+    /**
+     * DID THEY FOLLOW THEIR OWN PLAN — computed, like every other number here.
+     * It sits beside the receipt rather than inside it because it has a third
+     * state the receipt's boolean cannot hold: a plan that named no target did
+     * not miss one. See `debrief-adherence.ts`.
+     */
+    plan_adherence: computeAdherence(s),
     ...deterministicJudgement(outcome, process_receipt),
   };
 
@@ -266,6 +274,10 @@ export async function generateDebrief(
       ? { stop: s.plan.stop, targets: s.plan.targets, invalidation: s.plan.invalidation, size: s.plan.size, exit_style: s.plan.exit_style }
       : null,
     process_receipt,
+    // The plan-vs-reality numbers, so the lesson can be about the leg that
+    // actually slipped rather than about the outcome. Every number in here was
+    // computed above, so it is still true that Kai may not introduce one.
+    plan_adherence: base.plan_adherence,
     risk_policy: s.risk,
   };
 

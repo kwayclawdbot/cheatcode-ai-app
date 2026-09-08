@@ -29,7 +29,7 @@ import { useTraining } from '../../features/training/store';
 export default function TrainingLesson() {
   const router = useRouter();
   const { lessonId } = useLocalSearchParams<{ lessonId: string }>();
-  const { setCurrentLesson } = useTraining();
+  const { setCurrentLesson, ready } = useTraining();
 
   const node = lessonNodeById(String(lessonId));
   const day = node ? dayForLesson(node.id) : null;
@@ -98,6 +98,28 @@ export default function TrainingLesson() {
             </T>
           </ObjectCard>
           <Button label="Back to the Path" onPress={backToPath} />
+        </ScrollView>
+      </Screen>
+    );
+  }
+
+  /**
+   * THE RUNNER DOES NOT MOUNT UNTIL THE PROFILE IS READ, and that is not a
+   * loading spinner for its own sake.
+   *
+   * The runner takes its resume point ONCE, from the checkpoint the store
+   * holds (audit F11). On a cold start the store is still fetching, so a runner
+   * mounted a frame early would read an empty checkpoint, decide the member is
+   * on screen one, and then write that over the real one on the first tap —
+   * which is worse than not having resume at all, because it silently destroys
+   * the thing it was built to protect.
+   */
+  if (!ready) {
+    return (
+      <Screen variant="corner" testID="screen-training-lesson">
+        {header}
+        <ScrollView contentContainerStyle={{ padding: 16 }}>
+          <T size={12.5} c={color.muted}>Finding where you left off…</T>
         </ScrollView>
       </Screen>
     );

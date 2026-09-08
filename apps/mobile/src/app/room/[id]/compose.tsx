@@ -7,7 +7,7 @@ import { T, Eyebrow } from '../../../ui/Text';
 import { ObjectCard } from '../../../ui/Panel';
 import { Button } from '../../../ui/Button';
 import { Toggle } from '../../../ui/Toggle';
-import { family } from '../../../ui/fonts';
+import { family, fontStack } from '../../../ui/fonts';
 import { alpha, color, radius } from '../../../ui/tokens';
 import { communityApi } from '../../../lib/community-api';
 import { StackHeader } from '../../../features/community/ui/Chrome';
@@ -49,7 +49,7 @@ function Field({
         placeholderTextColor={color.dim}
         multiline
         style={{
-          fontFamily: family.regular,
+          fontFamily: fontStack(family.regular),
           fontSize: 14,
           lineHeight: 20,
           color: color.text,

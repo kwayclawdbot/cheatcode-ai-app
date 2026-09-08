@@ -88,6 +88,18 @@ export type OrderPreview = {
   first_target: number | null;
   max_loss: number | null;
   max_loss_pct: number | null;
+  /**
+   * TODAY'S RISK BUDGET, as the preview reports it.
+   *
+   * `OrderPreviewResponse.risk` carries `daily_cap`, `daily_used` and
+   * `daily_remaining` (packages/shared/api.ts) and the review screen draws a bar
+   * from them. It is OPTIONAL here because the adapter that builds this object
+   * (`lib/trade-api.ts`) does not copy them across yet, and a required field
+   * would force every construction site to invent a value. `undefined` means
+   * "this build did not say", which `daily-risk.ts` renders as a stated absence
+   * — distinct from `cap: null`, which means the member has set no cap.
+   */
+  daily_risk?: { cap: number | null; used: number; remaining: number | null } | null;
   /** ISO. Past it the preview must be taken again before anything is sent. */
   expires_at: string | null;
   account_label: string;

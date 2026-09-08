@@ -436,6 +436,21 @@ export type CompletionScreen = ScreenBase & {
   nextLessonId: string | null;
   nextLabel: string;
   secondaryCta: string;
+  /**
+   * THE CONCEPT, RESTATED, AND THE PICTURE OF IT AGAIN.
+   *
+   * Board 09's Lesson Complete screen is not a receipt — it repeats the idea
+   * ("A share is part of a business.") and redraws the diagram that taught it,
+   * because the last thing somebody reads is the thing they walk away with. A
+   * completion screen that only prints a percentage teaches nothing on the one
+   * screen a member is guaranteed to have finished.
+   *
+   * Optional so a lesson authored before this existed still renders; when they
+   * are absent the screen falls back to its score ring and its "what you now
+   * know" list, which is what it did before.
+   */
+  restate?: string;
+  visual?: ConceptVisual;
 };
 
 /* ── typed stubs: shapes decided, renderers not written ─────────────────────
@@ -591,8 +606,29 @@ export type TrainingDayProgress = {
 };
 
 /**
- * Everything about a learner, and JSON-serialisable end to end because it is
- * stored whole in AsyncStorage under one key.
+ * WHERE THE MEMBER STOPPED INSIDE A LESSON THEY HAVE NOT FINISHED (audit F11).
+ *
+ * The one authored lesson is a fourteen-screen sequence and, before this
+ * existed, leaving it half way restarted the run from screen one with every
+ * answer gone. A checkpoint is written on every interaction and removed on
+ * completion, so it only ever describes work in progress.
+ */
+export type TrainingCheckpointState = {
+  /** The screen to reopen on. */
+  screenIndex: number;
+  /** Answers already given, keyed by screen id. */
+  answers: Record<string, unknown>;
+  /** The running score, so a resumed lesson does not restart its scoring. */
+  correct: number;
+  answered: number;
+  assessmentPassed: boolean;
+  updatedAt: string | null;
+};
+
+/**
+ * Everything about a learner. JSON-serialisable end to end, because it is
+ * cached whole on the device under a key that carries the ACCOUNT ID — see the
+ * header of `store.tsx` for why that last part is the entire point.
  */
 export type TrainingProfile = {
   completedLessonIds: string[];
@@ -604,6 +640,8 @@ export type TrainingProfile = {
   competencies: Record<string, CompetencySignal>;
   /** Keyed by day id. */
   dayProgress: Record<string, TrainingDayProgress>;
+  /** Keyed by lesson id. Only unfinished lessons appear here. */
+  checkpoints: Record<string, TrainingCheckpointState>;
 };
 
 /** What one walk through a lesson produced. Handed to the store on completion. */

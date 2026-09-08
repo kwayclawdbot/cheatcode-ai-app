@@ -17,6 +17,7 @@ import { Button } from '../../ui/Button';
 import { ScreenLoading } from '../../ui/Loading';
 import { alpha, color, radius } from '../../ui/tokens';
 import { usePositions } from '../../features/positions/usePositions';
+import { ACTION_LABEL, EXIT_REVIEW_LABEL } from '../../features/orders/vocabulary';
 import {
   BackButton, FilterPill, KaiLine, PaperChip, RiskBar, StatusDot, StopNowTargetBar, money,
   pnlColor, shareLabel, signedMoney,
@@ -62,7 +63,7 @@ function PositionCard({ p, onOpen, onExit }: { p: PositionRow; onOpen: () => voi
         <>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Button
-              label={p.status === 'closed' ? 'See the debrief' : 'Review'}
+              label={p.status === 'closed' ? 'See the debrief' : ACTION_LABEL.review_position}
               onPress={onOpen}
               height={40}
               size={13}
@@ -71,7 +72,7 @@ function PositionCard({ p, onOpen, onExit }: { p: PositionRow; onOpen: () => voi
             />
             {p.status === 'open' ? (
               <Button
-                label="Exit now"
+                label={EXIT_REVIEW_LABEL}
                 kind="outline"
                 onPress={onExit}
                 height={40}

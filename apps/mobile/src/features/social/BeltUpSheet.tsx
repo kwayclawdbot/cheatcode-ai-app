@@ -6,6 +6,7 @@ import { T } from '../../ui/Text';
 import { alpha, color, radius } from '../../ui/tokens';
 import { BELT_INK, BELT_LABEL, beltRank } from './belts';
 import type { Belt } from '../../lib/types';
+import { useMotion } from '../a11y/context';
 
 /**
  * MOVING UP A BELT. QUIET, AND EARNED.
@@ -36,21 +37,30 @@ const RUNGS: Belt[] = ['white', 'blue', 'purple', 'brown', 'black'];
 /** One rung of the ladder, arriving. */
 function Rung({ belt, lit, index, live }: { belt: Belt; lit: boolean; index: number; live: boolean }) {
   const v = useRef(new Animated.Value(live ? 0 : 1)).current;
+  const { duration, stagger, reduced } = useMotion();
 
+  /**
+   * THE PROMOTION STILL HAPPENS UNDER REDUCED MOTION — IT JUST DOES NOT DANCE.
+   *
+   * The ladder is the message: five rungs with the new one lit. Under the
+   * preference every rung is drawn lit and settled at once, so the sheet says
+   * exactly the same thing without a cascade of scaling objects, which is the
+   * single most nauseating shape an interface makes.
+   */
   useEffect(() => {
-    if (!live) { v.setValue(1); return; }
+    if (!live || reduced) { v.setValue(1); return; }
     const a = Animated.timing(v, {
       toValue: 1,
-      duration: 220,
+      duration: duration(220),
       // Stagger stays short: 55ms between rungs, so the whole ladder is up in
       // well under half a second and nobody is waiting on a celebration.
-      delay: 90 + index * 55,
+      delay: stagger(90) + index * stagger(55),
       easing: Easing.out(Easing.cubic),
       useNativeDriver: Platform.OS !== 'web',
     });
     a.start();
     return () => a.stop();
-  }, [index, live, v]);
+  }, [index, live, v, duration, stagger, reduced]);
 
   return (
     <Animated.View
@@ -60,7 +70,7 @@ function Rung({ belt, lit, index, live }: { belt: Belt; lit: boolean; index: num
         borderRadius: 4,
         backgroundColor: lit ? BELT_INK[belt] : alpha.ivory08,
         opacity: v,
-        transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }],
+        transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [reduced ? 1 : 0.9, 1] }) }],
       }}
     />
   );

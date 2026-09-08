@@ -13,9 +13,25 @@
  *
  * The second open of the day renders the same message with `animate={false}` —
  * it is already there, it does not perform again.
+ *
+ * ── COMPACT (audit F03) ──────────────────────────────────────────────────────
+ * F03's acceptance test is that at 390px the first actionable object and its
+ * button are visible without scrolling. The full message cannot meet it: a
+ * 27px greeting, a market sentence, a lead, a paragraph of evidence, an aside
+ * and a question is 300px of reading before anything to do.
+ *
+ * `compact` renders the two lines that orient somebody — the greeting and the
+ * one relevant thing — and then gets out of the way so the ACTION can be drawn
+ * immediately below it (`action`, which the screen passes in). The state, the
+ * evidence and the aside are not deleted; they move behind "Read the briefing",
+ * which `withBriefingOffer` guarantees exists whenever there is prose to reach.
+ *
+ * The directions move BELOW the action for the same reason: Kai's offers are
+ * alternatives to the thing he put in front of you, so they belong after it.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, Platform, Pressable, View } from 'react-native';
+import { Animated, Easing, Platform, Pressable, View } from 'react-native';
+import { useReducedMotion } from '../a11y/context';
 import { KaiOrb } from '../../ui/KaiOrb';
 import { T } from '../../ui/Text';
 import { alpha, color, radius } from '../../ui/tokens';
@@ -27,18 +43,6 @@ const CURVE = Easing.bezier(0.22, 1, 0.36, 1);
 /** RN-web has no native driver; asking for one only prints a warning. */
 const NATIVE = Platform.OS !== 'web';
 
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    AccessibilityInfo.isReduceMotionEnabled?.()
-      .then((v) => { if (alive) setReduced(!!v); })
-      .catch(() => {});
-    const sub = AccessibilityInfo.addEventListener?.('reduceMotionChanged', (v) => setReduced(!!v));
-    return () => { alive = false; sub?.remove?.(); };
-  }, []);
-  return reduced;
-}
 
 function Materialize({
   step, still, pop = false, children, style,
@@ -99,7 +103,7 @@ function DirectionPill({ d, onPress, step, still }: { d: WakeDirection; onPress:
 }
 
 export function Wakeup({
-  message, greeting, animate, onDirection, testID = 'kai-wakeup',
+  message, greeting, animate, onDirection, compact = false, action = null, testID = 'kai-wakeup',
 }: {
   /** null while storage is still answering — the greeting alone carries the screen */
   message: WakeupMessage | null;
@@ -108,6 +112,10 @@ export function Wakeup({
   /** false on the second open of the day */
   animate: boolean;
   onDirection: (d: WakeDirection) => void;
+  /** F03: greeting + one line, then the action. See the header. */
+  compact?: boolean;
+  /** The one thing to do — drawn between the message and Kai's offers. */
+  action?: React.ReactNode;
   testID?: string;
 }) {
   const reduced = useReducedMotion();
@@ -116,7 +124,7 @@ export function Wakeup({
   const next = () => step++;
 
   return (
-    <View testID={testID} style={{ gap: 12, paddingTop: 6 }}>
+    <View testID={testID} style={{ gap: compact ? 10 : 12, paddingTop: 6 }}>
       {message && !animate ? (
         <T size={10} weight="bold" ls={0.8} c={color.dim} testID="wakeup-earlier">
           {`EARLIER TODAY · ${shownAtLabel(message.at).toUpperCase()}`}
@@ -125,13 +133,13 @@ export function Wakeup({
 
       {/* The greeting needs no network and never waits for one. */}
       <Materialize step={next()} still={still} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <KaiOrb size={34} />
-        <T size={27} weight="bold" ls={-0.5} lh={32} testID="wakeup-greeting">
+        <KaiOrb size={compact ? 30 : 34} />
+        <T size={compact ? 22 : 27} weight="bold" ls={-0.5} lh={compact ? 27 : 32} numberOfLines={1} testID="wakeup-greeting">
           {message?.greeting ?? greeting}
         </T>
       </Materialize>
 
-      {message?.state ? (
+      {message?.state && !compact ? (
         <Materialize step={next()} still={still}>
           <T size={14} lh={20} c={color.muted} testID="wakeup-state">{message.state}</T>
         </Materialize>
@@ -139,17 +147,27 @@ export function Wakeup({
 
       {message ? (
         <Materialize step={next()} still={still}>
-          <T size={18} lh={26} weight="semibold" ls={-0.2} testID="wakeup-lead">{message.lead}</T>
+          <T
+            size={compact ? 15 : 18}
+            lh={compact ? 21 : 26}
+            weight={compact ? 'regular' : 'semibold'}
+            c={compact ? color.muted : color.text}
+            ls={compact ? undefined : -0.2}
+            numberOfLines={compact ? 2 : undefined}
+            testID="wakeup-lead"
+          >
+            {message.lead}
+          </T>
         </Materialize>
       ) : null}
 
-      {message?.evidence ? (
+      {message?.evidence && !compact ? (
         <Materialize step={next()} still={still}>
           <T size={13} lh={19} c={color.muted} testID="wakeup-evidence">{message.evidence}</T>
         </Materialize>
       ) : null}
 
-      {message?.aside ? (
+      {message?.aside && !compact ? (
         <Materialize step={next()} still={still}>
           <View style={{ flexDirection: 'row', gap: 9, alignItems: 'flex-start' }}>
             <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color.gold, marginTop: 6 }} />
@@ -158,7 +176,20 @@ export function Wakeup({
         </Materialize>
       ) : null}
 
-      {message ? (
+      {/*
+        THE ACTION, IMMEDIATELY UNDER THE TWO LINES (audit F03).
+        A lesson for a beginner, a company for an investor, a setup or a
+        position for a trader — the screen decides which and passes it in; this
+        only decides that it comes before Kai's alternatives rather than after
+        three paragraphs of them.
+      */}
+      {compact && action ? (
+        <Materialize step={next()} still={still} pop>
+          <View testID="wakeup-action">{action}</View>
+        </Materialize>
+      ) : null}
+
+      {message && !compact ? (
         <Materialize step={next()} still={still} style={{ paddingTop: 2 }}>
           <T size={15} lh={21} weight="semibold" c={color.violetLight} testID="wakeup-question">{message.question}</T>
         </Materialize>

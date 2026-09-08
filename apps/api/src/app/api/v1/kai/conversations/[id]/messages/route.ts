@@ -1,12 +1,19 @@
 /**
  * POST /api/v1/kai/conversations/:id/messages  →  SSE
+ * GET  /api/v1/kai/conversations/:id/messages  →  the saved transcript
  *
  * Frames: `text_delta` · `object` · `done` · `error`.
  * Persists both turns to `conversation_messages`. Context assembly is
  * profile + risk policy + mode + pinned setups + last 20 turns + the ranked
  * setups for the mode. Kai has no mutating tools in this slice.
+ *
+ * The GET is the read side of the same table and it is new: a conversation
+ * that could be written and listed but never read back is the reason the app
+ * was going round the API and querying `conversation_messages` through the
+ * mobile Supabase client. See the header above `GET` for the whole argument.
  */
 import type { NextRequest } from 'next/server';
+import { z } from 'zod';
 import {
   PostMessageRequest,
   SETUP_CAPS,
@@ -17,6 +24,7 @@ import {
   type KaiSheetContext,
 } from '@shared/api';
 import { requireUser } from '@/lib/auth';
+import { authedParams, ok, parseQuery, type Ctx } from '@/lib/http';
 import { serviceClient } from '@/lib/db';
 import { ApiError, errorResponse } from '@/lib/errors';
 import { log, newRequestId } from '@/lib/log';
@@ -916,3 +924,98 @@ Never include a price. Never invent a command they did not ask for.`,
     return errorResponse(err, requestId);
   }
 }
+
+/* ==================================================================== */
+/* GET — the saved transcript                                            */
+/* ==================================================================== */
+
+/** One page of a transcript. Small, because a page is scrolled, not read. */
+const TRANSCRIPT_LIMIT_DEFAULT = 200;
+const TRANSCRIPT_LIMIT_MAX = 500;
+
+const TranscriptQuery = z.object({
+  /** Exclusive: rows with `seq` GREATER than this. `-1`/absent means the top. */
+  since: z.coerce.number().int().optional(),
+  limit: z.coerce.number().int().min(1).max(TRANSCRIPT_LIMIT_MAX).optional(),
+});
+
+type TranscriptRow = { seq: number; role: string; content: unknown };
+
+/**
+ * GET /api/v1/kai/conversations/:id/messages?since=&limit=
+ *
+ * WHY THIS EXISTS. Re-opening a conversation has to redraw what was said in
+ * it, and until now there was no route that would say. `conversations` had
+ * `GET` (the drawer) and `POST` (create), `:id` had `PATCH`, and this file had
+ * `POST`. So the app read `conversation_messages` directly through the mobile
+ * Supabase client, leaning on the owner-only policy in
+ * `supabase/migrations/0014_rls_grants.sql`. That policy is a real guarantee
+ * and the app was not exposed by it — but a transcript that only the client
+ * knows how to assemble is a shape no other surface can reuse and no server
+ * change can migrate. It belongs here.
+ *
+ * OWNER-SCOPED, THE SAME WAY `PATCH` IS. The conversation row is looked up by
+ * `id` AND `user_id` before a single message is read, and a conversation
+ * belonging to somebody else is NOT_FOUND rather than FORBIDDEN — the same
+ * answer as a conversation that does not exist, because "that id is real, it
+ * is simply not yours" is a fact about another member's account.
+ *
+ * PAGINATED LIKE THE OTHER LIST ROUTES HERE: `since` is an exclusive `seq`
+ * cursor and the reply carries `{cursor, more}`, exactly as
+ * `/live/shows/:id/frames` does. Ascending, because a transcript is replayed
+ * from the beginning and `seq` is the order it was said in.
+ *
+ * `content` IS PASSED THROUGH UNTOUCHED — the stored jsonb, not a flattened
+ * string. The client's `readTranscript` already accepts either a bare string
+ * or `{text}`, and narrowing here would throw away everything a later frame
+ * kind wants to keep.
+ */
+export const GET = authedParams<{ id: string }>(
+  async (req: NextRequest, ctx: Ctx & { params: { id: string } }) => {
+    const q = parseQuery(req, TranscriptQuery);
+    const limit = q.limit ?? TRANSCRIPT_LIMIT_DEFAULT;
+    const since = q.since ?? -1;
+    const db = serviceClient();
+
+    const found = await db
+      .from('conversations')
+      .select('id')
+      .eq('id', ctx.params.id)
+      .eq('user_id', ctx.user.id)
+      .maybeSingle();
+    if (!found.data) throw new ApiError('NOT_FOUND', 'We could not find that conversation.');
+
+    // One row over the page size, so `more` is known rather than guessed.
+    const { data, error } = await db
+      .from('conversation_messages')
+      .select('seq,role,content')
+      .eq('conversation_id', ctx.params.id)
+      .gt('seq', since)
+      .order('seq', { ascending: true })
+      .limit(limit + 1);
+    if (error) {
+      throw new ApiError('INTERNAL', 'We could not load that conversation. Please try again.', {
+        detail: error.message,
+      });
+    }
+
+    const rows = (data ?? []) as unknown as TranscriptRow[];
+    const more = rows.length > limit;
+    const page = more ? rows.slice(0, limit) : rows;
+
+    return ok({
+      conversation_id: ctx.params.id,
+      messages: page.map((r) => ({
+        seq: Number(r.seq),
+        role: r.role === 'user' ? 'user' : 'kai',
+        content: r.content,
+      })),
+      cursor: page.length ? Number(page[page.length - 1].seq) : since,
+      more,
+      // A conversation with nothing in it is a real state — a sheet opened over
+      // an order and closed again. It reads as a stated absence, never as a
+      // failure to load.
+      empty_copy: 'Nothing was said in this conversation yet.',
+    });
+  }
+);

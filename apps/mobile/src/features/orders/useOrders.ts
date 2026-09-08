@@ -10,7 +10,11 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { tradeApi } from '../../lib/trade-api';
+import { submitKeyFor } from './idempotency';
 import type { OrderPreview, OrderRow, OrderTicket } from './types';
+
+/** Re-exported so a caller has one import for the submit path. See the file. */
+export { submitKeyFor } from './idempotency';
 
 /** Seconds left on a preview, ticking. `null` when the server set no expiry. */
 export function useExpiry(expiresAt: string | null | undefined) {
@@ -73,21 +77,30 @@ const POLL_BUDGET_MS = 20_000;
  * Submit, then watch. The two states are rendered separately on purpose: an
  * order that has been accepted but has not filled is a real thing a user can be
  * holding, and telling them it filled would be a lie.
+ *
+ * ONE PRESS IS ONE ORDER (audit F08). Two guards, for the two halves of the
+ * criterion: the `inFlight` ref stops the double-tap before it reaches the
+ * network — React state cannot, because both taps in one frame read the same
+ * stale `phase` — and `submitKeyFor` makes every retry of the same priced order
+ * carry the same idempotency key, so a timeout the member presses through
+ * cannot become two positions. See `idempotency.ts` for the whole argument.
  */
 export function useSubmit() {
   const [phase, setPhase] = useState<SubmitPhase>('idle');
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const stop = useRef(false);
+  /** The one in-flight send, so a second tap joins it instead of doubling it. */
+  const inFlight = useRef<Promise<OrderRow | null> | null>(null);
 
   useEffect(() => () => { stop.current = true; }, []);
 
-  const submit = useCallback(async (previewId: string, onPlaced?: (o: OrderRow) => void) => {
+  const place = useCallback(async (previewId: string, onPlaced?: (o: OrderRow) => void) => {
     setPhase('sending');
     setError(null);
     let placed: OrderRow;
     try {
-      placed = await tradeApi.submit(previewId);
+      placed = await tradeApi.submit(previewId, submitKeyFor(previewId));
     } catch (e) {
       setPhase('failed');
       setError(e instanceof Error ? e.message : 'That order did not go through.');
@@ -120,6 +133,17 @@ export function useSubmit() {
     }
     return latest;
   }, []);
+
+  const submit = useCallback(async (previewId: string, onPlaced?: (o: OrderRow) => void) => {
+    if (inFlight.current) return inFlight.current;
+    const run = place(previewId, onPlaced);
+    inFlight.current = run;
+    try {
+      return await run;
+    } finally {
+      inFlight.current = null;
+    }
+  }, [place]);
 
   return { phase, order, error, submit };
 }

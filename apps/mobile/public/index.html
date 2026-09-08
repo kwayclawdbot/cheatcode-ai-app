@@ -40,6 +40,32 @@
         height: 100%;
         flex: 1;
       }
+
+      /*
+        THE DOCUMENT'S OWN FALLBACK FACE — the last of the three places the
+        serif came from (audit F19/F20).
+
+        The audit found the public /welcome and /sign-up rendering in a SERIF
+        while the computed font-family said SpaceGrotesk_400Regular, and could
+        not explain it. The cause: every family this app names is a bare,
+        single-name family registered by expo-font, and the web build
+        deliberately does NOT block on the font gate — blocking kills clicks
+        after hydration. So from first paint until the woff2 lands, and
+        FOREVER if it 404s or the connection is slow enough that somebody signs
+        up first, the browser is handed a name it does not know and falls back
+        to its own default. That default is Times.
+
+        src/ui/fonts.ts fixed the components (fontStack), and
+        src/ui/theme.generated.css fixed the gluestack chrome. This fixes
+        everything neither of them draws: the document itself, the noscript
+        message, and any node that inherits from <body> before React has
+        rendered a single element. It is the same stack as fontStack()'s, minus
+        the loaded face — this is the FALLBACK, not the design.
+      */
+      body {
+        font-family: "Space Grotesk", ui-sans-serif, system-ui, -apple-system,
+          "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
     </style>
 
     <script>

@@ -26,6 +26,7 @@ import { useSession } from '../../lib/session';
 import { useTradeResource } from '../../features/trade/resource';
 import { DetailRow, PaperChip, QuoteLine, money } from '../../features/trade/components';
 import { SIDE_LABEL, isBuySide } from '../../features/orders/types';
+import { ACTION_LABEL } from '../../features/orders/vocabulary';
 import type { OrderDuration, OrderSide, OrderType } from '../../features/orders/types';
 import type { GoalMode, Me, Quote } from '../../lib/types';
 
@@ -249,7 +250,7 @@ export default function OrderTicket() {
         <QuoteLine quote={quote} note={quote ? null : 'No quote yet'} />
 
         <Button
-          label="Review order"
+          label={ACTION_LABEL.review_paper_order}
           onPress={review}
           testID="cta-review"
           accessibilityHint="Shows you the full order and Kai's risk check before anything is sent"

@@ -18,11 +18,31 @@
  * THE ROOM IS DERIVED, NEVER STORED
  * =====================================================================
  * What a member chose when they published is a DESK — "this is a day trade".
- * The room is a consequence: there is exactly one core room per mode, and 0040
- * asserts that at migration time so this file can rely on it. So the call
- * records `mode` and this file looks the room up from it. Nothing writes a
- * `room_id` onto a call, because the day there are two sources of truth is the
- * day they start disagreeing.
+ * The room is a consequence. So the call records `mode` and this file looks the
+ * room up from it. Nothing writes a `room_id` onto a call, because the day
+ * there are two sources of truth is the day they start disagreeing.
+ *
+ * =====================================================================
+ * AND SINCE 0045 THE DERIVATION IS A NAMED MAP, NOT A COLUMN
+ * =====================================================================
+ * This used to be `.eq('mode', mode)` — one core room per mode, asserted by
+ * 0040 §4(b). Community is now THREE chats (owner, 8 Sept: "Just make it
+ * traders chat, investors chat and beginners chat"), `day_trade` and `swing`
+ * share the Traders room, and no core room carries a mode at all. A join key
+ * cannot express "two of these go to the same place", so the mapping is written
+ * out in `MODE_TO_ROOM` below and the lookup is by SLUG.
+ *
+ * NOTHING ABOUT 0040'S DECISION CHANGED, AND THIS IS THE PROOF OF IT. Its
+ * header said: "If the room mapping ever changes — a second day-trade room, a
+ * room retired — the calls do not need rewriting, because none of them recorded
+ * a room as their meaning." A room was retired and two modes now share one, and
+ * not a single `community_calls` row moved.
+ *
+ * `MODE_TO_ROOM` IS MIRRORED IN SQL, in 0045 §4(b), which fails the migration
+ * if a value of `app_mode` is missing from the map or the room it names is not
+ * there exactly once. Duplication is the cost of the database being able to
+ * check itself; the two are written in the same order so a diff between them is
+ * visible at a glance.
  *
  * =====================================================================
  * THE ORDER OF OPERATIONS, AND WHY IT IS THAT ORDER
@@ -114,38 +134,71 @@ export async function modeForCall(opts: {
 /* ------------------------------------------------------------------ */
 
 /**
- * The one core room for a desk.
+ * WHICH CHAT EACH DESK POSTS INTO. The whole mapping, in one place.
  *
- * 0040 §4(b) asserts there is exactly one of these per mode and fails the
- * migration if there are ever none or two, so this cannot normally come back
- * empty. It is still written to survive it: null means "no room to post into",
- * and the caller publishes the call anyway rather than refusing a member's work
- * over a room mapping they had no part in.
+ * `day_trade` and `swing` both land in Traders because a member reading about
+ * an intraday break and a member reading about a three-week hold are the same
+ * room of people — that is the owner's 8 Sept decision and 0045 is the half of
+ * it that lives in the database.
  *
- * Two rooms for one mode would make the destination ambiguous. Rather than pick
- * one silently we take the first and say so in the log, because somebody needs
- * to know that assertion has stopped being true.
+ * NOTHING MAPS TO `beginners`, and that is 0043 §1 unchanged: a call is a trade
+ * somebody is standing behind, and the beginners' room is not where it belongs.
+ * The map is exhaustive over `AppMode` — a new desk added to the enum will not
+ * compile until it is given a room here, which is the same tripwire 0045 §4(b)
+ * sets in SQL.
+ */
+export const MODE_TO_ROOM: Record<AppMode, 'traders' | 'investors'> = {
+  day_trade: 'traders',
+  swing: 'traders',
+  invest: 'investors',
+};
+
+/**
+ * The core room a desk posts into.
+ *
+ * BY SLUG, NOT BY MODE. Since 0045 no core room carries a mode, so there is
+ * nothing to filter on — and a slug is what the room actually is, rather than a
+ * join key standing in for one. It matches how the phone resolves a core room
+ * too (0043 §4(ii)): ids are `gen_random_uuid()` and differ per environment,
+ * the slug does not.
+ *
+ * 0045 §4(b) asserts each mapped slug names exactly one core room and fails the
+ * migration otherwise, so this cannot normally come back empty. It is still
+ * written to survive it: null means "no room to post into", and the caller
+ * publishes the call anyway rather than refusing a member's work over a room
+ * mapping they had no part in.
  */
 export async function coreRoomForMode(mode: AppMode, requestId = '-'): Promise<CoreRoom | null> {
+  const slug = MODE_TO_ROOM[mode];
+  if (!slug) {
+    // Only reachable if `AppMode` grew a value and this map did not. Said out
+    // loud, because the silent version is a call that reaches no conversation.
+    log('warn', requestId, 'social.call_room_unmapped', { mode });
+    return null;
+  }
+
   const db = serviceClient();
   const { data, error } = await db
     .from('rooms')
     .select('id,name')
     .eq('type', 'core')
-    .eq('mode', mode)
+    .eq('slug', slug)
     .limit(2);
 
   if (error) {
-    log('warn', requestId, 'social.call_room_lookup_failed', { mode, message: error.message });
+    log('warn', requestId, 'social.call_room_lookup_failed', { mode, slug, message: error.message });
     return null;
   }
   const rows = (data ?? []) as Record<string, unknown>[];
   if (!rows.length) {
-    log('warn', requestId, 'social.call_room_missing', { mode });
+    log('warn', requestId, 'social.call_room_missing', { mode, slug });
     return null;
   }
+  // `rooms.slug` is unique (0010), so this is a statement about the schema
+  // rather than about the data. If it ever fires, something dropped that
+  // constraint and somebody needs to know.
   if (rows.length > 1) {
-    log('warn', requestId, 'social.call_room_ambiguous', { mode, count: rows.length });
+    log('warn', requestId, 'social.call_room_ambiguous', { mode, slug, count: rows.length });
   }
   return { id: String(rows[0].id), name: String(rows[0].name) };
 }

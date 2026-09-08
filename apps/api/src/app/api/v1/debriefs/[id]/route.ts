@@ -1,11 +1,23 @@
-/** GET /api/v1/debriefs/:id — one write-up, with its stored kai_object. */
+/**
+ * GET /api/v1/debriefs/:id — one write-up, with its stored kai_object.
+ *
+ * PLAN ADHERENCE IS FILLED IN ON READ WHEN THE STORED PAYLOAD PREDATES IT.
+ * Every debrief written before the trade-review pass was persisted without a
+ * `plan_adherence` block, and back-filling the table would mean rewriting rows
+ * a member has already read. The block is computed, not generated — the same
+ * function, off the same plans, orders and fills — so recomputing it here gives
+ * an old write-up the new checklist without touching what was saved, and costs
+ * one extra read only on the debriefs that lack it.
+ */
 import type { NextRequest } from 'next/server';
-import { DebriefRow, type DebriefPayload } from '@shared/api';
+import { DebriefRowWithPlan, type DebriefPayloadWithPlan } from '@shared/api';
 import { authedParams, ok, type Ctx } from '@/lib/http';
 import { ApiError } from '@/lib/errors';
 import { serviceClient } from '@/lib/db';
 import { loadProfile } from '@/lib/kai/context';
 import { envelope } from '@/lib/kai/objects';
+import { loadDebriefSources } from '@/lib/debriefs';
+import { computeAdherence } from '@/lib/kai/debrief-adherence';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,9 +38,19 @@ export const GET = authedParams<{ id: string }>(async (_req: NextRequest, ctx: C
   if (!row) throw new ApiError('NOT_FOUND', 'I could not find that write-up.');
 
   const review = (row.process_review as Record<string, unknown>) ?? {};
-  const payload = (review.payload as DebriefPayload) ?? null;
-  if (!payload) {
+  const stored = (review.payload as DebriefPayloadWithPlan) ?? null;
+  if (!stored) {
     throw new ApiError('NOT_FOUND', 'That write-up was saved in an older shape and cannot be opened.');
+  }
+
+  const positionId = (row.position_id as string) ?? null;
+  let payload = stored;
+  if (stored.plan_adherence === undefined || stored.plan_adherence === null) {
+    // Undefined means the write-up predates the block. Null can also mean
+    // "computed, and there was no plan to compare against" — recomputing that
+    // costs one read and returns null again, which is the correct answer.
+    const sources = positionId ? await loadDebriefSources(ctx.user.id, positionId) : null;
+    payload = { ...stored, plan_adherence: sources ? computeAdherence(sources) : null };
   }
 
   // 0018 added debriefs.kai_object_id; lesson_refs is the pre-0018 fallback.
@@ -58,9 +80,9 @@ export const GET = authedParams<{ id: string }>(async (_req: NextRequest, ctx: C
   const profile = await loadProfile(ctx.user.id);
 
   return ok(
-    DebriefRow.parse({
+    DebriefRowWithPlan.parse({
       id: String(row.id),
-      position_id: (row.position_id as string) ?? null,
+      position_id: positionId,
       symbol: payload.symbol,
       created_at: String(row.created_at),
       kai_summary: (row.kai_summary as string) ?? null,

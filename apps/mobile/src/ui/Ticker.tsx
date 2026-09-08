@@ -61,6 +61,7 @@ import { Animated, Image, Platform, Pressable, StyleProp, View, ViewStyle } from
 import { alpha, color } from './tokens';
 import { T } from './Text';
 import { env } from '../lib/env';
+import { useMotion } from '../features/a11y/context';
 
 /**
  * Session memory, module level on purpose.
@@ -133,6 +134,16 @@ export function TickerMark({ symbol, size = 30, noLogo = false, style, testID }:
   const [failed, setFailed] = useState(() => !uri || MISSING.has(sym));
   const fade = useRef(new Animated.Value(already ? 1 : 0)).current;
 
+  /**
+   * A CROSS-FADE IS PERMITTED UNDER REDUCED MOTION; A DURATION IS STILL ROUTED.
+   *
+   * Opacity is not position, so this one was never the offender — but a logo
+   * fading in over a letters mark is still a change somebody asked the app to
+   * stop making, and `duration(0)` swaps it in on one frame. The mark ends up
+   * identical either way; only the 180ms in between goes.
+   */
+  const { duration } = useMotion();
+
   useEffect(() => {
     setFailed(!uri || MISSING.has(sym));
     fade.setValue(SEEN.has(sym) ? 1 : 0);
@@ -144,10 +155,10 @@ export function TickerMark({ symbol, size = 30, noLogo = false, style, testID }:
     // Native driver on device; web has no RCTAnimation and only warns about it.
     Animated.timing(fade, {
       toValue: 1,
-      duration: 180,
+      duration: duration(180),
       useNativeDriver: Platform.OS !== 'web',
     }).start();
-  }, [sym, fade]);
+  }, [sym, fade, duration]);
 
   const onError = useCallback(() => {
     MISSING.add(sym);

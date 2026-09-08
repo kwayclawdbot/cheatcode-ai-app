@@ -18,6 +18,7 @@ import { MessageListSkeleton } from '../../../features/community/ui/Skeleton';
 import { KaiObjectView } from '../../../features/community/ui/KaiObjects';
 import { CasePair, PinnedSetup } from '../../../features/community/ui/PinnedSetup';
 import { RoomComposer } from '../../../features/community/ui/RoomComposer';
+import { RoomWelcome } from '../../../features/community/ui/RoomWelcome';
 import { KAI_COMMANDS, EMPTY_REACTIONS, type KaiCommand, type KaiRoomObject, type MessageReactions, type ReactionKind, type Room, type RoomMessage } from '../../../features/community/types';
 import { useAttachments } from '../../../features/media/useAttachments';
 import {
@@ -107,6 +108,9 @@ export default function RoomScreen() {
   const [unreachable, setUnreachable] = useState(false);
   /** Bumped by Try again; the initial-load effect keys on it. */
   const [reloadTick, setReloadTick] = useState(0);
+  /** A question starter's words, on their way into the composer. Never posted. */
+  const [draft, setDraft] = useState('');
+  const [draftNonce, setDraftNonce] = useState(0);
   const reload = useCallback(() => setReloadTick((n) => n + 1), []);
 
   const lastSeq = useRef(0);
@@ -441,11 +445,19 @@ export default function RoomScreen() {
           ) : null}
 
           {decorated.length === 0 ? (
-            <ObjectCard r={radius.xl} style={{ padding: 18 }}>
-              <T size={13} lh={19} c={color.muted}>
-                Nothing has been said here yet. Ask a question, or post an idea with the + button.
-              </T>
-            </ObjectCard>
+            /*
+             * The same welcome the Community feed shows (audit F14). One
+             * sentence telling a newcomer to "ask a question" is advice; two
+             * questions they can put in the box and edit is a start. Same
+             * component in both places so the empty room does not read as two
+             * different products.
+             */
+            <RoomWelcome
+              testID="room-empty"
+              roomName={room?.name ?? 'this room'}
+              description={room?.description ?? null}
+              onStarter={(q) => { setDraft(q); setDraftNonce((n) => n + 1); }}
+            />
           ) : (
             decorated.map((m, i) => (
               <View key={m.id} style={{ gap: 12 }}>
@@ -515,6 +527,8 @@ export default function RoomScreen() {
           // the service's own words in the same place as every other one.
           // Nothing is fired without a tap: this call costs credits.
           onAskKai={() => { void runKai('summarize'); }}
+          draft={draft}
+          draftNonce={draftNonce}
           callSymbol={room?.setup?.symbol ?? null}
           disabled={!!room?.config.posting_restricted}
           disabledReason={room?.config.posting_restricted ? 'Posting is restricted in this room right now. You can still read and ask Kai.' : null}

@@ -478,8 +478,20 @@ export const DAY1_LESSON1: LessonContent = {
     {
       id: 's14-completion',
       type: 'completion',
-      title: 'Lesson Complete',
+      title: 'You understand ownership.',
       masteryGain: 20,
+      /* The idea, said once more, with the picture that taught it. Board 09's
+         Lesson Complete screen repeats the concept rather than printing a
+         receipt: the last thing somebody reads is what they walk away with. */
+      restate: 'A share is part of a business. A simple idea, and a powerful foundation.',
+      visual: {
+        kind: 'share_grid',
+        columns: 10,
+        rows: 5,
+        highlightIndex: 27,
+        totalLabel: '1,000,000 shares',
+        highlightLabel: 'The part you would own',
+      },
       knowNow: [
         'What a share actually is, and what 10 of them means',
         'Why companies sell pieces of themselves in the first place',

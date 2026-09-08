@@ -19,28 +19,45 @@ import { T, Num, Eyebrow } from '../../ui/Text';
 import { alpha, color, radius, space } from '../../ui/tokens';
 import type { IdeaGrade, WatchState } from '@shared/desk';
 import { WATCH_STATE_COPY } from '@shared/desk';
+import { WATCH_STATE_CAVEAT, WATCH_STATE_PLAIN } from './plain';
 
 /**
  * The grade, as a mark rather than a medal.
  *
- * The A family is what the scale exists to find, so it is the only one that
- * gets colour. Everything else is legible and quiet — "most are B or C" is the
- * desk's own instruction to itself, and a screen that celebrates a C is arguing
- * with the thing it is displaying.
+ * A+ and A are the two the scale exists to find, so they are the only ones
+ * that get colour. Everything else is legible and quiet — "most are B or C"
+ * is the desk's own instruction to itself, and a screen that celebrates a C
+ * is arguing with the thing it is displaying.
  *
- * A- counts as an A here on purpose. The modifier is the analyst being precise
- * inside a band, not a demotion out of it, and the day the scale grew from six
- * marks to ten was the day this line had to stop naming its two grades by hand.
+ * ── `label` — AUDIT F15, AND IT IS NOT COSMETIC ──────────────────────────
+ *
+ * "Make the grade explicitly an Idea grade." A bare A− on a desk row is read as
+ * the same A− the alert card puts on a trade you could take this morning, and
+ * it is a different measurement of a different thing over a different length of
+ * time. The screen-reader label has always said so; the word is now on the
+ * SCREEN wherever there is room for it, which is every surface a person arrives
+ * at rather than scans. `label` is off only inside dense lists that have already
+ * said "idea grade" in their own column heading.
  */
-export function GradeMark({ grade, size = 15 }: { grade: IdeaGrade | null; size?: number }) {
+export function GradeMark({ grade, size = 15, label = false, testID }: {
+  grade: IdeaGrade | null; size?: number; label?: boolean; testID?: string;
+}) {
   if (!grade) {
-    return <T size={size - 3} c={color.dim}>ungraded</T>;
+    return (
+      <T size={Math.max(size - 2, 12)} c={color.dim} testID={testID}>
+        {label ? 'No idea grade' : 'ungraded'}
+      </T>
+    );
   }
-  const strong = grade.startsWith('A');
+  const strong = grade === 'A+' || grade === 'A';
   return (
     <View
       accessibilityLabel={`Idea grade ${grade}`}
+      testID={testID}
       style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: space.x6,
         paddingHorizontal: space.x8,
         paddingVertical: space.x2,
         borderRadius: radius.sm,
@@ -49,6 +66,9 @@ export function GradeMark({ grade, size = 15 }: { grade: IdeaGrade | null; size?
         backgroundColor: strong ? alpha.violet14 : 'transparent',
       }}
     >
+      {label ? (
+        <T size={12} c={strong ? color.violetLight : color.muted}>Idea grade</T>
+      ) : null}
       <Num size={size} weight="bold" c={strong ? color.violetLight : color.muted}>
         {grade}
       </Num>
@@ -134,20 +154,94 @@ const STATE_TONE: Record<WatchState, string> = {
   expired: color.dim,
 };
 
-/** What the chart is doing. Market data, so cyan — never volt, never violet. */
-export function StateChip({ state }: { state: WatchState }) {
+/**
+ * What the chart is doing. Market data, so cyan — never volt, never violet.
+ *
+ * ── AUDIT F15: IT SAYS THE WORDS NOW, NOT THE STATE NAME ─────────────────
+ *
+ * This chip used to print the raw state name with its underscore taken out —
+ * "armed", "cooled", "extended", "no base". Those are internal vocabulary and the
+ * finding is precisely that a person who chose long-term investing should not
+ * have to learn them to read their own watchlist. `WATCH_STATE_COPY` is the
+ * desk's OWN short English for each ("Armed — there is a level to wait for"),
+ * it has existed in `@shared/desk` all along, and it is what the chip prints.
+ *
+ * `onExplain` adds the second half — the audit asks for each state explained
+ * "in plain language on demand", so where a caller supplies it the chip becomes
+ * a real 44-point target that opens `WATCH_STATE_PLAIN`. Without it the chip is
+ * inert, exactly as before, and no screen gets a control that does nothing.
+ */
+export function StateChip({ state, onExplain, testID }: {
+  state: WatchState; onExplain?: () => void; testID?: string;
+}) {
   const tone = STATE_TONE[state];
-  return (
-    <View
-      accessibilityLabel={WATCH_STATE_COPY[state]}
-      style={{
-        flexDirection: 'row', alignItems: 'center', gap: space.x6,
-        paddingHorizontal: space.x8, paddingVertical: space.x4,
-        borderRadius: radius.pill, backgroundColor: alpha.ivory06,
-      }}
-    >
+  const inner = (
+    <>
       <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: tone }} />
-      <T size={11} weight="semibold" c={tone}>{state.replace('_', ' ')}</T>
+      <T size={12} weight="semibold" c={tone} style={{ flexShrink: 1 }}>{WATCH_STATE_COPY[state]}</T>
+      {onExplain ? <T size={12} c={color.dim}>?</T> : null}
+    </>
+  );
+  const style = {
+    flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.x6,
+    paddingHorizontal: space.x8, paddingVertical: space.x4,
+    borderRadius: radius.pill, backgroundColor: alpha.ivory06,
+  };
+  if (!onExplain) {
+    return <View accessibilityLabel={WATCH_STATE_COPY[state]} style={style} testID={testID}>{inner}</View>;
+  }
+  return (
+    <Pressable
+      onPress={onExplain}
+      accessibilityRole="button"
+      accessibilityLabel={WATCH_STATE_COPY[state]}
+      accessibilityHint="Explains what this means in plain language"
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      testID={testID}
+      style={({ pressed }) => ({ ...style, opacity: pressed ? 0.6 : 1 })}
+    >
+      {inner}
+    </Pressable>
+  );
+}
+
+/**
+ * THE STATES, ALL OF THEM, IN PLAIN LANGUAGE.
+ *
+ * Content for a sheet — the caller owns the sheet, this owns the words. Every
+ * state is listed rather than just the one being asked about, because the
+ * question a person actually has is "what are the possibilities", and the
+ * caveat at the bottom is the one line that has to be on the same screen as any
+ * of them: none of these is an instruction.
+ */
+export function WatchStateHelp({ highlight }: { highlight?: WatchState }) {
+  return (
+    <View style={{ gap: space.x2 }} testID="desk-state-help">
+      {(Object.keys(WATCH_STATE_PLAIN) as WatchState[]).map((s) => (
+        <View
+          key={s}
+          testID={`desk-state-help-${s}`}
+          style={{
+            paddingVertical: space.x10,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: alpha.ivory10,
+            backgroundColor: s === highlight ? alpha.ivory06 : 'transparent',
+            paddingHorizontal: s === highlight ? space.x8 : 0,
+            borderRadius: s === highlight ? radius.sm : 0,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x8 }}>
+            <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: STATE_TONE[s] }} />
+            <T size={14} weight="semibold" c={color.text}>{WATCH_STATE_COPY[s]}</T>
+          </View>
+          <T size={13} lh={19} c={color.muted} style={{ marginTop: space.x4 }}>
+            {WATCH_STATE_PLAIN[s]}
+          </T>
+        </View>
+      ))}
+      <T size={13} lh={19} c={color.dim} style={{ marginTop: space.x12 }} testID="desk-state-caveat">
+        {WATCH_STATE_CAVEAT}
+      </T>
     </View>
   );
 }

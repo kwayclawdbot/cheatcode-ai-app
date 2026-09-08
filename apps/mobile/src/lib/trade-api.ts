@@ -290,6 +290,29 @@ function adaptPreview(v: unknown, ticket?: OrderTicket): OrderPreview {
     quote_clock: str(pick(src, 'quote_clock'))
       || (quote?.source_ts ? etStamp(quote.source_ts) : null),
     risk: adaptRisk(src),
+    /**
+     * THE DAILY RISK BUDGET, WHICH THE SERVER HAS ALWAYS SENT AND THIS ADAPTER
+     * USED TO DROP ON THE FLOOR.
+     *
+     * `OrderPreviewResponse.risk` (packages/shared/api.ts) carries `daily_cap`,
+     * `daily_used` and `daily_remaining`, computed by `dailyRisk()` and already
+     * surfaced on home, plans, symbols and trade/landing. The order ticket —
+     * the one screen where that number decides whether you should place this at
+     * all — never received it, because nothing here copied it across.
+     *
+     * NULL AND ABSENT MEAN DIFFERENT THINGS, and `dailyBudget()` in
+     * `features/orders/daily-risk.ts` says each of them out loud rather than
+     * drawing an empty bar: a null `cap` is "you have set no daily risk cap",
+     * and a missing block entirely is "not reported on this build" — an older
+     * API that never sent it, which must not read as a cap of zero.
+     */
+    daily_risk: ('daily_used' in riskBlock || 'daily_cap' in riskBlock)
+      ? {
+        cap: num(pick(riskBlock, 'daily_cap')),
+        used: num(pick(riskBlock, 'daily_used')) ?? 0,
+        remaining: num(pick(riskBlock, 'daily_remaining')),
+      }
+      : null,
     stop_attached: stop,
     first_target: target,
     max_loss: maxLoss,

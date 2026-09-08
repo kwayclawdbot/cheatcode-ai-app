@@ -109,7 +109,10 @@ const main = async () => {
   const invest = await page.getByTestId('mode-seg-invest').first().getAttribute('aria-selected');
   ok('Invest reads as the chosen mode', invest === 'true' || invest === null, { invest });
   const roomAfter = await page.getByTestId('club-room-name').first().innerText().catch(() => '');
-  ok('and the feed moved to that mode\'s room', /Investing/i.test(roomAfter) && roomAfter !== roomBefore,
+  // THE ROOM IS CALLED "Investors Chat" NOW (owner, 8 Sept 2026; migration
+  // 0045). It was "#investing" when this proof was written; the three chats are
+  // Traders, Investors and Beginners, so the name to look for changed with it.
+  ok('and the feed moved to that mode\'s room', /Investors/i.test(roomAfter) && roomAfter !== roomBefore,
     { roomBefore, roomAfter });
 
   /* ---------------- 4. a room wears its company's logo ------------------ */
@@ -123,13 +126,18 @@ const main = async () => {
   ok('the mark is drawn, not a bare initial', await metaAvatar.count() > 0);
   await shot(page, 'owner-0906-03-circle-avatars');
 
-  await open(page, '/room/room-swing', 2500);
+  // `room-swing` NO LONGER EXISTS. 0045 merged Day Trade and Swing into one
+  // Traders Chat and kept the id of whichever row held more conversation; the
+  // fixtures mirror that, so the surviving Traders room is `room-day-trade`.
+  // A proof that navigates to a dead id renders the not-found screen and then
+  // fails on an avatar that was never going to be there.
+  await open(page, '/room/room-day-trade', 2500);
   ok('a core room header carries a room avatar too', (await count(page, 'room-avatar')) > 0);
   await shot(page, 'owner-0906-04-room-header');
 
   /* ---------------- 1. reply opens the composer, with the quote --------- */
   console.log('\n[1] Reply opens the composer with the quote — not Home');
-  await open(page, '/room/room-swing', 2500);
+  await open(page, '/room/room-day-trade', 2500);
   const replies = await count(page, 'reply-open');
   ok('there is a Reply to tap', replies > 0, { replies });
 

@@ -26,6 +26,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Modal, Platform, Pressable, View, useWindowDimensions } from 'react-native';
 import { alpha, color, radius } from './tokens';
 import { T } from './Text';
+import { useMotion } from '../features/a11y/context';
+import { Focusable, FocusRing, useFocusRing } from './Focus';
 
 /**
  * One line in the menu.
@@ -71,11 +73,27 @@ export function ComposerActions({
   const t = useRef(new Animated.Value(0)).current;
   const { width: screenW, height: screenH } = useWindowDimensions();
 
+  /**
+   * THE MENU GROWS OUT OF THE + — UNLESS SOMEBODY ASKED IT NOT TO (F19).
+   *
+   * `duration(0)` puts the panel straight onto its final frame, so it appears
+   * and disappears on exactly the same trigger and `hide`'s completion callback
+   * still fires and still unmounts the modal. What goes is the scale-up and the
+   * six pixels of travel; the transform is left in place at its resting value
+   * so there is one layout to maintain rather than two.
+   */
+  const { duration, distance, reduced } = useMotion();
+
+  // The trigger keeps its own `Pressable` rather than becoming a `Focusable`,
+  // because `trigger` is a ref this component measures on every open and
+  // `Focusable` does not forward one. Same ring, drawn by hand.
+  const { focused, focusProps } = useFocusRing();
+
   const show = useCallback(() => {
     const run = () => {
       setOpen(true);
       t.setValue(0);
-      Animated.timing(t, { toValue: 1, duration: ENTER_MS, easing: EASE_OUT, useNativeDriver: true }).start();
+      Animated.timing(t, { toValue: 1, duration: duration(ENTER_MS), easing: EASE_OUT, useNativeDriver: true }).start();
     };
     // Measured EVERY time rather than once: the composer moves when the
     // keyboard opens and when a picture tray appears above it, and a menu that
@@ -88,13 +106,13 @@ export function ComposerActions({
     } else {
       run();
     }
-  }, [t]);
+  }, [t, duration]);
 
   const hide = useCallback(() => {
-    Animated.timing(t, { toValue: 0, duration: EXIT_MS, easing: EASE_OUT, useNativeDriver: true }).start(
+    Animated.timing(t, { toValue: 0, duration: duration(EXIT_MS), easing: EASE_OUT, useNativeDriver: true }).start(
       ({ finished }) => { if (finished) setOpen(false); }
     );
-  }, [t]);
+  }, [t, duration]);
 
   // Escape closes it on the web. `Modal`'s `onRequestClose` is the ANDROID back
   // button and nothing else, so without this a keyboard has no way out of a
@@ -133,7 +151,9 @@ export function ComposerActions({
         accessibilityState={{ disabled: !!disabled, expanded: open }}
         disabled={disabled}
         onPress={show}
+        {...focusProps}
         style={({ pressed }) => ({
+          position: 'relative',
           width: TRIGGER, height: TRIGGER, borderRadius: TRIGGER / 2,
           alignItems: 'center', justifyContent: 'center',
           borderWidth: 0.5, borderColor: open ? alpha.volt50 : alpha.ivory24,
@@ -144,6 +164,7 @@ export function ComposerActions({
         })}
       >
         <PlusGlyph tint={open ? color.volt : color.text} />
+        <FocusRing visible={focused && !disabled} borderRadius={TRIGGER / 2} />
       </Pressable>
 
       <Modal visible={open} transparent animationType="none" onRequestClose={hide}>
@@ -181,8 +202,8 @@ export function ComposerActions({
             transformOrigin: 'bottom left',
             opacity: t,
             transform: [
-              { scale: t.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
-              { translateY: t.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) },
+              { scale: t.interpolate({ inputRange: [0, 1], outputRange: [reduced ? 1 : 0.94, 1] }) },
+              { translateY: t.interpolate({ inputRange: [0, 1], outputRange: [distance(6), 0] }) },
             ],
           }}
         >
@@ -205,7 +226,7 @@ function ActionRow({
   const tint = action.tone === 'kai' ? color.violetLight : color.text;
   const hint = action.disabled ? (action.disabledHint ?? action.hint) : action.hint;
   return (
-    <Pressable
+    <Focusable
       testID={`composer-action-${action.id}`}
       accessibilityRole="button"
       accessibilityLabel={action.label}
@@ -221,10 +242,15 @@ function ActionRow({
         borderBottomColor: alpha.ivory08,
         opacity: action.disabled ? 0.45 : pressed ? 0.7 : 1,
       })}
+      // Inset 1, not the default 3: these rows sit inside a panel with 14px of
+      // padding and a ring that reached the panel's own edge would read as the
+      // panel being focused rather than the row.
+      ringInset={1}
+      ringRadius={radius.sm}
     >
       <T size={14} weight="semibold" c={tint}>{action.label}</T>
       {hint ? <T size={11} lh={15} c={color.muted} style={{ marginTop: 2 }}>{hint}</T> : null}
-    </Pressable>
+    </Focusable>
   );
 }
 

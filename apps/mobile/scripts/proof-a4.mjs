@@ -284,12 +284,28 @@ async function captureApp(browser) {
     const box = async (id) => (await page.getByTestId(id).first().boundingBox());
     const story = await box('alert-story-META');
     const ask = await page.locator('text=/Ask Kai about this/').first().boundingBox();
+    /*
+      META is contract-led, so it also carries "Explain this signal" — the
+      audit's requirement that an options card offer the explanation BEFORE the
+      button that takes the trade. That is a third legitimate step in this run
+      of controls, so the chain is walked rather than the tolerance widened:
+      each hop is still tight, and a fourth block appearing anywhere in it
+      still fails.
+    */
+    const explain = await box('alert-explain-META');
     const cta = await box('alert-cta-META');
     const between = (a, b) => (a && b ? b.y - (a.y + a.height) : null);
-    for (const [gap, what] of [
-      [between(story, ask), 'the story runs straight into the Kai action'],
-      [between(ask, cta), 'and the Kai action into the button'],
-    ]) {
+    const chain = explain
+      ? [
+          [between(story, ask), 'the story runs straight into the Kai action'],
+          [between(ask, explain), 'the Kai action into the explanation'],
+          [between(explain, cta), 'and the explanation into the button'],
+        ]
+      : [
+          [between(story, ask), 'the story runs straight into the Kai action'],
+          [between(ask, cta), 'and the Kai action into the button'],
+        ];
+    for (const [gap, what] of chain) {
       const tight = gap != null && gap >= 0 && gap < 60;
       console.log(`  ${tight ? '✓' : '✗'} alerts · ${what} (${gap}px)`);
       if (!tight) failures.push(`alerts · ${gap}px — ${what} is not tight; something is in the gap`);

@@ -17,7 +17,12 @@ import s from './Landing.module.css';
 const INDEX = [
   {
     name: 'Learn',
-    body: 'Seven days from nothing to reading a chart on your own, then a lesson a day. Kai explains any screen in plain English, at whatever level you are actually at.',
+    // Audit F02. This used to say "Seven days from nothing to reading a chart
+    // on your own, then a lesson a day", against a curriculum with one written
+    // lesson in it. The app's own path is three steps with 02 and 03 marked
+    // "Coming next" (apps/mobile/src/features/training/path.ts), so this says
+    // the same thing.
+    body: 'Step 01 is written and waiting: what you are looking at, and what you are actually buying. Reading a chart and building a plan are the next two steps, and they are not written yet. Kai explains any screen in plain English, at whatever level you are actually at.',
   },
   {
     name: 'Invest',

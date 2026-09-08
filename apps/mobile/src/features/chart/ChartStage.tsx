@@ -40,6 +40,7 @@ import type { Candle } from '../../lib/types';
 import { T, Num } from '../../ui/Text';
 import { alpha, color, radius } from '../../ui/tokens';
 import { Pencil } from '../../ui/Icons';
+import { useMotion } from '../a11y/context';
 
 export type ChartStageProps = {
   open: boolean;
@@ -122,15 +123,26 @@ function LowerThird({
   testID?: string;
 }) {
   const a = useRef(new Animated.Value(0)).current;
+  const { duration, distance } = useMotion();
 
+  /**
+   * REDUCED MOTION KEEPS THE LOWER THIRD, AND LOSES THE RISE (F19).
+   *
+   * `duration(0)` lands the animation on its final frame immediately, so the
+   * caption still appears and disappears with the same visibility rule — it
+   * simply stops travelling to get there. `distance(10)` is the part that
+   * actually causes the trouble: ten pixels of upward drift under a chart that
+   * is already moving is exactly the compound motion vestibular sensitivity
+   * reacts to.
+   */
   useEffect(() => {
     Animated.timing(a, {
       toValue: visible ? 1 : 0,
-      duration: visible ? 300 : 220,
+      duration: duration(visible ? 300 : 220),
       easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [visible, a]);
+  }, [visible, a, duration]);
 
   return (
     <Animated.View
@@ -145,7 +157,7 @@ function LowerThird({
         paddingTop: 26,
         paddingHorizontal: 18,
         opacity: a,
-        transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+        transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [distance(10), 0] }) }],
         // A scrim, not a card. A rounded rectangle floating over the chart is a
         // panel and reads as another piece of UI; a gradient the chart runs out
         // of is the chart still being the whole screen.
@@ -202,6 +214,7 @@ export function ChartStage(props: ChartStageProps) {
 
   /** Chrome recedes while Kai talks, and comes back when he stops. */
   const chrome = useRef(new Animated.Value(1)).current;
+  const { duration: motionDuration } = useMotion();
 
   useEffect(() => {
     if (!open) return;
@@ -211,14 +224,17 @@ export function ChartStage(props: ChartStageProps) {
     };
   }, [open]);
 
+  // The chrome fade is opacity only, which reduced motion permits — but it is
+  // still routed through the budget so that under the preference it CUTS rather
+  // than crosses. One frame is not movement.
   useEffect(() => {
     Animated.timing(chrome, {
       toValue: live ? 0 : 1,
-      duration: live ? 260 : 320,
+      duration: motionDuration(live ? 260 : 320),
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [live, chrome]);
+  }, [live, chrome, motionDuration]);
 
   // The chart takes its full gesture set the moment it owns the screen, and
   // hands it back on the way out — see `setGestures` in chart-web/06-chart.js.

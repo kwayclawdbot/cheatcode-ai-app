@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { PATH_ORDER, PERSONAS, type PathId } from '@/sim/personas';
 import { getAppHref } from '@/sim/handoff';
+import { PLANNED_LABEL, capability } from '@/sim/capabilities';
 import s from './PlanReveal.module.css';
 
 /**
@@ -9,6 +10,15 @@ import s from './PlanReveal.module.css';
  * middle column of a table.
  *
  * The button goes to the app handoff, never to a checkout.
+ *
+ * WHAT IS IN THE PLAN AND WHAT IS NOT COMES FROM `sim/capabilities.ts`.
+ * Audit F02: every bullet used to be a free-typed sentence, and one of them
+ * sold "the 7-day path, then a lesson a day" against a curriculum with one
+ * authored lesson. Each bullet now names a capability, and a capability that
+ * this build cannot do renders greyed with the word Planned on it rather than
+ * as a promise. It is still LISTED, deliberately — somebody deciding whether to
+ * pay is entitled to see where the product is going, and hiding it would only
+ * move the disappointment to the first week.
  */
 export function PlanReveal({ path }: { path: PathId }) {
   const persona = PERSONAS[path];
@@ -31,14 +41,21 @@ export function PlanReveal({ path }: { path: PathId }) {
         </div>
         <p className={s.pitch}>{plan.pitch}</p>
         <div className={s.gets}>
-          {plan.gets.map((g) => (
-            <span key={g} className={s.get}>
-              <span className={s.getTick} aria-hidden="true">
-                ✓
+          {plan.gets.map((g) => {
+            const cap = capability(g.id);
+            const planned = cap.state === 'planned';
+            return (
+              <span key={g.id} className={`${s.get} ${planned ? s.getPlanned : ''}`}>
+                <span className={s.getTick} aria-hidden="true">
+                  {planned ? '·' : '✓'}
+                </span>
+                <span>
+                  {g.line}
+                  {planned && <span className={s.plannedTag}>{PLANNED_LABEL}</span>}
+                </span>
               </span>
-              <span>{g}</span>
-            </span>
-          ))}
+            );
+          })}
         </div>
         <Link className={s.cta} href={getAppHref(path)}>
           {persona.cta}
@@ -60,7 +77,8 @@ export function PlanReveal({ path }: { path: PathId }) {
 
       <p className={s.foot}>
         Prices are per month and shown here on the website. Cancel any time. Nothing you walked
-        through was a live market or a record of real trading.
+        through was a live market or a record of real trading. Anything marked{' '}
+        {PLANNED_LABEL.toLowerCase()} is not in the app you would get today.
       </p>
     </div>
   );

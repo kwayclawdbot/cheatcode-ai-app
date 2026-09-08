@@ -1,0 +1,15 @@
+{
+  "name": "@cheatcode/design-kit",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Same-source native UI components, 36 screen compositions and a browser reference gallery",
+  "scripts": {
+    "build": "node scripts/build-gallery.mjs",
+    "serve": "python3 -m http.server 4179 --directory dist",
+    "typecheck": "../../apps/mobile/node_modules/.bin/tsc -p ../../apps/mobile/tsconfig.design-kit.json",
+    "proof": "node scripts/verify-gallery.mjs",
+    "dev": "node scripts/serve-gallery.mjs",
+    "check-render": "node scripts/check-render.mjs",
+    "assets": "node scripts/check-render.mjs --assets"
+  }
+}

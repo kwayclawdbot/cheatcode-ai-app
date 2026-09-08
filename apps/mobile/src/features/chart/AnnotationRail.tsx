@@ -21,12 +21,14 @@
  * be a container looking for content.
  */
 import React, { useMemo } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { Num } from '../../ui/Text';
 import { alpha, color, radius } from '../../ui/tokens';
 import type { Annotation } from '../portal/types';
 import { KIND_LABEL, PROVENANCE_LABEL } from '../portal/types';
 import { kindColor } from './semantics';
+import { useMotion } from '../a11y/context';
+import { Focusable } from '../../ui/Focus';
 
 export function AnnotationRail({
   annotations,
@@ -37,6 +39,22 @@ export function AnnotationRail({
   onSelect?: (a: Annotation) => void;
   testID?: string;
 }) {
+  /**
+   * PRESS FEEDBACK IS MOTION TOO (audit F19).
+   *
+   * F19 names "sheets, chart annotations and feedback" and this rail is two of
+   * the three at once: it is the chart's annotations, and a chip that shrinks
+   * under the thumb is feedback. Twenty-four chips each shrinking 4% as a
+   * finger drags across the rail is a lot of small movement over a chart that
+   * is itself panning.
+   *
+   * The chip still answers the press under the preference — it dims instead.
+   * Opacity is not position, so it stays inside what reduced motion permits,
+   * and the alternative (no feedback at all) would take a real affordance away
+   * from somebody in exchange for their accessibility setting.
+   */
+  const { reduced } = useMotion();
+
   /**
    * THE RAIL IS THE OVERFLOW.
    *
@@ -89,7 +107,7 @@ export function AnnotationRail({
             ? `${a.price.toFixed(2)}-${a.price2.toFixed(2)}`
             : a.price.toFixed(2);
         return (
-          <Pressable
+          <Focusable
             key={a.id}
             testID={`annotation-${a.id}`}
             accessibilityRole="button"
@@ -104,6 +122,11 @@ export function AnnotationRail({
             accessibilityHint="Opens why this level is on the chart"
             onPress={() => onSelect?.(a)}
             hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
+            // The chips sit 6px apart in a horizontal rail, so the ring is
+            // pulled in to 2 — at the default 3 two neighbouring rings would
+            // touch and the rail would look ruled rather than focused.
+            ringInset={2}
+            ringRadius={radius.sm}
             style={({ pressed }) => ({
               flexDirection: 'row',
               alignItems: 'center',
@@ -114,9 +137,9 @@ export function AnnotationRail({
               borderWidth: 0.5,
               borderColor: dead ? alpha.ivory12 : `${c}55`,
               backgroundColor: dead ? 'transparent' : `${c}12`,
-              opacity: dead ? 0.55 : 1,
+              opacity: (dead ? 0.55 : 1) * (pressed && reduced ? 0.7 : 1),
               // Feedback on the press itself, not on the release.
-              transform: [{ scale: pressed ? 0.96 : 1 }],
+              transform: [{ scale: pressed && !reduced ? 0.96 : 1 }],
             })}
           >
             <Num size={9.5} weight="medium" c={dead ? color.dim : c}>{label}</Num>
@@ -126,7 +149,7 @@ export function AnnotationRail({
             {a.provenance === 'kai' ? (
               <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: color.violet }} />
             ) : null}
-          </Pressable>
+          </Focusable>
         );
       })}
     </ScrollView>

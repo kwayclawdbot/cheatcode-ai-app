@@ -6,10 +6,26 @@
  * target sit beside where price actually is, so a drifting trade is visible
  * rather than remembered.
  *
- * Exit now does NOT send anything. It routes to the same review screen every
- * other order goes through (`/order/review?close=<id>`), because a close is an
- * order and deserves the same confirmation, the same freshness line and the
- * same "nothing is sent until you confirm".
+ * Exit paper position does NOT send anything. It routes to the same review
+ * screen every other order goes through (`/order/review?close=<id>`), because a
+ * close is an order and deserves the same confirmation, the same freshness line
+ * and the same "nothing is sent until you confirm". It used to say "Exit now",
+ * which promised an immediacy the flow does not have; F08's list gives it the
+ * name it has here, and "paper" is in it because the exit is paper too.
+ *
+ * ROUND 5 — "Practice with confidence", Active Position. What the board adds:
+ * the state strip ("Position active · 4 shares"), the CHART with the trade's
+ * own levels drawn by the kit's `TradeMap`, and the kit's `TradeStatusStrip`
+ * for where this trade sits in its life. The rows keep the board's words —
+ * Average entry, Planned stop, Target — which are also more precise than the
+ * ones they replace: "You got in at" was describing an average of fills.
+ *
+ * WHAT THE KIT CANNOT DRAW YET, reported rather than worked around in `ui/`:
+ * `TradeMap` takes entry, stop and target and has no concept of a CURRENT price
+ * marker, so the board's grey "181.20 CURRENT" band is carried by the existing
+ * `StopNowTargetBar` under the chart instead. The last candle is where price
+ * is, so nothing is hidden — but a `mark` level on the kit's map would put the
+ * two facts in one picture.
  */
 import React, { useState } from 'react';
 import { View, ScrollView } from 'react-native';
@@ -26,6 +42,11 @@ import { color, radius } from '../../ui/tokens';
 import { openKaiSheet } from '../../features/kai-sheet';
 import { usePosition } from '../../features/positions/usePositions';
 import { tradeApi } from '../../lib/trade-api';
+import { ObjectStateStrip } from '../../features/orders/ExecutionUI';
+import { EXIT_REVIEW_LABEL } from '../../features/orders/vocabulary';
+import { ideaFromPosition } from '../../features/orders/trade-idea';
+import { useIdeaCandles } from '../../features/orders/useCandles';
+import { TradeMap, TradeStatusStrip } from '../../ui/trade';
 import {
   DetailRow, KaiLine, PaperChip, StatusDot, StopNowTargetBar, money, pnlColor, shareLabel,
   signedMoney, signedPct,
@@ -38,6 +59,10 @@ export default function PositionDetail() {
   const params = useLocalSearchParams<{ id?: string }>();
   const id = String(params.id ?? '');
   const { data, loading, error, notAvailable, reload } = usePosition(id);
+  /* Before the early returns — hooks do not get to be conditional. Bars are
+     optional: without them the map draws the levels and says the history is
+     unavailable, which is the honest empty state and not an error. */
+  const candles = useIdeaCandles(data?.symbol);
   const [adjust, setAdjust] = useState<AdjustKind | null>(null);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
@@ -129,9 +154,30 @@ export default function PositionDetail() {
               {[p.unrealized_pnl_pct != null ? signedPct(p.unrealized_pnl_pct) : null, p.pnl_detail].filter(Boolean).join(' · ')}
             </Num>
           </View>
-          {open ? <StopNowTargetBar stop={p.stop} now={p.mark_price} target={p.target} testID="position-levels" /> : null}
-          {p.kai_line ? <KaiLine text={p.kai_line} testID="position-kai-line" /> : null}
         </ObjectCard>
+
+        {/* F08: where this object is now, and one next action. */}
+        <ObjectStateStrip
+          state={open ? 'position_active' : 'closed'}
+          meta={shareLabel(p.qty)}
+          plain={open ? null : (p.pnl_detail ?? null)}
+          testID="position-state"
+        />
+
+        {/*
+          THE TRADE, DRAWN. The kit's map, so this chart is the same object the
+          room and the setup preview draw — same colours, same band shading, one
+          accessibility label written once.
+        */}
+        <ObjectCard r={radius.xxl} style={{ paddingHorizontal: 14, paddingTop: 4, paddingBottom: 10 }} testID="position-map">
+          <TradeMap idea={ideaFromPosition(p, candles)} selectedLevel="entry" />
+          {/* Where price is NOW, against the two levels that end the trade. The
+              map has no marker for it — see the file header. */}
+          {open ? <StopNowTargetBar stop={p.stop} now={p.mark_price} target={p.target} testID="position-levels" /> : null}
+          <TradeStatusStrip status={open ? 'active' : 'closed'} />
+        </ObjectCard>
+
+        {p.kai_line ? <KaiLine text={p.kai_line} testID="position-kai-line" /> : null}
 
         {/* What the plan said, beside where price is */}
         <Eyebrow>PLAN VS NOW</Eyebrow>
@@ -152,9 +198,9 @@ export default function PositionDetail() {
           ) : (
             <>
           <DetailRow label="Planned entry" value={p.plan_entry != null ? money(p.plan_entry) : '—'} />
-          <DetailRow label="You got in at" value={p.avg_entry != null ? money(p.avg_entry) : '—'} />
+          <DetailRow label="Average entry" value={p.avg_entry != null ? money(p.avg_entry) : '—'} testID="row-average-entry" />
           <DetailRow
-            label="Stop"
+            label="Planned stop"
             value={p.plan_stop != null ? money(p.plan_stop) : 'Not set'}
             valueColor={color.red}
             onPress={open ? () => openAdjust('stop') : undefined}
@@ -204,16 +250,25 @@ export default function PositionDetail() {
         {open ? (
           <>
             <Button
-              label="Exit now"
-              onPress={() => router.push(`/order/review?close=${encodeURIComponent(p.id)}`)}
-              testID="exit-now"
-              accessibilityHint="Shows you the closing order before anything is sent"
-            />
-            <Button
               label="Ask Kai about this position"
               kind="kai"
               onPress={() => openKaiSheet({ context: { kind: 'position', id: p.id, symbol: p.symbol } })}
               testID="ask-kai"
+            />
+            {/*
+              THE EXIT IS AN ORDER, so it is named like one and it goes through
+              the same review screen. `Review position` is not offered here on
+              purpose: that is the name of the action that BRINGS a member to
+              this screen (from the receipt, the order and the positions list),
+              and F08's rule is one name per action — not a button that claims
+              to open the screen it is already on.
+            */}
+            <Button
+              label={EXIT_REVIEW_LABEL}
+              kind="outline"
+              onPress={() => router.push(`/order/review?close=${encodeURIComponent(p.id)}`)}
+              testID="exit-now"
+              accessibilityHint="Shows you the closing order before anything is sent"
             />
             <T size={11} c={color.dim} align="center" lh={16}>
               Nothing is sent until you confirm it on the next screen.

@@ -7,6 +7,7 @@ import {
   fixtureAlertsSimple,
 } from '../../lib/fixtures';
 import { mergeAlertsTab } from '../../lib/adapters';
+import { alertsChanged } from './attention';
 import type {
   AlertBoardTab, AlertDetail, AlertDraftPreview, AlertLifecycle, AlertMonitoring, AlertsRound4,
   AlertsSimple, AlertTab, GoalMode,
@@ -51,6 +52,16 @@ export function useAlertActions(onChanged?: () => void) {
     setBusy({ id, error: null });
     try {
       await fn();
+      /*
+        THE BADGE IS PART OF "IT WORKED" — audit F18.
+
+        Activating, pausing, resuming or cancelling an alert changes what needs
+        the member, and the tab's attention dot is drawn from that same set. It
+        is forced rather than throttled because this is the exact moment the
+        finding is about: acknowledging the thing the dot points at has to clear
+        the dot, not sixty seconds later.
+      */
+      alertsChanged(true);
       onChanged?.();
     } catch (e) {
       if (e instanceof ApiError && e.code === 'ENTITLEMENT_REQUIRED') {
@@ -182,6 +193,14 @@ export function useAlertsRound4(mode: GoalMode, fixture: 'default' | 'empty' = '
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   /**
+   * WHEN THE CARDS ON SCREEN WERE LAST CONFIRMED — audit F18 asks for a "Last
+   * checked" line "when the service can support it", and this is the service
+   * supporting it: the instant a payload actually arrived, not the instant one
+   * was asked for. It is what the stale notice prints, so a board whose refresh
+   * has been failing says how old the answer under it is.
+   */
+  const [checkedAt, setCheckedAt] = useState<number | null>(null);
+  /**
    * Set immediately before a POLL bumps the tick. A background refresh must not
    * raise the board's loading state — a list of trade cards that flashes into a
    * spinner every fifteen seconds is unusable — and must not throw away good
@@ -257,6 +276,14 @@ export function useAlertsRound4(mode: GoalMode, fixture: 'default' | 'empty' = '
           prev,
         ));
         setError(null);
+        setCheckedAt(Date.now());
+        /*
+          A FRESH BOARD IS A FRESH READING. The cards that just landed are the
+          same lifecycle the tab's dot is drawn from, so the store is told to
+          re-ask — gently, because this also runs on every fifteen-second poll
+          and the dot is not worth a second request at that cadence.
+        */
+        alertsChanged();
       })
       .catch((e: unknown) => {
         if (!alive || seq !== seqRef.current) return;
@@ -301,7 +328,7 @@ export function useAlertsRound4(mode: GoalMode, fixture: 'default' | 'empty' = '
   return {
     data: forShownMode,
     loading: loading || (!!data && !forShownMode),
-    error, tab, setTab,
+    error, tab, setTab, checkedAt,
     isFixture: offline,
     reload: () => setTick((t) => t + 1),
   };

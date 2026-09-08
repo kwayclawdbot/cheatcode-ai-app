@@ -8,6 +8,20 @@ import type { ConversationRow, ConversationsPayload } from '../../lib/types';
  * Conversations get titles, a pin and search. Search filters locally as the
  * user types and re-queries the server when it is connected, so the drawer
  * stays responsive on a slow link.
+ *
+ * THIS IS THE SELECTION SURFACE, AND SELECTION NOW MEANS SOMETHING (audit F04).
+ * A row's `id` is the server conversation Home binds its wall to — see
+ * `lib/kai-continuity.ts`. Two consequences for this file:
+ *
+ *   `reload` IS STABLE, so Home can call it from the hamburger without the
+ *   identity of the callback re-running effects. A conversation started during
+ *   this sitting only appears on the server after its first turn, and the
+ *   drawer is where somebody goes to come back to it, so it is re-read when it
+ *   opens rather than once at mount.
+ *
+ *   NOTHING HERE INVENTS A ROW. There is no optimistic "New conversation" entry
+ *   for a thread that has not been spoken in: it would be a title pointing at
+ *   an id that does not exist, which is the shape of the bug this lane closed.
  */
 export function useConversations() {
   const offline = !api.available();
@@ -67,6 +81,8 @@ export function useConversations() {
     try { await api.patchConversation(id, { title }); } catch { void load(q); }
   }, [offline, load, q]);
 
+  const reload = useCallback(() => { void load(q); }, [load, q]);
+
   return {
     data: filtered,
     all: data,
@@ -74,7 +90,7 @@ export function useConversations() {
     setQ: (v: string) => { setQ(v); if (!offline) void load(v); },
     loading,
     error,
-    reload: () => load(q),
+    reload,
     togglePin,
     rename,
     isFixture: offline,

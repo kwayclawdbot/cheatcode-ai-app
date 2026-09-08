@@ -1,3 +1,48 @@
+/**
+ * Account.
+ *
+ * ===========================================================================
+ * IT WAS A FEATURE DIRECTORY. IT IS NOW ORDERED BY WHAT PEOPLE COME HERE FOR.
+ * ===========================================================================
+ * The board held identity, sharing, the Kai profile, risk rules, a dozen
+ * destinations, brokerage, memory, adherence, sign-out and the legal links in
+ * roughly the order they were built. Finding the notification settings meant
+ * reading the whole page, and the audit's own test — "find and change guidance,
+ * notification delivery and practice balance without scanning the full account
+ * page" — failed on all three.
+ *
+ * THE ORDER IS NOW THE AUDIT'S: Profile · Guidance · Practice account ·
+ * Notifications · Plan, and then everything that is genuinely a destination
+ * rather than a setting. Learning and debriefs keep their rows here because
+ * this is where people look for them, but they are no longer wedged between a
+ * risk rule and a credit balance.
+ *
+ * ---------------------------------------------------------------------------
+ * THE BUG THAT MATTERED MOST: A ROW THAT LOOKED LIKE A DOOR WAS A SWITCH.
+ * ---------------------------------------------------------------------------
+ * "Trading mode" and "Experience level" CHANGED THEIR VALUE when tapped,
+ * cycling one step each time, while wearing the same chevron as every row that
+ * opens a screen — and while the mode chip a few pixels above opened a proper
+ * chooser. So one setting behaved two ways on one screen, and a person tapping
+ * to read their mode changed how Kai scans the market instead.
+ *
+ * Every setting with more than two values now opens an explicit sheet listing
+ * the options and what each one does. The rule is written down, with the
+ * argument, in `features/account/controls.tsx`; the two cycler functions are
+ * deleted and `features/account/profile.ts` says why they may not return.
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT WAS DELIBERATELY LEFT ALONE
+ * ---------------------------------------------------------------------------
+ * The protections. Memory review and deletion, the trade-sharing switch with
+ * its enforceable promise, the paper-reset confirmation and the
+ * account-deletion confirmation are all exactly as they were, because the
+ * audit named them as the parts of this screen that were already right.
+ * Discoverability was the problem; those flows were not.
+ *
+ * The simulated-trade action is now behind `__DEV__` as well as its flag — the
+ * argument is written out beside the DEVELOPER block below.
+ */
 import React, { useState } from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -22,40 +67,44 @@ import { useKaiProfile, useMe, useSettingsWriter } from '../../features/account/
 import { useTraining } from '../../features/training/store';
 import { useAvatar } from '../../features/account/useAvatar';
 import { Avatar } from '../../features/community/ui/Chrome';
-import { FOCUS_CHIP, FOCUS_ORDER } from '../../features/account/profile';
+import {
+  EXPERIENCE_CONSEQUENCE, EXPERIENCE_ORDER, FOCUS_CHIP, FOCUS_ORDER, GUIDANCE_LABEL,
+} from '../../features/account/profile';
+import { ChoiceSheet, NavRow, SaveNote, SettingRow, type Choice } from '../../features/account/controls';
 import { ModeSheet, MODE_LABEL } from '../../features/trade/ModeSheet';
 import { PaperChip } from '../../features/trade/components';
-import type { FocusKey, GoalMode } from '../../lib/types';
+import type { Experience, FocusKey, GoalMode } from '../../lib/types';
+
 const INVOLVEMENT_LABEL = { hands_on: 'I confirm every action', guided: 'Kai prepares, I approve' } as const;
 
-function NavRow({
-  icon, label, value, onPress, last = false, testID,
-}: { icon: React.ReactNode; label: string; value?: string | null; onPress: () => void; last?: boolean; testID?: string }) {
-  return (
-    <Row last={last}>
-      <Pressable
-        testID={testID}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        onPress={onPress}
-        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11, minHeight: 44 }}
-      >
-        <View style={{ width: 28, height: 28, borderRadius: 8, borderWidth: 0.5, borderColor: alpha.ivory14, backgroundColor: alpha.ivory06, alignItems: 'center', justifyContent: 'center' }}>
-          {icon}
-        </View>
-        <T size={13.5} style={{ flex: 1 }}>{label}</T>
-        {value ? <T size={12} c={color.muted}>{value}</T> : null}
-        <ArrowRight size={12} color={color.muted} />
-      </Pressable>
-    </Row>
-  );
-}
+/**
+ * GUIDANCE, AS A LIST OF CHOICES WITH THEIR CONSEQUENCES.
+ * The label says what you get; the detail says what changes. Both come from
+ * `profile.ts` so onboarding and this board describe the same setting the same
+ * way — see the header of `GUIDANCE_LABEL` for why it is no longer called
+ * "Experience level".
+ */
+const GUIDANCE_CHOICES: Choice<Experience>[] = EXPERIENCE_ORDER.map((k) => ({
+  key: k,
+  label: GUIDANCE_LABEL[k],
+  detail: EXPERIENCE_CONSEQUENCE[k],
+}));
 
 /**
- * Account — V3-AC1-Account.html, completed.
- * The rules you set, everything Kai holds about you, and the honest state of
- * money: paper only, no broker, upgrades not open yet.
+ * True only in a development bundle. Metro replaces `__DEV__` with a literal,
+ * so the branch that reads it is dropped from a release build entirely; the
+ * `typeof` guard is for Node, which reads this file in the static test scripts
+ * and has no such global.
  */
+const DEV_BUILD = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
+
+/** What the goal actually changes, in one line each. Mirrors `ModeSheet`. */
+const GOAL_HINT: Record<GoalMode, string> = {
+  day_trade: 'Intraday charts and same-day ideas.',
+  swing: 'Multi-day charts and ideas that need days to work.',
+  invest: 'Long charts and language about businesses.',
+};
+
 export default function Account() {
   const router = useRouter();
   const { profile, session, signOut, patchProfile } = useSession();
@@ -65,6 +114,7 @@ export default function Account() {
   const [simulating, setSimulating] = useState(false);
   const [simResult, setSimResult] = useState<string | null>(null);
   const [modeOpen, setModeOpen] = useState(false);
+  const [guidanceOpen, setGuidanceOpen] = useState(false);
   const [focusOpen, setFocusOpen] = useState(false);
 
   // Overall mastery, averaged across the skills the curriculum tracks. Shown
@@ -189,9 +239,6 @@ export default function Account() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
           {/*
             YOUR OWN FACE, AT THE TOP OF YOUR OWN BOARD.
-            This drew the gradient initial disc and read `avatar_url` nowhere,
-            so a member who had just set a picture saw it next to their posts
-            and not on the one screen that is about them.
 
             TWO BRANCHES, AND THEY ARE NOT THE SAME COMPONENT ON PURPOSE.
             · A PICTURE goes through the shared `Avatar`, which is what draws
@@ -257,17 +304,18 @@ export default function Account() {
               </View>
             ) : null}
             <View style={{ flexDirection: 'row', gap: 5, marginTop: 4, alignItems: 'center' }}>
-              {/* Mode is global context, so it is CHANGEABLE wherever it is shown
-                  (audit §6) — the same sheet Trade uses, writing PUT /mode. */}
+              {/* The goal chip. It opens the SAME sheet the Goal row in
+                  Guidance opens, which is the same sheet Trade and Home open —
+                  one setting, one chooser, wherever you meet it. */}
               <Pressable
                 testID="mode-chip"
                 accessibilityRole="button"
-                accessibilityLabel={`Mode: ${kai.modeLabel}. Change it.`}
+                accessibilityLabel={`Goal: ${MODE_LABEL[mode]}. Change it.`}
                 onPress={() => setModeOpen(true)}
                 hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
                 style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: alpha.volt50 }}
               >
-                <T size={10} c={color.volt}>{kai.modeLabel}</T>
+                <T size={10} c={color.volt}>{MODE_LABEL[mode]}</T>
               </Pressable>
               <PaperChip />
               <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: tier === 'premium' ? alpha.gold40 : alpha.ivory14 }}>
@@ -277,10 +325,11 @@ export default function Account() {
           </View>
         </View>
 
-        {/* WHO YOU ARE — the username, and the picture that goes with it.
-            Drawn ABOVE the Kai profile because it is the only row on this
-            screen other members ever see. */}
-        <Eyebrow>YOU</Eyebrow>
+        {/* ── 1 · PROFILE ──────────────────────────────────────────
+            Who other members see. First because it is the only part of this
+            screen anybody else ever looks at, and because a member without a
+            username is stopped at the door of every room. */}
+        <Eyebrow>PROFILE</Eyebrow>
         <RowList testID="identity">
           <Pressable
             testID="identity-username"
@@ -304,17 +353,11 @@ export default function Account() {
             </Row>
           </Pressable>
           {/*
-            THE ROW THE OWNER ASKED FOR.
-            It used to say "Picking a photo arrives with the next release" and
-            was not even pressable — which was honest at the time and is not
-            any more: the picker, the upload and the save all existed, they had
-            only ever been wired together on the admin rooms board.
-
             IT SAYS WHAT IS HAPPENING WHILE IT HAPPENS. Sending a photo over a
             phone connection is not instant, and a row that looked identical
             during the wait would read as a tap that did nothing.
           */}
-          <Row last>
+          <Row>
             <Pressable
               testID="identity-avatar"
               accessibilityRole="button"
@@ -341,6 +384,22 @@ export default function Account() {
               <ArrowRight size={12} color={color.dim} />
             </Pressable>
           </Row>
+          {/* THE ONE DOOR TO YOUR OWN PROFILE. `/contributor/:id` is where a
+              member's published calls, their record and their belt live, and
+              until this row existed there was no way into it for your own id
+              from anywhere in the app — you could reach everybody else's
+              profile by tapping their name, and never your own. It is drawn
+              only once the session has given us an id, because
+              `/contributor/` with nothing after it is a broken screen. */}
+          {session?.user?.id ? (
+            <NavRow
+              testID="nav-profile"
+              icon={<Bars size={14} color={color.muted} />}
+              label="Your profile and calls"
+              onPress={() => router.push(`/contributor/${session.user.id}` as never)}
+              last
+            />
+          ) : null}
         </RowList>
 
         {/* REMOVING IT IS A SEPARATE, QUIETER ACT.
@@ -365,11 +424,157 @@ export default function Account() {
           </T>
         ) : null}
 
-        {/* WHAT THE CLUB SEES.
-            Its own section, directly under YOU, because it is a privacy answer
-            and privacy answers do not belong buried under a settings chevron.
-            The switch is OFF until the server says otherwise — never assumed,
-            never optimistically on. */}
+        {/* ── 2 · GUIDANCE ─────────────────────────────────────────
+            The three answers that shape how Kai works, all of them explicit
+            choices from a sheet.
+
+            THE NAMES ARE THE AUDIT'S, AND THEY ARE NOT INTERCHANGEABLE.
+            GOAL is what you are here to do. GUIDANCE is how much Kai explains,
+            and it is adjustable any time — it is a preference, not a grade.
+            READINESS is the earned rung beside your name at the top of this
+            screen, which nothing here can set. Belts are a community track
+            record and are not drawn on this board at all. Four ideas that used
+            to share three overlapping labels. */}
+        <Eyebrow>GUIDANCE</Eyebrow>
+        <T size={11.5} c={color.muted} lh={17} style={{ marginTop: -4 }}>
+          How Kai works with you. Change any of it whenever you like — none of it is a grade.
+        </T>
+        <RowList testID="kai-profile">
+          <SettingRow
+            testID="kai-profile-mode"
+            label="Goal"
+            hint={GOAL_HINT[mode]}
+            value={MODE_LABEL[mode]}
+            onPress={() => setModeOpen(true)}
+          />
+          <SettingRow
+            testID="kai-profile-experience"
+            label="Guidance"
+            hint="How much Kai explains as he goes."
+            value={GUIDANCE_LABEL[kai.experience]}
+            onPress={() => setGuidanceOpen(true)}
+          />
+          <SettingRow
+            testID="kai-profile-focus"
+            label="Kai watches"
+            hint="What he scans first."
+            value={kai.focusShort}
+            onPress={() => setFocusOpen(true)}
+            last
+          />
+        </RowList>
+        <SaveNote
+          testID="kai-profile-save"
+          status={kai.save.status}
+          message={kai.save.message}
+          onRetry={kai.save.retry}
+        />
+
+        {/* Kai's own voice line, in Kai's colour, said in the first person. It
+            is the proof that the Guidance row above did something. */}
+        <View
+          testID="kai-voice-line"
+          style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start', paddingVertical: 11, paddingHorizontal: 13, borderRadius: 14, backgroundColor: alpha.violet10, borderLeftWidth: 2, borderLeftColor: color.violet }}
+        >
+          <KaiOrb size={18} glow={false} />
+          <T size={12} lh={17.5} c={color.muted} style={{ flex: 1 }}>{kai.voiceLine}</T>
+        </View>
+
+        <RowList>
+          <NavRow
+            testID="nav-settings"
+            icon={<Gear size={14} color={color.muted} />}
+            label="Explanation depth, quiet hours, text size"
+            onPress={() => router.push('/account/settings')}
+            last
+          />
+        </RowList>
+
+        {/* ── 3 · PRACTICE ACCOUNT ─────────────────────────────────
+            The balance, and the rules that govern what can be risked against
+            it. They belong together: a loss cap means nothing without the
+            number it is a cap on. */}
+        <Eyebrow>PRACTICE ACCOUNT</Eyebrow>
+        <RowList>
+          <NavRow
+            testID="nav-paper"
+            icon={<Bars size={14} color={color.muted} />}
+            label="Practice balance"
+            value={data?.paper ? `$${Math.round(data.paper.equity).toLocaleString('en-US')}` : null}
+            onPress={() => router.push('/account/paper')}
+          />
+          {/*
+            A NAV ROW RATHER THAN A READING, because this number is now
+            changeable. Risk moved out of signup to the front of the first paper
+            order (audit F01, `features/onboarding/risk-gate.ts`), and somebody
+            who took the default should not have to start an order to be asked.
+            `/account/risk` mounts the same screen the order ticket detours to.
+          */}
+          <NavRow
+            testID="nav-risk"
+            icon={<Bars size={14} color={color.muted} />}
+            label="Daily loss cap"
+            value={policy ? `$${policy.daily_loss_cap}` : null}
+            onPress={() => router.push('/account/risk')}
+          />
+          <Row>
+            <T size={13} style={{ flex: 1 }}>Max position size</T>
+            <Num size={13}>{policy ? `${policy.max_position_pct}% of balance` : '—'}</Num>
+          </Row>
+          <Row>
+            <T size={13} style={{ flex: 1 }}>Kai involvement</T>
+            <T size={12} c={color.violetLight}>{INVOLVEMENT_LABEL[involvement]}</T>
+          </Row>
+          <Row last>
+            <T size={13} style={{ flex: 1 }}>Paper trading</T>
+            <Toggle testID="toggle-paper" value onChange={undefined} disabled label="Paper trading" />
+          </Row>
+        </RowList>
+        <T size={10} c={color.muted} style={{ marginTop: -4 }}>
+          Paper is the only mode in this release — real money needs a broker, which comes later.
+          Resetting the balance lives on the practice account screen, behind a confirmation.
+        </T>
+
+        {/* ── 4 · NOTIFICATIONS ────────────────────────────────── */}
+        <Eyebrow>NOTIFICATIONS</Eyebrow>
+        <RowList>
+          <NavRow
+            testID="nav-notifications"
+            icon={<Bell size={14} color={color.muted} />}
+            label="What reaches you, and how"
+            onPress={() => router.push('/account/notifications')}
+            last
+          />
+        </RowList>
+
+        {/* ── 5 · PLAN ─────────────────────────────────────────────
+            Credits sit ABOVE the plan on purpose: "how many questions have I
+            got left" is asked far more often than "what am I on", and the
+            value is a real balance read from the server — never a placeholder
+            when there is nothing to show. */}
+        <Eyebrow>PLAN</Eyebrow>
+        <RowList>
+          <NavRow
+            testID="nav-credits"
+            icon={<KaiOrb size={14} glow={false} />}
+            label="Credits"
+            value={data?.credits ? `${data.credits.available} left today` : null}
+            onPress={() => router.push('/account/credits')}
+          />
+          <NavRow
+            testID="nav-subscription"
+            icon={<Lock size={14} color={color.muted} />}
+            label="Your plan and what it covers"
+            value={data?.credits?.plan_name ?? (tier === 'premium' ? 'Premium' : 'Free')}
+            onPress={() => router.push('/account/subscription')}
+            last
+          />
+        </RowList>
+
+        {/* ── WHAT THE CLUB SEES ───────────────────────────────────
+            A privacy answer, kept whole and kept visible. The switch is OFF
+            until the server says otherwise — never assumed, never
+            optimistically on. */}
         <Eyebrow>WHAT THE CLUB SEES</Eyebrow>
         <RowList testID="sharing">
           <Row last>
@@ -400,120 +605,22 @@ export default function Account() {
             ? 'Trades you take appear on your profile and in your followers’ feed. You can still turn any single one off when you send it.'
             : 'Off. Nothing you trade is shown to anybody, and calls you publish are a separate, deliberate act.'}
         </T>
-        {settings.error ? (
-          <T size={11.5} c={color.red} testID="sharing-error" style={{ marginTop: -4 }}>{settings.error}</T>
-        ) : null}
+        <SaveNote
+          testID="sharing-save"
+          status={settings.status}
+          message={settings.error}
+          onRetry={settings.retry}
+        />
 
-        {/* YOUR KAI PROFILE — the three answers that shape how Kai works.
-            Tapping a row changes it and writes PUT /settings. */}
-        <Eyebrow>YOUR KAI PROFILE</Eyebrow>
-        <T size={11.5} c={color.muted} lh={17} style={{ marginTop: -4 }}>
-          Set during onboarding. Changing these changes how Kai scans, writes and warns you.
-        </T>
-        <RowList testID="kai-profile">
-          <Pressable
-            testID="kai-profile-mode"
-            accessibilityRole="button"
-            accessibilityLabel={`Trading mode: ${kai.modeLabel}. Change it.`}
-            onPress={kai.cycleMode}
-          >
-            <Row>
-              <T size={13} style={{ flex: 1 }}>Trading mode</T>
-              <T size={12.5} weight="semibold" c={color.volt}>{kai.modeLabel}</T>
-              <ArrowRight size={12} color={color.muted} />
-            </Row>
-          </Pressable>
-          <Pressable
-            testID="kai-profile-experience"
-            accessibilityRole="button"
-            accessibilityLabel={`Experience level: ${kai.experienceLabel}. Change it.`}
-            onPress={kai.cycleExperience}
-          >
-            <Row>
-              <T size={13} style={{ flex: 1 }}>Experience level</T>
-              <T size={12.5} c={color.muted}>{kai.experienceLabel}</T>
-              <ArrowRight size={12} color={color.muted} />
-            </Row>
-          </Pressable>
-          <Pressable
-            testID="kai-profile-focus"
-            accessibilityRole="button"
-            accessibilityLabel={`Kai watches ${kai.focusShort}. Change it.`}
-            onPress={() => setFocusOpen(true)}
-          >
-            <Row last>
-              <T size={13}>Kai watches</T>
-              <T size={12.5} c={color.muted} align="right" style={{ flex: 1 }}>{kai.focusShort}</T>
-              <ArrowRight size={12} color={color.muted} />
-            </Row>
-          </Pressable>
-        </RowList>
-
-        {/* Kai's own voice line, in Kai's colour, said in the first person. */}
-        <View
-          testID="kai-voice-line"
-          style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start', paddingVertical: 11, paddingHorizontal: 13, borderRadius: 14, backgroundColor: alpha.violet10, borderLeftWidth: 2, borderLeftColor: color.violet }}
-        >
-          <KaiOrb size={18} glow={false} />
-          <T size={12} lh={17.5} c={color.muted} style={{ flex: 1 }}>{kai.voiceLine}</T>
-        </View>
-
-        {/* The board goes straight from Kai's voice line to the rules — the
-            practice balance already lives on the "Paper account" row below, so
-            a second card saying the same number is one card too many (audit). */}
-        <Eyebrow>MY RULES</Eyebrow>
+        {/* ── LEARNING ─────────────────────────────────────────────
+            Not settings. These are journeys, and their own screens are the
+            places they naturally end — the rows here are a second door for the
+            person who came looking in Account, not the only one. */}
+        <Eyebrow>LEARNING</Eyebrow>
         <RowList>
-          <Row>
-            <T size={13} style={{ flex: 1 }}>Daily loss cap</T>
-            <Num size={13} c={color.gold}>{policy ? `$${policy.daily_loss_cap}` : '—'}</Num>
-          </Row>
-          <Row>
-            <T size={13} style={{ flex: 1 }}>Max position size</T>
-            <Num size={13}>{policy ? `${policy.max_position_pct}% of balance` : '—'}</Num>
-          </Row>
-          <Row>
-            <T size={13} style={{ flex: 1 }}>Kai involvement</T>
-            <T size={12} c={color.violetLight}>{INVOLVEMENT_LABEL[involvement]}</T>
-          </Row>
-          <Row last>
-            <T size={13} style={{ flex: 1 }}>Paper trading</T>
-            <Toggle testID="toggle-paper" value onChange={undefined} disabled label="Paper trading" />
-          </Row>
-        </RowList>
-        <T size={10} c={color.muted} style={{ marginTop: -4 }}>
-          Paper is the only mode in this release — real money needs a broker, which comes later.
-        </T>
-
-        <Eyebrow>SETTINGS</Eyebrow>
-        <RowList>
-          {/* THE ONE DOOR TO YOUR OWN PROFILE. `/contributor/:id` is where a
-              member's published calls, their record and their belt live, and
-              until this row existed there was no way into it for your own id
-              from anywhere in the app — you could reach everybody else's
-              profile by tapping their name, and never your own. It is drawn
-              only once the session has given us an id, because
-              `/contributor/` with nothing after it is a broken screen. */}
-          {session?.user?.id ? (
-            <NavRow
-              testID="nav-profile"
-              icon={<Bars size={14} color={color.muted} />}
-              label="Your profile and calls"
-              onPress={() => router.push(`/contributor/${session.user.id}` as never)}
-            />
-          ) : null}
-          <NavRow testID="nav-settings" icon={<Gear size={14} color={color.muted} />} label="How Kai talks to you" onPress={() => router.push('/account/settings')} />
-          <NavRow testID="nav-notifications" icon={<Bell size={14} color={color.muted} />} label="Notifications" onPress={() => router.push('/account/notifications')} />
-          <NavRow testID="nav-memory" icon={<KaiOrb size={14} glow={false} />} label="What Kai remembers" onPress={() => router.push('/account/memory')} />
-          <NavRow testID="nav-paper" icon={<Bars size={14} color={color.muted} />} label="Paper account" value={data?.paper ? `$${Math.round(data.paper.equity).toLocaleString('en-US')}` : null} onPress={() => router.push('/account/paper')} />
-          <NavRow testID="nav-debriefs" icon={<Calendar size={14} color={color.muted} />} label="Trade debriefs" onPress={() => router.push('/debrief')} />
-          {/* The research desk is not a setting — it is where the slow work
-              lives. It sits here because the tab bar is five items and stays
-              five items, not because it is an afterthought. */}
-          <NavRow testID="nav-desk" icon={<KaiOrb size={14} glow={false} />} label="Research desk" onPress={() => router.push('/desk')} />
-          {/* Training is the other thing that is not a setting. The value is
-              the member's own mastery, or nothing at all — a learner who has
-              never opened a lesson is shown no number rather than a zero,
-              because a zero here reads as a grade. */}
+          {/* Training's value is the member's own mastery, or nothing at all —
+              a learner who has never opened a lesson is shown no number rather
+              than a zero, because a zero here reads as a grade. */}
           <NavRow
             testID="nav-training"
             icon={<Bars size={14} color={color.muted} />}
@@ -521,18 +628,62 @@ export default function Account() {
             value={trainingValue}
             onPress={() => router.push('/training' as never)}
           />
-          {/* Credits sit ABOVE the plan on purpose: "how many questions have
-              I got left" is asked far more often than "what am I paying", and
-              the value is a real balance read from the server — never a
-              placeholder when there is nothing to show. */}
           <NavRow
-            testID="nav-credits"
-            icon={<KaiOrb size={14} glow={false} />}
-            label="Credits"
-            value={data?.credits ? `${data.credits.available} left today` : null}
-            onPress={() => router.push('/account/credits')}
+            testID="nav-debriefs"
+            icon={<Calendar size={14} color={color.muted} />}
+            label="Trade debriefs"
+            onPress={() => router.push('/debrief')}
           />
-          <NavRow testID="nav-subscription" icon={<Lock size={14} color={color.muted} />} label="Plan" value={data?.credits?.plan_name ?? (tier === 'premium' ? 'Premium' : 'Free')} onPress={() => router.push('/account/subscription')} last />
+          {/* The research desk is not a setting — it is where the slow work
+              lives. It sits here because the tab bar is five items and stays
+              five items, not because it is an afterthought. */}
+          <NavRow
+            testID="nav-desk"
+            icon={<KaiOrb size={14} glow={false} />}
+            label="Research desk"
+            onPress={() => router.push('/desk')}
+            last
+          />
+        </RowList>
+
+        {/* Rule adherence — a receipt from real debriefs, shown only once there
+            are enough sessions for the number to mean anything (>= 3). It sits
+            with Learning because that is what it is a receipt from. */}
+        {kai.adherence && kai.adherence.sessions >= 3 ? (
+          <ObjectCard tone="kai" r={radius.xl} style={{ paddingVertical: 13, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10 }} testID="rule-adherence">
+            <KaiOrb size={24} />
+            <T size={13} lh={18} style={{ flex: 1 }}>
+              You've followed your rules{' '}
+              <T size={13} weight="bold">{`${kai.adherence.followed} of the last ${kai.adherence.sessions}`}</T>
+              {' '}sessions.
+            </T>
+            <Pressable onPress={() => router.push('/debrief')} accessibilityRole="button" testID="rule-adherence-details">
+              <T size={11} weight="semibold" c={color.violetLight}>Details</T>
+            </Pressable>
+          </ObjectCard>
+        ) : null}
+
+        {/* ── KAI'S MEMORY ─────────────────────────────────────────
+            The master switch and the door to review or delete what is held.
+            Both kept exactly as they were: the audit named this one of the
+            protections worth preserving. */}
+        <Eyebrow c={color.violetLight}>KAI</Eyebrow>
+        <ObjectCard tone="kai" r={radius.xl} style={{ paddingVertical: 13, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <KaiOrb size={24} />
+          <View style={{ flex: 1 }}>
+            <T size={13} weight="semibold">Kai remembers what you tell him</T>
+            <T size={11} c={color.muted} style={{ marginTop: 2 }}>Turn this off and every conversation starts fresh.</T>
+          </View>
+          <Toggle testID="toggle-memory" value={memory} onChange={toggleMemory} label="Kai memory" />
+        </ObjectCard>
+        <RowList>
+          <NavRow
+            testID="nav-memory"
+            icon={<KaiOrb size={14} glow={false} />}
+            label="Review or delete what Kai remembers"
+            onPress={() => router.push('/account/memory')}
+            last
+          />
         </RowList>
 
         {/* THE OPERATOR'S DOOR. Drawn only when `/me` says this account holds a
@@ -567,17 +718,24 @@ export default function Account() {
           </Row>
         </RowList>
 
-        <Eyebrow c={color.violetLight}>KAI</Eyebrow>
-        <ObjectCard tone="kai" r={radius.xl} style={{ paddingVertical: 13, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <KaiOrb size={24} />
-          <View style={{ flex: 1 }}>
-            <T size={13} weight="semibold">Kai remembers what you tell him</T>
-            <T size={11} c={color.muted} style={{ marginTop: 2 }}>Turn this off and every conversation starts fresh.</T>
-          </View>
-          <Toggle testID="toggle-memory" value={memory} onChange={toggleMemory} label="Kai memory" />
-        </ObjectCard>
+        {/*
+          THE SIMULATED TRADE, AND WHY IT IS BEHIND TWO CONDITIONS NOW.
 
-        {env.DEV_TOOLS ? (
+          `env.DEV_TOOLS` reads `EXPO_PUBLIC_DEV_TOOLS`, which is baked into the
+          bundle at build time — so a release built with that variable still
+          set, or inherited from a shell, shipped a button that manufactures a
+          fake closed trade into a real member's history. In a financial
+          product that is the worst class of bug there is, and it was one
+          environment variable away at all times.
+
+          `__DEV__` is false in every release bundle by construction, so the
+          action cannot reach a shipped build regardless of configuration. The
+          flag is kept alongside it because the API route is gated on its own
+          `DEV_TOOLS=1` and there is no reason to show a button the server will
+          answer 404 to. Written as a `typeof` guard because this module is also
+          read by Node in the test scripts, where the global does not exist.
+        */}
+        {DEV_BUILD && env.DEV_TOOLS ? (
           <>
             <Eyebrow c={color.gold}>DEVELOPER</Eyebrow>
             <Button
@@ -589,22 +747,6 @@ export default function Account() {
               onPress={simulate}
             />
           </>
-        ) : null}
-
-        {/* Rule adherence — a receipt from real debriefs, shown only once there
-            are enough sessions for the number to mean anything (>= 3). */}
-        {kai.adherence && kai.adherence.sessions >= 3 ? (
-          <ObjectCard tone="kai" r={radius.xl} style={{ paddingVertical: 13, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10 }} testID="rule-adherence">
-            <KaiOrb size={24} />
-            <T size={13} lh={18} style={{ flex: 1 }}>
-              You've followed your rules{' '}
-              <T size={13} weight="bold">{`${kai.adherence.followed} of the last ${kai.adherence.sessions}`}</T>
-              {' '}sessions.
-            </T>
-            <Pressable onPress={() => router.push('/debrief')} accessibilityRole="button" testID="rule-adherence-details">
-              <T size={11} weight="semibold" c={color.violetLight}>Details</T>
-            </Pressable>
-          </ObjectCard>
         ) : null}
 
         {/* ── LEGAL ─────────────────────────────────────────────────
@@ -655,8 +797,23 @@ export default function Account() {
         {isFixture ? <T size={10} c={color.dim} align="center">Sample account — the account service is not connected here.</T> : null}
       </ScrollView>
 
+      {/* Every setting on this board with more than two values is changed from
+          one of these three sheets, and from nowhere else. */}
       <ModeSheet visible={modeOpen} mode={mode} onClose={() => setModeOpen(false)} />
 
+      <ChoiceSheet
+        visible={guidanceOpen}
+        testID="sheet-guidance"
+        title="How much should Kai explain?"
+        intro="This changes his wording everywhere, not what he is allowed to say. Move it whenever you like."
+        options={GUIDANCE_CHOICES}
+        value={kai.experience}
+        onChange={kai.chooseExperience}
+        onClose={() => setGuidanceOpen(false)}
+      />
+
+      {/* Kai watches is the one MULTI-select here, so it keeps its own sheet
+          with chips rather than the single-answer list. */}
       <Sheet visible={focusOpen} onClose={() => setFocusOpen(false)} title="What should Kai watch?" testID="sheet-focus">
         <T size={12.5} lh={18} c={color.muted}>Kai scans these first. Everything else still gets graded, just later.</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -682,6 +839,7 @@ export default function Account() {
           })}
         </View>
         <T size={11.5} c={color.muted}>{kai.focus.length ? `Kai will scan ${kai.focusShort} first.` : 'Pick at least one, or Kai scans everything.'}</T>
+        <SaveNote status={kai.save.status} message={kai.save.message} onRetry={kai.save.retry} />
         <Button label="Done" kind="volt" height={48} onPress={() => setFocusOpen(false)} />
       </Sheet>
 

@@ -57,9 +57,33 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
   const scroller = useRef<ScrollView | null>(null);
 
   const ctx = useMemo(() => ({ kind: context.kind, id: context.id, symbol: context.symbol }), [context]);
-  const { items, send, streaming, removeItem, pushNotice } = useKaiThread({
-    mode, context: ctx, key: nonce, opening: null,
-  });
+  /**
+   * THE SHEET GETS THE SAME CONTRACT AS THE WALL (audit F05).
+   *
+   * `useKaiWall` and `useKaiThread` are two wrappers over one engine now, and
+   * that engine exposes stop, retry, the failed turn and the suggested
+   * questions. This sheet was reading four of those fields and ignoring the
+   * rest, which is how "different Kai entry points can feel like different
+   * assistants" survives a refactor that was supposed to end it: Home could
+   * stop a runaway answer, get its words back after a dropped request and
+   * offer something to ask; the sheet over a chart could do none of it.
+   *
+   * Same fields, same behaviour, same words. The only differences are the
+   * `kai-sheet-` testID prefix and where they sit on screen.
+   */
+  const {
+    items, send, streaming, stop, retry, clearFailure, failed, suggestions,
+    removeItem, pushNotice,
+  } = useKaiThread({ mode, context: ctx, key: nonce, opening: null });
+
+  /**
+   * A failed turn's words go back into the field. The nonce is what makes the
+   * SAME text restorable twice — without it, failing the same question a
+   * second time would restore nothing.
+   */
+  const [draftNonce, setDraftNonce] = useState(0);
+  useEffect(() => { if (failed?.restore) setDraftNonce((n) => n + 1); }, [failed]);
+  const sendAgain = useCallback(() => { retry(); setDraftNonce((n) => n + 1); }, [retry]);
 
   // The opening question (the tap that opened the sheet) is asked once.
   const asked = useRef(false);
@@ -275,11 +299,89 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
             {/* The home indicator is under the keyboard while it is up, so the
                 floor collapses with it — same rule as `KeyboardDock`. */}
             <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: keyboardHeight > 0 ? 10 : Math.max(insets.bottom, 22) }}>
+              {/*
+                RECOVERY AND SUGGESTIONS SIT ABOVE THE COMPOSER, not in the
+                thread. A request that never reached the server has already had
+                its turn lifted back out of the wall by the engine, so what is
+                left to show is why and a button. Kai DECLINING is not this —
+                that arrives as his own sentence in the conversation and offers
+                no retry, because retrying a refusal spends the allowance twice.
+              */}
+              {failed ? (
+                <View style={{ gap: 6, paddingBottom: 10 }} testID="kai-sheet-failure">
+                  <T size={11} lh={16} c={color.muted} align="center">{failed.plain}</T>
+                  <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
+                    <Pressable
+                      testID="kai-sheet-retry"
+                      accessibilityRole="button"
+                      accessibilityLabel="Send that again"
+                      onPress={sendAgain}
+                      style={({ pressed }) => ({
+                        paddingVertical: 7, paddingHorizontal: 14, borderRadius: radius.pill,
+                        borderWidth: 0.5, borderColor: alpha.volt40, backgroundColor: alpha.volt08,
+                        opacity: pressed ? 0.7 : 1,
+                      })}
+                    >
+                      <T size={12} weight="bold" c={color.volt}>Send that again</T>
+                    </Pressable>
+                    <Pressable
+                      testID="kai-sheet-failure-dismiss"
+                      accessibilityRole="button"
+                      accessibilityLabel="Dismiss"
+                      onPress={clearFailure}
+                      style={({ pressed }) => ({ paddingVertical: 7, paddingHorizontal: 10, opacity: pressed ? 0.6 : 1 })}
+                    >
+                      <T size={12} c={color.dim}>Dismiss</T>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
+
+              {/*
+                Short questions tied to what the sheet was opened over, offered
+                only before the member has said anything — after that they are
+                the app talking over them. They carry no numbers by
+                construction (`suggestedQuestions`), so nothing here can invent
+                a price. Hidden while a question is in flight and while a
+                failure is on screen, where the only useful button is Retry.
+              */}
+              {!streaming && !failed && !items.some((it) => it.kind === 'user_text') ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center', paddingBottom: 10 }}>
+                  {suggestions.map((q) => (
+                    <Pressable
+                      key={q}
+                      testID="kai-sheet-suggestion"
+                      accessibilityRole="button"
+                      accessibilityLabel={q}
+                      onPress={() => { void send(q); }}
+                      style={({ pressed }) => ({
+                        paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.pill,
+                        borderWidth: 0.5, borderColor: alpha.ivory08,
+                        opacity: pressed ? 0.6 : 1,
+                      })}
+                    >
+                      <T size={11.5} c={color.violetLight}>{q}</T>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+
+              {/*
+                NO `disabled={streaming}`. A composer that locks while Kai talks
+                is the thing that made stopping impossible: the send circle
+                becomes STOP when `streaming` and `onStop` are both present, and
+                a disabled composer cannot be pressed to stop anything. Typing
+                the next question while the current answer streams is also
+                normal behaviour in every chat anybody has used.
+              */}
               <Composer
                 testID="kai-sheet-composer"
                 placeholder={kaiSheetPlaceholder(context)}
                 onSend={send}
-                disabled={streaming}
+                streaming={streaming}
+                onStop={stop}
+                draft={failed?.restore ? failed.text : ''}
+                draftNonce={draftNonce}
               />
               {/*
                 "KAI IS NOT AN ADVISER", WHERE HE IS ACTUALLY TALKING.

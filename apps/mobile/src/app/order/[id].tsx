@@ -20,6 +20,7 @@ import { tradeApi } from '../../lib/trade-api';
 import { useTradeResource } from '../../features/trade/resource';
 import { DetailRow, PaperChip, StatusDot, money, shareLabel } from '../../features/trade/components';
 import type { OrderRow } from '../../features/orders/types';
+import { ACTION_LABEL } from '../../features/orders/vocabulary';
 
 const TYPE_LABEL = { market: 'Market', limit: 'Limit', stop: 'Stop' } as const;
 const DURATION_LABEL = { day: 'Today only', gtc: 'Until I cancel' } as const;
@@ -101,7 +102,11 @@ export default function OrderDetail() {
         </ObjectCard>
 
         {filled && data.position_id ? (
-          <Button label="View position" testID="view-position" onPress={() => router.push(`/position/${encodeURIComponent(data.position_id!)}`)} />
+          <Button
+            label={ACTION_LABEL.review_position}
+            testID="view-position"
+            onPress={() => router.push(`/position/${encodeURIComponent(String(data.position_id))}`)}
+          />
         ) : null}
         {pending ? (
           <Button label="Cancel this order" kind="outline" loading={cancelling} onPress={cancel} testID="cancel-order" />

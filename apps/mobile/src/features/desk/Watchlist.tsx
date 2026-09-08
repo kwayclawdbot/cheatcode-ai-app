@@ -1,25 +1,10 @@
 /**
- * The research desk — the companies the desk thinks are worth understanding,
- * and, under them, the names being watched.
+ * The research desk — what the brain is holding, and what price is doing to it.
  *
- * THE TOP OF THIS SCREEN IS RESEARCH, NOT A TRADE. The companies list has no
- * stop, no target, no trigger and no price to act at, and none may be added:
- * the horizon is years, and a number to act on today is the single thing that
- * would turn it back into an alert board. What each row carries instead is what
- * the business does, in one line, and the desk's grade on the IDEA.
- *
- * WHY IT IS A SEPARATE LIST FROM THE WATCHLIST BELOW IT. The watchlist is what
- * the desk ACTED on — the brain filters it to long and short — so of the
- * twenty-seven companies the desk graded, about eleven reached this screen, and
- * several of those pointed at write-ups carrying no grade, so they drew as
- * ungraded rows. Grading a business and taking a position in it are different
- * events. The research list is the first one, and it is the primary thing this
- * tab exists to show.
- *
- * Below it, two things that answer a different question. The state chip is the
- * chart: has anything happened. The grade is the argument: is this worth
- * anything if it does. Neither is allowed to stand in for the other — a
- * `triggered` on a name whose thesis has broken is still just a chart doing
+ * Two things live on one screen because they answer one question. The state
+ * chip is the chart: has anything happened. The grade is the argument: is this
+ * worth anything if it does. Neither is allowed to stand in for the other —
+ * a `triggered` on a name whose thesis has broken is still just a chart doing
  * something, and the desk keeps both in view on purpose.
  *
  * Passes are not here. The desk wrote those up and declined; watching
@@ -31,9 +16,7 @@
  * where the mode did something visible.
  */
 import React, { useCallback, useMemo, useState } from 'react';
-import {
-  ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View,
-} from 'react-native';
+import { ScrollView, View, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '../../ui/Screen';
 import { T, Num, Eyebrow } from '../../ui/Text';
@@ -45,13 +28,15 @@ import { env } from '../../lib/env';
 import { fixtureDeskWatchlist, fixtureDeskWatchlistEmpty } from '../../lib/fixtures';
 import { useResource } from '../../lib/useResource';
 import { useSession } from '../../lib/session';
-import { GradeMark, StateChip, LinkRow, px } from './ui';
+import { GradeMark, StateChip, WatchStateHelp, px } from './ui';
+import { IDEA_GRADE_MEANS, horizonPlain } from './plain';
+import { Sheet } from '../../ui/Sheet';
+import { CapabilityNotice } from '../../ui/CapabilityState';
 import { FreshnessMark } from '../../ui/FreshnessMark';
-import { ChevronRight } from '../../ui/Icons';
-import { LevelTrack, saidDate } from './instruments';
+import { LevelTrack } from './instruments';
 import { ModeControl } from '../home/ModeSheet';
 import { secondTab } from '../nav/second-tab';
-import type { DeskCompany, DeskWatchRow, DeskWatchlistResponse } from '@shared/desk';
+import type { DeskWatchRow, DeskWatchlistResponse, WatchState } from '@shared/desk';
 import type { GoalMode } from '../../lib/types';
 
 export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack' }) {
@@ -84,24 +69,14 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [added, setAdded] = useState<string | null>(null);
+  /** Which state chip was tapped. Null closes the explainer. */
+  const [explain, setExplain] = useState<WatchState | null>(null);
 
   const rows = res.data?.rows ?? [];
-  const companies = res.data?.companies ?? [];
-  /*
-   * ONE COMPANY, ONE ENTRY. A name the desk both graded and took a position in
-   * is in `companies` AND in `rows`, and printing it twice under two headings
-   * would read as two different opinions of the same business. The research
-   * list is the primary presentation, so it keeps the name and the group below
-   * drops it. Nothing you added by hand is ever dropped — `manual` is your own
-   * list and the desk does not edit it.
-   */
-  const { picks, manual } = useMemo(() => {
-    const listed = new Set(companies.map((c) => c.ticker));
-    return {
-      picks: rows.filter((r) => r.source === 'pick' && !listed.has(r.ticker)),
-      manual: rows.filter((r) => r.source === 'manual'),
-    };
-  }, [rows, companies]);
+  const { picks, manual } = useMemo(() => ({
+    picks: rows.filter((r) => r.source === 'pick'),
+    manual: rows.filter((r) => r.source === 'manual'),
+  }), [rows]);
 
   const add = useCallback(async () => {
     const t = symbol.trim().toUpperCase();
@@ -147,9 +122,26 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
           {onTab ? <ModeControl mode={mode} testID="desk-mode-chip" /> : null}
         </View>
 
+        {/*
+          THE TWO MARKS, NAMED BEFORE THEY APPEAR — audit F15.
+
+          This paragraph used to say "the chip is what the chart is doing, the
+          letter is how good the idea is". Both halves were true and neither was
+          usable: the chip printed `armed`, and "the letter" was a bare A− that
+          a member has already met on an alert card meaning something else
+          entirely. So the chip prints English now, the grade says the words
+          "Idea grade", and this line says what an idea grade IS rather than
+          what it is not.
+        */}
         <T size={14} lh={20} c={color.muted} style={{ marginTop: space.x10, maxWidth: 460 }}>
-          The businesses the desk has read and graded, and under them the names
-          it is tracking. The letter grades the idea, not this quarter.
+          Every company the desk argued for, plus anything you added. Each one
+          has an <T size={14} lh={20} weight="semibold" c={color.text}>idea grade</T> — how
+          good the argument for the company is over the next few quarters — and a
+          line saying what its share price is doing. Tap either to have it
+          explained.
+        </T>
+        <T size={13} lh={19} c={color.dim} style={{ marginTop: space.x6, maxWidth: 460 }} testID="desk-grade-means">
+          {IDEA_GRADE_MEANS}
         </T>
 
         {onTab ? (
@@ -158,96 +150,94 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
           </T>
         ) : null}
 
-        {/* ── the desk's own work ──────────────────────────────── */}
+        {/* ── add a ticker ─────────────────────────────────────── */}
+        <View style={{ flexDirection: 'row', gap: space.x8, marginTop: space.x20 }}>
+          <TextInput
+            value={symbol}
+            onChangeText={(v) => { setSymbol(v.toUpperCase()); setAddError(null); setAdded(null); }}
+            placeholder="Add a ticker"
+            placeholderTextColor={color.dim}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            returnKeyType="done"
+            onSubmitEditing={add}
+            accessibilityLabel="Add a ticker to the watchlist"
+            testID="desk-add-input"
+            style={{
+              flex: 1, height: 44, paddingHorizontal: space.x14,
+              borderRadius: radius.lg, borderWidth: 1, borderColor: alpha.ivory16,
+              backgroundColor: alpha.surface60, color: color.text, fontSize: 15,
+            }}
+          />
+          <Pressable
+            onPress={add}
+            disabled={adding || !symbol.trim()}
+            accessibilityRole="button"
+            testID="desk-add-submit"
+            style={({ pressed }) => ({
+              height: 44, paddingHorizontal: space.x18, borderRadius: radius.lg,
+              alignItems: 'center', justifyContent: 'center',
+              backgroundColor: symbol.trim() ? color.volt : alpha.ivory08,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            {adding
+              ? <ActivityIndicator size="small" color={color.bg} />
+              : <T size={14} weight="bold" c={symbol.trim() ? color.bg : color.dim}>Watch</T>}
+          </Pressable>
+        </View>
+        {addError ? (
+          <T size={13} c={color.red} style={{ marginTop: space.x8 }}>{addError}</T>
+        ) : added ? (
+          <T size={13} c={color.green} style={{ marginTop: space.x8 }}>
+            {added} is on the list. The next refresh starts reading its chart.
+          </T>
+        ) : null}
+
+        {/* ── the list ─────────────────────────────────────────── */}
         {res.loading ? (
           <View style={{ paddingVertical: space.x40, alignItems: 'center' }}>
             <ActivityIndicator color={color.violet} />
           </View>
         ) : res.error ? (
-          <T size={14} c={color.red} style={{ marginTop: space.x24 }}>{res.error}</T>
-        ) : companies.length === 0 && rows.length === 0 ? (
+          /*
+            A FAILED READ IS NOT AN EMPTY DESK — audit F18's rule, applied here
+            because this branch and the empty one sit next to each other and a
+            line of red text is not a state. A stack that never shipped the
+            route gets the same notice without a retry: asking again cannot
+            deploy an endpoint.
+          */
+          <View style={{ marginTop: space.x24 }}>
+            <CapabilityNotice
+              state="failed"
+              plain={res.error}
+              detail="Nothing here was checked and found empty."
+              onRetry={res.notAvailable ? undefined : res.reload}
+              testID="desk-failed"
+            />
+          </View>
+        ) : rows.length === 0 ? (
           <Empty onThemes={() => router.push('/desk/themes')} onKai={() => router.push('/home')} />
         ) : (
           <>
-            <Companies
-              companies={companies}
-              onOpen={(t) => router.push(`/desk/pick/${t}`)}
+            <Group
+              title="The desk argued for these"
+              sub="A pick is on the list from the day it is made until its horizon runs out."
+              rows={picks}
+              onPick={(t) => router.push(`/desk/pick/${t}`)}
+              onExplainState={setExplain}
             />
-            {picks.length > 0 && (
+            {manual.length > 0 && (
               <Group
-                title="The desk argued for these"
-                sub="Positions it took, tracked against a level. A pick is on the list from the day it is made until its horizon runs out."
-                rows={picks}
+                title="You added these"
+                sub="No written argument behind them yet — just a chart being watched."
+                rows={manual}
                 onPick={(t) => router.push(`/desk/pick/${t}`)}
+                onExplainState={setExplain}
               />
             )}
           </>
         )}
-
-        {/* ── your own list ────────────────────────────────────── */}
-        {/*
-          YOURS, AND SEPARATE. The desk publishes above; this is the part of the
-          screen you write. Nothing the desk does adds to it, removes from it or
-          reorders it, which is why the box that adds a name lives down here
-          against your list rather than at the top, where it read as a search
-          across the desk's work.
-        */}
-        <View style={s.yours} testID="desk-yours">
-          <Eyebrow c={color.muted}>You added these</Eyebrow>
-          <T size={13} lh={19} c={color.dim} style={{ marginTop: space.x4 }}>
-            No written argument behind them yet — just a chart being watched.
-          </T>
-
-          <View style={s.addRow}>
-            <TextInput
-              value={symbol}
-              onChangeText={(v) => { setSymbol(v.toUpperCase()); setAddError(null); setAdded(null); }}
-              placeholder="Add a ticker"
-              placeholderTextColor={color.dim}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              returnKeyType="done"
-              onSubmitEditing={add}
-              accessibilityLabel="Add a ticker to the watchlist"
-              testID="desk-add-input"
-              style={s.addInput}
-            />
-            <Pressable
-              onPress={add}
-              disabled={adding || !symbol.trim()}
-              accessibilityRole="button"
-              testID="desk-add-submit"
-              style={({ pressed }) => [
-                s.addSubmit,
-                { backgroundColor: symbol.trim() ? color.volt : alpha.ivory08, opacity: pressed ? 0.7 : 1 },
-              ]}
-            >
-              {adding
-                ? <ActivityIndicator size="small" color={color.bg} />
-                : <T size={14} weight="bold" c={symbol.trim() ? color.bg : color.dim}>Watch</T>}
-            </Pressable>
-          </View>
-          {addError ? (
-            <T size={13} c={color.red} style={{ marginTop: space.x8 }}>{addError}</T>
-          ) : added ? (
-            <T size={13} c={color.green} style={{ marginTop: space.x8 }}>
-              {added} is on the list. The next refresh starts reading its chart.
-            </T>
-          ) : null}
-
-          {manual.length > 0 ? (
-            <View style={{ marginTop: space.x8 }}>
-              {manual.map((r, i) => (
-                <WatchRow
-                  key={r.ticker}
-                  row={r}
-                  last={i === manual.length - 1}
-                  onPick={(t) => router.push(`/desk/pick/${t}`)}
-                />
-              ))}
-            </View>
-          ) : null}
-        </View>
 
         <Pressable
           onPress={() => router.push('/desk/themes')}
@@ -274,134 +264,142 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
           </T>
         ) : null}
       </ScrollView>
+
+      {/*
+        EACH WATCH STATE, EXPLAINED ON DEMAND — audit F15 asks for exactly this.
+        All nine are listed rather than only the one tapped, because the useful
+        question is "what are the possibilities"; the one tapped is highlighted
+        so the answer to "what does mine mean" is still one glance.
+      */}
+      <Sheet
+        visible={explain !== null}
+        onClose={() => setExplain(null)}
+        title="What the share price is doing"
+        testID="desk-state-sheet"
+      >
+        <WatchStateHelp highlight={explain ?? undefined} />
+      </Sheet>
     </Screen>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* companies worth understanding                                       */
-/* ------------------------------------------------------------------ */
-
 /**
- * The desk's published research list.
+ * ONE COMPANY, LED BY THE COMPANY — audit F15.
  *
- * One row per business: its mark, its name, what it actually does in one line,
- * and the grade on the idea. NOTHING ELSE. No price, no level, no state chip —
- * this list is read on a horizon of years and any number a person could act on
- * today would be answering a question nobody came here with.
+ * The row this replaces put the TICKER at 16 bold and its second line was the
+ * theme slug with the hyphens taken out ("humanoid robotics"), falling back to
+ * the company name only when there was no theme. So the name of the business
+ * was the thing most likely to be missing from a row about a business, and
+ * everything a beginner could actually use — what it is, why it is here, how
+ * long for — was either absent or in the desk's own shorthand.
  *
- * An empty list says the desk has not published one. It never borrows the
- * watchlist rows to fill the space, and it never draws a placeholder row: on
- * this screen a blank reads as a finding, and a fabricated company would read
- * as research.
+ * The order now is the order the board prints: who it is, what price is doing,
+ * why it is on the desk, how long the desk is giving it, and only then the
+ * state of the chart — which is a tappable explanation rather than a word.
+ *
+ * WHAT IS STILL NOT HERE, ON PURPOSE: a sentence about what the company does.
+ * `/desk/watchlist` does not carry one — the write-up does, and the pick screen
+ * one tap away leads with it. Inventing a description on this row from the
+ * theme and the ticker is exactly the fabrication the desk exists not to do.
  */
-function Companies({ companies, onOpen }: {
-  companies: DeskCompany[]; onOpen: (ticker: string) => void;
+function WatchRow({ row, onPick, onExplainState }: {
+  row: DeskWatchRow; onPick: () => void; onExplainState: (state: WatchState) => void;
 }) {
-  const published = saidDate(companies[0]?.asOf ?? null);
+  const horizon = horizonPlain(row.horizon);
+  const theme = row.theme ? row.theme.replace(/-/g, ' ') : null;
   return (
-    <View style={s.research} testID="desk-research">
-      <T size={22} lh={27} weight="bold" c={color.text}>Companies worth understanding.</T>
-      <T size={14} lh={20} c={color.muted} style={{ marginTop: space.x6 }}>
-        Clear ideas. Real businesses.
-      </T>
-
-      {companies.length === 0 ? (
-        <View style={s.researchEmpty} testID="desk-research-empty">
-          <T size={13} lh={19} c={color.muted}>
-            The desk has not published a list yet. When it does, the companies it
-            has read and graded appear here — the watchlist below is a different
-            thing and is not stood in for them.
+    <View style={{ gap: space.x8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x12 }}>
+        <TickerMark symbol={row.ticker} size={34} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          {/* The NAME first, at a size somebody reads, with the ticker under
+              it — a person who chose investing knows "Apple", not "AAPL". */}
+          <T size={16} weight="bold" c={color.text} numberOfLines={2}>
+            {row.company ?? row.ticker}
           </T>
+          <Num size={13} c={color.dim} style={{ marginTop: space.x2 }}>{row.ticker}</Num>
         </View>
-      ) : (
-        <>
-          {published ? (
-            <T size={11} c={color.dim} style={{ marginTop: space.x8 }} testID="desk-research-asof">
-              {`The desk's list, published ${published}.`}
-            </T>
+        <View style={{ alignItems: 'flex-end', gap: space.x4 }}>
+          <Num size={17} weight="semibold" c={color.cyan}>{px(row.price)}</Num>
+          {/* The desk used to paint this number in market cyan with nothing
+              beside it, and it was whatever the brain last wrote — which could
+              be an hour or a fortnight ago. The mark says which, and when. */}
+          {row.quote ? (
+            <FreshnessMark
+              freshness={row.quote.freshness ?? 'unknown'}
+              delayReason={row.quote.delay_reason}
+              at={row.quote.source_ts}
+              size={10}
+              testID={`desk-freshness-${row.ticker}`}
+            />
           ) : null}
-          <View style={{ marginTop: space.x12 }}>
-            {companies.map((c, i) => (
-              <CompanyRow
-                key={c.ticker}
-                company={c}
-                last={i === companies.length - 1}
-                onOpen={onOpen}
-              />
-            ))}
-          </View>
-        </>
-      )}
-    </View>
-  );
-}
-
-/** One business, and the desk's mark on the idea behind it. */
-function CompanyRow({ company: c, last, onOpen }: {
-  company: DeskCompany; last: boolean; onOpen: (ticker: string) => void;
-}) {
-  return (
-    <LinkRow onPress={() => onOpen(c.ticker)} last={last}>
-      <View style={s.companyRow} testID={`desk-company-${c.ticker}`}>
-        {/* A ticker never appears as plain text — house rule, one component. */}
-        <TickerMark symbol={c.ticker} size={38} />
-        <View style={s.companyBody}>
-          <Num size={16} weight="bold" c={color.text}>{c.ticker}</Num>
-          {c.company ? (
-            <T size={13} lh={18} c={color.muted} numberOfLines={1} style={{ marginTop: space.x2 }}>
-              {c.company}
-            </T>
-          ) : null}
-          {/* No line written means no line drawn. A dash here would read as a
-              company that does nothing rather than as a sentence not yet
-              written, and the two are not the same fact. */}
-          {c.businessLine ? (
-            <T size={12.5} lh={17} c={color.dim} numberOfLines={2} style={{ marginTop: space.x4 }}>
-              {c.businessLine}
-            </T>
-          ) : null}
-        </View>
-        <View style={s.companyEnd}>
-          <IdeaGradePill grade={c.ideaGrade} />
-          <ChevronRight size={10} color={color.dim} />
         </View>
       </View>
-    </LinkRow>
-  );
-}
 
-/**
- * The grade, with the word that says what it is a grade OF.
- *
- * A bare letter beside a company reads as a rating of the company. It is a
- * rating of the IDEA — a great business whose future is already in the price is
- * a B — so the label is part of the object rather than a caption somewhere else
- * on the screen. The mark itself is `GradeMark`, unchanged, so this row and the
- * write-up it opens cannot disagree about how a grade looks.
- */
-function IdeaGradePill({ grade }: { grade: DeskCompany['ideaGrade'] }) {
-  if (!grade) {
-    return (
-      <T size={11} c={color.dim} style={{ textAlign: 'right' }}>
-        not graded
+      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.x8 }}>
+        <GradeMark grade={row.grade} size={14} label testID={`desk-grade-${row.ticker}`} />
+        <StateChip
+          state={row.state}
+          onExplain={() => onExplainState(row.state)}
+          testID={`desk-state-${row.ticker}`}
+        />
+      </View>
+
+      {/* WHY IT IS ON THE DESK. The theme is the desk's own answer and it is
+          printed as one, rather than as a caption under the ticker where it
+          read like a category. A hand-added name says what it is instead. */}
+      <T size={13} lh={19} c={color.muted} testID={`desk-why-${row.ticker}`}>
+        {row.source === 'manual'
+          ? 'You added this one. There is no written argument behind it yet — the desk is only watching the chart.'
+          : theme
+          ? `On the desk because of its ${theme} theme.`
+          : 'The desk wrote an argument for this one. Open it to read why.'}
       </T>
-    );
-  }
-  return (
-    <View style={s.gradePill}>
-      <T size={10} weight="semibold" c={color.dim}>Idea grade</T>
-      <GradeMark grade={grade} size={13} />
+
+      <T size={12} c={horizon.known ? color.muted : color.dim} testID={`desk-horizon-${row.ticker}`}>
+        {horizon.text}
+      </T>
+
+      {/* Where price sits between the level that kills it and the level that
+          arms it. Drawn only when the desk wrote both down — half a track
+          would be a picture of a guess. */}
+      <LevelTrack price={row.price} trigger={row.triggerPrice} invalidation={row.invalidation} />
+
+      <Pressable
+        onPress={onPick}
+        accessibilityRole="button"
+        accessibilityLabel={`Understand ${row.company ?? row.ticker}`}
+        accessibilityHint="Opens what the company does, why it is being watched and what could change"
+        testID={`desk-explore-${row.ticker}`}
+        style={({ pressed }) => ({
+          minHeight: 40, alignSelf: 'flex-start', paddingHorizontal: space.x14,
+          alignItems: 'center', justifyContent: 'center',
+          borderRadius: radius.pill, borderWidth: 1, borderColor: alpha.volt55,
+          backgroundColor: alpha.volt10, opacity: pressed ? 0.7 : 1,
+        })}
+      >
+        <T size={13} weight="semibold" c={color.volt}>
+          {`Understand ${row.ticker}`}
+        </T>
+      </Pressable>
     </View>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* the watchlist rows                                                  */
-/* ------------------------------------------------------------------ */
-
-function Group({ title, sub, rows, onPick }: {
-  title: string; sub: string; rows: DeskWatchRow[]; onPick: (ticker: string) => void;
+/**
+ * THE ROW IS NOT A BUTTON ANY MORE, AND IT CANNOT BE.
+ *
+ * It used to be one `LinkRow` — the whole row a single tap target. It now
+ * carries TWO actions of its own (explain this state, understand this company)
+ * and on web react-native renders `accessibilityRole="button"` as a real
+ * `<button>`, which may not contain another. The same rule already governs the
+ * community call rows on the alerts board; the answer there and here is the
+ * same: the row is a container, and the things inside it that do something are
+ * the things you press.
+ */
+function Group({ title, sub, rows, onPick, onExplainState }: {
+  title: string; sub: string; rows: DeskWatchRow[];
+  onPick: (ticker: string) => void; onExplainState: (state: WatchState) => void;
 }) {
   if (!rows.length) return null;
   return (
@@ -410,53 +408,20 @@ function Group({ title, sub, rows, onPick }: {
       <T size={13} lh={19} c={color.dim} style={{ marginTop: space.x4 }}>{sub}</T>
       <View style={{ marginTop: space.x8 }}>
         {rows.map((r, i) => (
-          <WatchRow key={r.ticker} row={r} last={i === rows.length - 1} onPick={onPick} />
+          <View
+            key={r.ticker}
+            testID={`desk-row-${r.ticker}`}
+            style={{
+              paddingVertical: space.x14,
+              borderBottomWidth: i === rows.length - 1 ? 0 : 1,
+              borderBottomColor: alpha.ivory08,
+            }}
+          >
+            <WatchRow row={r} onPick={() => onPick(r.ticker)} onExplainState={onExplainState} />
+          </View>
         ))}
       </View>
     </View>
-  );
-}
-
-/** A tracked name: what the chart is doing, and what it is doing it against. */
-function WatchRow({ row: r, last, onPick }: {
-  row: DeskWatchRow; last: boolean; onPick: (ticker: string) => void;
-}) {
-  return (
-    <LinkRow onPress={() => onPick(r.ticker)} last={last}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x12 }}>
-        <TickerMark symbol={r.ticker} size={30} />
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x8 }}>
-            <Num size={16} weight="bold" c={color.text}>{r.ticker}</Num>
-            <GradeMark grade={r.grade} size={13} />
-          </View>
-          <T size={12} c={color.dim} numberOfLines={1} style={{ marginTop: space.x2 }}>
-            {r.theme ? r.theme.replace(/-/g, ' ') : r.company ?? 'no theme written down'}
-          </T>
-        </View>
-        <View style={{ alignItems: 'flex-end', gap: space.x6 }}>
-          <Num size={15} weight="semibold" c={color.cyan}>{px(r.price)}</Num>
-          {/* The desk used to paint this number in market cyan with
-              nothing beside it, and it was whatever the brain last
-              wrote — which could be an hour or a fortnight ago. The
-              mark says which, and when. */}
-          {r.quote ? (
-            <FreshnessMark
-              freshness={r.quote.freshness ?? 'unknown'}
-              delayReason={r.quote.delay_reason}
-              at={r.quote.source_ts}
-              size={10}
-              testID={`desk-freshness-${r.ticker}`}
-            />
-          ) : null}
-          <StateChip state={r.state} />
-          {/* Where price sits between the level that kills it and the
-              level that arms it. Drawn only when the desk wrote both
-              down — half a track would be a picture of a guess. */}
-          <LevelTrack price={r.price} trigger={r.triggerPrice} invalidation={r.invalidation} />
-        </View>
-      </View>
-    </LinkRow>
   );
 }
 
@@ -476,7 +441,7 @@ function Empty({ onThemes, onKai }: { onThemes: () => void; onKai: () => void })
         <T size={15} weight="bold" c={color.text}>Nothing on the list yet</T>
         <T size={13} lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
           The desk puts a name here when it writes an argument for it. You can
-          add one yourself below — it starts being read on the next refresh.
+          add one yourself above — it starts being read on the next refresh.
           The themes are already judged either way, and that is where the names
           come from.
         </T>
@@ -507,72 +472,3 @@ function Offer({ label, onPress, testID }: { label: string; onPress: () => void;
     </Pressable>
   );
 }
-
-/*
- * Identity layer: hand-rolled StyleSheet, every value out of `src/ui/tokens.ts`.
- * No raw colour, no hex, no utility class — the desk is one of the surfaces a
- * member would recognise as this product, so it is built the way the rest of
- * that surface is.
- */
-const s = StyleSheet.create({
-  research: {
-    marginTop: space.x30,
-  },
-  researchEmpty: {
-    marginTop: space.x14,
-    paddingLeft: space.x12,
-    borderLeftWidth: 2,
-    borderLeftColor: alpha.ivory16,
-  },
-  companyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.x12,
-  },
-  companyBody: {
-    flex: 1,
-    minWidth: 0,
-  },
-  companyEnd: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.x8,
-  },
-  gradePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.x6,
-    paddingLeft: space.x8,
-    paddingRight: space.x4,
-    paddingVertical: space.x4,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: alpha.violet50,
-  },
-  yours: {
-    marginTop: space.x30,
-  },
-  addRow: {
-    flexDirection: 'row',
-    gap: space.x8,
-    marginTop: space.x12,
-  },
-  addInput: {
-    flex: 1,
-    height: 44,
-    paddingHorizontal: space.x14,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: alpha.ivory16,
-    backgroundColor: alpha.surface60,
-    color: color.text,
-    fontSize: 15,
-  },
-  addSubmit: {
-    height: 44,
-    paddingHorizontal: space.x18,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

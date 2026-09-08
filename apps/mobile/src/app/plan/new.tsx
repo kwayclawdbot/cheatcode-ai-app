@@ -6,7 +6,8 @@
  * locally: when the server has no levels the tiles read "—" and the screen asks
  * for them rather than filling in a plausible price.
  *
- * "Review order" saves the plan (POST /plans) and hands the ticket its numbers.
+ * "Review paper order" saves the plan (POST /plans) and hands the ticket its
+ * numbers. The label comes from `features/orders/vocabulary.ts` — audit F08.
  * If the plans endpoint is not live on this stack yet, the numbers still travel
  * to the ticket — the plan simply is not persisted, and the screen says so.
  */

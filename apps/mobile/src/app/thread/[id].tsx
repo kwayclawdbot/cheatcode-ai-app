@@ -31,8 +31,10 @@ import { communityApi, quoteOf } from '../../lib/community-api';
 import { StackHeader } from '../../features/community/ui/Chrome';
 import { MessageRow } from '../../features/community/ui/Message';
 import { RoomComposer } from '../../features/community/ui/RoomComposer';
+import { PinnedSetup } from '../../features/community/ui/PinnedSetup';
+import { AskKaiAboutSetup } from '../../features/community/ui/AskKaiAboutSetup';
 import { useAttachments } from '../../features/media/useAttachments';
-import type { MessageReactions, ReactionKind, RoomMessage } from '../../features/community/types';
+import type { MessageReactions, ReactionKind, RoomMessage, RoomSetup } from '../../features/community/types';
 
 /**
  * Which comment each answer belongs under.
@@ -111,6 +113,38 @@ export default function ThreadScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * THE SETUP THIS DISCUSSION IS ABOUT.
+   *
+   * The board draws the pinned setup above a focused discussion, and it is the
+   * same object the room draws — same component, same numbers — because a
+   * member who taps into a thread has not changed subject. It also gives the
+   * Kai row below the levels it asks about.
+   *
+   * `/messages/:id/replies` carries the post and its comments and no room, so
+   * the room is fetched by the id the post already knows. `limit: 1` because
+   * the messages that come back with it are not wanted — the room is.
+   *
+   * NO SETUP, NO CARD. A thread on a post in a core room normally has none, and
+   * nothing stands in for it.
+   */
+  const [setup, setSetup] = useState<RoomSetup | null>(null);
+  const roomId = parent?.room_id ?? null;
+  useEffect(() => {
+    if (!roomId) { setSetup(null); return; }
+    let alive = true;
+    (async () => {
+      const page = await communityApi.messages(roomId, 0, 1).catch(() => null);
+      if (!alive) return;
+      const room = page?.room ?? null;
+      if (room?.setup) { setSetup(room.setup); return; }
+      if (!room?.setup_id) { setSetup(null); return; }
+      const resolved = await communityApi.roomSetup(room.setup_id).catch(() => null);
+      if (alive) setSetup(resolved);
+    })();
+    return () => { alive = false; };
+  }, [roomId]);
 
   /** Arrived here from a Reply tap in the room: answer what was tapped. */
   useEffect(() => {
@@ -231,6 +265,12 @@ export default function ThreadScreen() {
         </View>
       ) : (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingTop: 12, gap: 12 }}>
+          {/* The setup this discussion is about, above the post it is about —
+              board-community-rooms.png, right-hand screen. Same component the
+              room and the feed draw, so the levels cannot disagree between the
+              three places somebody meets them. */}
+          {setup ? <PinnedSetup setup={setup} testID="thread-pinned-setup" /> : null}
+
           <MessageRow
             message={parent}
             onOpenAuthor={parent.author.user_id ? () => router.push(`/contributor/${parent.author.user_id}`) : undefined}
@@ -263,6 +303,17 @@ export default function ThreadScreen() {
            14pt floor now collapses while the keyboard is up, so the reply box
            sits on the keys instead of a home indicator nobody can see. */
         <KeyboardDock floor={14} style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+          {/*
+            "ASK KAI TO EXPLAIN THE STOP AT 171.90" — the contextual Kai row,
+            bound to the setup above and pre-seeded from its real levels. It
+            draws only when there is a level to name; see AskKaiAboutSetup for
+            why the question does not go to the room-scoped Kai endpoint.
+          */}
+          {setup ? (
+            <View style={{ paddingBottom: 10 }}>
+              <AskKaiAboutSetup setup={setup} />
+            </View>
+          ) : null}
           {media.notice ? (
             <View style={{ paddingBottom: 8 }}>
               <T size={11} c={color.gold}>{media.notice}</T>
@@ -272,8 +323,11 @@ export default function ThreadScreen() {
             roomLabel="this post"
             placeholder={answeringAComment ? 'Write your reply…' : 'Add a comment…'}
             onSend={send}
-            // Kai and the structured composer belong to the room, not to a
-            // comment. Both are one tap away on the post itself.
+            // Kai's ROOM COMMANDS — summarise, verify, mark levels — belong to
+            // the room and not to one comment, so @Kai still goes back to it.
+            // The one Kai question a thread can answer for itself is the row
+            // above: it is about the setup on screen rather than about the
+            // conversation, which is why it can live here and these cannot.
             onKai={() => router.back()}
             onStructured={() => router.back()}
             quote={target ? quoteOf(target) : null}

@@ -2,7 +2,8 @@
  * Review order — V4-TR3-Review-order.html.
  *
  * This is the ONE place an order is priced and confirmed, whether it came from
- * the ticket, from a plan, or from "Exit now" on a position (`?close=<id>`).
+ * the ticket, from a plan, or from "Exit paper position" on a position
+ * (`?close=<id>`).
  *
  * The three corrections the round-3 brief asks for are all here:
  *   · the primary action says **Place paper order**, never "Submit to broker" —
@@ -14,6 +15,26 @@
  *     assuming the fill.
  * The preview expires; past that the numbers on screen are not the numbers that
  * would be sent, so the primary is replaced by "Get fresh numbers".
+ *
+ * ROUND 5 — "Practice with confidence", Order Review. Three things the board
+ * prints and this screen did not, all of them already in the preview response:
+ *
+ *   · the CHART with its entry / stop / target bands, drawn by the kit's
+ *     `TradeMap` rather than by a fourth private chart;
+ *   · the 1R → 2.6R meter, drawn by the kit's `RiskRewardRuler`, which already
+ *     carries the accessibility label this screen would otherwise have had to
+ *     invent;
+ *   · the DAILY RISK BUDGET bar — "$26 of $100 planned · 26%" — which is the
+ *     number that decides whether the order is allowed at all.
+ *
+ * And F08: the primary says `Place paper order` and the header says `Review
+ * paper order`, from `features/orders/vocabulary.ts`, at every entry point.
+ * The server's own `confirm_label` is deliberately NOT used for the primary any
+ * more: a per-response label is precisely how the portal ended up saying "Send
+ * it" while this screen said "Place paper order", and F08's acceptance is that
+ * the same action has the same name everywhere. It is still parsed and still
+ * refuses broker wording (see `types.ts`), so nothing regresses if it comes
+ * back for a surface that wants it.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
@@ -29,12 +50,24 @@ import { alpha, color, radius } from '../../ui/tokens';
 import { openKaiSheet } from '../../features/kai-sheet';
 import { tradeApi } from '../../lib/trade-api';
 import { usePreview, useExpiry, useSubmit } from '../../features/orders/useOrders';
+import { dailyBudget } from '../../features/orders/daily-risk';
+import { ideaFromPreview } from '../../features/orders/trade-idea';
+import { useIdeaCandles } from '../../features/orders/useCandles';
+import { DailyRiskBudget } from '../../features/orders/ExecutionUI';
+import { ACTION_LABEL, EXIT_PLACE_LABEL, PLACING_LABEL } from '../../features/orders/vocabulary';
+import { TradeMap, RiskRewardRuler } from '../../ui/trade';
 import {
   BackButton, DetailRow, KaiRiskCheck, PaperChip, Panel, RiskLine, StatusDot, money, shareLabel,
   signedPct,
 } from '../../features/trade/components';
 import type { OrderDuration, OrderPreview, OrderSide, OrderTicket, OrderType } from '../../features/orders/types';
 import { SIDE_LABEL, isBuySide } from '../../features/orders/types';
+import { useMe } from '../../features/account/useAccount';
+import {
+  RISK_BEFORE_ORDER_CTA,
+  RISK_BEFORE_ORDER_SUB,
+  needsRiskSetup,
+} from '../../features/onboarding/risk-gate';
 
 const readSide = (v: string | undefined): OrderSide => {
   const s = String(v ?? '');
@@ -88,6 +121,7 @@ function AccountStrip({ preview }: { preview: OrderPreview }) {
 
 export default function ReviewOrder() {
   const router = useRouter();
+  const me = useMe();
   const params = useLocalSearchParams<{
     symbol?: string; side?: string; qty?: string; amount?: string; order_type?: string;
     limit?: string; stop?: string; duration?: string; plan?: string; setup?: string; close?: string;
@@ -145,6 +179,9 @@ export default function ReviewOrder() {
 
   const { secondsLeft, expired } = useExpiry(preview?.expires_at);
   const { phase, order, error: submitError, submit } = useSubmit();
+  /* Bars for the map. A failure here costs the candles and nothing else — the
+     map still draws the levels and says the history is unavailable. */
+  const candles = useIdeaCandles(preview?.symbol);
 
   /**
    * Round 4: a placed order gets its own screen (Order-confirmed.html). The
@@ -209,13 +246,18 @@ export default function ReviewOrder() {
 
           {filled && (order.position_id || preview) ? (
             <Button
-              label="View position"
+              label={ACTION_LABEL.review_position}
               testID="view-position"
               onPress={() => router.replace(order.position_id ? `/position/${encodeURIComponent(order.position_id)}` : '/position')}
             />
           ) : null}
           {!filled && !rejected ? (
-            <Button label="See your orders" kind="outline" testID="see-orders" onPress={() => router.replace('/trade')} />
+            <Button
+              label={ACTION_LABEL.view_order}
+              kind="outline"
+              testID="see-orders"
+              onPress={() => router.replace(order.id ? `/order/${encodeURIComponent(order.id)}` : '/trade')}
+            />
           ) : null}
           <Button
             label="Ask Kai about this order"
@@ -236,7 +278,7 @@ export default function ReviewOrder() {
   if (!preview && loading) {
     return (
       <Screen variant="corner" layout="tab" testID="screen-order-review">
-        <BackRow title="Review order" onBack={back} />
+        <BackRow title="Review paper order" onBack={back} />
         <ScreenLoading label="Pricing your order…" />
       </Screen>
     );
@@ -245,7 +287,7 @@ export default function ReviewOrder() {
   if (!preview) {
     return (
       <Screen variant="corner" layout="tab" testID="screen-order-review">
-        <BackRow title="Review order" onBack={back} />
+        <BackRow title="Review paper order" onBack={back} />
         <View style={{ paddingHorizontal: 16, gap: 12 }}>
           <ObjectCard r={radius.xl} style={{ padding: 18 }}>
             <T size={13} c={color.muted} lh={19}>{error ?? 'I could not price that order just now.'}</T>
@@ -257,19 +299,64 @@ export default function ReviewOrder() {
   }
 
   const blocked = preview.risk.verdict === 'blocker';
+  /**
+   * RISK IS ASKED HERE, BECAUSE HERE IS WHERE IT MEANS SOMETHING (audit F01:
+   * "Ask risk questions before paper execution").
+   *
+   * It used to be step 3 of six during signup, which asked a stranger to pick a
+   * daily loss cap in dollars before they had seen a price. The cap is enforced
+   * by the server on every order, so this is the screen where the question has a
+   * visible consequence — see `features/onboarding/risk-gate.ts` for the full
+   * argument.
+   *
+   * IT IS A DETOUR, NOT A BLOCK. Somebody who never answered has a working cap
+   * already (`POST /onboarding/complete` has always written one); what they do
+   * not have is a cap they CHOSE. So this offers the choice once and the order
+   * survives it — `needsRiskSetup` answers false for a profile that has not
+   * loaded, so a slow `/me` never stands between a member and their order.
+   */
+  const askRisk = needsRiskSetup(me.data?.profile ?? null);
+  const idea = ideaFromPreview(preview, candles);
+  const budget = dailyBudget(preview);
   const q = preview.quote;
   const changeUp = (q?.change_pct ?? 0) >= 0;
   const canPlace = !blocked && !expired && phase !== 'sending';
 
   return (
     <Screen variant="corner" layout="tab" testID="screen-order-review">
-      <BackRow title={closeId ? 'Review exit' : 'Review order'} onBack={back} />
+      <BackRow title={closeId ? 'Review paper exit' : ACTION_LABEL.review_paper_order} onBack={back} />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 18, gap: 8 }}
         showsVerticalScrollIndicator={false}
       >
         <AccountStrip preview={preview} />
+
+        {/*
+          THE PLAN, DRAWN. The board puts the chart above the numbers because a
+          member checking their plan looks at where the levels sit before they
+          read what the order costs. `TradeMap` shades entry→stop red and
+          entry→target green from the same geometry the ruler measures, so the
+          picture and the meter can never disagree.
+        */}
+        <ObjectCard r={radius.xxl} style={{ paddingHorizontal: 14, paddingTop: 4, paddingBottom: 12 }} testID="review-map">
+          <TradeMap idea={idea} selectedLevel="entry" />
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16, paddingTop: 4 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Num size={26} weight="semibold" c={color.red} testID="planned-risk">
+                {preview.max_loss != null ? money(preview.max_loss) : '—'}
+              </Num>
+              <T size={11} lh={16} c={color.muted} style={{ marginTop: 2 }}>
+                {preview.max_loss != null
+                  ? 'Planned risk if the stop executes'
+                  : 'No stop on this order, so there is no planned risk to show'}
+              </T>
+            </View>
+            <View style={{ flex: 1.15, minWidth: 0 }}>
+              <RiskRewardRuler idea={idea} />
+            </View>
+          </View>
+        </ObjectCard>
 
         <Panel style={{ paddingHorizontal: 16, paddingVertical: 4 }} testID="order-panel">
           <View style={{ paddingVertical: 9, borderBottomWidth: 0.5, borderBottomColor: alpha.ivory08, gap: 2 }}>
@@ -360,6 +447,14 @@ export default function ReviewOrder() {
 
       {/* Footer — the artboard's own three lines. */}
       <View style={{ paddingHorizontal: 16, paddingBottom: 26, paddingTop: 5, gap: 7 }}>
+        {/*
+          THE BUDGET SITS BETWEEN THE NUMBERS AND THE BUTTON, deliberately. The
+          member cannot reach the primary without passing how much of their own
+          daily cap this order spends — the same reason the hard-stop sentence
+          below it is here rather than buried in the panel above.
+        */}
+        <DailyRiskBudget budget={budget} />
+
         {preview.hard_stop_plain || preview.max_loss != null ? (
           <T size={11} c={color.gold} align="center" testID="max-loss-line">
             {preview.hard_stop_plain
@@ -376,16 +471,33 @@ export default function ReviewOrder() {
           </>
         ) : (
           <Button
-            label={preview.confirm_label ?? (closeId ? 'Place paper exit' : 'Place paper order')}
-            onPress={() => { void placeOrder(preview.preview_id); }}
+            label={phase === 'sending'
+              ? PLACING_LABEL
+              : askRisk
+                ? RISK_BEFORE_ORDER_CTA
+                : (closeId ? EXIT_PLACE_LABEL : ACTION_LABEL.place_paper_order)}
+            onPress={() => {
+              if (askRisk) { router.push('/account/risk' as never); return; }
+              void placeOrder(preview.preview_id);
+            }}
             loading={phase === 'sending'}
             disabled={!canPlace}
             height={52}
             size={16}
             testID="cta-place"
-            accessibilityHint={blocked ? 'Blocked by a rule you set' : 'Sends the paper order'}
+            accessibilityHint={blocked
+              ? 'Blocked by a rule you set'
+              : askRisk
+                ? 'Choose your risk level first'
+                : 'Sends the paper order'}
           />
         )}
+
+        {askRisk && !blocked ? (
+          <T size={12} c={color.muted} align="center" lh={17} testID="risk-gate-line">
+            {RISK_BEFORE_ORDER_SUB}
+          </T>
+        ) : null}
 
         {blocked ? (
           <T size={11} c={color.red} align="center" testID="blocked-line">

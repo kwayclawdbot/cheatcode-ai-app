@@ -3,37 +3,47 @@ import { View, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen } from '../../ui/Screen';
 import { T } from '../../ui/Text';
-import { ProgressBars } from '../../ui/Progress';
 import { color } from '../../ui/tokens';
 import { useSession } from '../../lib/session';
 import { UsernameForm } from '../../features/identity/UsernameForm';
 
 /**
- * Onboarding 4 of 5 — pick a username.
+ * Pick a username — OPTIONAL, and no longer a step.
  *
- * WHY IT IS A STEP AND NOT A SETTING. Until today the app never asked anybody
- * for a name anywhere: 5 of 8 accounts had none, and the community signed
- * their posts "Member". A name is not a preference to be discovered later, it
- * is the thing every post, reply and mention hangs off, so it is asked once,
- * here, while somebody is already answering questions about themselves.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY IT STOPPED BEING A GATE
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Audit F01: "Move focus and username to the moment they are useful, with
+ * username required before posting." It was step 5 of 6, in front of Home, and
+ * the requirement it was standing in for was already enforced somewhere better:
+ * `POST /rooms/:id/messages` refuses a post from an account with no username,
+ * on the server, whatever the phone thinks. So the screen was not protecting
+ * anything — it was asking a stranger to name themselves for a room they had
+ * not seen yet, before they had seen anything at all.
  *
- * IT SAVES IMMEDIATELY, unlike the three steps before it. Those collect into
- * an in-memory draft that `kai-plan` posts in one go; a username cannot work
- * that way, because it has to be checked against everybody else's before it
- * can be accepted, and a person who picks a taken name should find out here
- * rather than at the end of the flow.
+ * The requirement still exists and still bites at exactly the right moment: the
+ * first time somebody tries to post. `src/app/_layout.tsx` also asks once per
+ * launch for accounts that have none, at `/account/username`, and the Account
+ * board has the row. Three places that ask when it matters, instead of one wall
+ * in front of the product.
  *
- * IT CAN BE SKIPPED — once, and it costs something honest. Somebody who wants
- * to look around first should be able to; posting will ask again, and so will
- * the Account tab, and the sentence under the skip says exactly that.
+ * A NAME IS STILL NOT A PREFERENCE. It is what every post, reply and mention
+ * hangs off, and 5 of 8 accounts had none before it was asked for anywhere.
+ * That argument is why this screen is offered from the plan step rather than
+ * deleted — somebody who wants to pick one now should be able to.
+ *
+ * IT SAVES IMMEDIATELY, unlike the draft answers, and always has: a username
+ * has to be checked against everybody else's before it can be accepted, and
+ * somebody who picks a taken name should find out here rather than later.
  */
 export default function OnboardingUsername() {
   const router = useRouter();
   const { profile, refreshProfile } = useSession();
 
+  const back = () => (router.canGoBack() ? router.back() : router.replace('/kai-plan'));
+
   return (
     <Screen variant="dome" layout="stack" testID="screen-username">
-      <ProgressBars total={6} done={5} />
       <T size={26} weight="bold" ls={-0.4} lh={31}>What should we call you?</T>
       <T size={14} c={color.muted} style={{ marginTop: 8 }}>
         This is the name your posts are signed with in the community.
@@ -51,7 +61,7 @@ export default function OnboardingUsername() {
           ctaLabel="That is my username"
           onSaved={async () => {
             await refreshProfile();
-            router.push('/kai-plan');
+            back();
           }}
         />
 
@@ -60,11 +70,11 @@ export default function OnboardingUsername() {
             size={13}
             weight="semibold"
             c={color.muted}
-            onPress={() => router.push('/kai-plan')}
+            onPress={back}
             testID="username-skip"
             accessibilityRole="button"
           >
-            Skip for now
+            Not now
           </T>
           <T size={11.5} lh={17} c={color.dim}>
             You can read every room without one. Posting will ask for it, and so will Account.

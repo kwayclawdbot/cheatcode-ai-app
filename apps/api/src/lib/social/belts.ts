@@ -189,6 +189,37 @@ export function pointsExplainer(cfg: PointsConfig | null): PointsExplainer {
   };
 }
 
+/**
+ * THE FIFTH SENTENCE, ADDED BY THE BELT MERGE.
+ *
+ * Spec §10 asks for it in these words and they are printed verbatim, the same
+ * way `POINTS_PLAIN` prints the other four. It is separate from
+ * `pointsExplainer` above because that function answers "how are points
+ * scored", which has not changed, and this one answers "and what are points FOR
+ * now", which has: they buy the right to sit, and the belt comes from the test.
+ *
+ * Two more lines follow it because leaving them out would make the first one
+ * read as the whole rule, and it is not: the two halves are the part people get
+ * wrong, and the part that stops thirty lessons from being a Blue Belt with no
+ * resolved call.
+ */
+export const BELT_EXAM_PLAIN: string[] = [
+  'You earn XP from lessons and from calls that resolve. XP is what lets you sit for the next belt. The belt itself is earned by passing its test.',
+  'Both halves count and neither replaces the other: lessons on their own will not get you there, and calls on their own will not either.',
+  'A belt is never taken away. Losing calls lower what you need for the NEXT one; they never take back the one you hold.',
+];
+
+/**
+ * The scoring rules as the Belt Profile screen prints them: the four sentences
+ * plus the warm-up, then the three above. When the config cannot be read,
+ * `pointsExplainer` already refuses to print numbers it has not checked, and the
+ * belt lines are still true without it, so they are still shown.
+ */
+export function beltExplainer(cfg: PointsConfig | null): PointsExplainer {
+  const base = pointsExplainer(cfg);
+  return { lines: [...base.lines, ...BELT_EXAM_PLAIN], belts: base.belts };
+}
+
 /** True while the first `warmup_resolved` resolutions still count at face value. */
 export function inWarmup(resolved: number, cfg: PointsConfig | null): boolean {
   if (!cfg) return false;

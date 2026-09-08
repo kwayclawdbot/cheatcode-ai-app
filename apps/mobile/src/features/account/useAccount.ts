@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { useResource } from '../../lib/useResource';
 import { fixtureKaiProfile, fixtureMe, fixtureMemory, fixtureNotifications, fixtureRuleAdherence } from '../../lib/fixtures';
-import {
-  EXPERIENCE_LABEL, EXPERIENCE_VOICE, MODE_LABEL, focusList, nextExperience, nextMode,
-} from './profile';
+import { EXPERIENCE_LABEL, EXPERIENCE_VOICE, MODE_LABEL, focusList } from './profile';
+import type { SaveStatus } from './controls';
 import type { Experience, FocusKey, GoalMode, Me, MemoryRow, NotificationRow, RuleAdherence } from '../../lib/types';
 
 export function useMe() {
@@ -23,28 +22,50 @@ export function useMemory() {
 /**
  * PUT /settings. Optimistic: the control moves at once and reverts with a plain
  * message if the server refuses — a settings toggle that lags feels broken.
+ *
+ * IT NOW REPORTS SUCCESS AS WELL AS FAILURE, and it keeps the failed patch.
+ * A settings screen that says nothing on a good save leaves the person with no
+ * way to tell a saved change from a tap that missed the row; and a failure the
+ * user cannot retry without guessing which control to poke again is a dead end.
+ * `status` drives `SaveNote`, and `retry` re-sends the exact patch that failed.
  */
 export function useSettingsWriter(onSaved?: () => void) {
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<SaveStatus>('idle');
+  /** The last patch that failed, so Try again means "that change", not "some change". */
+  const failed = useRef<Record<string, unknown> | null>(null);
+  /** "Saved" fades; an error does not. Cleared on unmount so a late timer cannot fire. */
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   const save = useCallback(async (patch: Record<string, unknown>) => {
     if (!api.available()) return true;
-    setSaving(true);
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    setStatus('saving');
     setError(null);
     try {
       await api.putSettings(patch);
+      failed.current = null;
       onSaved?.();
+      setStatus('saved');
+      timer.current = setTimeout(() => setStatus('idle'), 2400);
       return true;
     } catch (e) {
+      failed.current = patch;
       setError(e instanceof Error ? e.message : "That setting didn't save. Try again.");
+      setStatus('error');
       return false;
-    } finally {
-      setSaving(false);
     }
   }, [onSaved]);
 
-  return { save, saving, error };
+  const retry = useCallback(async () => {
+    const patch = failed.current;
+    if (!patch) return true;
+    return save(patch);
+  }, [save]);
+
+  return { save, retry, status, saving: status === 'saving', error };
 }
 
 /*
@@ -62,12 +83,32 @@ export function useSettingsWriter(onSaved?: () => void) {
 /* ==================================================================== */
 
 /**
- * Trading mode · Experience level · Kai watches, plus the voice line those
- * three produce and the rule-adherence receipt.
+ * Guidance · Kai watches · the voice line those produce, and the rule-adherence
+ * receipt.
  *
- * Changing any row writes `PUT /settings` and updates the local profile at
- * once — these three settings change how Kai scans, writes and warns, so the
- * screen must never lag behind what the user just chose.
+ * ===========================================================================
+ * THE CYCLERS ARE GONE. `cycleMode` AND `cycleExperience` MUST NOT COME BACK.
+ * ===========================================================================
+ * They advanced a setting one step per tap from a row that looked exactly like
+ * every row on the board that merely opens a screen. Three consequences, all
+ * bad: a person checking their mode changed it; going back one step meant
+ * tapping forward two; and nothing ever showed what the other options were.
+ * Worse, the mode chip on the same screen opened a proper chooser, so one
+ * setting had two different behaviours a few pixels apart.
+ *
+ * Both settings now go through an explicit chooser — `ChoiceSheet` for
+ * guidance, the shared `ModeSheet` for the goal — so the caller passes a value
+ * rather than asking for "the next one".
+ *
+ * MODE IS NO LONGER WRITTEN FROM HERE AT ALL. `ModeSheet` writes it through
+ * `patchProfile` + `PUT /mode`, which is the same act as switching mode on
+ * Home or in Trade; this hook only reads it so the voice line and the row
+ * agree. Two write paths for one setting is how they drift.
+ *
+ * WRITES REPORT. `persist` used to swallow every failure with "the next load
+ * reconciles" — which is true of the data and false of the person, who saw a
+ * row sitting on a value the server had refused. A failure now reverts the row
+ * and surfaces the server's sentence through `save`, with a retry.
  */
 export function useKaiProfile(fallbackMode: GoalMode) {
   const [experience, setExperience] = useState<Experience>('new');
@@ -76,6 +117,13 @@ export function useKaiProfile(fallbackMode: GoalMode) {
   const [adherence, setAdherence] = useState<RuleAdherence | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const retryPatch = useRef<(() => void) | null>(null);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (savedTimer.current) clearTimeout(savedTimer.current); }, []);
 
   useEffect(() => {
     let alive = true;
@@ -105,23 +153,45 @@ export function useKaiProfile(fallbackMode: GoalMode) {
     return () => { alive = false; };
   }, [fallbackMode]);
 
-  const persist = useCallback(async (patch: { experience?: Experience; focus?: FocusKey[]; mode?: GoalMode }) => {
+  /**
+   * Write, and say what happened. `revert` puts the row back where it was: a
+   * control left showing a value the server rejected is the one outcome a
+   * settings screen must never produce.
+   */
+  const persist = useCallback(async (
+    patch: { experience?: Experience; focus?: FocusKey[] },
+    revert: () => void,
+  ) => {
     if (!api.available()) return;
-    try { await api.putKaiProfile(patch); } catch { /* the row already moved; the next load reconciles */ }
+    if (savedTimer.current) { clearTimeout(savedTimer.current); savedTimer.current = null; }
+    setSaveStatus('saving');
+    setSaveError(null);
+    try {
+      await api.putKaiProfile(patch);
+      retryPatch.current = null;
+      setSaveStatus('saved');
+      savedTimer.current = setTimeout(() => setSaveStatus('idle'), 2400);
+    } catch (e) {
+      revert();
+      retryPatch.current = () => { void persist(patch, revert); };
+      setSaveError(e instanceof Error ? e.message : "That didn't save. Try again.");
+      setSaveStatus('error');
+    }
   }, []);
 
-  const cycleMode = useCallback(() => {
-    setMode((m) => { const next = nextMode(m); void persist({ mode: next }); return next; });
-  }, [persist]);
-
-  const cycleExperience = useCallback(() => {
-    setExperience((e) => { const next = nextExperience(e); void persist({ experience: next }); return next; });
+  /** An explicit choice, not a step. Same value in = nothing written. */
+  const chooseExperience = useCallback((next: Experience) => {
+    setExperience((prev) => {
+      if (prev === next) return prev;
+      void persist({ experience: next }, () => setExperience(prev));
+      return next;
+    });
   }, [persist]);
 
   const toggleFocus = useCallback((k: FocusKey) => {
-    setFocus((f) => {
-      const next = f.includes(k) ? f.filter((x) => x !== k) : [...f, k];
-      void persist({ focus: next });
+    setFocus((prev) => {
+      const next = prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k];
+      void persist({ focus: next }, () => setFocus(prev));
       return next;
     });
   }, [persist]);
@@ -132,6 +202,11 @@ export function useKaiProfile(fallbackMode: GoalMode) {
     experienceLabel: EXPERIENCE_LABEL[experience],
     focusShort: focusList(focus),
     voiceLine: EXPERIENCE_VOICE[experience],
-    cycleMode, cycleExperience, toggleFocus,
+    chooseExperience, toggleFocus,
+    save: {
+      status: saveStatus,
+      message: saveError,
+      retry: () => retryPatch.current?.(),
+    },
   };
 }

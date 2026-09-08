@@ -6,6 +6,14 @@ import type {
 import type {
   DeskPickResponse, DeskThemeResponse, DeskThemesResponse, DeskWatchlistResponse,
 } from '@shared/desk';
+/**
+ * TYPE-ONLY, like every other import from the contract. zod stays server-side
+ * (see the header of `adapters.ts`): a value import here would ask Metro to
+ * resolve a package outside `apps/mobile` and would put a validator in the app
+ * bundle. So the two new blocks are hand-adapted below, defensively, which is
+ * what every other payload on this file already does.
+ */
+import type { AdherenceCheck, HomeStanding, PlanAdherence, StandingCheck } from '@cheatcode/shared';
 import { Platform } from 'react-native';
 import { env, offlineMode } from './env';
 import { supabase } from './supabase';
@@ -189,6 +197,108 @@ async function upload<T>(path: string, form: FormData, retried = false): Promise
  */
 const unwrapCall = (v: unknown): unknown =>
   (v && typeof v === 'object' ? (v as Record<string, unknown>).call ?? v : v);
+
+/* ------------------------------------------------------------------ */
+/* Wave 2 — standing and plan adherence, adapted by hand                */
+/* ------------------------------------------------------------------ */
+
+const asRecord = (v: unknown): Record<string, unknown> =>
+  (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+const asNumber = (v: unknown): number | null => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const STANDING_KEYS: StandingCheck['key'][] = ['setups', 'alerts', 'positions', 'plans', 'briefing'];
+
+/**
+ * AN API BUILD THAT DOES NOT SEND `standing` IS `unverified`, NEVER `quiet`.
+ *
+ * This is the whole of audit F18 expressed as one fallback. The tempting move
+ * is to look at the adapted payload — no priority, nothing watching — and call
+ * it a quiet day. That would be the client inventing a finding out of an
+ * absence, which is exactly the mistake the field exists to stop: an old server
+ * that never checked and a new server that checked and found nothing produce
+ * the same empty payload and mean opposite things. So when the server has not
+ * told us what it looked at, we say we do not know.
+ */
+function adaptStanding(raw: unknown, v5: HomeV5): HomeStanding {
+  const block = asRecord(asRecord(raw).standing);
+  const state = block.state;
+  const checkedAt = typeof block.checked_at === 'string' ? block.checked_at : null;
+  const plain = typeof block.plain === 'string' && block.plain.trim() ? block.plain.trim() : null;
+
+  if ((state === 'quiet' || state === 'needs_you' || state === 'unverified') && checkedAt && plain) {
+    const checks: StandingCheck[] = (Array.isArray(block.checks) ? block.checks : []).flatMap((c) => {
+      const o = asRecord(c);
+      const key = STANDING_KEYS.find((k) => k === o.key);
+      if (!key || typeof o.ok !== 'boolean') return [];
+      return [{
+        key,
+        label: typeof o.label === 'string' ? o.label : key,
+        ok: o.ok,
+        count: o.ok ? asNumber(o.count) : null,
+      }];
+    });
+    return { state, plain, checked_at: checkedAt, checks };
+  }
+
+  return {
+    state: 'unverified',
+    plain: v5.priority
+      ? 'There is something below that needs you. This service build does not tell me what else it checked.'
+      : 'I cannot tell you your list is clear — this service build does not tell me what it checked.',
+    // The instant the APP asked. It is not a claim about a server-side check,
+    // which is why the sentence above does not make one.
+    checked_at: new Date().toISOString(),
+    checks: [],
+  };
+}
+
+const ADHERENCE_KEYS: AdherenceCheck['key'][] = ['entry', 'stop', 'exit'];
+
+/**
+ * `not_planned` is the default for an unrecognised status, and that is the
+ * conservative direction: an unreadable line becomes "there was nothing to be
+ * wrong about" rather than a mark against the member. See the API's
+ * `debrief-adherence.ts` for why an absent fact may never be a failure.
+ */
+function adaptAdherence(raw: unknown): PlanAdherence | null {
+  const o = asRecord(raw);
+  const headline = typeof o.headline === 'string' ? o.headline.trim() : '';
+  if (!headline) return null;
+
+  const checks: AdherenceCheck[] = (Array.isArray(o.checks) ? o.checks : []).flatMap((c) => {
+    const r = asRecord(c);
+    const key = ADHERENCE_KEYS.find((k) => k === r.key);
+    if (!key) return [];
+    const status = r.status === 'followed' || r.status === 'changed' ? r.status : 'not_planned';
+    return [{
+      key,
+      label: typeof r.label === 'string' ? r.label : key,
+      status,
+      detail_plain: typeof r.detail_plain === 'string' ? r.detail_plain : '',
+      planned: asNumber(r.planned),
+      actual: asNumber(r.actual),
+    }];
+  });
+  if (!checks.length) return null;
+
+  const p = asRecord(o.practice);
+  const skill = p.skill === 'entries' || p.skill === 'risk_management' || p.skill === 'trade_management' ? p.skill : null;
+  const planned = asRecord(o.planned_levels);
+  const actual = asRecord(o.actual_levels);
+
+  return {
+    headline,
+    checks,
+    practice: skill && typeof p.label === 'string' && typeof p.plain === 'string'
+      ? { skill, label: p.label, plain: p.plain }
+      : null,
+    planned_levels: { entry: asNumber(planned.entry), stop: asNumber(planned.stop), target: asNumber(planned.target) },
+    actual_levels: { entry: asNumber(actual.entry), exit: asNumber(actual.exit) },
+  };
+}
 
 export const api = {
   /** False in fixtures mode or before the env is wired — screens fall back to fixtures. */
@@ -386,10 +496,15 @@ export const api = {
    * ONE state-driven primary action, compact "also watching", briefing below.
    * The same call answers both shapes — see src/lib/v5.ts.
    */
-  homeV5: async (mode: GoalMode): Promise<HomeV5> => {
+  /**
+   * `standing` (audit F18) rides alongside the adapted payload rather than
+   * inside `HomeV5`, because `lib/types.ts` and `lib/v5.ts` belong to another
+   * lane this wave. It is a superset, so nothing that reads `HomeV5` notices.
+   */
+  homeV5: async (mode: GoalMode): Promise<HomeV5 & { standing: HomeStanding }> => {
     const raw = await request<unknown>(`/home?mode=${mode}`);
     const legacy = adaptHome(raw as HomeResponse);
-    return adaptHomeV5(raw, {
+    const v5 = adaptHomeV5(raw, {
       mode,
       market: legacy.market,
       briefing: legacy.briefing,
@@ -400,6 +515,27 @@ export const api = {
       degradedReason: legacy.degraded_reason,
       investNotice: legacy.invest_notice,
     });
+    return { ...v5, standing: adaptStanding(raw, v5) };
+  },
+
+  /**
+   * The plan-adherence block off `GET /debriefs/:id`.
+   *
+   * A SECOND, NARROWER READ OF A PAYLOAD `community-api.ts` ALREADY FETCHES,
+   * and that duplication is deliberate rather than sloppy: the debrief screen's
+   * view-model (`features/debrief/types.ts`) and its mapper both belong to
+   * another lane this wave, and widening either to carry a new block would be
+   * editing a file this one does not own. So the review screen asks for the one
+   * extra thing it needs and nothing about the existing mapping changes. It
+   * belongs back in `mapDebrief` the moment one lane owns both.
+   */
+  debriefAdherence: async (id: string): Promise<PlanAdherence | null> => {
+    const r = await request<unknown>(`/debriefs/${encodeURIComponent(id)}`);
+    const row = (r && typeof r === 'object' ? (r as Record<string, unknown>) : {});
+    const inner = (row.debrief && typeof row.debrief === 'object' ? (row.debrief as Record<string, unknown>) : row);
+    const payload = (inner.payload && typeof inner.payload === 'object' ? (inner.payload as Record<string, unknown>) : inner);
+    const block = payload.plan_adherence;
+    return adaptAdherence(block);
   },
 
   /**
@@ -444,6 +580,30 @@ export const api = {
   patchConversation: (id: string, body: { title?: string; pinned?: boolean }) =>
     request<unknown>(`/kai/conversations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
+  /**
+   * `GET /kai/conversations/:id/messages` — the saved transcript.
+   *
+   * This route did not exist when the wall first needed it, so `fetchTranscript`
+   * read `conversation_messages` through the Supabase client under the
+   * owner-only policy in `0014_rls_grants.sql`. That was a real guarantee, not a
+   * hole, but a transcript belongs on a route: the server can page it, and the
+   * phone stops needing table knowledge to draw a conversation.
+   *
+   * `content` is passed through as stored, so `readTranscript` takes it
+   * unchanged.
+   */
+  conversationMessages: (id: string, opts?: { since?: number; limit?: number }) =>
+    request<{
+      conversation_id: string;
+      messages: { seq: number; role: 'user' | 'kai'; content: unknown }[];
+      cursor: number;
+      more: boolean;
+      empty_copy: string;
+    }>(
+      `/kai/conversations/${encodeURIComponent(id)}/messages?limit=${opts?.limit ?? 200}`
+        + (opts?.since != null ? `&since=${opts.since}` : ''),
+    ),
+
   /** `GET /symbols/:symbol` → the ticker-page research payload (round-4 board). */
   tickerPage: async (symbol: string, mode: GoalMode): Promise<TickerPage> =>
     adaptTickerPage(await request<unknown>(`/symbols/${encodeURIComponent(symbol)}?mode=${mode}&view=ticker`), symbol),
@@ -471,23 +631,6 @@ export const api = {
     }
   ) => request<OnboardingCompleteResponse>('/onboarding/complete', { method: 'POST', body: JSON.stringify(body) }),
 
-  /**
-   * `POST /stage/evaluate` — report what training has produced and let the
-   * server decide what it is worth.
-   *
-   * This sends EVIDENCE, never a conclusion: `stage` is not writable from a
-   * client at all (0042 puts a trigger on the column), and the server re-grades
-   * these numbers against its own copy of the day gates. Safe to call as often
-   * as you like — the server's ratchet makes a repeat a no-op.
-   */
-  evaluateStage: (body: {
-    mastery: Record<string, number>;
-    day_progress: Record<string, { completed_lesson_ids: string[]; best_score_pct: number | null }>;
-  }) =>
-    request<{ stage: Stage; changed: boolean; reason: string }>('/stage/evaluate', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
 
   /** `PUT /settings` accepts experience + focus (round-4 personalize). */
   putKaiProfile: (body: { experience?: Experience; focus?: FocusKey[]; mode?: GoalMode }) =>

@@ -583,6 +583,36 @@ export function StandardAlertCard({ alert, testID, candles }: {
         <SetupPreview {...shared} />
       )}
 
+      {/*
+        EXPLAIN BEFORE PLAN, FOR THE FAMILY THAT NEEDS IT (audit page 7).
+
+        "A beginner who understands a stock setup should not be assumed to
+        understand a contract." A swing card's object is a price and three
+        levels, which the map teaches by drawing. An options card's object is a
+        strike, an expiry and a premium, and none of those explain themselves —
+        so this family is offered the explanation FIRST, above the button that
+        takes the trade, rather than being asked to decide and ask afterwards.
+
+        Only the contract-led family gets it, and by `contracts.length` rather
+        than a mode check, for the reason ContractSection already documents.
+      */}
+      {contractLed ? (
+        <Pressable
+          onPress={() => openKaiSheet({
+            context: { kind: 'alert', id: alert.alert_id ?? alert.id, symbol: alert.symbol },
+            question: `Explain this options signal on ${alert.symbol} — what was detected, and what would I actually be buying?`,
+          })}
+          accessibilityRole="button"
+          testID={`alert-explain-${alert.symbol}`}
+          style={{
+            height: 44, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
+            borderWidth: 1, borderColor: alpha.violet45, backgroundColor: alpha.violet08,
+          }}
+        >
+          <T size={13.5} weight="semibold" c={color.violetLight}>Explain this signal ↗</T>
+        </Pressable>
+      ) : null}
+
       {/* ONE state-driven primary action */}
       <Pressable
         onPress={openPortal}

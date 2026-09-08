@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, TextInput, TextInputProps } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { alpha, color, gradient, gradientAngle, radius } from './tokens';
-import { family } from './fonts';
+import { family, fontStack } from './fonts';
 import { T } from './Text';
 
 /** Input in the composer/search skin: pill, 0.5px hairline, 52px tall. */
@@ -34,7 +34,7 @@ export function Field({
           onBlur={() => setFocused(false)}
           {...input}
           style={{
-            fontFamily: family.regular,
+            fontFamily: fontStack(family.regular),
             fontSize: 16,
             color: color.text,
             paddingVertical: 0,

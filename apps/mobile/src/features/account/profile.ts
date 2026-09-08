@@ -69,15 +69,49 @@ export const MODE_LABEL: Record<GoalMode, string> = {
 
 export const MODE_ORDER: GoalMode[] = ['day_trade', 'swing', 'invest'];
 
-export function nextMode(m: GoalMode): GoalMode {
-  return MODE_ORDER[(MODE_ORDER.indexOf(m) + 1) % MODE_ORDER.length];
-}
-
 export const EXPERIENCE_ORDER: Experience[] = ['new', 'some', 'pro'];
 
-export function nextExperience(e: Experience): Experience {
-  return EXPERIENCE_ORDER[(EXPERIENCE_ORDER.indexOf(e) + 1) % EXPERIENCE_ORDER.length];
-}
+/*
+ * `nextMode()` AND `nextExperience()` ARE GONE AND MUST NOT COME BACK.
+ *
+ * They existed for one caller each: two rows on the Account board that
+ * advanced a setting by one step per tap. Both rows drew the same chevron as
+ * every row that opens a screen, so a person tapping to look at their mode
+ * changed how Kai scans the market instead — and with three values, stepping
+ * back one meant tapping forward twice with no list of the options anywhere on
+ * screen. Both settings are chosen from an explicit sheet now
+ * (`features/account/controls.tsx`), which needs the ORDER above and no
+ * successor function at all.
+ */
+
+/* ==================================================================== */
+/* GUIDANCE — the same three values, named for what they actually do    */
+/* ==================================================================== */
+
+/**
+ * THIS IS THE `experience` SETTING, SAID HONESTLY.
+ *
+ * Stored as new/some/pro and labelled "Experience level" on the Account board,
+ * which made it read as a judgement about the member — a readiness rung, right
+ * next to the readiness rung. It is not one. All it decides is HOW MUCH KAI
+ * EXPLAINS: the server maps it straight onto `explanation_level`
+ * (`EXPERIENCE_TO_LEVEL` below, and `apps/api/.../settings/route.ts` writes
+ * both from the one word). Nothing about it is earned and nothing about it is
+ * a claim, so it is adjustable at any time and named for its effect.
+ *
+ * The audit's separation is: GOAL is what you are here to do (invest, swing,
+ * day trade), GUIDANCE is how much Kai explains, READINESS is what you have
+ * demonstrated, and a BELT is a community track record. This constant covers
+ * exactly the second one. Onboarding still asks the question in the
+ * first-person form a stranger can answer — `EXPERIENCE_LABEL` above — because
+ * "how much should I explain?" is not answerable before you have heard Kai
+ * explain anything.
+ */
+export const GUIDANCE_LABEL: Record<Experience, string> = {
+  new: 'Explain everything',
+  some: 'Plain language',
+  pro: 'Straight to the numbers',
+};
 
 /** `experience` → the API's explanation_level / experience_level. */
 export const EXPERIENCE_TO_LEVEL: Record<Experience, 'beginner' | 'intermediate' | 'advanced'> = {

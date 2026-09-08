@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Tabs } from 'expo-router';
 import { TabBar } from '../../ui/TabBar';
 import { color } from '../../ui/tokens';
-import { api } from '../../lib/api';
-import { fixtureAlertsSimple } from '../../lib/fixtures';
+import { useAlertAttention } from '../../features/alerts/attention';
 import { useMe } from '../../features/account/useAccount';
+import { buildEntitlementView } from '../../features/account/entitlements';
 import { useSession } from '../../lib/session';
 import { DEFAULT_MODE, secondTab } from '../../features/nav/second-tab';
 import type { GoalMode } from '../../lib/types';
@@ -32,23 +32,52 @@ export default function TabsLayout() {
    * answer must not put a padlock on a section a paying customer has.
    */
   const me = useMe();
-  const tradeLocked = me.data?.credits ? !me.data.credits.trade_panel : false;
+  /**
+   * READ FROM THE SAME CONTRACT THE PLAN SCREEN AND THE REFUSAL READ.
+   *
+   * This used to ask the credits block on its own — `!me.data.credits
+   * .trade_panel` — which is the one source of the three that is NOT on the
+   * enforcement path. `apps/api/src/lib/kai/plans.ts` settles the tie-break in
+   * its own words ("THE FLAG WINS: it is the one on the enforcement path"), and
+   * `features/account/entitlements.ts` is where that rule now lives, so the
+   * mark on the glyph, the row on the plan screen and the server's refusal
+   * cannot disagree. That was the third surface the audit's F17 asks to unify.
+   *
+   * `buildEntitlementView` is called here rather than `useEntitlements()`
+   * because the hook also reads `/credits`, and a tab bar rendered on every
+   * screen must not add a second request to fetch a padlock. Passing `null`
+   * for credits only removes a FALLBACK for `trade_panel`; it can never turn an
+   * excluded capability into an included one.
+   *
+   * The courtesy above still stands: only an explicit `excluded` locks. An
+   * unknown answer — `/me` in flight, or unable to reply — leaves the tab
+   * unmarked, which is what the paragraph above requires.
+   */
+  const tradeLocked = buildEntitlementView(me.data, null).tradePanel === 'excluded';
 
-  // The badge is a real count of alerts that need a decision — never decorative.
-  // In Invest mode the tab is not showing alerts, so it does not carry their
-  // badge: a dot that points at a screen you are not on is noise.
-  const [needsAttention, setNeedsAttention] = useState(
-    !api.available() && fixtureAlertsSimple.attention.length > 0,
-  );
-
-  useEffect(() => {
-    let alive = true;
-    if (!api.available()) return;
-    api.alertsSimple()
-      .then((d) => { if (alive) setNeedsAttention(d.attention.length > 0); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, []);
+  /**
+   * THE ATTENTION DOT — audit F18.
+   *
+   * This used to be a one-shot read of the alerts-simple endpoint, in a
+   * `useEffect` with an empty dependency list. The tabs never unmount, so that
+   * single answer was the answer
+   * for the whole session: acknowledging the alert the dot pointed at left the
+   * dot exactly where it was, and a badge that survives the thing it describes
+   * is worse than no badge, because it is also what a member trusts when it is
+   * ABSENT.
+   *
+   * `features/alerts/attention.ts` holds the reading now, the board invalidates
+   * it whenever an alert changes, and returning to the foreground re-asks. Only
+   * a CHECKED answer draws a dot: an unreachable service reports `unknown`,
+   * which is neither a dot nor a verified all-clear — the same posture
+   * `entitlements.ts` takes with the padlock below.
+   *
+   * In Invest mode the tab is not showing alerts, so it does not carry their
+   * badge and does not pay for the request: a dot pointing at a screen you are
+   * not on is noise.
+   */
+  const alertsTabShowsAlerts = !second.desk && !second.comingSoon;
+  const attention = useAlertAttention(alertsTabShowsAlerts);
 
   return (
     <Tabs
@@ -57,7 +86,7 @@ export default function TabsLayout() {
         <TabBar
           {...props}
           mode={mode}
-          badges={{ alerts: !second.desk && !second.comingSoon && needsAttention }}
+          badges={{ alerts: attention.status === 'ready' && attention.needsAttention }}
           locked={{ trade: tradeLocked }}
         />
       )}

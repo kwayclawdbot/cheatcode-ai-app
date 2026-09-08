@@ -1,0 +1,29 @@
+{
+  "nativeTypecheck": "passed",
+  "screenServerRendering": {
+    "screens": 36,
+    "scales": [
+      1,
+      1.4
+    ],
+    "status": "passed"
+  },
+  "geometryCases": [
+    "missing prices",
+    "missing candles",
+    "short setup",
+    "near overlapping levels"
+  ],
+  "sharedModelTests": "passed",
+  "galleryBuild": "passed",
+  "svgXML": {
+    "count": 30,
+    "status": "passed"
+  },
+  "referenceBoards": 12,
+  "browserVisualQA": "blocked by browser URL/security policy; not passed",
+  "nativeDeviceQA": "not run",
+  "productionIntegration": "not part of kit delivery",
+  "themeGenerator": "passed; pure font map reader updated",
+  "fullAppSuite": "not certified; this sparse local checkout lacks some unrelated tracked feature files"
+}

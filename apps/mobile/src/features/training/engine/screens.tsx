@@ -1298,6 +1298,35 @@ export function MasteryChallengeView({ screen, onAdvance }: ScreenProps<MasteryC
 
 /* ─────────────────────────────── 10 completion ──────────────────────────── */
 
+/**
+ * LESSON COMPLETE — Board 09, left screen.
+ *
+ * ---------------------------------------------------------------------------
+ * IT RESTATES THE IDEA. IT DOES NOT PRINT A RECEIPT.
+ * ---------------------------------------------------------------------------
+ * The board's version of this screen says "You understand ownership.", repeats
+ * the sentence ("A share is part of a business."), redraws the diagram, and
+ * only then offers Continue learning / Back to my path. That ordering is the
+ * design: the completion screen is the one screen in a lesson every member is
+ * guaranteed to reach, and spending it on a percentage teaches nothing.
+ *
+ * ---------------------------------------------------------------------------
+ * "SAVED TO YOUR ACCOUNT" IS PRINTED ONLY WHEN IT IS TRUE
+ * ---------------------------------------------------------------------------
+ * That sentence is on the board twice, and before this lane it was false
+ * everywhere: progress lived in one AsyncStorage key with no account id on it
+ * (audit F10). It now says one of four different things, and which one depends
+ * on what actually happened:
+ *
+ *   the server recorded it      "Saved to your account"
+ *   signed in, no service       "Saved on this device · it will sync"
+ *   no session                  "Practising as a guest · nothing is saved"
+ *   already completed before    "Already counted · re-runs do not pay twice"
+ *
+ * The last one is the audit's F12 wearing its front-of-house clothes: a replay
+ * pays nothing, and printing an award that did not happen would be the same lie
+ * the inflating mastery bar used to tell.
+ */
 export function CompletionView({
   screen,
   scorePct,
@@ -1305,6 +1334,8 @@ export function CompletionView({
   skillLabel,
   onFinish,
   onSecondary,
+  outcome,
+  storage,
 }: {
   screen: CompletionScreen;
   scorePct: number | null;
@@ -1312,47 +1343,54 @@ export function CompletionView({
   skillLabel: string;
   onFinish: () => void;
   onSecondary: () => void;
+  /** Null until the write has come back. Never assumed. */
+  outcome: { saved: boolean; xpAwarded: number; repeat: boolean } | null;
+  storage: 'account' | 'device' | 'guest';
 }) {
+  const savedLine = (() => {
+    if (storage === 'guest') return 'Practising as a guest — nothing is saved';
+    if (!outcome) return 'Saving…';
+    if (outcome.saved && outcome.repeat) return 'Already counted — a re-run does not pay twice';
+    if (outcome.saved) {
+      return outcome.xpAwarded > 0
+        ? `Saved to your account · +${outcome.xpAwarded} XP`
+        : 'Saved to your account';
+    }
+    return 'Saved on this device — it will sync when you are back online';
+  })();
+
   return (
     <View testID="training-complete" style={{ gap: 14 }}>
       <View testID="training-screen-completion" style={{ gap: 14 }}>
-        <View style={{ alignItems: 'center', gap: 11, paddingTop: 12 }}>
-          <View
-            style={{
-              width: 108,
-              height: 108,
-              borderRadius: 54,
-              borderWidth: 2,
-              borderColor: color.volt,
-              backgroundColor: alpha.volt10,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {scorePct === null ? (
-              <Check size={40} color={color.volt} />
-            ) : (
-              <Num testID="training-mastery-pct" size={30} weight="bold" c={color.volt}>
-                {`${scorePct}%`}
-              </Num>
-            )}
-          </View>
-          <Eyebrow c={color.volt}>LESSON COMPLETE</Eyebrow>
-          <T size={26} weight="bold" align="center" ls={-0.4}>{screen.title}</T>
-          <T size={12.5} c={color.muted} align="center">
-            {skillLabel} mastery is now <T size={12.5} weight="bold" c={color.text}>{masteryPct}%</T>
-          </T>
+        <View style={{ gap: 9, paddingTop: 6 }}>
+          <Eyebrow c={color.muted}>LESSON COMPLETE</Eyebrow>
+          <T size={27} weight="bold" lh={32} ls={-0.5}>{screen.title}</T>
+          {screen.restate ? (
+            <T size={13.5} lh={20} c={color.muted}>{screen.restate}</T>
+          ) : null}
         </View>
 
-        <ObjectCard r={radius.xl} style={{ padding: 14, gap: 10 }}>
-          <T size={12} weight="bold">What you now know</T>
-          {screen.knowNow.map((line) => (
-            <View key={line} style={{ flexDirection: 'row', gap: 9 }}>
-              <Check size={12} color={color.volt} />
-              <T size={12.5} lh={19} c={color.muted} style={{ flex: 1 }}>{line}</T>
+        {/* The diagram that taught it, drawn once more. */}
+        {screen.visual ? <Visual v={screen.visual} /> : null}
+
+        {/* The one sentence the lesson was about, marked as understood. */}
+        {screen.restate ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 15,
+                backgroundColor: color.green,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Check size={15} color={color.bg} />
             </View>
-          ))}
-        </ObjectCard>
+            <T size={13.5} weight="bold" style={{ flex: 1 }}>{screen.knowNow[0] ?? screen.restate}</T>
+          </View>
+        ) : null}
 
         <ObjectCard tone="kai" r={radius.xl} style={{ padding: 14, gap: 9 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1364,6 +1402,41 @@ export function CompletionView({
 
         <Button testID="training-next" label={screen.nextLabel} arrow onPress={onFinish} />
         <Button label={screen.secondaryCta} kind="outline" onPress={onSecondary} />
+
+        {/* Where the work went, stated plainly. */}
+        <View
+          testID="training-saved-state"
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}
+        >
+          <Check
+            size={12}
+            color={outcome?.saved ? color.green : storage === 'guest' ? color.dim : color.gold}
+          />
+          <T size={11.5} c={color.muted}>{savedLine}</T>
+        </View>
+
+        {/* The detail, under the decision, where it does not compete with it —
+            the audit's F12 note: lead with the demonstrated skill, keep the
+            metrics to one line. */}
+        <ObjectCard r={radius.xl} style={{ padding: 14, gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <T size={12} weight="bold" style={{ flex: 1 }}>What you now know</T>
+            {scorePct === null ? null : (
+              <Num testID="training-mastery-pct" size={12} weight="bold" c={color.volt}>
+                {`${scorePct}%`}
+              </Num>
+            )}
+          </View>
+          {screen.knowNow.map((line) => (
+            <View key={line} style={{ flexDirection: 'row', gap: 9 }}>
+              <Check size={12} color={color.volt} />
+              <T size={12.5} lh={19} c={color.muted} style={{ flex: 1 }}>{line}</T>
+            </View>
+          ))}
+          <T size={11} c={color.dim}>
+            {`${skillLabel} mastery is now ${masteryPct}%`}
+          </T>
+        </ObjectCard>
       </View>
     </View>
   );

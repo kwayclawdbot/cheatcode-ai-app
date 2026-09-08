@@ -60,6 +60,7 @@ import { TradeLocked } from './TradeLocked';
 import { Spine, SpineFooter } from './Spine';
 import { DecideBeat, type KaiReadState } from './Decide';
 import { ConfirmCard, Receipt } from './Take';
+import { ACTION_LABEL } from '../orders/vocabulary';
 import { readPortal, type Beat, type ReadLevel } from './read';
 import { useTake } from './useTake';
 import { useMe } from '../account/useAccount';
@@ -601,7 +602,7 @@ export default function TradePortalV2() {
       ) : null}
       {beat === 'decide' ? (
         <SpineFooter
-          label="Take it"
+          label={ACTION_LABEL.review_paper_order}
           blocked={read.takeable ? null : read.blocked_plain}
           onPress={() => { setBeat('take'); void take.prepare(); }}
           testID="spine-next-take"

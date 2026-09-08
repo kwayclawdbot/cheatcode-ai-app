@@ -6,7 +6,8 @@
  * that costs against today's cap.
  *
  * Two deliberate departures from the board, both required by the round-3 brief:
- *   · the primary is a BUTTON labelled "Review order", not a slide-to-confirm —
+ *   · the primary is a BUTTON labelled "Review paper order" (audit F08's word
+ *     for it, from `vocabulary.ts`), not a slide-to-confirm —
  *     a slide is not reachable with a screen reader or a keyboard, and this
  *     screen does not send anything anyway;
  *   · the quote line prints the real freshness (delayed on this data plan)
@@ -19,6 +20,7 @@ import { T, Num, Eyebrow } from '../../ui/Text';
 import { Button } from '../../ui/Button';
 import { Field } from '../../ui/Field';
 import { Sheet } from '../../ui/Sheet';
+import { ACTION_LABEL } from './vocabulary';
 import { Segmented } from '../../ui/Segmented';
 import { alpha, color, radius } from '../../ui/tokens';
 import { openKaiSheet } from '../kai-sheet';
@@ -248,7 +250,7 @@ export function PlanView({
 
       <View style={{ paddingHorizontal: 16, paddingBottom: 28, gap: 8 }}>
         <Button
-          label="Review order"
+          label={ACTION_LABEL.review_paper_order}
           onPress={onReview}
           disabled={!ready}
           loading={busy}

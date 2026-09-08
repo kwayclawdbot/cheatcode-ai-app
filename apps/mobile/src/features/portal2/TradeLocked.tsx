@@ -42,6 +42,7 @@ import { StackHeader } from '../../ui/StackHeader';
 import { T, Eyebrow } from '../../ui/Text';
 import { Button } from '../../ui/Button';
 import { alpha, color, space } from '../../ui/tokens';
+import { CAPABILITY_LABEL } from '../account/entitlements';
 
 /** The API's code for "your plan does not include this". */
 export const ENTITLEMENT_CODE = 'ENTITLEMENT_REQUIRED';
@@ -73,8 +74,15 @@ export function TradeLocked({
       <View style={{ paddingHorizontal: 16, paddingTop: space.x8 }}>
         <Eyebrow c={color.gold}>Not on your plan</Eyebrow>
 
+        {/*
+          THE SAME WORDS THE PLAN SCREEN USES FOR THE SAME FLAG.
+          `CAPABILITY_LABEL.trade_panel` is read by `account/subscription.tsx`
+          for the row it draws under "Not on your plan", so the refusal and the
+          list cannot end up calling one capability two things. The eyebrow
+          above is that heading, verbatim, for the same reason.
+        */}
         <T size={22} weight="bold" c={color.text} style={{ marginTop: space.x10, lineHeight: 28 }}>
-          The Trade section is not on your plan
+          {`${CAPABILITY_LABEL.trade_panel} is not on your plan`}
         </T>
 
         {/*
