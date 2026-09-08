@@ -5,6 +5,7 @@ import { color } from '../../ui/tokens';
 import { api } from '../../lib/api';
 import { fixtureAlertsSimple } from '../../lib/fixtures';
 import { useMe } from '../../features/account/useAccount';
+import { buildEntitlementView } from '../../features/account/entitlements';
 import { useSession } from '../../lib/session';
 import { DEFAULT_MODE, secondTab } from '../../features/nav/second-tab';
 import type { GoalMode } from '../../lib/types';
@@ -32,7 +33,28 @@ export default function TabsLayout() {
    * answer must not put a padlock on a section a paying customer has.
    */
   const me = useMe();
-  const tradeLocked = me.data?.credits ? !me.data.credits.trade_panel : false;
+  /**
+   * READ FROM THE SAME CONTRACT THE PLAN SCREEN AND THE REFUSAL READ.
+   *
+   * This used to ask the credits block on its own — `!me.data.credits
+   * .trade_panel` — which is the one source of the three that is NOT on the
+   * enforcement path. `apps/api/src/lib/kai/plans.ts` settles the tie-break in
+   * its own words ("THE FLAG WINS: it is the one on the enforcement path"), and
+   * `features/account/entitlements.ts` is where that rule now lives, so the
+   * mark on the glyph, the row on the plan screen and the server's refusal
+   * cannot disagree. That was the third surface the audit's F17 asks to unify.
+   *
+   * `buildEntitlementView` is called here rather than `useEntitlements()`
+   * because the hook also reads `/credits`, and a tab bar rendered on every
+   * screen must not add a second request to fetch a padlock. Passing `null`
+   * for credits only removes a FALLBACK for `trade_panel`; it can never turn an
+   * excluded capability into an included one.
+   *
+   * The courtesy above still stands: only an explicit `excluded` locks. An
+   * unknown answer — `/me` in flight, or unable to reply — leaves the tab
+   * unmarked, which is what the paragraph above requires.
+   */
+  const tradeLocked = buildEntitlementView(me.data, null).tradePanel === 'excluded';
 
   // The badge is a real count of alerts that need a decision — never decorative.
   // In Invest mode the tab is not showing alerts, so it does not carry their

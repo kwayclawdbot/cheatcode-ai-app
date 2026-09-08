@@ -28,9 +28,26 @@
  * where they stand gets a complete answer. A person who wanted to be sold to
  * gets nothing, which is the correct outcome.
  *
- * The locked list is kept and is deliberately not softened: knowing that the
- * Trade section is not on your plan is a fact you need in order to understand
- * the app. It is stated, with no invitation attached.
+ * ===========================================================================
+ * TWO THINGS THIS SCREEN USED TO GET WRONG, AND WHY THEY WERE THE SAME BUG
+ * ===========================================================================
+ * · IT DECIDED WHAT A LOCKED FEATURE MEANT FROM THE TIER, NOT FROM THE FLAG.
+ *   The list of capabilities with `included === false` was headed "Not on your
+ *   plan" on free and "Also open to you" — with a green tick on every row — on
+ *   anything paid. Those rows are the API saying this account does NOT have
+ *   the thing. A paying member was told a feature was theirs immediately
+ *   before being blocked from it, and migration 0031 makes that a real state
+ *   today, not a hypothetical one (`circles_create` is false on every tier).
+ *
+ * · A FAILED READ RENDERED AS THE FREE PLAN. `currentKey` fell back to `free`
+ *   when `/me` answered with nothing, so a timeout drew "Your plan / Free" over
+ *   a VIP account. A service fault must never be shown as a downgrade.
+ *
+ * Both are the same mistake — guessing an entitlement instead of reading one —
+ * so both are fixed in one place. Every claim below comes from
+ * `features/account/entitlements.ts`, which the tab lock and the Trade refusal
+ * read too, and whose header explains the rules. This file renders; it decides
+ * nothing.
  *
  * Design: ruled strips and hairlines. Nothing here is a card.
  */
@@ -41,35 +58,81 @@ import { Screen } from '../../ui/Screen';
 import { NotConnected, ScreenLoading } from '../../ui/Loading';
 import { StackHeader } from '../../ui/StackHeader';
 import { T, Eyebrow } from '../../ui/Text';
+import { Button } from '../../ui/Button';
 import { Check, Lock } from '../../ui/Icons';
 import { alpha, color, space } from '../../ui/tokens';
-import { useMe } from '../../features/account/useAccount';
-import { useCredits } from '../../features/account/useCredits';
+import { useEntitlements } from '../../features/account/useEntitlements';
+import { ENTITLEMENT_UNKNOWN_PLAIN } from '../../features/account/entitlements';
 import { Bay, Strip } from '../../features/account/credit-instruments';
 import { LegalLinks } from '../../features/legal/LegalLinks';
 import { NOT_ADVICE_LONG } from '../../features/legal/disclaimers';
 
 export default function Subscription() {
   const router = useRouter();
-  const { data, loading, error, isFixture, notAvailable } = useMe();
-  const credits = useCredits();
+  /* ONE READ FOR THE WHOLE SCREEN. Everything drawn below — the name, the
+     balance, the two strips and the failure state — comes out of the shared
+     contract, so there is no second source on this screen to disagree with
+     the first. */
+  const plan = useEntitlements();
+  const { balance, error, isFixture, notAvailable } = plan;
 
-  const balance = credits.data?.credits ?? data?.credits ?? null;
-  const plans = credits.data?.plans ?? [];
-  const currentKey = balance?.plan ?? (data?.subscription.tier === 'premium' ? 'vip' : 'free');
-  const current = plans.find((p) => p.key === currentKey) ?? null;
-  const onFree = currentKey === 'free';
-
-  const premiumOnly = (data?.entitlements ?? []).filter((f) => !f.included);
-  const included = (data?.entitlements ?? []).filter((f) => f.included);
-
-  if (!data && loading) {
+  if (!plan.known && plan.loading) {
     return (
       <Screen variant="corner" layout="tab" testID="screen-subscription">
         <ScreenLoading />
       </Screen>
     );
   }
+
+  /*
+    THE SERVICE DID NOT ANSWER, AND THAT IS WHAT THE SCREEN SAYS.
+
+    No headline plan name, no capability list, no tick and no padlock — every
+    one of those would be a claim about an account we could not read. The only
+    honest content is what went wrong and a way to ask again.
+  */
+  if (plan.failed) {
+    return (
+      <Screen variant="corner" layout="tab" testID="screen-subscription">
+        <StackHeader title="Plan" />
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+          showsVerticalScrollIndicator={false}
+        >
+          <View testID="plan-unknown">
+            <Eyebrow c={color.muted}>Your plan</Eyebrow>
+            <T size={20} weight="bold" c={color.text} style={{ marginTop: space.x8, lineHeight: 27 }}>
+              We could not read your plan
+            </T>
+            <T size={13.5} lh={20} c={color.muted} style={{ marginTop: space.x10 }}>
+              {ENTITLEMENT_UNKNOWN_PLAIN}
+            </T>
+            {notAvailable ? <NotConnected what="Your plan" /> : error ? (
+              <T size={11.5} c={color.muted} style={{ marginTop: space.x10 }}>{error}</T>
+            ) : null}
+            <Button
+              testID="plan-retry"
+              label="Try again"
+              kind="outline"
+              height={48}
+              onPress={plan.reload}
+              style={{ marginTop: space.x18 }}
+            />
+          </View>
+          <View style={{
+            marginTop: space.x22, paddingTop: space.x12,
+            borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: alpha.ivory10,
+          }}>
+            <T size={11} lh={17} c={color.dim}>{NOT_ADVICE_LONG}</T>
+          </View>
+          <LegalLinks style={{ marginTop: space.x18 }} testID="plan-legal" />
+        </ScrollView>
+      </Screen>
+    );
+  }
+
+  const onFree = plan.tier === 'free';
 
   return (
     <Screen variant="corner" layout="tab" testID="screen-subscription">
@@ -82,8 +145,10 @@ export default function Subscription() {
         {/* ── where you are ──────────────────────────────────────── */}
         <View testID="plan-current">
           <Eyebrow c={onFree ? color.muted : color.gold}>Your plan</Eyebrow>
-          <T size={26} weight="bold" c={color.text} style={{ marginTop: space.x8 }}>
-            {balance?.plan_name ?? current?.name ?? (onFree ? 'Free' : 'Premium')}
+          {/* READ, never defaulted. `planName` is null only when neither /me
+              nor /credits answered, and that case never reaches this branch. */}
+          <T size={26} weight="bold" c={color.text} style={{ marginTop: space.x8 }} testID="plan-name">
+            {plan.planName}
           </T>
           {/*
             THE BALANCE IS THE HEADLINE FACT ABOUT A PLAN, so it is said here
@@ -105,22 +170,28 @@ export default function Subscription() {
             </Pressable>
           ) : (
             <T size={13} lh={20} c={color.muted} style={{ marginTop: space.x10 }}>
-              {data?.subscription.plain ?? 'Everything Kai explains is yours.'}
+              {plan.plain ?? 'Everything Kai explains is yours.'}
             </T>
           )}
-          {current?.blurb ? (
+          {plan.planBlurb ? (
             <T size={13} lh={20} c={color.muted} style={{ marginTop: space.x10 }} testID="plan-blurb">
-              {current.blurb}
+              {plan.planBlurb}
             </T>
           ) : null}
         </View>
 
-        {/* ── what it covers ─────────────────────────────────────── */}
-        {included.length ? (
+        {/* ── what it covers ─────────────────────────────────────────
+            EVERY ROW BELOW IS ITS OWN ANSWER. The two strips are the same
+            list split on `state`, and nothing on either of them consults the
+            tier — which is the whole fix. A row is in the first strip because
+            the API said `included`, and in the second because it said the
+            opposite. There is no third possibility on this screen: a
+            capability the server never mentioned has no row at all. */}
+        {plan.included.length ? (
           <View style={{ marginTop: space.x24 }}>
             <Eyebrow c={color.green}>What your plan allows</Eyebrow>
             <Strip style={{ marginTop: space.x10 }} testID="plan-included">
-              {included.map((f, i) => (
+              {plan.included.map((f, i) => (
                 <Bay key={f.key} first={i === 0} style={{ paddingVertical: space.x11 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x10 }}>
                     <Check size={13} color={color.green} strokeWidth={2.6} />
@@ -134,21 +205,25 @@ export default function Subscription() {
         ) : null}
 
         {/*
-          WHAT IS NOT ON IT. Stated, never sold. The eyebrow used to read "What
-          a paid plan adds", which is a sales line — it points at a purchase.
-          "Not on your plan" is the same fact with the pitch removed, and it is
-          what the person actually needs to know when a screen refuses them.
+          WHAT IS NOT ON IT. Stated, never sold, and never dressed up as
+          something you have.
+
+          The eyebrow used to read "What a paid plan adds" (a sales line, so it
+          went) and then "Also open to you" on paid tiers, which was worse: it
+          claimed the opposite of the flag underneath it. It is now one
+          sentence for every tier, because the rows mean one thing for every
+          tier — the API said this account does not have them.
         */}
-        {premiumOnly.length ? (
+        {plan.excluded.length ? (
           <View style={{ marginTop: space.x20 }}>
-            <Eyebrow c={color.gold}>{onFree ? 'Not on your plan' : 'Also open to you'}</Eyebrow>
-            <Strip style={{ marginTop: space.x10 }} testID="plan-premium-only">
-              {premiumOnly.map((f, i) => (
+            <Eyebrow c={color.gold}>Not on your plan</Eyebrow>
+            <Strip style={{ marginTop: space.x10 }} testID="plan-excluded">
+              {plan.excluded.map((f, i) => (
                 <Bay key={f.key} first={i === 0} style={{ paddingVertical: space.x11 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x10 }}>
-                    <Lock size={13} color={onFree ? color.gold : color.green} />
-                    <T size={13} style={{ flex: 1 }} c={onFree ? color.muted : color.text}>{f.label}</T>
-                    {onFree ? null : <Check size={13} color={color.green} strokeWidth={2.6} />}
+                    <Lock size={13} color={color.gold} />
+                    <T size={13} style={{ flex: 1 }} c={color.muted}>{f.label}</T>
+                    <T size={12.5} weight="medium" c={color.dim}>{f.value_plain}</T>
                   </View>
                 </Bay>
               ))}
@@ -176,9 +251,6 @@ export default function Subscription() {
 
         <LegalLinks style={{ marginTop: space.x18 }} testID="plan-legal" />
 
-        {notAvailable ? <NotConnected what="Your plan" /> : error ? (
-          <T size={11} c={color.muted} align="center" style={{ marginTop: space.x10 }}>{error}</T>
-        ) : null}
         {isFixture ? (
           <T size={10} c={color.dim} align="center" style={{ marginTop: space.x10 }}>
             Sample plan — the account service is not connected here.

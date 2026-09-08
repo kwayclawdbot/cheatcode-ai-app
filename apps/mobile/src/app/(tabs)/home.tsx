@@ -12,7 +12,7 @@ import { SetupObject } from '../../ui/SetupObject';
 import { ObjectCard } from '../../ui/Panel';
 import { Composer } from '../../ui/Composer';
 import { KeyboardDock } from '../../ui/KeyboardDock';
-import { color, radius } from '../../ui/tokens';
+import { alpha, color, radius } from '../../ui/tokens';
 import {
   AlsoWatching, ConversationsDrawer, Wakeup, useConversations, useHomeV5, useWakeup,
 } from '../../features/home';
@@ -20,6 +20,7 @@ import type { HomeFixture, WakeDirection } from '../../features/home';
 import { DEFAULT_MODE } from '../../features/nav/second-tab';
 import { useSession } from '../../lib/session';
 import { useKaiWall } from '../../lib/useKai';
+import type { ThreadTarget } from '../../lib/kai-continuity';
 import { env } from '../../lib/env';
 import { useMe } from '../../features/account/useAccount';
 import { CreditStrip } from '../../features/account/credit-instruments';
@@ -98,7 +99,7 @@ export default function Home() {
   useStageEvolution(refreshProfile);
 
   /** Fixtures preview only — lets the owner and Playwright see the quiet day. */
-  const params = useLocalSearchParams<{ fixture?: string; credits?: string }>();
+  const params = useLocalSearchParams<{ fixture?: string; credits?: string; ask?: string }>();
   const fixture: HomeFixture =
     env.FIXTURES && (params.fixture === 'quiet' || params.fixture === 'down') ? params.fixture : 'default';
 
@@ -131,9 +132,17 @@ export default function Home() {
    * Opening another thread replaces it with that thread's opening notice.
    */
   const seed = useMemo<WallItem[]>(() => {
-    if (thread.kind === 'saved') {
-      return [{ kind: 'notice', id: `thread-${thread.row.id}-${threadNonce}`, text: `Picking up “${thread.row.title}”. Ask me anything about it.` }];
-    }
+    /**
+     * A SAVED THREAD SEEDS ITSELF, FROM THE SERVER (audit F04).
+     *
+     * This used to be a notice reading "Picking up “<title>”" — which was the
+     * whole of what "opening a conversation" did. The messages were never
+     * fetched, and the next turn went to whichever conversation the wall had
+     * made for itself. The wall now binds to the row's id and restores its
+     * transcript, so the thread's own words are the seed and a sentence
+     * claiming to have picked it up would be furniture on top of the evidence.
+     */
+    if (thread.kind === 'saved') return [];
     if (thread.kind === 'new') {
       return [{ kind: 'notice', id: `thread-new-${threadNonce}`, text: 'New conversation. Ask me about a symbol, a setup or your rules.' }];
     }
@@ -147,7 +156,53 @@ export default function Home() {
     return [];
   }, [data, mode, thread, threadNonce]);
 
-  const { items, send, append, streaming, credits, setCredits } = useKaiWall(mode, seed);
+  /**
+   * WHICH CONVERSATION THE WALL IS ACTUALLY IN.
+   *
+   * The screen's selection and the wall's server conversation are now the same
+   * fact rather than two that were allowed to disagree (audit F04). A saved row
+   * IS its id; New earns a real conversation on its first turn; Today is the
+   * one Kai woke into.
+   */
+  const target = useMemo<ThreadTarget>(
+    () => (thread.kind === 'saved'
+      ? { kind: 'saved', id: thread.row.id }
+      : thread.kind === 'new'
+        ? { kind: 'new', nonce: threadNonce }
+        : { kind: 'today' }),
+    [thread, threadNonce],
+  );
+
+  const {
+    items, send, append, stop, retry, clearFailure,
+    streaming, loadingHistory, failed, suggestions, credits, setCredits,
+  } = useKaiWall(mode, seed, target);
+
+  /**
+   * "Ask Kai about this" arriving from a setup while an OLD conversation is
+   * open opens a new one. Stamping a fresh object onto somebody's saved thread
+   * would rewrite what that thread is about; the pinned context belongs to the
+   * conversation the question starts.
+   */
+  const askText = typeof params.ask === 'string' ? params.ask : '';
+  const askHandled = useRef('');
+  useEffect(() => {
+    if (!askText || askHandled.current === askText) return;
+    askHandled.current = askText;
+    if (thread.kind !== 'saved') return;
+    setThread({ kind: 'new' });
+    setThreadNonce((n) => n + 1);
+  }, [askText, thread.kind]);
+
+  /**
+   * A failed turn's words go back into the composer. The nonce is what makes
+   * the SAME question restorable twice — a second failure of it must not be a
+   * no-op for the field.
+   */
+  const [draftNonce, setDraftNonce] = useState(0);
+  useEffect(() => { if (failed?.restore) setDraftNonce((n) => n + 1); }, [failed]);
+  /** Retry sends the restored words, so the field must not keep a copy. */
+  const sendAgain = useCallback(() => { retry(); setDraftNonce((n) => n + 1); }, [retry]);
 
   /**
    * THE BALANCE, SEEDED ONCE AND THEN LIVE.
@@ -257,7 +312,10 @@ export default function Home() {
         another conversation, because then you genuinely need to know which.
       */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 4, paddingHorizontal: 16, paddingBottom: 4 }}>
-        <Hamburger onPress={() => setThreadsOpen(true)} />
+        {/* Re-read on open: a conversation started in this sitting only exists
+            on the server after its first turn, and the drawer is where somebody
+            goes to come back to it. */}
+        <Hamburger onPress={() => { setThreadsOpen(true); threads.reload(); }} />
         {thread.kind === 'today' ? (
           <View style={{ flex: 1 }} />
         ) : (
@@ -305,6 +363,15 @@ export default function Home() {
             course they finished sitting above it would read as the app not
             having noticed. `homeOrderFor` holds that argument in full. */}
         {homeOrder.training === 'above_wall' ? trainingRow : null}
+
+        {/* Saved messages are being fetched. Stated, not mimed with a
+            skeleton: an empty wall under a thread title is the one thing this
+            screen must never look like again. */}
+        {loadingHistory ? (
+          <T size={11} c={color.dim} align="center" testID="home-thread-loading">
+            Getting the rest of this conversation…
+          </T>
+        ) : null}
 
         {/* Then the conversation. */}
         {items.map((it, i) => {
@@ -368,7 +435,92 @@ export default function Home() {
           testID="home-credit-strip"
         />
         {isFixture ? <T size={10} c={color.dim} align="center">Sample data — the service is not connected here.</T> : null}
-        <Composer placeholder="Message Kai…" onSend={send} disabled={streaming} />
+
+        {/*
+          RECOVERY, WHERE THE WORK WAS (audit F05). A request that never reached
+          the server takes its turn back out of the wall and puts the words back
+          in the field below — so what is left to say is "here is why, and here
+          is the button". Kai DECLINING is not this: that arrives as his own
+          sentence in the conversation and offers no retry, because retrying a
+          refusal just spends the allowance twice.
+        */}
+        {failed ? (
+          <View style={{ gap: 6 }} testID="kai-failure">
+            <T size={11} lh={16} c={color.muted} align="center">{failed.plain}</T>
+            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
+              <Pressable
+                testID="kai-retry"
+                accessibilityRole="button"
+                accessibilityLabel="Send that again"
+                onPress={sendAgain}
+                style={({ pressed }) => ({
+                  paddingVertical: 7,
+                  paddingHorizontal: 14,
+                  borderRadius: radius.pill,
+                  borderWidth: 0.5,
+                  borderColor: alpha.volt40,
+                  backgroundColor: alpha.volt08,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <T size={12} weight="bold" c={color.volt}>Send that again</T>
+              </Pressable>
+              <Pressable
+                testID="kai-failure-dismiss"
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss"
+                onPress={clearFailure}
+                style={({ pressed }) => ({ paddingVertical: 7, paddingHorizontal: 10, opacity: pressed ? 0.6 : 1 })}
+              >
+                <T size={12} c={color.dim}>Dismiss</T>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        {/*
+          Short questions tied to what is on screen, offered only before the
+          member has said anything in this thread — after that they would be
+          the app talking over them. They carry no numbers by construction
+          (see `suggestedQuestions`), so nothing here can invent a price.
+
+          NOT ON TODAY. The wake-up already offers Kai's own directions there,
+          and two rows of things to tap under one message is the stacking this
+          screen was rebuilt to stop. These are for the threads that open with
+          nothing in them.
+        */}
+        {target.kind !== 'today' && !streaming && !failed && !items.some((it) => it.kind === 'user_text') ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+            {suggestions.map((q) => (
+              <Pressable
+                key={q}
+                testID="kai-suggestion"
+                accessibilityRole="button"
+                accessibilityLabel={q}
+                onPress={() => { void send(q); }}
+                style={({ pressed }) => ({
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  borderRadius: radius.pill,
+                  borderWidth: 0.5,
+                  borderColor: alpha.ivory08,
+                  opacity: pressed ? 0.6 : 1,
+                })}
+              >
+                <T size={11.5} c={color.violetLight}>{q}</T>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
+        <Composer
+          placeholder="Message Kai…"
+          onSend={send}
+          streaming={streaming}
+          onStop={stop}
+          draft={failed?.restore ? failed.text : ''}
+          draftNonce={draftNonce}
+        />
       </KeyboardDock>
 
       <ConversationsDrawer

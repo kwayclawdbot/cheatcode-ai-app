@@ -19,6 +19,15 @@
  * passed the number.
  *
  * ACCEPTED IS NOT FILLED, anywhere, ever.
+ *
+ * ONE VOCABULARY (audit F08). This card used to say "Send it" while
+ * `/order/review` — the screen doing the identical thing — said "Place paper
+ * order". That is the exact divergence F08 was written about: "a friendly
+ * phrase is insufficient when it changes an order". Both now read their labels
+ * out of `features/orders/vocabulary.ts`, and the receipt below shows the same
+ * Submitted → Filled tracker the dedicated receipt screen shows, so a member
+ * who takes the collapsed path and a member who takes the three-screen path see
+ * the same words about the same order.
  */
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
@@ -30,6 +39,8 @@ import { Rule } from '../../ui/DataRow';
 import { alpha, color, radius } from '../../ui/tokens';
 import { Check } from '../../ui/Icons';
 import type { OrderPreview, OrderRow } from '../orders/types';
+import { ACTION_LABEL, PLACING_LABEL, orderSteps, stateForOrderStatus } from '../orders/vocabulary';
+import { OrderProgress, ObjectStateStrip } from '../orders/ExecutionUI';
 import { rPlain, riskOf, type TradeRead } from './read';
 import type { TakeSize } from './useTake';
 import { PAPER_VENUE } from './venues';
@@ -182,7 +193,7 @@ export function ConfirmCard({
 
       <View style={{ gap: 9 }}>
         <Button
-          label={sending ? 'Sending…' : 'Send it'}
+          label={sending ? PLACING_LABEL : ACTION_LABEL.place_paper_order}
           kind="volt"
           height={52}
           loading={sending}
@@ -239,6 +250,9 @@ export function Receipt({
         <T size={13.5} lh={20} align="center" testID="receipt-plain" style={{ paddingHorizontal: 8 }}>{plain}</T>
       </View>
 
+      {/* Submitted ● ─── ○ Filled. The same tracker `/order/confirmed` draws. */}
+      <OrderProgress steps={orderSteps(order)} testID="receipt-progress" />
+
       <ObjectCard r={radius.xl} style={{ paddingHorizontal: 15, paddingVertical: 4 }} testID="receipt-detail">
         <Line label="Status" value={order.status_label} tint={tint} testID="receipt-status" />
         <Rule />
@@ -257,13 +271,17 @@ export function Receipt({
         <Line label="Account" value={PAPER_VENUE.label} testID="receipt-account" />
       </ObjectCard>
 
-      {order.status_detail ? (
-        <T size={12.5} lh={18} c={color.muted} testID="receipt-detail-plain">{order.status_detail}</T>
-      ) : null}
+      {/* Where this object is now, and the one action that follows. */}
+      <ObjectStateStrip
+        state={stateForOrderStatus(order.status)}
+        meta={order.qty == null ? null : `${order.qty} ${Math.abs(order.qty) === 1 ? 'share' : 'shares'}`}
+        plain={order.status_detail}
+        testID="receipt-state"
+      />
 
       <View style={{ gap: 9 }}>
         <Button
-          label={order.position_id ? 'Open the position' : 'Open the order'}
+          label={order.position_id ? ACTION_LABEL.review_position : ACTION_LABEL.view_order}
           kind="outline"
           height={46}
           onPress={order.position_id ? onOpenPosition : onOpenOrder}

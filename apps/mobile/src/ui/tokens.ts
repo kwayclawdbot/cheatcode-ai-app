@@ -15,7 +15,31 @@ export const color = {
 
   text: '#FFF7E8',
   muted: '#B9B0A8',
-  dim: '#6E675F',
+  /**
+   * THE QUIETEST INK, RAISED UNTIL IT IS ACTUALLY READABLE (audit F20).
+   *
+   * This was #6E675F. Measured against the ground it is drawn on — #0B0B0E —
+   * that scores 3.53:1, and against a raised panel (#1C1C22) only 3.04:1. The
+   * WCAG AA floor for normal-size text is 4.5:1, so every one of the ~350
+   * places that reach for `dim` — alert mode notes, row metadata, stage tags,
+   * lesson footers, input placeholders — were below the line, and they are
+   * exactly the places that also use the SMALLEST type in the app. Small and
+   * low-contrast is the same mistake made twice.
+   *
+   * #8E867C is the same warm grey — hue 33 vs 32, chroma unchanged — lifted
+   * until it clears the floor on every opaque ground the app actually paints:
+   *
+   *   ground   #0B0B0E  5.48:1     surface3 #111117  5.24:1
+   *   surface2 #17171C  4.98:1     surface  #1C1C22  4.72:1
+   *
+   * The ladder text -> muted -> dim still reads as three distinct weights
+   * (18.5 / 9.2 / 5.5 on the ground), which is the point: dim has to stay
+   * quiet, it just has to stop being unreadable. Translucent surfaces are
+   * measured separately — see `scripts/contrast-test.mts`, which composites
+   * each veil over the ground before it measures and fails the build if any
+   * of this drifts back down.
+   */
+  dim: '#8E867C',
 
   volt: '#C8FF00',
   voltHover: '#D6FF3D',
@@ -290,9 +314,39 @@ export const space = {
 } as const;
 
 /**
- * Type ramp — sizes are the artboard's own px values.
- * NOTE the conversational bubbles are 14–15px in the artboards, below the
- * spec's "body >= 16" line; artboard is pixel truth per the build brief.
+ * THE LEGIBILITY FLOOR — nothing in this app renders below 11 logical px.
+ * ===========================================================================
+ *
+ * Audit F20 counted important copy set at 8.5–12px: strike labels, tradability
+ * tallies, contract captions, stage tags. The artboards were drawn that small
+ * because a static PNG at 2x looks fine at any size; a phone in a hand does
+ * not. Rather than retro-fit ~285 call sites across 85 screens — half of which
+ * are being edited right now — the floor is enforced ONCE, inside `T`, which
+ * every piece of text in the app already goes through.
+ *
+ * 11 is not an arbitrary number: it is the size `Eyebrow` has always been, so
+ * the floor is "nothing is smaller than the section label", which is a rule
+ * somebody can hold in their head. Anything genuinely secondary is allowed to
+ * sit AT the floor; nothing is allowed below it.
+ */
+export const FLOOR = 11;
+
+/**
+ * Type ramp — the audit's scale (F20), not the artboard's.
+ *
+ * The artboards were pixel truth for round 1 and the sizes below started as
+ * their inline styles. F20 measured the result on a device and asked for a
+ * different ladder, so this is now the ladder and the artboard is the
+ * reference for everything except size:
+ *
+ *   15–16   body — the default, what a sentence is set in
+ *   13–14   metadata worth reading — rows, timestamps, sub-labels
+ *   22–30   the numbers a decision turns on
+ *   11–12   captions only, and only when they are genuinely secondary
+ *
+ * `micro` and `nano` are kept as names so the handful of call sites that use
+ * them still compile, but they now both resolve to the floor. There is no
+ * 9-pixel text in this product any more.
  */
 export const type = {
   screenTitle: { size: 28, weight: 'bold' },      // "Alerts" / "Trade" / "Cheat Code Club"
@@ -304,19 +358,44 @@ export const type = {
   choiceTitle: { size: 17, weight: 'bold' },
   choiceTitleSm: { size: 16, weight: 'bold' },
   name: { size: 20, weight: 'bold' },
-  bubble: { size: 14, lh: 20 },       // 14 * 1.45
-  bubbleLg: { size: 15, lh: 22 },     // 15 * 1.45
-  body: { size: 14 },
-  row: { size: 14, weight: 'semibold' },
-  sub: { size: 13 },
-  subLh: { size: 13, lh: 20 },
-  small: { size: 12 },
-  tiny: { size: 11 },
-  micro: { size: 10 },
-  nano: { size: 9 },
+  bubble: { size: 15, lh: 22 },       // 15 * 1.45
+  bubbleLg: { size: 16, lh: 23 },     // 16 * 1.45
+  /** Body. The default `T` renders at, and the one number to argue about. */
+  body: { size: 15, lh: 22 },
+  row: { size: 15, weight: 'semibold' },
+  /** Metadata worth reading — a timestamp, a sub-label, a row's second line. */
+  sub: { size: 14 },
+  subLh: { size: 14, lh: 21 },
+  small: { size: 13 },
+  /** Genuinely secondary caption. At the floor; nothing goes under it. */
+  tiny: { size: FLOOR },
+  /** @deprecated 10px. Resolves to the floor — kept so old call sites compile. */
+  micro: { size: FLOOR },
+  /** @deprecated 9px. Resolves to the floor — kept so old call sites compile. */
+  nano: { size: FLOOR },
   eyebrow: { size: 11, weight: 'bold', ls: 0.88 },   // 0.08em
   eyebrowHero: { size: 11, weight: 'bold', ls: 1.1 },// 0.1em
-  kicker: { size: 10, weight: 'bold', ls: 0.8 },
+  kicker: { size: 11, weight: 'bold', ls: 0.8 },
+} as const;
+
+/**
+ * TOUCH TARGETS — a product convention, not a compliance claim.
+ *
+ * WCAG 2.2 AA asks for 24 CSS px with exceptions; 44 is the ENHANCED guidance
+ * and the number both platforms' own HIGs use. F20 asks for 44 here, so 44 is
+ * what the product promises. A control smaller than this on screen is fine as
+ * long as its TOUCHABLE box is not: `minHeight`/`minWidth` where the layout can
+ * take it, `hitSlop` where it cannot, and never a 26-pixel chip with nothing
+ * around it.
+ *
+ * `gap` is the breathing room between two adjacent targets — without it, two
+ * 44s that touch are one 88-wide place to make the wrong choice.
+ */
+export const tap = {
+  /** The minimum touchable box in logical pixels. */
+  min: 44,
+  /** Minimum space between two adjacent targets. */
+  gap: 8,
 } as const;
 
 /** Artboard chrome offsets. The 9:41 status bar is presentation only — we use

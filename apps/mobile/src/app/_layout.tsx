@@ -11,6 +11,7 @@ import { TrainingProvider } from '../features/training/store';
 import { env } from '../lib/env';
 import { KaiSheetHost } from '../features/kai-sheet';
 import { NotificationBridge } from '../features/notifications';
+import { A11yProvider } from '../features/a11y';
 
 /**
  * Routes an authenticated, onboarded user may sit on outside the tab group.
@@ -138,6 +139,19 @@ export default function RootLayout() {
         <StatusBar style="light" />
         {blocking ? null : (
           <SessionProvider>
+            {/* THE ACCESSIBILITY PREFERENCE HAS TO WRAP EVERY ROUTE, INCLUDING
+                THE ONES BEFORE SIGN-IN. `T` reads the text multiplier on every
+                text node in the app, and the two motion hooks read the
+                reduced-motion OR from here, so a provider mounted any lower
+                would leave whole branches of the tree at the design's own
+                sizes — which is the exact bug F19 describes, only smaller.
+
+                It sits INSIDE SessionProvider because the member half of the
+                preference lives behind `/me`: the provider reconciles with the
+                server once per signed-in account, and mirrors the answer into
+                AsyncStorage so the NEXT cold start paints at the right size
+                instead of jumping one frame in. */}
+            <A11yProvider>
             {/* The learner profile is read on Home and on the Account board,
                 which are both OUTSIDE `/training`. The package shipped this
                 provider inside `src/app/training/_layout.tsx`; left there, Home
@@ -184,6 +198,7 @@ export default function RootLayout() {
               <NotificationBridge />
             </Gate>
             </TrainingProvider>
+            </A11yProvider>
           </SessionProvider>
         )}
       </View>

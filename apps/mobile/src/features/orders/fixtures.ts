@@ -62,8 +62,21 @@ const BLOCKER: RiskCheck = {
   ],
 };
 
-function preview(risk: RiskCheck, id: string): OrderPreview {
+/**
+ * The daily budget the review screen draws its bar from.
+ *
+ * It is per-fixture because the three risk verdicts are three different days:
+ * the blocker's copy says today's losses already reach the $60 cap, so its
+ * budget has to say $60 used or the bar and the sentence would contradict each
+ * other on the same screen.
+ */
+function preview(
+  risk: RiskCheck,
+  id: string,
+  daily: OrderPreview['daily_risk'] = { cap: 60, used: 0, remaining: 60 },
+): OrderPreview {
   return {
+    daily_risk: daily,
     preview_id: id,
     symbol: 'META',
     name: 'Meta Platforms, Inc.',
@@ -103,7 +116,8 @@ function preview(risk: RiskCheck, id: string): OrderPreview {
 
 export const fixturePreviewPass = () => preview(PASS, 'prev-pass');
 export const fixturePreviewAdvisory = () => preview(ADVISORY, 'prev-advisory');
-export const fixturePreviewBlocker = () => preview(BLOCKER, 'prev-blocker');
+export const fixturePreviewBlocker = () =>
+  preview(BLOCKER, 'prev-blocker', { cap: 60, used: 60, remaining: 0 });
 
 /** Default: the artboard's own case, told honestly. */
 export const fixturePreview = fixturePreviewAdvisory;

@@ -24,6 +24,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { tradeApi } from '../../lib/trade-api';
+import { submitKeyFor } from '../orders/useOrders';
 import type { OrderPreview, OrderRow } from '../orders/types';
 import type { TradePortal } from '../portal/types';
 import type { TradeRead } from './read';
@@ -53,9 +54,12 @@ export function useTake(read: TradeRead | null, portal: TradePortal | null) {
     phase: 'idle', preview: null, order: null, size: null, receipt_plain: null, error: null,
   });
   const alive = useRef(true);
+  /** One in-flight send at a time. See `send` for why state is not enough. */
+  const sending = useRef(false);
   useEffect(() => () => { alive.current = false; }, []);
 
   const reset = useCallback(() => {
+    sending.current = false;
     setState({ phase: 'idle', preview: null, order: null, size: null, receipt_plain: null, error: null });
   }, []);
 
@@ -83,7 +87,7 @@ export function useTake(read: TradeRead | null, portal: TradePortal | null) {
   }, [read, portal]);
 
   /**
-   * Send it, then say what happened.
+   * Place it, then say what happened.
    *
    * The receipt is written the moment the engine answers, and then re-written
    * every time the order is read back, so "Accepted — waiting to fill" becomes
@@ -92,12 +96,24 @@ export function useTake(read: TradeRead | null, portal: TradePortal | null) {
   const send = useCallback(async (shareTrade?: boolean) => {
     const preview = state.preview;
     if (!preview) return;
+    /*
+     * ONE PRESS IS ONE ORDER (audit F08). `sending` is React state, so two taps
+     * inside one frame both read `confirm` and both send. The ref closes that
+     * window before the network, and `submitKeyFor` gives every attempt at this
+     * priced order the SAME idempotency key — the submit route returns the
+     * original order for a repeat, so a timeout the user retries cannot become
+     * two positions. The two guards answer the two halves of the criterion:
+     * the ref stops the double-tap, the key stops the reconnect.
+     */
+    if (sending.current) return;
+    sending.current = true;
     setState((s) => ({ ...s, phase: 'sending', error: null }));
     let placed: OrderRow;
     try {
       // The per-order sharing answer travels with the order it belongs to.
-      placed = await tradeApi.submit(preview.preview_id, undefined, shareTrade);
+      placed = await tradeApi.submit(preview.preview_id, submitKeyFor(preview.preview_id), shareTrade);
     } catch (e) {
+      sending.current = false;
       if (!alive.current) return;
       setState((s) => ({
         ...s, phase: 'confirm',
@@ -105,6 +121,7 @@ export function useTake(read: TradeRead | null, portal: TradePortal | null) {
       }));
       return;
     }
+    sending.current = false;
     if (!alive.current) return;
     setState((s) => ({ ...s, phase: 'receipt', order: placed, receipt_plain: receiptLine(placed) }));
 

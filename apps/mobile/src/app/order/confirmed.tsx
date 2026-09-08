@@ -1,19 +1,27 @@
 /**
- * `/order/confirmed` — Order-confirmed.html, with the copy the product can
- * actually keep.
+ * `/order/confirmed` — the SUBMISSION RECEIPT.
  *
- * The board says "Sent to Robinhood". There is no broker on this stack, and
- * spec 10 §10 requires that "paper and live trading states remain unmistakable
- * throughout the flow", so the headline is **Placed · paper account**. Every
- * other beat of the board is intact: the green check, the one-line order recap,
- * the Kai note that the order is being watched and has NOT filled, and the two
- * actions — View pending order / Done.
+ * The original board said "Sent to Robinhood". There is no broker on this stack
+ * and spec 10 §10 requires that paper and live stay unmistakable, so the
+ * headline is **Paper order submitted.** — the word "Paper" is in the headline
+ * itself, not only in a chip beside it, which is what F08's acceptance ("Paper
+ * is visible at final confirmation AND on the receipt") is asking for.
  *
- * Then the two states stay distinct (round-3 rule, unchanged): accepted is not
- * filled, and the screen polls `GET /orders/:id` rather than assuming a fill.
+ * ROUND 5 — "Practice with confidence", Submission Receipt. The board's beat is
+ * a two-step tracker: Submitted ● "Waiting to fill" ─── ○ Filled "—". That
+ * em-dash is the whole point of the screen. `accepted` is not `filled`, so the
+ * second step stays open and says nothing until the engine says something, and
+ * the screen keeps re-reading `GET /orders/:id` rather than assuming.
+ *
+ * The tracker is `OrderProgress` in `features/orders/ExecutionUI`, built on
+ * `orderSteps` — see `vocabulary.ts` for why the kit's own `TradeStatusStrip`
+ * is not the right component for an ORDER's life.
+ *
+ * F08 vocabulary: the primary is `View order` while it is working and
+ * `Review position` once there is a position, from the one list.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { View, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '../../ui/Screen';
 import { T, Num } from '../../ui/Text';
@@ -25,9 +33,13 @@ import { ScreenLoading } from '../../ui/Loading';
 import { alpha, color, radius } from '../../ui/tokens';
 import { tradeApi } from '../../lib/trade-api';
 import { money, shareLabel, PaperChip } from '../../features/trade/components';
+import { OrderProgress, ObjectStateStrip } from '../../features/orders/ExecutionUI';
+import { ACTION_LABEL, orderSteps, stateForOrderStatus } from '../../features/orders/vocabulary';
 import type { OrderRow } from '../../features/orders/types';
 
 const TERMINAL = new Set(['filled', 'cancelled', 'rejected']);
+
+const TYPE_LABEL = { market: 'Market', limit: 'Limit', stop: 'Stop' } as const;
 
 export default function OrderConfirmed() {
   const router = useRouter();
@@ -83,12 +95,16 @@ export default function OrderConfirmed() {
   const accent = rejected ? color.red : filled ? color.volt : color.green;
 
   const recap = order
-    ? `${order.side_label} ${order.symbol} · ${shareLabel(order.qty)}${order.limit_price != null ? ` · limit ${money(order.limit_price)}` : ''}`
+    ? `${order.symbol} · ${order.side_label} ${shareLabel(order.qty)}`
     : '';
 
   return (
     <Screen variant="dome" layout="tab" testID="screen-order-confirmed">
-      <View style={{ flex: 1, alignItems: 'center', paddingHorizontal: 24, paddingTop: 56, paddingBottom: 28 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 44, paddingBottom: 28, alignItems: 'center' }}
+        showsVerticalScrollIndicator={false}
+      >
         <View
           style={{
             width: 72, height: 72, borderRadius: 36,
@@ -99,39 +115,39 @@ export default function OrderConfirmed() {
           <Check size={32} color={accent} strokeWidth={2.4} />
         </View>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 20 }}>
-          <T size={24} weight="bold" testID="confirmed-headline">
-            {rejected ? (order?.status_label ?? 'Not placed') : filled ? 'Filled · paper account' : 'Placed · paper account'}
-          </T>
-        </View>
-        <View style={{ marginTop: 8 }}><PaperChip testID="confirmed-paper-chip" /></View>
+        {/* "Paper" is in the sentence itself. A chip alone can be skimmed past. */}
+        <T size={24} weight="bold" align="center" style={{ marginTop: 20 }} testID="confirmed-headline">
+          {rejected
+            ? (order?.status_label ?? 'Paper order not placed')
+            : filled
+              ? 'Paper order filled.'
+              : 'Paper order submitted.'}
+        </T>
 
-        <T size={14} c={color.muted} align="center" lh={21} style={{ marginTop: 10 }} testID="confirmed-recap">
+        <T size={14} c={color.muted} align="center" lh={21} style={{ marginTop: 8 }} testID="confirmed-recap">
           {recap}
         </T>
-        <T size={13} c={color.muted} align="center" lh={20} style={{ marginTop: 2 }}>
-          {filled
-            ? 'The stop and target are attached as paper legs.'
-            : 'Stop and target attach as paper legs the moment it fills.'}
-        </T>
+        <View style={{ marginTop: 10 }}><PaperChip testID="confirmed-paper-chip" /></View>
 
-        <ObjectCard tone="kai" r={radius.xl} style={{ marginTop: 22, padding: 14, flexDirection: 'row', gap: 10, alignSelf: 'stretch' }}>
-          <KaiOrb size={24} />
-          <T size={13} lh={20} style={{ flex: 1 }} testID="confirmed-kai-line">
-            {rejected
-              ? (order?.status_detail ?? 'Nothing was placed. Nothing was charged — this is a practice account.')
-              : filled
-                ? 'It filled. I am watching the stop and the target from here.'
-                : 'Your paper order exists and has not filled yet — I am watching it and will tell you the moment it does.'}
-          </T>
-        </ObjectCard>
+        {/* The two steps. Nothing here claims a fill the engine has not reported. */}
+        {order ? (
+          <View style={{ alignSelf: 'stretch', marginTop: 20 }}>
+            <OrderProgress steps={orderSteps(order)} testID="confirmed-progress" />
+          </View>
+        ) : null}
 
         {order ? (
           <ObjectCard r={radius.xl} style={{ marginTop: 10, paddingHorizontal: 15, paddingVertical: 4, alignSelf: 'stretch' }}>
             {[
-              { label: 'Status', value: order.status_label },
-              { label: 'Filled so far', value: shareLabel(order.filled_qty) },
+              { label: 'Order type', value: TYPE_LABEL[order.order_type] },
+              ...(order.limit_price != null ? [{ label: 'Limit price', value: money(order.limit_price) }] : []),
+              { label: 'Quantity', value: shareLabel(order.qty) },
+              {
+                label: 'Filled',
+                value: `${order.filled_qty ?? 0} of ${order.qty ?? '—'}`,
+              },
               { label: 'Average fill', value: order.avg_fill_price != null ? money(order.avg_fill_price) : 'Not yet' },
+              { label: 'Account', value: 'Paper practice' },
             ].map((row, i, all) => (
               <View
                 key={row.label}
@@ -149,46 +165,77 @@ export default function OrderConfirmed() {
           </ObjectCard>
         ) : null}
 
+        <ObjectCard tone="kai" r={radius.xl} style={{ marginTop: 10, padding: 14, flexDirection: 'row', gap: 10, alignSelf: 'stretch' }}>
+          <KaiOrb size={24} />
+          <T size={13} lh={20} style={{ flex: 1 }} testID="confirmed-kai-line">
+            {rejected
+              ? (order?.status_detail ?? 'Nothing was placed. Nothing was charged — this is a practice account.')
+              : filled
+                ? 'It filled. The stop and the target are attached as paper legs, and I am watching both.'
+                : 'The order is in. A position appears after it fills.'}
+          </T>
+        </ObjectCard>
+
+        {/* Where this object is now, and the one action that follows from it. */}
+        {order ? (
+          <View style={{ alignSelf: 'stretch', marginTop: 10 }}>
+            <ObjectStateStrip
+              state={stateForOrderStatus(order.status)}
+              meta={shareLabel(order.qty)}
+              plain={order.status_detail}
+              /* `confirmed-status` is the name the existing browser proofs read
+                 the order's state by. The row it used to sit on is gone — the
+                 tracker above says the same thing better — so the name moves
+                 here rather than disappearing. */
+              testID="confirmed-status"
+            />
+          </View>
+        ) : null}
+
         {error ? <T size={12} c={color.red} align="center" style={{ marginTop: 10 }}>{error}</T> : null}
 
-        <View style={{ flex: 1 }} />
-
-        {filled && order?.position_id ? (
+        <View style={{ alignSelf: 'stretch', marginTop: 18 }}>
+          {filled && order?.position_id ? (
+            <Button
+              label={ACTION_LABEL.review_position}
+              height={52}
+              size={16}
+              arrow
+              testID="confirmed-primary"
+              onPress={() => router.replace(`/position/${encodeURIComponent(order.position_id as string)}` as never)}
+            />
+          ) : (
+            <Button
+              label={rejected ? 'Back to the chart' : ACTION_LABEL.view_order}
+              height={52}
+              size={16}
+              arrow={!rejected}
+              testID="confirmed-primary"
+              onPress={() => router.replace(
+                (rejected
+                  ? `/trade/${encodeURIComponent(order?.symbol ?? String(params.symbol ?? ''))}`
+                  : `/order/${encodeURIComponent(id)}`) as never,
+              )}
+            />
+          )}
+          <View style={{ height: 8 }} />
           <Button
-            label="View position"
-            height={52}
-            size={16}
-            testID="confirmed-primary"
-            onPress={() => router.replace(`/position/${encodeURIComponent(order.position_id as string)}` as never)}
-            style={{ alignSelf: 'stretch' }}
-          />
-        ) : (
-          <Button
-            label={rejected ? 'Back to the chart' : 'View pending order'}
-            height={52}
-            size={16}
-            testID="confirmed-primary"
+            label="Back to chart"
+            kind="ghost"
+            height={46}
+            testID="confirmed-done"
             onPress={() => router.replace(
-              (rejected
-                ? `/trade/${encodeURIComponent(order?.symbol ?? String(params.symbol ?? ''))}`
-                : `/order/${encodeURIComponent(id)}`) as never,
+              (order?.symbol
+                ? `/trade/${encodeURIComponent(order.symbol)}`
+                : '/home') as never,
             )}
-            style={{ alignSelf: 'stretch' }}
           />
-        )}
-        <View style={{ height: 8 }} />
-        <Button
-          label="Done"
-          kind="outline"
-          height={46}
-          testID="confirmed-done"
-          onPress={() => router.replace('/home' as never)}
-          style={{ alignSelf: 'stretch' }}
-        />
+        </View>
+
         <T size={11} c={color.dim} align="center" lh={16} style={{ marginTop: 10 }}>
           Paper fills use delayed prices, so a real fill would not be identical.
         </T>
-      </View>
+      </ScrollView>
     </Screen>
   );
 }

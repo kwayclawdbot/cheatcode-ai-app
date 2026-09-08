@@ -15,7 +15,8 @@
  * it is already there, it does not perform again.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, Platform, Pressable, View } from 'react-native';
+import { Animated, Easing, Platform, Pressable, View } from 'react-native';
+import { useReducedMotion } from '../a11y/context';
 import { KaiOrb } from '../../ui/KaiOrb';
 import { T } from '../../ui/Text';
 import { alpha, color, radius } from '../../ui/tokens';
@@ -27,18 +28,6 @@ const CURVE = Easing.bezier(0.22, 1, 0.36, 1);
 /** RN-web has no native driver; asking for one only prints a warning. */
 const NATIVE = Platform.OS !== 'web';
 
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    AccessibilityInfo.isReduceMotionEnabled?.()
-      .then((v) => { if (alive) setReduced(!!v); })
-      .catch(() => {});
-    const sub = AccessibilityInfo.addEventListener?.('reduceMotionChanged', (v) => setReduced(!!v));
-    return () => { alive = false; sub?.remove?.(); };
-  }, []);
-  return reduced;
-}
 
 function Materialize({
   step, still, pop = false, children, style,

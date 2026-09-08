@@ -70,12 +70,19 @@ export const PUT = authed(async (req: NextRequest, ctx: Ctx) => {
   // are the schema's mapping of it, so changing one word changes Kai's voice
   // AND the depth of the explanations, which is what the row promises.
   let onboarding = body.accessibility ? writePrefs(profile.onboarding, body.accessibility) : profile.onboarding;
-  if (body.experience || body.focus) {
-    const written = writeKaiProfile(onboarding, { experience: body.experience, focus: body.focus });
+  const experience = body.experience;
+  if (experience || body.focus) {
+    const written = writeKaiProfile(onboarding, { experience, focus: body.focus });
     onboarding = written.onboarding;
-    if (written.explanationLevel && !body.explanation_level) {
+    // `experience` rather than `body.experience!`: the non-null assertion was
+    // load-bearing on an invariant two files away — `writeKaiProfile` only
+    // returns a level when it was given an experience — so a patch carrying
+    // `focus` alone was one refactor away from writing `experience: undefined`
+    // over a real row. Narrowing on the local says the same thing and the
+    // compiler checks it.
+    if (experience && written.explanationLevel && !body.explanation_level) {
       profilePatch.explanation_level = written.explanationLevel;
-      profilePatch.experience = EXPERIENCE_TO_LEVEL[body.experience!];
+      profilePatch.experience = EXPERIENCE_TO_LEVEL[experience];
     }
   }
   if (onboarding !== profile.onboarding) profilePatch.onboarding = onboarding;

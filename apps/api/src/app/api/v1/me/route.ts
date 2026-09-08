@@ -113,7 +113,9 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
             ? 'Premium. Unlimited watches, full posting, and priority when you ask me things.'
             : 'Free. Paper trading, five watches at a time, and the beginner rooms.',
       },
-      entitlements: ent.flags,
+      // Every capability, with "not included" always expressed as a real JSON
+      // `false`. See `canonicalFlags` at the foot of this file.
+      entitlements: canonicalFlags(ent.flags),
       memory_enabled: profile.memory_enabled,
       prefs: {
         explanation_level: profile.explanation_level,
@@ -187,4 +189,45 @@ async function countBlock(userId: string) {
     unread_notifications: unread.count ?? 0,
     debriefs: debriefs.count ?? 0,
   };
+}
+
+/**
+ * ENTITLEMENT FLAGS LEAVE THIS ROUTE WITH ONE SHAPE PER MEANING.
+ *
+ * `entitlement_flags.value` is jsonb and is written by hand in seeds and
+ * migrations, so "this capability is off" has arrived in three different
+ * spellings over the life of the table: the boolean `false`, the JSON string
+ * `"false"`, and the double-encoded `"\"false\""`. The server's own readers
+ * tolerate all three — `hasTradePanel()` in `lib/entitlements.ts` lists them
+ * explicitly — because the gate must never fail open on a formatting question.
+ *
+ * THE APP HAD NO SUCH TOLERANCE, AND THAT IS AN F17 DISAGREEMENT WAITING TO
+ * HAPPEN. Its adapter infers "is this included?" from the value's JSON type:
+ * a boolean means what it says, but ANY string is read as an included
+ * capability with the string as its description. So a `trade_panel` seeded as
+ * the string `"false"` would gate correctly on every `/api/v1/trade` route and
+ * render on the plan screen as a feature the member has — which is precisely
+ * the class of bug where a paying customer is told they have something
+ * immediately before being refused it.
+ *
+ * Normalising here rather than in the app fixes it for every client at once,
+ * including the website and anything added later, and it costs one pass over a
+ * map of at most a dozen keys. Only boolean-ish spellings are touched; numbers
+ * and genuine scope strings (`"unlimited"`, `"beginner_rooms"`) are values,
+ * not switches, and are passed through untouched.
+ */
+function canonicalFlags(flags: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(flags)) out[key] = canonicalFlag(value);
+  return out;
+}
+
+function canonicalFlag(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  // Strip one layer of double-encoding before comparing, so `"\"true\""` and
+  // `"true"` are answered the same way.
+  const bare = value.replace(/^"(.*)"$/, '$1');
+  if (bare === 'true') return true;
+  if (bare === 'false') return false;
+  return value;
 }
