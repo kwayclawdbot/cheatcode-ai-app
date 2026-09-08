@@ -26,6 +26,35 @@ import {
   type ConversationMessage,
 } from "../../../../../packages/trade-ui/model";
 export type { TradeIdea, LevelKind, TradeStatus, KaiNote, ConversationMessage };
+/**
+ * THE GRADE, DRAWN ONE WAY.
+ *
+ * Gold is the grade's colour in this product — the same gold the alert card
+ * gives an A — and everything below an A is muted, because a badge that shouts
+ * at every rung is a badge nobody reads. Extracted the moment a second
+ * component needed it: the room used to draw its own grade in VIOLET, which
+ * said "Kai" rather than "graded" and was the only surface saying it that way.
+ *
+ * `word` is off for the compact preview, where the row beside it is already
+ * short of horizontal room and "B+" alone is unambiguous.
+ */
+function GradeBadge({
+  grade,
+  word = true,
+}: {
+  grade?: string | null;
+  word?: boolean;
+}) {
+  if (!grade) return null;
+  const top = grade.startsWith("A");
+  return (
+    <View style={[s.grade, { borderColor: top ? alpha.gold40 : alpha.ivory20 }]}>
+      <T c={top ? color.gold : color.muted} size={13}>
+        {word ? `${grade} setup` : grade}
+      </T>
+    </View>
+  );
+}
 function MemberAvatar({ message }: { message: ConversationMessage }) {
   const [failed, setFailed] = useState<string | null>(null);
   return (
@@ -356,25 +385,7 @@ export function SetupPreview({
           sub={idea.company}
           style={s.flex}
         />
-        {idea.grade && (
-          <View
-            style={[
-              s.grade,
-              {
-                borderColor: idea.grade.startsWith("A")
-                  ? alpha.gold40
-                  : alpha.ivory20,
-              },
-            ]}
-          >
-            <T
-              c={idea.grade.startsWith("A") ? color.gold : color.muted}
-              size={13}
-            >
-              {idea.grade} setup
-            </T>
-          </View>
-        )}
+        <GradeBadge grade={idea.grade} />
       </View>
       <T size={24} weight="medium" ls={-0.7} style={{ marginTop: 22 }}>
         {idea.title}
@@ -405,12 +416,31 @@ export function SetupPreview({
     </View>
   );
 }
+/**
+ * COMPACT TRADE CONTEXT — the object as it appears inside a discussion.
+ *
+ * `meta` and `children` are slots, not features. The kit owns what a trade
+ * object IS on every surface — the ticker and its logo, the grade, the status,
+ * the headline, and the three levels in one order with one set of colours. It
+ * does not own what a particular room happens to know: a last price, a watcher
+ * count, a band drawn from a levels-only endpoint. Those come in through the
+ * slots, so the room keeps its own facts without the kit growing a `watching`
+ * prop it would then have to explain on the alert card and the ticker page too.
+ *
+ * This is the same shape `ConversationPreview` already uses for `composer`.
+ */
 export function PinnedTradePreview({
   idea,
   onOpen,
+  meta,
+  children,
 }: {
   idea: TradeIdea;
   onOpen?: (idea: TradeIdea) => void;
+  /** Room-specific facts drawn top-right, under the status. */
+  meta?: ReactNode;
+  /** Drawn below the levels — e.g. a room's own band chart. */
+  children?: ReactNode;
 }) {
   const content = (
     <>
@@ -418,12 +448,16 @@ export function PinnedTradePreview({
         <Ticker
           symbol={idea.symbol}
           size={34}
-          sub={idea.company}
+          sub={idea.company || undefined}
           style={s.flex}
         />
-        <T size={12} c={color.muted}>
-          {STATUS_LABEL[idea.status]}
-        </T>
+        <GradeBadge grade={idea.grade} word={false} />
+        <View style={{ alignItems: "flex-end", gap: 4 }}>
+          <T size={12} c={color.muted}>
+            {STATUS_LABEL[idea.status]}
+          </T>
+          {meta}
+        </View>
       </View>
       <T style={{ marginVertical: 12 }}>{idea.title}</T>
       <View style={s.pinLevels}>
@@ -438,6 +472,7 @@ export function PinnedTradePreview({
           </View>
         ))}
       </View>
+      {children}
     </>
   );
   return onOpen ? (
@@ -473,19 +508,28 @@ export function ConversationPreview({
             )}
             <View style={s.flex}>
               <View style={s.messageHeader}>
+                {/*
+                 * SIGNAL IS LIT, BELT IS DYED — the law in features/social/belts.ts.
+                 *
+                 * The belt is the NAME's colour, never a chip beside it. This kit
+                 * shipped with the reverse (plain name, bordered chip) and the room
+                 * it is going into inks the name, so the two would have spent the
+                 * rest of their lives disagreeing about what a belt looks like.
+                 *
+                 * `belt.white` is #FFF7E8 — the same ivory `color.text` already was
+                 * — so a member with no rung, and a member on the bottom rung, both
+                 * render exactly as this component rendered them before. That is
+                 * the point of the ladder: four ivory names are what make the fifth
+                 * one legible as earned.
+                 *
+                 * Kai keeps violet. Kai has no rung and never will.
+                 */}
                 <T
                   weight="semibold"
-                  c={m.isKai ? color.violetLight : color.text}
+                  c={m.isKai ? color.violetLight : belt[m.belt ?? "white"]}
                 >
                   {m.name}
                 </T>
-                {m.belt && (
-                  <View style={[s.belt, { borderColor: belt[m.belt] }]}>
-                    <T size={11} c={color.muted}>
-                      {m.belt} belt
-                    </T>
-                  </View>
-                )}
                 {m.isKai && (
                   <T size={11} c={color.violetLight}>
                     AI
@@ -605,7 +649,6 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  belt: { borderLeftWidth: 3, paddingLeft: 6 },
   reply: {
     borderLeftWidth: 1,
     borderColor: alpha.ivory20,

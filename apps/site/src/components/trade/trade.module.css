@@ -261,6 +261,13 @@
   font-size: 14px;
   margin: 12px 0;
 }
+/* Status, and whatever facts the caller passed in, stacked at the right edge. */
+.pinMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
 .pinLevels {
   display: flex;
   gap: 20px;
@@ -323,11 +330,12 @@
   color: var(--muted);
   margin-left: auto;
 }
-.belt {
+/* Kai's tag. The belt chip that used to share this rule is gone: a belt dyes
+   the name, and Kai has no belt to dye. */
+.aiTag {
   border-left: 3px solid var(--violet);
   padding-left: 6px;
   font-size: 11px;
-  text-transform: capitalize;
   color: var(--muted);
 }
 .message p {

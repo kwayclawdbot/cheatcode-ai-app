@@ -340,18 +340,30 @@ export function SetupPreview({
     </article>
   );
 }
+/**
+ * Slots, not features — see the native twin for the full argument. The kit owns
+ * what a trade object IS; `meta` and `children` carry what one caller happens to
+ * know, so the kit does not grow a prop it would owe every other surface.
+ */
 export function PinnedTradePreview({
   idea,
   onOpen,
+  meta,
+  children,
 }: {
   idea: TradeIdea;
   onOpen?: (idea: TradeIdea) => void;
+  meta?: ReactNode;
+  children?: ReactNode;
 }) {
   const body = (
     <>
       <div className={s.row}>
         <TradeSymbol idea={idea} small />
-        <span className={s.muted}>{STATUS_LABEL[idea.status]}</span>
+        <span className={s.pinMeta}>
+          <span className={s.muted}>{STATUS_LABEL[idea.status]}</span>
+          {meta}
+        </span>
       </div>
       <p>{idea.title}</p>
       <div className={s.pinLevels}>
@@ -362,6 +374,7 @@ export function PinnedTradePreview({
           </span>
         ))}
       </div>
+      {children}
     </>
   );
   return onOpen ? (
@@ -402,16 +415,23 @@ export function ConversationPreview({
             </span>
             <div>
               <header>
-                <strong>{m.name}</strong>
-                {m.belt && (
-                  <span
-                    className={s.belt}
-                    style={{ borderColor: `var(--belt-${m.belt})` }}
-                  >
-                    {m.belt} belt
-                  </span>
-                )}
-                {m.isKai && <span className={s.belt}>AI</span>}
+                {/*
+                 * SIGNAL IS LIT, BELT IS DYED. The belt is the name's colour,
+                 * not a chip beside it — the same law the app's rooms follow,
+                 * kept here so the two renderings cannot drift. White is the
+                 * house ivory, so an unranked member reads exactly as before.
+                 * Kai's violet comes from .aiMessage; Kai has no rung.
+                 */}
+                <strong
+                  style={
+                    m.isKai
+                      ? undefined
+                      : { color: `var(--belt-${m.belt ?? "white"})` }
+                  }
+                >
+                  {m.name}
+                </strong>
+                {m.isKai && <span className={s.aiTag}>AI</span>}
                 <small>{m.timeLabel}</small>
               </header>
               {m.replyToName && (
