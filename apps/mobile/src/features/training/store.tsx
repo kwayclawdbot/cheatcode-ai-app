@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { DEFAULT_TRAINING_PROFILE, nextLessonNode } from './curriculum';
 import { nextOpenLessonId } from './gates';
+import { bestOfEach } from './xp';
 import type {
   CompetencySignal,
   LessonRunResult,
@@ -103,16 +104,35 @@ export function TrainingProvider({ children }: { children: React.ReactNode }) {
     }
 
     const day = profile.dayProgress[result.dayId] ?? { completedLessonIds: [], bestScorePct: null };
+    const alreadyDone = day.completedLessonIds.includes(result.lessonId);
     const dayProgress = {
       ...profile.dayProgress,
       [result.dayId]: {
-        completedLessonIds: day.completedLessonIds.includes(result.lessonId)
+        completedLessonIds: alreadyDone
           ? day.completedLessonIds
           : [...day.completedLessonIds, result.lessonId],
         bestScorePct:
           result.scorePct === null
             ? day.bestScorePct
             : Math.max(day.bestScorePct ?? 0, result.scorePct),
+        /**
+         * XP BANKS ONCE PER LESSON. A member may re-walk a lesson as often as
+         * they like — that is how a weak score gets fixed, and `bestScorePct`
+         * above rewards it. Paying the awards again on every replay would hand
+         * back exactly the farm the ledger exists to prevent: re-open the one
+         * lesson with a video in it and collect video XP forever. Writing the
+         * row under the lesson's own key makes a replay overwrite rather than
+         * accumulate, so a second walk through d1l1 is still one lesson's XP.
+         *
+         * The exception that matters: a member who failed the assessment the
+         * first time banked no assessment XP, and on the run where they pass it
+         * they should get it. Taking the best of each kind does that, while
+         * still never paying the same kind twice.
+         */
+        lessonXp: {
+          ...(day.lessonXp ?? {}),
+          [result.lessonId]: bestOfEach(day.lessonXp?.[result.lessonId], result.xp),
+        },
       },
     };
 

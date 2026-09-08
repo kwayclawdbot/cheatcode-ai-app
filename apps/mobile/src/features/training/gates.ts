@@ -5,7 +5,8 @@ import {
   lessonNodeById,
   lessonsForDay,
 } from './curriculum';
-import type { TrainingDay, TrainingProfile } from './types';
+import type { TrainingDay, TrainingProfile, TrainingXpLedger } from './types';
+import { XP_AWARD, addLedgers, competencyEarned, emptyLedger, totalXp } from './xp';
 
 /**
  * THE GATES — pure functions, no React, no storage, no side effects.
@@ -43,7 +44,42 @@ export type GateResult = {
   requirements: GateRequirementResult[];
   /** Every lesson node in the day was completed. */
   lessonsComplete: boolean;
+  /**
+   * THE ANTI-FARMING REQUIREMENT. The day must contain a PASSED assessment.
+   * Watching does not open a day, and neither does a day of teaching screens
+   * with the measurement skipped. See the note on `evaluateDayGate`.
+   */
+  assessment: GateRequirementResult;
+  /** What the day earned, split by kind, so a UI can show the provenance. */
+  xp: TrainingXpLedger;
 };
+
+/**
+ * XP earned on a day, by kind — the sum of that day's per-lesson rows. A day
+ * with no rows has earned nothing, which is the correct reading of both a fresh
+ * profile and one written before the ledger existed.
+ */
+export function dayXp(profile: TrainingProfile, dayId: string): TrainingXpLedger {
+  const rows = profile.dayProgress[dayId]?.lessonXp;
+  if (!rows) return emptyLedger();
+  return Object.values(rows).reduce<TrainingXpLedger>(
+    (acc, l) => addLedgers(acc, l),
+    emptyLedger(),
+  );
+}
+
+/** XP earned across the whole programme, by kind. */
+export function totalXpLedger(profile: TrainingProfile): TrainingXpLedger {
+  return TRAINING_DAYS.reduce<TrainingXpLedger>(
+    (acc, d) => addLedgers(acc, dayXp(profile, d.id)),
+    emptyLedger(),
+  );
+}
+
+/** The number on the profile header. */
+export function totalXpPoints(profile: TrainingProfile): number {
+  return totalXp(totalXpLedger(profile));
+}
 
 /** Best score posted on this day, or 0 when the member has not been measured. */
 export function dayBestScore(profile: TrainingProfile, dayId: string): number {
@@ -69,7 +105,21 @@ export function isDayComplete(profile: TrainingProfile, dayId: string): boolean 
 
 /**
  * The gate itself. A day passes when every one of its lessons is complete, the
- * day's best score clears the floor, and every named skill floor is met.
+ * day's best score clears the floor, every named skill floor is met, AND the
+ * day contains at least one passed assessment.
+ *
+ * THAT LAST CONDITION IS NOT REDUNDANT, and it is worth saying why, because it
+ * looks like it duplicates the score floor. The score floor asks "how well did
+ * you do on what you were measured on"; a member who was never measured has no
+ * score to fail. Once the human layer of this curriculum is a YouTube video,
+ * the cheapest path through a day is to open each lesson, let the video play
+ * and tap on — and the spec is explicit that this must not move a belt:
+ *
+ *     "Assessment + application are load-bearing; belts cannot be farmed by
+ *      letting videos play."
+ *
+ * So the day gate reads the XP ledger's provenance, not just its total. 100 XP
+ * of watching does not open Day 2. One passed assessment does.
  */
 export function evaluateDayGate(profile: TrainingProfile, dayId: string): GateResult {
   const day = dayById(dayId);
@@ -80,6 +130,13 @@ export function evaluateDayGate(profile: TrainingProfile, dayId: string): GateRe
       score: { label: 'Day score', needed: 0, actual: 0, met: false },
       requirements: [],
       lessonsComplete: false,
+      assessment: {
+        label: 'Assessment passed',
+        needed: XP_AWARD.assessment,
+        actual: 0,
+        met: false,
+      },
+      xp: emptyLedger(),
     };
   }
 
@@ -98,12 +155,25 @@ export function evaluateDayGate(profile: TrainingProfile, dayId: string): GateRe
 
   const lessonsComplete = isDayComplete(profile, dayId);
 
+  const xp = dayXp(profile, dayId);
+  const assessment: GateRequirementResult = {
+    label: 'Assessment passed',
+    needed: XP_AWARD.assessment,
+    actual: xp.assessment,
+    // `competencyEarned` is the single definition of this rule. The gate does
+    // not re-implement it, so there is exactly one place to change it.
+    met: competencyEarned(xp),
+  };
+
   return {
     dayId,
-    passed: lessonsComplete && score.met && requirements.every((r) => r.met),
+    passed:
+      lessonsComplete && score.met && assessment.met && requirements.every((r) => r.met),
     score,
     requirements,
     lessonsComplete,
+    assessment,
+    xp,
   };
 }
 

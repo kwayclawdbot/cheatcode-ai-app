@@ -105,7 +105,27 @@ export const DAY1_LESSON1: LessonContent = {
       presenter: 'Kway',
       duration: '1:42',
       poster: require('../../../../assets/training/thumb_video.jpg'),
-      // Honest state: the script is written, the footage is not shot.
+      /**
+       * HONEST STATE: the script is written, the footage is not shot.
+       *
+       * MATRIX ROW: `white-1/what_is_a_stock` in
+       * docs/training/BELT-CURRICULUM-MATRIX.md. That row carries three curated
+       * candidates that could stand in for this breakdown — the strongest being
+       * Martik Finance 2:31–4:02, whose two chapters map almost exactly onto
+       * screens 2 and 3 of this lesson.
+       *
+       * NONE OF THEM IS WIRED IN HERE, DELIBERATELY. Putting an external video
+       * in front of a paying member is the owner's call, not an authoring one,
+       * so the candidates live in the matrix for review and this screen stays
+       * what it honestly is. Switching to a curated pick later is a content
+       * edit, not an engineering one: set `status: 'curated'` and add the
+       * `curated` block — the renderer already draws it, and it will still
+       * refuse to link out until `owner_approved` is true.
+       *
+       * The recommendation on that row is to film the 1:42. This is the first
+       * human voice in the product and it is the one place a curated video
+       * cannot do the job, because the job is "who is teaching you".
+       */
       status: 'filming',
       statusNote:
         'This breakdown is being filmed. The lesson does not wait on it — everything it covers is on the card below.',

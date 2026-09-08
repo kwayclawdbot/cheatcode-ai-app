@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Linking, Pressable, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { T, Eyebrow, Num } from '../../../ui/Text';
 import { Button } from '../../../ui/Button';
@@ -15,6 +15,7 @@ import type {
   CompletionScreen,
   ConceptScreen,
   ConceptVisual,
+  CuratedVideo,
   KaiCheckScreen,
   LessonScreen,
   MarketApplicationScreen,
@@ -52,6 +53,13 @@ export type ScreenReport = {
   scored?: { correct: number; total: number };
   /** Signals this screen is able to report. */
   competencies?: Record<string, CompetencySignal>;
+  /**
+   * Set only by a screen that IS the assessment, and only with the verdict
+   * against its own pass mark. Scoring and passing are different facts — a
+   * quiz screen scores, an assessment screen decides — and the anti-farming
+   * rule in `xp.ts` pays out on the second one.
+   */
+  assessment?: { passed: boolean; scorePct: number };
 };
 
 export type ScreenProps<S extends LessonScreen> = {
@@ -479,14 +487,154 @@ export function QuizView({ screen, onAdvance }: ScreenProps<QuizScreen>) {
  * summary card that follows it carrying the actual teaching. The lesson does
  * not depend on the video, which is the point.
  */
+/** `4:12` / `1:04:30` → seconds, for the `?t=` deep link. */
+export function segmentSeconds(stamp: string): number | null {
+  const parts = stamp.trim().split(':');
+  if (parts.length < 2 || parts.length > 3) return null;
+  const nums = parts.map((p) => Number(p));
+  if (nums.some((n) => !Number.isFinite(n) || n < 0)) return null;
+  return parts.length === 3
+    ? nums[0] * 3600 + nums[1] * 60 + nums[2]
+    : nums[0] * 60 + nums[1];
+}
+
+/** The watch URL with the assigned start time on it. */
+export function segmentUrl(v: CuratedVideo): string {
+  const t = segmentSeconds(v.segment_start);
+  if (t === null) return v.youtube_url;
+  const join = v.youtube_url.includes('?') ? '&' : '?';
+  return `${v.youtube_url}${join}t=${t}s`;
+}
+
+/**
+ * THE ASSIGNED SEGMENT.
+ *
+ * The member is never "sent to YouTube": they are given a section of a specific
+ * video, told what to watch for, and told afterwards how the words in it map
+ * onto ours. So the card leads with the segment, not the platform, and Kai's
+ * normalisation note sits on it before the member leaves rather than after they
+ * come back — which is the only ordering that actually prevents an instructor's
+ * vocabulary from taking root.
+ *
+ * WHAT V1 DOES NOT DO. It does not play the video in the app. Nothing in the
+ * Expo SDK plays a YouTube URL: `expo-video` handles files and streams we host,
+ * and YouTube's terms require their player, which on native means embedding
+ * `react-native-youtube-iframe` on top of `react-native-webview`. That is a
+ * dependency, an Expo Go compatibility question and an autoplay/inline-policy
+ * question per platform, and none of it is needed to teach the lesson. Cutting
+ * playback at the segment END is the part that genuinely needs the player —
+ * only its progress callback can stop at 10:35 — so until that lands, the end
+ * timestamp is an instruction to the member rather than something enforced.
+ *
+ * AND IT DOES NOT LINK OUT UNTIL A PERSON SAYS SO. `owner_approved` is false
+ * on every pick this curriculum has not had signed off, and an unapproved card
+ * renders as what it is: a candidate under review, with its reasoning shown and
+ * no way to launch it. The lesson still teaches — the summary card below the
+ * video carries the concept — which is the property that makes the whole
+ * curated layer safe to build before a single video is approved.
+ */
+function CuratedSegmentCard({ video }: { video: CuratedVideo }) {
+  const approved = video.owner_approved;
+  const unverified = video.segment_needs_review === true;
+
+  const open = (url: string) => {
+    Linking.openURL(url).catch(() => {
+      /* No browser, or a malformed URL. Nothing to recover — the lesson does
+         not depend on the video, so failing quietly is the honest outcome. */
+    });
+  };
+
+  return (
+    <ObjectCard r={radius.xl} style={{ padding: 14, gap: 11 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View
+          style={{
+            paddingHorizontal: 9,
+            paddingVertical: 5,
+            borderRadius: radius.pill,
+            borderWidth: 0.5,
+            borderColor: approved ? alpha.gold40 : alpha.ivory16,
+            backgroundColor: approved ? alpha.gold12 : 'transparent',
+          }}
+        >
+          <T size={9.5} weight="bold" c={approved ? color.gold : color.dim} ls={0.8}>
+            {approved ? 'ASSIGNED SEGMENT' : 'AWAITING REVIEW'}
+          </T>
+        </View>
+        <T size={10.5} c={color.dim} style={{ flex: 1 }} numberOfLines={1}>
+          {video.channel}
+        </T>
+      </View>
+
+      <T size={14} weight="semibold" lh={20}>{video.title}</T>
+
+      {/* The segment, as a number the member can hold on to. */}
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+        <Num size={19} weight="bold" c={color.volt}>
+          {`${video.segment_start}–${video.segment_end}`}
+        </Num>
+        <T size={11} c={color.dim}>{`of ${video.full_length}`}</T>
+      </View>
+
+      {unverified ? (
+        <View style={{ flexDirection: 'row', gap: 7, alignItems: 'flex-start' }}>
+          <T size={11} weight="bold" c={color.gold} ls={0.6}>NEEDS REVIEW</T>
+          <T size={11.5} lh={17} c={color.muted} style={{ flex: 1 }}>
+            These timestamps have not been checked against the video yet.
+          </T>
+        </View>
+      ) : null}
+
+      <View style={{ gap: 3 }}>
+        <T size={11} weight="bold" c={color.muted} ls={0.8}>WHAT TO WATCH FOR</T>
+        <T size={12.5} lh={19} c={color.text}>{video.focus_note}</T>
+      </View>
+
+      {approved ? (
+        <View style={{ gap: 8 }}>
+          <Button
+            label={`Open ${video.segment_start} on YouTube`}
+            onPress={() => open(segmentUrl(video))}
+          />
+          <View style={{ flexDirection: 'row', gap: 14 }}>
+            {video.backup_url ? (
+              <Pressable onPress={() => open(video.backup_url!)}>
+                <T size={11.5} weight="semibold" c={color.muted}>Mirror</T>
+              </Pressable>
+            ) : null}
+            {video.deeper_url ? (
+              <Pressable onPress={() => open(video.deeper_url!)}>
+                <T size={11.5} weight="semibold" c={color.muted}>Go deeper (optional)</T>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      ) : (
+        <T size={11.5} lh={17} c={color.dim}>
+          This pick is waiting on sign-off, so it does not open yet. The lesson
+          below teaches the concept without it.
+        </T>
+      )}
+
+      {/* Kai pulls the vocabulary home. Violet, because Kai said it. */}
+      <KaiNote>{video.kai_normalization}</KaiNote>
+    </ObjectCard>
+  );
+}
+
 export function VideoView({ screen, onAdvance }: ScreenProps<VideoScreen>) {
   const ready = screen.status === 'ready';
+  const curated = screen.status === 'curated' ? screen.curated : undefined;
   return (
     <Frame type="video">
       <Eyebrow c={color.gold}>{screen.eyebrow} · {screen.duration}</Eyebrow>
       <T size={23} weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
       <T size={12.5} c={color.muted}>With {screen.presenter}</T>
 
+      {curated ? <CuratedSegmentCard video={curated} /> : null}
+
+      {/* Our own footage: the poster, and the honest production state over it. */}
+      {!curated && screen.poster !== undefined ? (
       <View
         style={{
           borderRadius: radius.xl,
@@ -536,6 +684,7 @@ export function VideoView({ screen, onAdvance }: ScreenProps<VideoScreen>) {
           </View>
         ) : null}
       </View>
+      ) : null}
 
       <ObjectCard r={radius.xl} style={{ padding: 14, gap: 9 }}>
         <T size={11} weight="bold" c={color.muted} ls={0.8}>WHAT IT COVERS</T>
@@ -1090,7 +1239,17 @@ export function MasteryChallengeView({ screen, onAdvance }: ScreenProps<MasteryC
     }
     // No teaching text anywhere in here — this screen measures, it does not
     // teach. The result lands on the completion screen.
-    onAdvance({ scored: { correct: nextCorrect, total }, competencies: nextSignals });
+    //
+    // The assessment verdict is reported alongside the raw score because this
+    // screen is the one that decides whether the lesson's competency was
+    // actually earned: below `passPct`, the run banks no assessment XP and the
+    // day gate stays shut. See `xp.ts`.
+    const scorePct = total > 0 ? Math.round((nextCorrect / total) * 100) : 0;
+    onAdvance({
+      scored: { correct: nextCorrect, total },
+      competencies: nextSignals,
+      assessment: { passed: scorePct >= screen.passPct, scorePct },
+    });
   };
 
   return (

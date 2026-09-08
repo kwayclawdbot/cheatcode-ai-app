@@ -24,6 +24,22 @@
  * The runner renders an honest "not built yet" panel if one is ever reached.
  */
 
+/* ────────────────────────────────── XP ──────────────────────────────────── */
+
+/**
+ * The four ways XP is earned. The awards themselves and the rule that governs
+ * them live in `xp.ts`; only the shapes are here, so that the profile below can
+ * name them without `types.ts` and `xp.ts` importing each other in a circle.
+ */
+export type TrainingXpKind = 'interactive' | 'video' | 'practice' | 'assessment';
+
+/**
+ * XP kept apart by how it was earned. A single total cannot answer "how did you
+ * get this?", and that is precisely the question the anti-farming rule has to
+ * ask before it lets a belt move — see `competencyEarned` in `xp.ts`.
+ */
+export type TrainingXpLedger = Record<TrainingXpKind, number>;
+
 /* ───────────────────────── skills, days, lesson nodes ───────────────────── */
 
 export type TrainingLessonKind =
@@ -224,24 +240,105 @@ export type QuizScreen = ScreenBase & {
   competency?: CompetencyTag;
 };
 
+/**
+ * A CURATED SEGMENT OF SOMEBODY ELSE'S VIDEO.
+ * ---------------------------------------------------------------------------
+ *
+ * The owner's decision (docs/training/BELT-YOUTUBE-CURRICULUM-SPEC.md) is that
+ * there is no separate YouTube library: YouTube IS the human-instruction layer
+ * inside the belt curriculum. The member is never "sent to YouTube" — CCAI
+ * assigned THIS video, and usually only a slice of it, because it teaches the
+ * concept this belt needs.
+ *
+ * Three of these fields are what stop that from being a link dump:
+ *
+ *   segment_start / segment_end — lessons assign the useful section, not the
+ *     whole upload. "Watch 4:12–10:35" is a factual claim about someone else's
+ *     video, which is why `segment_needs_review` exists below.
+ *   focus_note — what to watch for, and what to ignore. The instructor is not
+ *     teaching our curriculum; this sentence is what makes their video fit it.
+ *   kai_normalization — what Kai says afterwards to pull the vocabulary back
+ *     to the house's. "The instructor calls this a demand zone; in Foundations
+ *     we call that area support — same idea." External instructors never
+ *     control the curriculum. CCAI does, and this field is where that is
+ *     enforced sentence by sentence.
+ *
+ * REDUNDANCY. `backup_url` is not a nicety — a curated curriculum is built on
+ * assets we do not own, and they get deleted, go private, and get age-gated.
+ * The matrix carries a backup for every competency and `scripts/yt-verify.mjs`
+ * is the check that finds the rot before a member does.
+ */
+export type CuratedVideo = {
+  /** Canonical watch URL. The renderer appends the segment start itself. */
+  youtube_url: string;
+  /** Timestamps as the member reads them: `m:ss` or `h:mm:ss`. */
+  segment_start: string;
+  segment_end: string;
+  /** One line: what to watch for, and what to ignore. */
+  focus_note: string;
+  /** What Kai says after it, mapping the instructor's words onto ours. */
+  kai_normalization: string;
+  /** Same concept, different channel, for when the primary dies. */
+  backup_url?: string;
+  /** Optional, longer, more advanced. Never required to pass anything. */
+  deeper_url?: string;
+
+  /* ── provenance, so a pick can always be traced back to its review ──── */
+
+  /** Row in docs/training/BELT-CURRICULUM-MATRIX.md, e.g. `white-1/what_is_a_stock`. */
+  matrix_row: string;
+  title: string;
+  channel: string;
+  /** Whole-video length, for the "we are assigning 6 of its 21 minutes" line. */
+  full_length: string;
+
+  /**
+   * TRUE when the timestamps above were NOT confirmed against the real video —
+   * no chapter markers, no timestamped description, no transcript. The card
+   * says so on its face rather than presenting a guess as a fact, because a
+   * segment is the one thing here a member cannot check without leaving.
+   */
+  segment_needs_review?: boolean;
+
+  /**
+   * FALSE until the owner has signed this pick off.
+   *
+   * An external video is the one piece of a lesson that was not written by us,
+   * and shipping one into a live lesson on an agent's say-so puts a stranger in
+   * front of a paying member with no human in between. So an unapproved pick
+   * renders as a review card — the candidate, its segment, and the reasoning,
+   * with no link out and no play control — and the lesson still teaches without
+   * it. Approval is a person's decision, so it is a stored field, not a default.
+   */
+  owner_approved: boolean;
+};
+
 export type VideoScreen = ScreenBase & {
   type: 'video';
   eyebrow: string;
   title: string;
   presenter: string;
   duration: string;
-  poster: number;
+  /** Ours to show. Optional: a curated pick has no poster art we may use. */
+  poster?: number;
   /**
    * `filming` is the honest state for every human video in the product today:
    * the script is written, the footage is not shot. The renderer draws it as a
    * designed "in production" card — no play button, because nothing plays.
+   *
+   * `curated` means the human layer for this beat is somebody else's video and
+   * `curated` below carries which one. The three states are mutually exclusive
+   * and `training-gates-test.mts` enforces that a `curated` screen carries the
+   * assignment and the other two do not.
    */
-  status: 'filming' | 'ready';
+  status: 'filming' | 'ready' | 'curated';
   statusNote: string;
   /** The beats the video will cover, shown as the script outline. */
   outline: string[];
   /** The summary card that follows the video and carries the lesson. */
   afterCard: { title: string; rows: { label: string; text: string }[] };
+  /** Present exactly when `status` is `curated`. */
+  curated?: CuratedVideo;
 };
 
 export type AuctionScreen = ScreenBase & {
@@ -476,6 +573,21 @@ export type TrainingDayProgress = {
   completedLessonIds: string[];
   /** Best score the member has posted on this day's measured screens, or null. */
   bestScorePct: number | null;
+  /**
+   * XP earned on this day, keyed by lesson id and split by how it was earned.
+   *
+   * PER LESSON, NOT PER DAY, for two reasons. A day holds four to six lessons
+   * and each earns its own interactive/video/practice awards, so a single day
+   * ledger would have to be summed into — and a summed ledger cannot tell a
+   * replay from a new lesson, which is the exact hole a farmer walks through.
+   * Keyed by lesson, a re-walk overwrites its own row instead of adding to it.
+   *
+   * Optional because a profile written before the ledger existed has no rows,
+   * and a missing ledger must read as "no XP", never as "some XP of unknown
+   * origin" — the anti-farming rule is only as good as the provenance it sees.
+   * Read it through `dayXp()` in `gates.ts`, which does the summing.
+   */
+  lessonXp?: Record<string, TrainingXpLedger>;
 };
 
 /**
@@ -503,4 +615,16 @@ export type LessonRunResult = {
   scorePct: number | null;
   masteryGain: number;
   competencies: Record<string, CompetencySignal>;
+  /**
+   * What this run earned, split by kind. The assessment line is zero unless the
+   * member actually cleared the lesson's pass mark — which is what makes the
+   * gate's assessment requirement mean something.
+   */
+  xp: TrainingXpLedger;
+  /**
+   * Whether an assessment screen was reached AND passed. Carried separately
+   * from the ledger because "no assessment in this lesson" and "failed the
+   * assessment" both produce zero XP and are not the same thing to a tutor.
+   */
+  assessmentPassed: boolean;
 };

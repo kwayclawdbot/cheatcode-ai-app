@@ -105,11 +105,23 @@ ok(
   evaluateDayGate(afterL1, 'day-1').lessonsComplete === false,
 );
 
+/**
+ * A lesson walked properly: taught, watched, drilled, and the assessment
+ * passed. `xp.ts` is the authority on what that is worth.
+ */
+const fullRun = { interactive: 10, video: 10, practice: 20, assessment: 30 };
+/** The farm: the video played, nothing else happened. */
+const watchedOnly = { interactive: 0, video: 10, practice: 0, assessment: 0 };
+
 head('After finishing all of Day 1');
 const day1Done = clone(afterL1);
 day1Done.completedLessonIds = [...TRAINING_DAYS[0].lessonIds];
 day1Done.dayProgress = {
-  'day-1': { completedLessonIds: [...TRAINING_DAYS[0].lessonIds], bestScorePct: 82 },
+  'day-1': {
+    completedLessonIds: [...TRAINING_DAYS[0].lessonIds],
+    bestScorePct: 82,
+    lessonXp: { d1l1: { ...fullRun } },
+  },
 };
 ok('the Day 1 gate passes', evaluateDayGate(day1Done, 'day-1').passed);
 ok('Day 2 opens', isDayUnlocked(day1Done, 'day-2'));
@@ -167,6 +179,142 @@ ok(
 ok(
   'and the auction book carries no invented ticker',
   l1.screens.every((s) => s.type !== 'auction' || s.symbol === undefined),
+);
+
+/* ═══════════════════ XP, AND THE RULE THAT VIDEOS CANNOT BUY A BELT ═══════ */
+
+const { XP_AWARD, competencyEarned, isVideoOnly, ledgerForScreens, bestOfEach, totalXp } =
+  await import('../src/features/training/xp.ts');
+const { dayXp, totalXpPoints } = await import('../src/features/training/gates.ts');
+
+head('The XP awards are the spec’s numbers');
+ok('interactive is 10', XP_AWARD.interactive === 10);
+ok('video is 10', XP_AWARD.video === 10);
+ok('Kai practice is 20', XP_AWARD.practice === 20);
+ok('assessment passed is 30', XP_AWARD.assessment === 30);
+ok(
+  'and watching is never worth more than doing',
+  XP_AWARD.video < XP_AWARD.practice && XP_AWARD.video < XP_AWARD.assessment,
+);
+
+head('VIDEO XP ALONE CANNOT SATISFY A COMPETENCY — the anti-farming rule');
+ok('a video and nothing else earns no competency', !competencyEarned(watchedOnly));
+ok('and is recognised as video-only', isVideoOnly(watchedOnly));
+ok(
+  'TEN videos and nothing else still earn no competency',
+  !competencyEarned({ interactive: 0, video: 100, practice: 0, assessment: 0 }),
+);
+ok(
+  'a full day of teaching and drills, assessment skipped, earns no competency',
+  !competencyEarned({ interactive: 10, video: 10, practice: 20, assessment: 0 }),
+);
+ok(
+  'even 60 XP of teaching and practice does not clear it',
+  totalXp({ interactive: 10, video: 10, practice: 20, assessment: 0 }) === 40 &&
+    !competencyEarned({ interactive: 10, video: 10, practice: 20, assessment: 0 }),
+);
+ok('the passed assessment is what earns it', competencyEarned(fullRun));
+ok(
+  'and an assessment ALONE earns it — the measurement is the load-bearing part',
+  competencyEarned({ interactive: 0, video: 0, practice: 0, assessment: 30 }),
+);
+
+head('A lesson only banks what it actually did');
+const lessonScreens = ['opening', 'concept', 'quiz', 'video', 'kai_check', 'mastery_challenge', 'completion'] as const;
+const passed = ledgerForScreens(lessonScreens, true);
+const failed = ledgerForScreens(lessonScreens, false);
+ok('a passed run banks all four kinds', totalXp(passed) === 70);
+ok('a failed run banks the same work…', failed.interactive === 10 && failed.video === 10 && failed.practice === 20);
+ok('…but no assessment XP', failed.assessment === 0);
+ok('so a failed run satisfies nothing', !competencyEarned(failed));
+ok(
+  'a lesson with no assessment screen banks none either',
+  ledgerForScreens(['opening', 'concept', 'video', 'completion'], true).assessment === 0,
+);
+ok(
+  'each kind is paid once, however many screens of it there are',
+  ledgerForScreens(['concept', 'concept', 'concept', 'quiz', 'quiz'], false).interactive === 10,
+);
+ok(
+  'the completion screen itself is worth nothing',
+  totalXp(ledgerForScreens(['completion'], true)) === 0,
+);
+ok(
+  'a video-only lesson produces exactly the farm case',
+  isVideoOnly(ledgerForScreens(['video'], false)),
+);
+
+head('Replaying a lesson does not pay twice');
+ok(
+  'a second walk banks no extra video XP',
+  bestOfEach(fullRun, fullRun).video === XP_AWARD.video,
+);
+ok(
+  'but passing the assessment on the retry DOES get picked up',
+  bestOfEach(failed, passed).assessment === XP_AWARD.assessment,
+);
+ok(
+  'and a worse retry never takes XP away',
+  bestOfEach(passed, failed).assessment === XP_AWARD.assessment,
+);
+
+head('THE GATE ENFORCES IT — a day of watching does not open the next day');
+const farmer = clone(day1Done);
+// Every lesson finished, a good score on the board, and the whole day watched.
+farmer.dayProgress['day-1'].lessonXp = { d1l1: { ...watchedOnly } };
+ok('the lessons are all complete', evaluateDayGate(farmer, 'day-1').lessonsComplete);
+ok('the score floor is met', evaluateDayGate(farmer, 'day-1').score.met);
+ok('every skill floor is met', evaluateDayGate(farmer, 'day-1').requirements.every((r) => r.met));
+ok(
+  'and the day STILL does not pass, because nothing was assessed',
+  !evaluateDayGate(farmer, 'day-1').passed,
+);
+ok(
+  'the gate names the reason rather than locking silently',
+  evaluateDayGate(farmer, 'day-1').assessment.met === false,
+);
+ok('so Day 2 stays shut', !isDayUnlocked(farmer, 'day-2'));
+ok(
+  'and the day it did earn is reported honestly: 10 XP, all of it video',
+  dayXp(farmer, 'day-1').video === 10 && totalXpPoints(farmer) === 10,
+);
+
+head('The same member, having passed the assessment');
+ok('the assessment requirement is met', evaluateDayGate(day1Done, 'day-1').assessment.met);
+ok('the day passes', evaluateDayGate(day1Done, 'day-1').passed);
+ok('Day 2 opens', isDayUnlocked(day1Done, 'day-2'));
+ok('and the XP total reflects the real work', totalXpPoints(day1Done) === 70);
+
+head('A profile written before the ledger existed is not credited with XP');
+const legacy = clone(day1Done);
+delete (legacy.dayProgress['day-1'] as { lessonXp?: unknown }).lessonXp;
+ok('its day XP reads as zero', totalXp(dayXp(legacy, 'day-1')) === 0);
+ok('the gate does not pass on missing evidence', !evaluateDayGate(legacy, 'day-1').passed);
+
+head('Curated videos are honest by construction');
+const videoScreens = l1.screens.filter(
+  (s): s is Extract<typeof s, { type: 'video' }> => s.type === 'video',
+);
+ok(
+  'a curated screen always carries its assignment',
+  videoScreens.every((s) => s.status !== 'curated' || s.curated !== undefined),
+);
+ok(
+  'and a non-curated screen never does',
+  videoScreens.every((s) => s.status === 'curated' || s.curated === undefined),
+);
+ok(
+  'every curated pick names the matrix row it came from',
+  videoScreens.every((s) => !s.curated || s.curated.matrix_row.length > 0),
+);
+ok(
+  'every curated pick carries a Kai normalization note',
+  videoScreens.every((s) => !s.curated || s.curated.kai_normalization.length > 0),
+);
+ok(
+  'and no external video is live without the owner approving it',
+  videoScreens.every((s) => !s.curated || s.curated.owner_approved === false),
+  'an approved pick is in the content files — confirm that was a person’s decision',
 );
 
 head('An unknown id is never quietly unlocked');

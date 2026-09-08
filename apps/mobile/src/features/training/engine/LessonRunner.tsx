@@ -14,6 +14,7 @@ import type {
   TrainingLessonNode,
 } from '../types';
 import { SKILL_LABEL } from '../labels';
+import { ledgerForScreens } from '../xp';
 import {
   AuctionView,
   CompletionView,
@@ -67,6 +68,13 @@ export function LessonRunner({
   const [correct, setCorrect] = useState(0);
   const [answered, setAnswered] = useState(0);
   const [signals, setSignals] = useState<Record<string, CompetencySignal>>({});
+  /**
+   * Whether this run cleared its assessment. It starts false and only an
+   * assessment screen reporting its own verdict can set it — so a member who
+   * never reached the measurement, or reached it and missed the pass mark,
+   * finishes the lesson with no assessment XP and an unopened day gate.
+   */
+  const [assessmentPassed, setAssessmentPassed] = useState(false);
   const [saved, setSaved] = useState<LessonRunResult | null>(null);
   const scroller = useRef<ScrollView | null>(null);
   const writing = useRef(false);
@@ -89,6 +97,9 @@ export function LessonRunner({
     }
     if (report?.competencies) {
       setSignals((s) => ({ ...s, ...report.competencies }));
+    }
+    if (report?.assessment?.passed) {
+      setAssessmentPassed(true);
     }
     setIndex((i) => Math.min(i + 1, screens.length - 1));
     scroller.current?.scrollTo({ y: 0, animated: false });
@@ -129,10 +140,16 @@ export function LessonRunner({
       scorePct,
       masteryGain: c.masteryGain,
       competencies: signals,
+      // Reaching the completion screen means every screen before it was walked,
+      // so the lesson's own screen list is the honest record of what was done.
+      // What it cannot tell us is whether the assessment was PASSED, which is
+      // why that arrives separately and gates the assessment award.
+      xp: ledgerForScreens(screens.map((s) => s.type), assessmentPassed),
+      assessmentPassed,
     };
     setSaved(result);
     await completeLessonRun(result);
-  }, [saved, node, scorePct, signals, completeLessonRun]);
+  }, [saved, node, scorePct, signals, completeLessonRun, screens, assessmentPassed]);
 
   React.useEffect(() => {
     if (completion) void persistOnce(completion);
