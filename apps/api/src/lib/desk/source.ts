@@ -20,13 +20,21 @@
 import { kaiSource, readAll, type KaiSource } from '../swing/source';
 import { attachLiveQuotes, quoteFor } from '../market/live';
 import type {
-  DeskCatalyst, DeskPick, DeskTheme, DeskThemeLead, DeskWatchRow, IdeaGrade, PickOutcome,
-  WatchState,
+  DeskCatalyst, DeskCompany, DeskPick, DeskTheme, DeskThemeLead, DeskWatchRow, IdeaGrade,
+  PickOutcome, WatchState,
 } from '@shared/desk';
+import { IDEA_GRADE_SCALE, gradeRank } from '@shared/desk';
 
 export { kaiSource, type KaiSource };
 
-const GRADES = ['A+', 'A', 'B+', 'B', 'C', 'D'] as const;
+/**
+ * The grade ladder, read from the contract rather than kept here.
+ *
+ * There used to be a second copy on this line reading `['A+','A','B+','B','C',
+ * 'D']`, and it was the reason every A-, B- and C+ the analyst wrote was thrown
+ * away on the way to the app. One list, one order, one place to widen it.
+ */
+const GRADES = IDEA_GRADE_SCALE;
 const OUTCOMES = ['hit', 'miss', 'not_scored'] as const;
 const STATES = [
   'no_base', 'coiled', 'armed', 'triggered', 'failed',
@@ -97,7 +105,7 @@ export type StatusRow = {
   pick_date: string | null;
 };
 
-type ThemeRow = {
+export type ThemeRow = {
   as_of: string; theme: string; magnitude: number | null; timeline: string | null;
   conviction: number | null; trajectory: string | null; reason: string | null;
   out_of_favour: boolean | null; entries_total: number | null;
@@ -288,15 +296,170 @@ export function shapeWatchlist(
   // Something the desk argued for outranks something added by hand, and within
   // each group the strongest idea comes first. A watchlist sorted by ticker is
   // an address book.
-  const rank = (g: IdeaGrade | null) => (g ? GRADES.indexOf(g) : GRADES.length);
   rows.sort((a, b) =>
     (a.source === b.source ? 0 : a.source === 'pick' ? -1 : 1) ||
-    rank(a.grade) - rank(b.grade) ||
+    gradeRank(a.grade) - gradeRank(b.grade) ||
     a.ticker.localeCompare(b.ticker));
 
   const asOf = status.reduce<string | null>(
     (max, s) => (s.updated_at && (!max || s.updated_at > max) ? s.updated_at : max), null);
   return { asOf, rows };
+}
+
+/* ------------------------------------------------------------------------ */
+/* the research list — companies worth understanding                         */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * `desk_research`, one row per company per publication day.
+ *
+ * The desk publishes this list separately from the watchlist because the two
+ * answer different questions. `watchlist_status` holds what the desk ACTED on —
+ * the brain's own loader filters `direction in ('long','short')` — so a company
+ * the desk read, graded and did not take a position in never reached the app at
+ * all. Twenty-seven graded companies, about eleven rows. This table is the
+ * judgement of the businesses, and it is the thing the Invest lane reads.
+ *
+ * Same database, same key, same `readAll`. No new env var and no new secret:
+ * the brain publishes it into the schema this module already reads.
+ */
+export type ResearchRow = {
+  as_of: string; ticker: string; company: string | null; business_line: string | null;
+  idea_grade: string | null; idea_grade_why: string | null; theme: string | null;
+  pick_date: string | null; direction: string | null; status: string | null;
+  horizon: string | null; entry_price: number | null; entry_stamped_on: string | null;
+  potential_move_pct: number | null; potential_move_basis: string | null;
+  source_pick: string | null; rank: number | null; created_at: string | null;
+};
+
+/** A string the desk actually wrote, or nothing. Whitespace is not a sentence. */
+const text = (v: string | null | undefined): string | null => v?.trim() || null;
+
+export function toCompany(r: ResearchRow): DeskCompany {
+  return {
+    asOf: r.as_of,
+    ticker: r.ticker.trim().toUpperCase(),
+    company: text(r.company),
+    // A blank business line is left blank. The screen omits the element rather
+    // than printing a dash, because a dash on this row reads as a company that
+    // does nothing rather than as a line the desk has not written yet.
+    businessLine: text(r.business_line),
+    ideaGrade: grade(text(r.idea_grade)),
+    ideaGradeWhy: text(r.idea_grade_why),
+    theme: text(r.theme),
+    pickDate: text(r.pick_date),
+    direction: direction(text(r.direction)),
+    status: text(r.status),
+    horizon: text(r.horizon),
+    // The close on the day the write-up was filed, carried WITH its date. It is
+    // not a quote and it is not an entry — nothing downstream may present it as
+    // either, and it is the only price on this surface at all.
+    entryPrice: num(r.entry_price),
+    entryStampedOn: text(r.entry_stamped_on),
+    potentialMovePct: num(r.potential_move_pct),
+    potentialMoveBasis: text(r.potential_move_basis),
+    sourcePick: text(r.source_pick),
+    rank: num(r.rank),
+  };
+}
+
+/**
+ * The published day's list, in the desk's own order — no I/O, so this is the
+ * part that can be wrong without erroring.
+ *
+ * Only the newest `as_of` survives. Mixing two publication days would put a
+ * fortnight-old grade next to today's under one heading with one date on it,
+ * and nothing on the row would say which was which. Within the day the desk's
+ * `rank` is the order; a row with no rank sorts after the ranked ones on grade,
+ * and an unranked, ungraded row sorts last by ticker rather than jumping the
+ * queue on a null.
+ */
+export function shapeResearch(rows: ResearchRow[]): DeskCompany[] {
+  const latest = rows.reduce<string | null>(
+    (max, r) => (r.as_of && (!max || r.as_of > max) ? r.as_of : max), null);
+  if (!latest) return [];
+
+  const seen = new Set<string>();
+  const out: DeskCompany[] = [];
+  for (const r of rows) {
+    if (r.as_of !== latest) continue;
+    const c = toCompany(r);
+    // `(as_of, ticker)` is the primary key, so a duplicate cannot happen in the
+    // table. It can happen in a payload, and one company printed twice under
+    // two grades is a list nobody can trust.
+    if (seen.has(c.ticker)) continue;
+    seen.add(c.ticker);
+    out.push(c);
+  }
+
+  const at = (c: DeskCompany) => (c.rank === null ? Number.MAX_SAFE_INTEGER : c.rank);
+  out.sort((a, b) =>
+    at(a) - at(b) ||
+    gradeRank(a.ideaGrade) - gradeRank(b.ideaGrade) ||
+    a.ticker.localeCompare(b.ticker));
+  return out;
+}
+
+/**
+ * The table not being there is an honest empty list, not a failure.
+ *
+ * On 8 September `desk_research` answered `404 PGRST205` — the brain had not
+ * created it yet — and the whole watchlist board would have gone to its error
+ * state over a section that simply has nothing in it. A missing table means the
+ * desk has not published a list; the screen says that in words. ANY OTHER
+ * failure still throws, because "the read broke" and "there is nothing to read"
+ * are different facts and a screen must not state the second when it means the
+ * first.
+ */
+const NO_SUCH_TABLE = /read failed: 404/;
+
+const notPublished = (e: unknown): boolean =>
+  e instanceof Error && NO_SUCH_TABLE.test(e.message);
+
+/**
+ * The name the desk PUBLISHED for a company, or nothing.
+ *
+ * `brain_picks.company` is the raw string off the market-data feed, listing
+ * boilerplate and all — "SiTime Corporation Common Stock". The research list is
+ * written from cleaned names, so on 8 September the card read "SiTime
+ * Corporation" and the write-up it opened read "SiTime Corporation Comm…",
+ * which is one company wearing two names inside one tap.
+ *
+ * The cleaning is NOT redone here. This reads the value the desk published and
+ * prefers it; where the desk has published nothing for a ticker, the feed
+ * string stands, because a name off the feed beats no name at all.
+ */
+export async function loadResearchName(
+  src: KaiSource, ticker: string,
+): Promise<string | null> {
+  try {
+    const rows = await readAll<{ company: string | null }>(
+      src, 'desk_research',
+      `select=company&ticker=eq.${encodeURIComponent(ticker.trim().toUpperCase())}` +
+      '&order=as_of.desc&limit=1',
+    );
+    return text(rows[0]?.company ?? null);
+  } catch (e) {
+    if (notPublished(e)) return null;
+    throw e;
+  }
+}
+
+/** The latest published research list. Empty when the desk has not published. */
+export async function loadResearch(src: KaiSource): Promise<DeskCompany[]> {
+  try {
+    const latest = await readAll<{ as_of: string }>(
+      src, 'desk_research', 'select=as_of&order=as_of.desc&limit=1');
+    const asOf = latest[0]?.as_of ?? null;
+    if (!asOf) return [];
+
+    const rows = await readAll<ResearchRow>(
+      src, 'desk_research', `select=*&as_of=eq.${encodeURIComponent(asOf)}&order=rank.asc`);
+    return shapeResearch(rows);
+  } catch (e) {
+    if (notPublished(e)) return [];
+    throw e;
+  }
 }
 
 /** Every write-up for one company, newest first. Empty if the desk never wrote it. */
@@ -306,12 +469,34 @@ export async function loadPicksForTicker(src: KaiSource, ticker: string): Promis
   return [...rows].sort(byDateDesc).map(toPick);
 }
 
-function toTheme(r: ThemeRow): DeskTheme {
+/**
+ * A RUN THAT COULD NOT JUDGE WROTE ITS FAILURE AS A ZERO.
+ *
+ * On 6 September the theme run lost its credit part way through and stored
+ * `magnitude 0, conviction 0` with the reason `NOT JUDGED — ordered by recent
+ * activity only` against 25 of the 27 themes behind today's desk. The app read
+ * those zeros as readings and drew "How big if it is right — 0.0 of 10" with an
+ * empty bar, which is the screen stating the desk's lowest possible judgement
+ * about a theme it had scored 7.5 the day before.
+ *
+ * So the sentence the brain writes when it did not judge is matched here, the
+ * same way `NO_CALL_LINE` is matched for a write-up that never reached a call,
+ * and the numbers beside it are refused rather than passed on. A theme that was
+ * genuinely judged zero still comes through as zero — absence and a low score
+ * are different facts and the screen says them differently.
+ */
+const NOT_JUDGED = /^\s*NOT JUDGED\b/i;
+
+export function toTheme(r: ThemeRow): DeskTheme {
+  const judged = !(r.reason && NOT_JUDGED.test(r.reason));
   return {
     theme: r.theme,
-    magnitude: r.magnitude,
+    magnitude: judged ? num(r.magnitude) : null,
     timeline: r.timeline,
-    conviction: r.conviction,
+    conviction: judged ? num(r.conviction) : null,
+    // Filled in by `withLastReading` from the row the reading actually came
+    // from. A theme mapped on its own carries the day it was written.
+    judgedOn: judged && num(r.magnitude) !== null ? r.as_of : null,
     trajectory: r.trajectory,
     reason: r.reason,
     outOfFavour: r.out_of_favour === true,
@@ -320,6 +505,67 @@ function toTheme(r: ThemeRow): DeskTheme {
     mined: r.mined === true,
     tickers: strings(r.tickers),
   };
+}
+
+/**
+ * THE LAST READING THE DESK ACTUALLY TOOK, carried onto today's row.
+ *
+ * A run that could not judge must not erase a judgement that was made. The 6
+ * September run ran out of credit and wrote nothing it had scored; the desk had
+ * scored AI-Infrastructure-Services 7.5 for size and 7 for conviction the day
+ * before, and that is still what the desk thinks. Showing an absence there
+ * would throw away a true reading and present the desk as having no opinion,
+ * which is its own kind of dishonesty.
+ *
+ * So the JUDGEMENT — size, timing, conviction, heading, and the sentence
+ * explaining it — comes off the last row that was actually judged, and
+ * `judgedOn` says which day that was so the screen can never present a reading
+ * from the 5th as though it were taken today. Everything that describes
+ * CURRENT activity — how many entries, whether it has been mined, the tickers
+ * under it — stays on today's row, because those are facts about now and were
+ * not affected by the outage.
+ */
+export function withLastReading(latest: DeskTheme, judged: DeskTheme | null): DeskTheme {
+  if (latest.magnitude !== null || !judged) return latest;
+  return {
+    ...latest,
+    magnitude: judged.magnitude,
+    timeline: judged.timeline,
+    conviction: judged.conviction,
+    trajectory: judged.trajectory,
+    reason: judged.reason,
+    outOfFavour: judged.outOfFavour,
+    judgedOn: judged.judgedOn,
+  };
+}
+
+/**
+ * The last judged row for each of these themes, if there is one.
+ *
+ * `magnitude=not.is.null` throws out the empty rows in the database rather than
+ * over the wire; the mapping then throws out any row whose reason says the run
+ * did not judge, because for one day in September those rows carried a zero
+ * that passed the SQL filter and meant nothing.
+ */
+async function lastJudged(
+  src: KaiSource, themes: string[],
+): Promise<Map<string, DeskTheme>> {
+  const out = new Map<string, DeskTheme>();
+  if (!themes.length) return out;
+  // Each value is encoded on its own and the commas are left as commas — they
+  // are the list separator PostgREST reads, and encoding them turns a list of
+  // themes into one theme with commas in its name.
+  const list = themes.map((t) => `"${encodeURIComponent(t).replace(/"/g, '')}"`).join(',');
+  const rows = await readAll<ThemeRow>(
+    src, 'theme_history',
+    `select=*&magnitude=not.is.null&theme=in.(${list})&order=as_of.desc`);
+  for (const r of rows) {
+    if (out.has(r.theme)) continue;
+    const t = toTheme(r);
+    if (t.magnitude === null) continue;
+    out.set(r.theme, t);
+  }
+  return out;
 }
 
 /**
@@ -338,8 +584,17 @@ export async function loadThemes(src: KaiSource): Promise<{
 
   const rows = await readAll<ThemeRow>(
     src, 'theme_history', `select=*&as_of=eq.${encodeURIComponent(asOf)}`);
-  const themes = rows.map(toTheme)
-    .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0) || a.theme.localeCompare(b.theme));
+  const today = rows.map(toTheme);
+  const earlier = await lastJudged(
+    src, today.filter((t) => t.magnitude === null).map((t) => t.theme));
+  // Sorted on size alone, largest first — on the reading each theme actually
+  // has, whichever day it was taken. A theme NOTHING has ever judged is not a
+  // small one: it goes last rather than being ranked as though it scored zero,
+  // which is the same mistake in the sort that the zero was in the render.
+  const size = (t: DeskTheme) => (t.magnitude === null ? -Infinity : t.magnitude);
+  const themes = today
+    .map((t) => withLastReading(t, earlier.get(t.theme) ?? null))
+    .sort((a, b) => size(b) - size(a) || a.theme.localeCompare(b.theme));
   return { asOf, themes };
 }
 
@@ -347,7 +602,11 @@ export async function loadTheme(src: KaiSource, theme: string): Promise<DeskThem
   const rows = await readAll<ThemeRow>(
     src, 'theme_history',
     `select=*&theme=eq.${encodeURIComponent(theme)}&order=as_of.desc&limit=1`);
-  return rows[0] ? toTheme(rows[0]) : null;
+  if (!rows[0]) return null;
+  const latest = toTheme(rows[0]);
+  if (latest.magnitude !== null) return latest;
+  const earlier = await lastJudged(src, [theme]);
+  return withLastReading(latest, earlier.get(theme) ?? null);
 }
 
 /**

@@ -23,16 +23,20 @@ import { WATCH_STATE_COPY } from '@shared/desk';
 /**
  * The grade, as a mark rather than a medal.
  *
- * A+ and A are the two the scale exists to find, so they are the only ones
- * that get colour. Everything else is legible and quiet — "most are B or C"
- * is the desk's own instruction to itself, and a screen that celebrates a C
- * is arguing with the thing it is displaying.
+ * The A family is what the scale exists to find, so it is the only one that
+ * gets colour. Everything else is legible and quiet — "most are B or C" is the
+ * desk's own instruction to itself, and a screen that celebrates a C is arguing
+ * with the thing it is displaying.
+ *
+ * A- counts as an A here on purpose. The modifier is the analyst being precise
+ * inside a band, not a demotion out of it, and the day the scale grew from six
+ * marks to ten was the day this line had to stop naming its two grades by hand.
  */
 export function GradeMark({ grade, size = 15 }: { grade: IdeaGrade | null; size?: number }) {
   if (!grade) {
     return <T size={size - 3} c={color.dim}>ungraded</T>;
   }
-  const strong = grade === 'A+' || grade === 'A';
+  const strong = grade.startsWith('A');
   return (
     <View
       accessibilityLabel={`Idea grade ${grade}`}

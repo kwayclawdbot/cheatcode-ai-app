@@ -13,9 +13,36 @@
 import { z } from 'zod';
 import { MarketQuote } from './api';
 
-/** A+ down to D. The grade is on the IDEA, not on this quarter's trade. */
-export const IdeaGrade = z.enum(['A+', 'A', 'B+', 'B', 'C', 'D']);
+/**
+ * A+ down to D. The grade is on the IDEA, not on this quarter's trade.
+ *
+ * THE SCALE HAS MODIFIERS AND USED TO NOT SAY SO. This enum was the six bare
+ * steps — A+, A, B+, B, C, D — while the analyst has been writing A-, B- and
+ * C+ all along. Every one of those landed on `grade()`'s "not on the scale"
+ * branch and reached the app as null, so a company the desk graded A- rendered
+ * as "ungraded" beside one it never graded at all. A dropped grade and an
+ * absent grade are indistinguishable downstream, which is the exact failure
+ * this file exists to prevent, so the ladder now carries the modifiers.
+ *
+ * `IDEA_GRADE_SCALE` is the ORDER, best first, and it is the only place that
+ * order is written down — the API's ranking, the watchlist sort and the ruler
+ * on the pick screen all read it rather than keeping a copy each.
+ */
+export const IDEA_GRADE_SCALE = [
+  'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D',
+] as const;
+
+export const IdeaGrade = z.enum(IDEA_GRADE_SCALE);
 export type IdeaGrade = z.infer<typeof IdeaGrade>;
+
+/**
+ * Where a grade sits on the ladder, 0 for A+. An ungraded row sorts LAST —
+ * behind a D — because "the desk did not put a mark on it" is less of a
+ * recommendation than the lowest mark it does hand out.
+ */
+export function gradeRank(g: IdeaGrade | null): number {
+  return g ? IDEA_GRADE_SCALE.indexOf(g) : IDEA_GRADE_SCALE.length;
+}
 
 /** What the price is doing under a name we are holding an argument about. */
 export const WatchState = z.enum([
@@ -85,9 +112,73 @@ export const DeskWatchRow = z.object({
 });
 export type DeskWatchRow = z.infer<typeof DeskWatchRow>;
 
+/**
+ * A COMPANY THE DESK THINKS IS WORTH UNDERSTANDING.
+ *
+ * This is the research list, and it is a different object from a watchlist row
+ * on purpose. A watchlist row is a chart being tracked against levels; this is
+ * a business with a grade and a one-line description of what it actually does.
+ *
+ * WHY IT HAD TO BE ITS OWN TABLE. The watchlist only ever held what the desk
+ * ACTED on — the brain's `load_watchlist()` filters `direction in ('long',
+ * 'short')` — so of twenty-seven graded companies about eleven reached the app,
+ * several of them pointing at ungraded write-ups and rendering with no mark at
+ * all. The desk's judgement of a business is not the same event as the desk
+ * taking a position in it, and the Invest lane wants the first one.
+ *
+ * NOTHING HERE IS A TRADE. There is no stop, no target, no trigger and no
+ * price to act at, and none may be added: the horizon is years, and a number to
+ * act on today is the one thing that would turn this back into an alert.
+ * `entryPrice` is the CLOSE ON THE DAY THE DESK FILED ITS WRITE-UP, carried
+ * with `entryStampedOn` so it can never be shown as a live quote or as an
+ * entry — it exists to date the argument, and a screen that prints one without
+ * the other is misreading it.
+ */
+export const DeskCompany = z.object({
+  /** The day this list was published. The app reads the latest one only. */
+  asOf: z.string(),
+  ticker: z.string(),
+  company: z.string().nullable(),
+  /**
+   * What the business does, in one line, written by the desk.
+   *
+   * Null when the desk did not write one — and the screen then says nothing
+   * rather than printing a dash, because a dash in this slot reads as a company
+   * that does nothing.
+   */
+  businessLine: z.string().nullable(),
+  ideaGrade: IdeaGrade.nullable(),
+  ideaGradeWhy: z.string().nullable(),
+  theme: z.string().nullable(),
+  /** The day the underlying write-up was filed. */
+  pickDate: z.string().nullable(),
+  direction: z.enum(['long', 'short', 'pass']).nullable(),
+  status: z.string().nullable(),
+  horizon: z.string().nullable(),
+  /** The close on `entryStampedOn`. NOT a live price and NOT an entry. */
+  entryPrice: z.number().nullable(),
+  entryStampedOn: z.string().nullable(),
+  potentialMovePct: z.number().nullable(),
+  /** In the desk's own words, what that percentage was measured against. */
+  potentialMoveBasis: z.string().nullable(),
+  /** The write-up this row was built from — provenance, not a second opinion. */
+  sourcePick: z.string().nullable(),
+  /** The desk's own ordering of the list. Null sorts last. */
+  rank: z.number().nullable(),
+});
+export type DeskCompany = z.infer<typeof DeskCompany>;
+
 export const DeskWatchlistResponse = z.object({
   asOf: z.string().nullable(),
   rows: z.array(DeskWatchRow),
+  /**
+   * The research list, best idea first. Defaulted so a response written before
+   * this field existed — an older server, a cached payload — still parses
+   * instead of failing the whole board over a section that is merely absent.
+   * Empty means the desk has not published a list, and the screen says exactly
+   * that; it never fills the space with the watchlist rows instead.
+   */
+  companies: z.array(DeskCompany).default([]),
 });
 export type DeskWatchlistResponse = z.infer<typeof DeskWatchlistResponse>;
 
@@ -112,6 +203,21 @@ export const DeskTheme = z.object({
   magnitude: z.number().nullable(),
   timeline: z.string().nullable(),
   conviction: z.number().nullable(),
+  /**
+   * The day the reading beside it was actually taken.
+   *
+   * THE READING IS NOT ALWAYS FROM THE LATEST RUN, and the date is how the
+   * screen stays honest about that. The 6 September theme run ran out of credit
+   * part way through and stored zeros — later corrected to nulls — against 25
+   * of the 27 themes behind the desk. A theme the desk scored 7.5 on the 5th
+   * still has that reading, and throwing it away because a later run could not
+   * repeat it would make the desk look as though it had no opinion. So the last
+   * REAL reading is what is shown, carrying the day it was made.
+   *
+   * Null means nothing about this theme has ever been judged, and then there is
+   * no number to date — the screen says so in words.
+   */
+  judgedOn: z.string().nullable().default(null),
   trajectory: z.string().nullable(),
   reason: z.string().nullable(),
   /** A big theme cooling off is often the entry, not a reason to look away. */

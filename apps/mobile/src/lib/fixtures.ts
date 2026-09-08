@@ -1307,10 +1307,60 @@ export const fixtureDeskWatchlist: DeskWatchlistResponse = {
       direction: null, updatedAt: '2026-09-04T15:00:00Z',
     },
   ],
+  /*
+   * The research list — the desk's judgement of the businesses, which is a
+   * different list from the positions above it.
+   *
+   * VRT is deliberately in BOTH: the desk graded it and also took a position,
+   * so the screen has to show it once, at the top, rather than twice under two
+   * headings. TER carries no business line, because the desk does not always
+   * write one and the row has to be right when it is missing — the sample would
+   * be lying about the shape of the real screen if every field were filled in.
+   */
+  companies: [
+    {
+      asOf: '2026-09-08', ticker: 'SITM', company: 'SiTime Corp',
+      businessLine: 'Timing chips that keep electronics in step with each other.',
+      ideaGrade: 'A', ideaGradeWhy: 'A small market it already leads, growing into a much larger one as quartz gets designed out.',
+      theme: 'AI-Capex-Cycle', pickDate: '2026-09-04', direction: 'long', status: 'active',
+      horizon: '4q', entryPrice: 212.4, entryStampedOn: '2026-09-04',
+      potentialMovePct: null, potentialMoveBasis: null, sourcePick: 'SITM', rank: 1,
+    },
+    {
+      asOf: '2026-09-08', ticker: 'VRT', company: 'Vertiv Holdings',
+      businessLine: 'Power and cooling for the buildings computers live in.',
+      ideaGrade: 'B+', ideaGradeWhy: 'The right seat in a large theme, at a price that already assumes several good years.',
+      theme: 'Data-Centre-Power', pickDate: '2026-09-03', direction: 'long', status: 'active',
+      horizon: '2q', entryPrice: 141.07, entryStampedOn: '2026-09-03',
+      potentialMovePct: null, potentialMoveBasis: null, sourcePick: 'VRT', rank: 2,
+    },
+    {
+      asOf: '2026-09-08', ticker: 'TER', company: 'Teradyne Inc',
+      businessLine: null,
+      ideaGrade: 'A-', ideaGradeWhy: null,
+      theme: 'Humanoid-Robotics', pickDate: '2026-09-02', direction: 'long', status: 'active',
+      horizon: '4q', entryPrice: 168.32, entryStampedOn: '2026-09-02',
+      potentialMovePct: null, potentialMoveBasis: null, sourcePick: 'TER', rank: 3,
+    },
+    {
+      asOf: '2026-09-08', ticker: 'COUR', company: 'Coursera Inc',
+      businessLine: 'Online courses sold to people and to the companies they work for.',
+      ideaGrade: 'D', ideaGradeWhy: 'Read in full and graded low — the enrolment growth has not turned into money that stays.',
+      theme: 'Enterprise-Software-AI-Disruption', pickDate: '2026-09-02', direction: 'pass',
+      status: 'rejected', horizon: null, entryPrice: 8.12, entryStampedOn: '2026-09-02',
+      potentialMovePct: null, potentialMoveBasis: null, sourcePick: 'COUR', rank: 4,
+    },
+  ],
 };
 
-/** The same screen with nothing on it — a new account, before the first pick. */
-export const fixtureDeskWatchlistEmpty: DeskWatchlistResponse = { asOf: '2026-09-04', rows: [] };
+/**
+ * The same screen with nothing on it — a new account, before the first pick,
+ * and before the desk has published a research list. Both halves empty, because
+ * that is the state that has to lead somewhere rather than stopping dead.
+ */
+export const fixtureDeskWatchlistEmpty: DeskWatchlistResponse = {
+  asOf: '2026-09-04', rows: [], companies: [],
+};
 
 /**
  * Themes, largest first. Humanoid robotics scores 9.5 on ONE entry in seven
@@ -1321,25 +1371,25 @@ export const fixtureDeskThemes: DeskThemesResponse = {
   asOf: '2026-09-04',
   themes: [
     {
-      theme: 'Humanoid-Robotics', magnitude: 9.5, timeline: '5y+', conviction: 7,
+      theme: 'Humanoid-Robotics', magnitude: 9.5, timeline: '5y+', conviction: 7, judgedOn: '2026-09-04',
       trajectory: 'ESCALATING', reason: 'Labour is the largest cost line in the economy and this is the first credible attempt to price it.',
       outOfFavour: false, entriesTotal: 1, entries7d: 1, mined: true,
       tickers: ['TER', 'ABB', 'NVDA'],
     },
     {
-      theme: 'Data-Centre-Power', magnitude: 8.5, timeline: '3-5y', conviction: 8,
+      theme: 'Data-Centre-Power', magnitude: 8.5, timeline: '3-5y', conviction: 8, judgedOn: '2026-09-04',
       trajectory: 'ESCALATING', reason: 'Compute is now a power problem before it is a chip problem, and the grid cannot be ordered in a quarter.',
       outOfFavour: false, entriesTotal: 34, entries7d: 6, mined: true,
       tickers: ['VRT', 'GEV', 'PWR'],
     },
     {
-      theme: 'Enterprise-Software-AI-Disruption', magnitude: 8, timeline: '1-2y', conviction: 6,
+      theme: 'Enterprise-Software-AI-Disruption', magnitude: 8, timeline: '1-2y', conviction: 6, judgedOn: '2026-09-04',
       trajectory: 'ESCALATING', reason: 'Seat-based pricing is being repriced by software that does the seat’s work.',
       outOfFavour: false, entriesTotal: 51, entries7d: 9, mined: true,
       tickers: ['INOD', 'PLTR'],
     },
     {
-      theme: 'AI-Compute-Buildout', magnitude: 7, timeline: 'now', conviction: 5,
+      theme: 'AI-Compute-Buildout', magnitude: 7, timeline: 'now', conviction: 5, judgedOn: '2026-09-04',
       trajectory: 'DE-ESCALATING', reason: 'The trade everyone already owns. A big theme cooling off is often the entry, not a reason to look away.',
       outOfFavour: true, entriesTotal: 212, entries7d: 18, mined: true,
       tickers: ['CRWV', 'NVDA', 'AMD'],
@@ -1453,7 +1503,7 @@ const DESK_PICKS: Record<string, DeskPickResponse> = {
     },
     alsoWrittenUp: [],
     themeJudgement: {
-      theme: 'Humanoid-Robotics-Physical-AI', magnitude: 9.5, timeline: '5y+', conviction: 7,
+      theme: 'Humanoid-Robotics-Physical-AI', magnitude: 9.5, timeline: '5y+', conviction: 7, judgedOn: '2026-09-04',
       trajectory: 'ESCALATING',
       reason: 'Labour is the largest cost line in the economy and this is the first credible attempt to price it.',
       outOfFavour: false, entriesTotal: 1, entries7d: 1, mined: true,
@@ -1475,7 +1525,7 @@ const DESK_PICKS: Record<string, DeskPickResponse> = {
     },
     alsoWrittenUp: [],
     themeJudgement: {
-      theme: 'AI-Capex-Cycle', magnitude: 8, timeline: 'now', conviction: 8,
+      theme: 'AI-Capex-Cycle', magnitude: 8, timeline: 'now', conviction: 8, judgedOn: '2026-09-04',
       trajectory: 'ESCALATING',
       reason: 'The spend is committed and disclosed. The question is who keeps the margin, not whether the money is spent.',
       outOfFavour: true, entriesTotal: 212, entries7d: 18, mined: true,
@@ -1556,7 +1606,7 @@ const DESK_PICKS: Record<string, DeskPickResponse> = {
     },
     alsoWrittenUp: [],
     themeJudgement: {
-      theme: 'Commercial-Space-Access', magnitude: 7, timeline: '3-5y', conviction: 4,
+      theme: 'Commercial-Space-Access', magnitude: 7, timeline: '3-5y', conviction: 4, judgedOn: '2026-09-04',
       trajectory: 'STABLE',
       reason: 'Cost per kilogram to orbit is still falling and the second-order businesses have not been built yet.',
       outOfFavour: false, entriesTotal: 9, entries7d: 0, mined: true,

@@ -81,15 +81,22 @@ export default function DeskThemes() {
  * folded in.
  */
 function ThemeRow({ theme, onPress }: { theme: DeskTheme; onPress: () => void }) {
-  const m = theme.magnitude ?? 0;
-  const big = m >= 8;
+  /*
+   * UNSCORED IS NOT ZERO. The 6 September theme run ran out of credit and
+   * stored `0` with the reason "NOT JUDGED"; the API refuses those numbers now,
+   * so an unjudged theme arrives here as null — and null draws no numeral and
+   * no bar at all, because ten empty segments beside a dash is a picture of the
+   * lowest score on the scale.
+   */
+  const m = theme.magnitude;
+  const big = m !== null && m >= 8;
   const at = theme.timeline ? TIME_AXIS.indexOf(theme.timeline.toLowerCase()) : -1;
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${theme.theme.replace(/-/g, ' ')}, size ${theme.magnitude ?? 0} out of 10, ${theme.timeline ?? 'no timing'}`}
+      accessibilityLabel={`${theme.theme.replace(/-/g, ' ')}, ${theme.magnitude === null ? 'not judged for size' : `size ${theme.magnitude} out of 10`}, ${theme.timeline ?? 'no timing'}`}
       style={({ pressed }) => ({
         paddingVertical: space.x16,
         borderBottomWidth: 1, borderBottomColor: alpha.ivory08,
@@ -99,8 +106,14 @@ function ThemeRow({ theme, onPress }: { theme: DeskTheme; onPress: () => void })
       <View style={{ flexDirection: 'row', gap: space.x14 }}>
         {/* size, as a number and as the same number drawn */}
         <View style={{ width: 58 }}>
+          {m === null ? (
+            // Nothing has ever been judged about this one. Said, not drawn:
+            // ten empty segments beside a dash is a picture of a zero.
+            <T size={11} lh={15} c={color.dim}>not judged yet</T>
+          ) : (
+            <>
           <Num size={24} weight="bold" c={big ? color.violetLight : color.muted} style={{ lineHeight: 26 }}>
-            {theme.magnitude != null ? theme.magnitude.toFixed(1) : '—'}
+            {m.toFixed(1)}
           </Num>
           <T size={9} c={color.dim}>of 10</T>
           <View style={{ flexDirection: 'row', gap: 1.5, marginTop: space.x6 }}>
@@ -123,6 +136,8 @@ function ThemeRow({ theme, onPress }: { theme: DeskTheme; onPress: () => void })
               );
             })}
           </View>
+            </>
+          )}
         </View>
 
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -175,8 +190,16 @@ function ThemeRow({ theme, onPress }: { theme: DeskTheme; onPress: () => void })
             )}
           </View>
 
+          {/*
+            The conviction used to print "—/10", which is a reading with its
+            number missing rather than a reading nobody took. And the date is
+            here because the judgement on this row is the last one the desk
+            actually made — the 6 September run could not judge at all, and a
+            reading from the 5th must not be shown as though it were today's.
+          */}
           <T size={11} c={color.dim} style={{ marginTop: space.x8 }}>
-            how sure {theme.conviction ?? '—'}/10
+            {theme.conviction === null ? 'how sure — not judged' : `how sure ${theme.conviction}/10`}
+            {theme.judgedOn ? ` · judged ${theme.judgedOn}` : ''}
             {theme.entriesTotal != null ? ` · ${theme.entriesTotal} entries kept` : ''}
           </T>
         </View>

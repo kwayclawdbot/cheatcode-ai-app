@@ -29,6 +29,7 @@ import { T, Num, Eyebrow } from '../../ui/Text';
 import { TickerMark } from '../../ui/Ticker';
 import { alpha, color, radius, space } from '../../ui/tokens';
 import type { IdeaGrade } from '@shared/desk';
+import { IDEA_GRADE_SCALE } from '@shared/desk';
 
 /* ------------------------------------------------------------------ */
 /* the strip that carries them                                         */
@@ -97,27 +98,39 @@ export function BaySplit({ left, right, first = false }: {
 /* the grade — a scale with a mark on it                               */
 /* ------------------------------------------------------------------ */
 
-const GRADES: IdeaGrade[] = ['A+', 'A', 'B+', 'B', 'C', 'D'];
-const ORDINAL = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth'];
+const GRADES: readonly IdeaGrade[] = IDEA_GRADE_SCALE;
+const ORDINAL = [
+  'first', 'second', 'third', 'fourth', 'fifth',
+  'sixth', 'seventh', 'eighth', 'ninth', 'tenth',
+];
+/** Spelt out so the sentence below reads as English, not as a count. */
+const STEPS = 'ten';
 
 /**
- * Where this idea sits on the desk's own six-step scale.
+ * Where this idea sits on the desk's own scale.
  *
  * Not a medallion. A medallion says "this one is special"; this says "this one
- * is the fourth of six the desk uses", which is the honest shape of a grade —
+ * is the fourth of ten the desk uses", which is the honest shape of a grade —
  * most write-ups land in the middle and a screen that celebrates a C is
  * arguing with the thing it is displaying. A D is a mark on the scale like any
  * other, drawn the same way, because a low grade is a judgement the desk made
  * and not a failure of the write-up.
  *
- * Fifty-six of the fifty-seven write-ups in the brain carry no grade at all, so
- * the ungraded state is the NORMAL one and is drawn as a complete scale with
- * nothing marked — a ruler waiting for a reading, not an error.
+ * THE RULER GREW FROM SIX MARKS TO TEN. It was A+, A, B+, B, C, D — the six the
+ * app knew about — while the analyst was also writing A-, B- and C+. Those
+ * grades matched nothing, `indexOf` returned -1, and a company graded A- was
+ * drawn with NO mark on the ruler and the words "the desk has not put a mark on
+ * this one" underneath it. The scale now carries the modifiers, and it reads
+ * them from the one list in `@shared/desk` so it cannot fall behind again.
+ *
+ * Most write-ups in the brain carry no grade at all, so the ungraded state is a
+ * NORMAL one and is drawn as a complete scale with nothing marked — a ruler
+ * waiting for a reading, not an error.
  */
 export function GradeScale({ grade }: { grade: IdeaGrade | null }) {
   const at = grade ? GRADES.indexOf(grade) : -1;
   return (
-    <View accessibilityLabel={grade ? `Idea grade ${grade}, ${ORDINAL[at]} of six` : 'Not graded yet'}>
+    <View accessibilityLabel={grade ? `Idea grade ${grade}, ${ORDINAL[at]} of ${STEPS}` : 'Not graded yet'}>
       <Eyebrow c={color.dim}>Idea grade</Eyebrow>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.x14, marginTop: space.x8 }}>
         {grade ? (
@@ -142,7 +155,7 @@ export function GradeScale({ grade }: { grade: IdeaGrade | null }) {
                     backgroundColor: on ? color.violet : alpha.ivory12,
                   }} />
                   <T size={9} weight={on ? 'bold' : 'regular'} c={on ? color.violetLight : color.dim}
-                     style={{ marginTop: space.x4 }}>
+                     numberOfLines={1} style={{ marginTop: space.x4 }}>
                     {g}
                   </T>
                 </View>
@@ -153,7 +166,7 @@ export function GradeScale({ grade }: { grade: IdeaGrade | null }) {
       </View>
       <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x8 }}>
         {grade
-          ? `${ORDINAL[at][0].toUpperCase()}${ORDINAL[at].slice(1)} of the six marks the desk uses. The grade is on the idea, not on this quarter.`
+          ? `${ORDINAL[at][0].toUpperCase()}${ORDINAL[at].slice(1)} of the ${STEPS} marks the desk uses. The grade is on the idea, not on this quarter.`
           : 'The desk has not put a mark on this one. Most of its write-ups carry no grade — that is a gap in the record, not a low score.'}
       </T>
     </View>
@@ -370,10 +383,31 @@ const TRAJECTORY_WORDS: Record<string, string> = {
  * is a nine-and-a-half; nothing here marks it down for being early, which is
  * the whole reason the desk exists.
  */
-export function ThemeGauges({ magnitude, timeline, conviction, trajectory, outOfFavour }: {
+export function ThemeGauges({
+  magnitude, timeline, conviction, trajectory, outOfFavour, judgedOn = null,
+}: {
   magnitude: number | null; timeline: string | null; conviction: number | null;
   trajectory?: string | null; outOfFavour?: boolean;
+  /** The day the reading was taken. Printed, always, when there is one. */
+  judgedOn?: string | null;
 }) {
+  /*
+   * A theme with nothing judged about it says so ONCE. Three separate "not
+   * judged" panels stacked up would read as three separate failures rather than
+   * as one run that has not got to this theme yet.
+   */
+  if (magnitude === null && conviction === null && !timeline) {
+    return (
+      <View accessibilityLabel="The desk has not judged this theme yet">
+        <Eyebrow c={color.dim}>The theme’s own judgement</Eyebrow>
+        <T size={13} lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
+          The desk has not judged this theme yet — no size, no timing and no
+          conviction have been scored for it. That is a gap in the record, not a
+          low score.
+        </T>
+      </View>
+    );
+  }
   return (
     <View>
       <SizeMeter magnitude={magnitude} />
@@ -381,6 +415,18 @@ export function ThemeGauges({ magnitude, timeline, conviction, trajectory, outOf
         <View style={{ flex: 1.3 }}><TimeAxis timeline={timeline} /></View>
         <View style={{ flex: 1 }}><ConvictionMeter conviction={conviction} /></View>
       </View>
+      {/*
+        WHEN THE READING WAS TAKEN, always, not only when it is old.
+        The desk scores its themes on a run, and a run can fail — the 6
+        September one did — so what is on screen is the last reading the desk
+        actually took, which is not always today's. A number with no date on it
+        is a number a reader will assume is current.
+      */}
+      {judgedOn ? (
+        <T size={11} c={color.dim} style={{ marginTop: space.x10 }}>
+          {`Judged ${saidDate(judgedOn) ?? judgedOn}.`}
+        </T>
+      ) : null}
       {(trajectory || outOfFavour) && (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x8, marginTop: space.x12 }}>
           {trajectory ? (
@@ -399,18 +445,28 @@ export function ThemeGauges({ magnitude, timeline, conviction, trajectory, outOf
   );
 }
 
-/** Ten segments; the desk's score fills them. Half-points fill a half segment. */
+/**
+ * Ten segments; the desk's score fills them. Half-points fill a half segment.
+ *
+ * NOT JUDGED IS NOT A ZERO, AND USED TO LOOK EXACTLY LIKE ONE. The 6 September
+ * theme run ran out of credit and stored zeros with the reason "NOT JUDGED";
+ * this meter read them as a score and drew "0.0 of 10" with an empty bar
+ * against 25 of the 27 companies on the desk. The API now refuses those numbers
+ * — so an unjudged theme arrives here as null, and null is drawn as a sentence
+ * rather than as an empty measure, because an empty measure is a reading.
+ */
 export function SizeMeter({ magnitude, label = 'How big if it is right' }: {
   magnitude: number | null; label?: string;
 }) {
-  const m = magnitude ?? 0;
+  if (magnitude === null) return <NotJudged label={label} />;
+  const m = magnitude;
   const big = m >= 8;
   return (
-    <View accessibilityLabel={`Theme size ${magnitude ?? 'unscored'} out of 10`}>
+    <View accessibilityLabel={`Theme size ${magnitude} out of 10`}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x8 }}>
         <Eyebrow c={color.dim}>{label}</Eyebrow>
         <Num size={15} weight="bold" c={big ? color.violetLight : color.text} style={{ marginLeft: 'auto' }}>
-          {magnitude != null ? magnitude.toFixed(1) : '—'}
+          {magnitude.toFixed(1)}
         </Num>
         <T size={10} c={color.dim}>of 10</T>
       </View>
@@ -476,22 +532,46 @@ export function TimeAxis({ timeline }: { timeline: string | null }) {
   );
 }
 
-/** How sure the desk is — scored apart from size, and never folded into it. */
+/**
+ * How sure the desk is — scored apart from size, and never folded into it.
+ *
+ * Same rule as the size meter: nothing scored is said in words. A bar at zero
+ * per cent and a bar the desk never filled in are the same picture, and one of
+ * them is a judgement the desk did not make.
+ */
 export function ConvictionMeter({ conviction }: { conviction: number | null }) {
-  const c = conviction ?? 0;
+  if (conviction === null) return <NotJudged label="How sure" />;
   return (
-    <View accessibilityLabel={`Conviction ${conviction ?? 'unscored'} out of 10`}>
+    <View accessibilityLabel={`Conviction ${conviction} out of 10`}>
       <Eyebrow c={color.dim}>How sure</Eyebrow>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x4, marginTop: space.x6 }}>
-        <Num size={15} weight="bold" c={color.text}>{conviction != null ? conviction : '—'}</Num>
+        <Num size={15} weight="bold" c={color.text}>{conviction}</Num>
         <T size={10} c={color.dim}>of 10</T>
       </View>
       <View style={{ height: 4, borderRadius: 2, backgroundColor: alpha.ivory08, marginTop: space.x8 }}>
         <View style={{
-          height: 4, borderRadius: 2, width: `${Math.min(c, 10) * 10}%`,
+          height: 4, borderRadius: 2, width: `${Math.min(Math.max(conviction, 0), 10) * 10}%`,
           backgroundColor: color.violetLight, opacity: 0.7,
         }} />
       </View>
+    </View>
+  );
+}
+
+/**
+ * A reading the desk has not taken.
+ *
+ * No numeral, no dash and no empty gauge — all three of those are read as a
+ * measurement, and the dash is read as a broken one. The words are the whole
+ * instrument.
+ */
+function NotJudged({ label }: { label: string }) {
+  return (
+    <View accessibilityLabel={`${label}: the desk has not judged this theme yet`}>
+      <Eyebrow c={color.dim}>{label}</Eyebrow>
+      <T size={13} lh={18} c={color.muted} style={{ marginTop: space.x6 }}>
+        The desk has not judged this theme yet.
+      </T>
     </View>
   );
 }
@@ -607,7 +687,7 @@ export function LevelTrack({ price, trigger, invalidation }: {
 /* ------------------------------------------------------------------ */
 
 /** A date the desk wrote, said the way a person says it. */
-function saidDate(iso: string | null): string | null {
+export function saidDate(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return iso;

@@ -148,6 +148,7 @@ export default function DeskPickDetail() {
                     conviction={themeJudgement.conviction}
                     trajectory={themeJudgement.trajectory}
                     outOfFavour={themeJudgement.outOfFavour}
+                    judgedOn={themeJudgement.judgedOn}
                   />
                 </View>
               </Pressable>

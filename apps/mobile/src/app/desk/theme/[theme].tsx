@@ -78,6 +78,7 @@ export default function DeskThemeDetail() {
               conviction={t.conviction}
               trajectory={t.trajectory}
               outOfFavour={t.outOfFavour}
+              judgedOn={t.judgedOn}
             />
             <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x14 }}>
               Size and how sure are scored separately and never averaged. A big
