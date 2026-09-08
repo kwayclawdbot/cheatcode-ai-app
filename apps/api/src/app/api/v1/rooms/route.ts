@@ -1,13 +1,19 @@
 /**
  * GET /api/v1/rooms?mode=
  *
- * The Community directory. Owner decision 2026-08-26: Community is THREE rooms
- * — Day Trade, Swing, Investing — and every member sees all three.
+ * The Community directory. Owner decision 2026-09-08, in their words: "Just
+ * make it traders chat, investors chat and beginners chat." Three rooms, and
+ * every member sees all three.
+ *
+ * (It was four — Beginners plus one room per desk — and before that three, one
+ * per desk. 0045 is the migration that merged Day Trade and Swing into Traders
+ * and took `mode` off all three rows.)
  *
  * `?mode=` is still accepted so an older client does not break, and the response
  * still echoes a `mode` (the caller's primary mode) because the schema carries
- * it. Neither one filters the list any more: a swing trader who wants to read
- * the intraday room is not doing anything that needs gating.
+ * it. Neither one filters the list any more, and since 0045 neither one could:
+ * a room is no longer keyed by a mode. Reading a room is not something that
+ * needs gating by what somebody trades.
  *
  * Not in the brief's endpoint list, added because the screen needs it: counts
  * are aggregates a client cannot compute under RLS.
@@ -35,11 +41,23 @@ const LIVE_NOTICE = 'Live sessions arrive in a later release.';
  */
 const INCLUDE_SETUP_ROOMS = false;
 
-/** The order the directory reads in. Not alphabetical — shortest horizon first. */
-const MODE_ORDER = ['day_trade', 'swing', 'invest'];
-const rank = (mode: string | null) => {
-  const i = MODE_ORDER.indexOf(String(mode));
-  return i === -1 ? MODE_ORDER.length : i;
+/**
+ * The order the directory reads in, BY SLUG.
+ *
+ * This was `MODE_ORDER = ['day_trade','swing','invest']` — shortest horizon
+ * first — which stopped meaning anything at 0045: two of those modes are now
+ * the same room and no core room carries a mode, so every row would have ranked
+ * equal-last. The three chats are not a horizon scale, so the order is simply
+ * the order the owner said them in, which is also the order they are drawn in
+ * the switcher: Traders, Investors, Beginners.
+ *
+ * Anything not in the list sorts last rather than being hidden — a room this
+ * file has not heard of is still a room somebody can open.
+ */
+const ROOM_ORDER = ['traders', 'investors', 'beginners'];
+const rank = (slug: string | null) => {
+  const i = ROOM_ORDER.indexOf(String(slug));
+  return i === -1 ? ROOM_ORDER.length : i;
 };
 
 export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
@@ -48,8 +66,10 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
   const mode = q.mode ?? profile.primary_mode;
   const db = serviceClient();
 
-  // Every core room, for everybody. The `mode` column still describes what a
-  // room is about; it no longer decides who may see it.
+  // Every core room, for everybody. `rooms.mode` is null on all three since
+  // 0045 and describes nothing any more; which desk posts where is the named
+  // map in lib/social/rooms-bridge.ts, and it has never decided who may READ a
+  // room.
   const query = db.from('rooms').select(ROOM_COLUMNS).order('created_at', { ascending: true });
   const { data } = await (INCLUDE_SETUP_ROOMS ? query : query.eq('type', 'core'));
 
@@ -78,7 +98,7 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
 
   const shaped = rows.map((r) => toRoomRow(r, stats.get(String(r.id)), memberBy.get(String(r.id)) ?? null));
 
-  const core = shaped.filter((r) => r.type === 'core').sort((a, b) => rank(a.mode) - rank(b.mode));
+  const core = shaped.filter((r) => r.type === 'core').sort((a, b) => rank(a.slug) - rank(b.slug));
 
   return ok(
     RoomsResponse.parse({

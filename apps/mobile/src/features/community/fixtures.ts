@@ -81,18 +81,32 @@ const META_SETUP: RoomSetup = {
 };
 
 /**
- * The three rooms (owner decision 2026-08-26). Nothing else is a room any more:
- * no per-mode sub-rooms, no setup rooms in the directory.
+ * THE THREE CHATS (owner, 8 Sept: "Just make it traders chat, investors chat
+ * and beginners chat"). Migration 0045 is the version of this that runs against
+ * a real database; these are the example rooms behind `env.FIXTURES`, and they
+ * have to agree with it or the flag shows a club that does not exist.
  *
- * `#day-trade` keeps the META setup attached and the fixture conversation about
- * it, so the room screen's pinned-setup path and the @Kai objects still have
- * something real-shaped to render in the proof shots.
+ * They used to be `day-trade`, `swing` and `investing`, keyed by mode. All
+ * three now carry `mode: null` — a chat is a room of people, not a horizon —
+ * and the desk-to-room mapping lives in `features/community/rooms.ts`.
+ *
+ * Traders keeps the META setup attached and the fixture conversation about it,
+ * so the pinned-setup path and the @Kai objects still have something
+ * real-shaped to render in the proof shots.
  */
 export const fixtureRooms: Room[] = [
   {
-    id: 'room-day-trade', slug: 'day-trade', name: 'Day Trade',
-    description: 'Intraday setups, confirmations, exits — today.',
-    mode: 'day_trade', type: 'core',
+    /*
+     * THE ID IS THE OLD ONE ON PURPOSE. 0045 keeps whichever of the two desks
+     * held more conversation and re-parents the other into it, so the surviving
+     * room keeps its id — and these fixtures mirror that: `room-day-trade` is
+     * the row that survived. It is also what `features/portal/fixtures.ts` and
+     * the Playwright proofs open by, and renaming an opaque key to make it read
+     * nicely would break both for nothing.
+     */
+    id: 'room-day-trade', slug: 'traders', name: 'Traders Chat',
+    description: 'Setups, entries, stops and exits — intraday and over days.',
+    mode: null, type: 'core',
     member_count: 124, discussing_count: 31, unread: 3, last_read_seq: 4,
     joined: true, muted_until: null,
     config: { slow_mode_s: 0, intel_eligible: false },
@@ -102,21 +116,21 @@ export const fixtureRooms: Room[] = [
     preview: { who: 'Kai', text: 'volume confirmed 1.6×', by_kai: true },
   },
   {
-    id: 'room-swing', slug: 'swing', name: 'Swing',
-    description: 'Ideas held for days or weeks: theses, catalysts, updates.',
-    mode: 'swing', type: 'core',
+    id: 'room-investing', slug: 'investors', name: 'Investors Chat',
+    description: 'Companies, portfolios and long-term ideas.',
+    mode: null, type: 'core',
+    member_count: 63, discussing_count: 5, unread: 0, last_read_seq: 0,
+    joined: false, muted_until: null,
+    config: { intel_eligible: false }, pinned: [], setup_id: null, setup: null, preview: null,
+  },
+  {
+    id: 'room-beginners', slug: 'beginners', name: 'Beginners Chat',
+    description: 'Simple questions, plain answers. Nothing here assumes you already know.',
+    mode: null, type: 'core',
     member_count: 52, discussing_count: 7, unread: 0, last_read_seq: 0,
     joined: false, muted_until: null,
     config: { intel_eligible: false }, pinned: [], setup_id: null, setup: null,
     preview: { who: 'Jordan', text: 'catalyst thread updated', by_kai: false },
-  },
-  {
-    id: 'room-investing', slug: 'investing', name: 'Investing',
-    description: 'Building and reviewing a long-term portfolio.',
-    mode: 'invest', type: 'core',
-    member_count: 63, discussing_count: 5, unread: 0, last_read_seq: 0,
-    joined: false, muted_until: null,
-    config: { intel_eligible: false }, pinned: [], setup_id: null, setup: null, preview: null,
   },
 ];
 

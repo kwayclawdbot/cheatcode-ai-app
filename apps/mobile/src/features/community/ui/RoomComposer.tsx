@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, TextInput, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +17,7 @@ export function RoomComposer({
   roomLabel, onSend, onKai, onStructured, disabled, disabledReason, testID,
   attachments = [], onAttach, onRemoveAttachment, attachLimit = 4, placeholder,
   quote, quoteLabel, onClearQuote, onPublishCall, onAskKai, callSymbol,
+  draft, draftNonce = 0,
 }: {
   roomLabel: string;
   onSend: (text: string) => void;
@@ -53,9 +54,27 @@ export function RoomComposer({
   /** "Replying to @sam" — the line above the quote. */
   quoteLabel?: string | null;
   onClearQuote?: () => void;
+  /**
+   * Words put in the box by something other than the keyboard — an empty
+   * room's question starter (`RoomWelcome`). The same contract `ui/Composer`
+   * uses, including the nonce: without it the SAME suggestion cannot be
+   * offered twice, because the string would not have changed.
+   *
+   * IT IS A DRAFT AND NOT A POST. Whatever arrives here is editable and is
+   * sent by the member pressing send, exactly as if they had typed it.
+   */
+  draft?: string;
+  draftNonce?: number;
 }) {
   const [value, setValue] = useState('');
   const router = useRouter();
+
+  useEffect(() => {
+    if (typeof draft === 'string' && draft.length) setValue(draft);
+    // The nonce is the trigger; `draft` is read, not watched, so restoring the
+    // same text twice works.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftNonce]);
 
   const uploading = attachments.some((a) => a.state === 'uploading');
   const ready = attachments.filter((a) => a.state === 'ready');

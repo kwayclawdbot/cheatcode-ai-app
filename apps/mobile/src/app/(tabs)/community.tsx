@@ -1,24 +1,58 @@
 /**
- * Community — Community.html (round 4).
+ * Community — the club: three chats, a row of time-boxed CIRCLES, and the feed
+ * of whichever room you are reading.
  *
- * The club header, a row of time-boxed CIRCLES, and the feed of whichever mode
- * room you are in. The three mode rooms stay the base of the club (owner
- * decision 2026-08-27: Day Trade · Swing · Investing); circles sit above them
- * because they expire and the mode rooms do not.
+ * THREE CHATS (owner, 8 Sept, in their words: "Just make it traders chat,
+ * investors chat and beginners chat"). It was four — Beginners plus one room
+ * per desk — and migration 0045 merged Day Trade and Swing into Traders and
+ * took `mode` off all three rooms. Circles sit above them because they expire
+ * and the chats do not.
  *
- * ONE SWITCH, NOT TWO (owner, 7 Sept). There used to be a rail of day/swing/
- * invest pills in the body of the feed, directly under a headbar that already
- * held a day/swing/invest control. Two controls for one setting is a question
- * asked twice: whichever one you press, the other has to be watched to see if
- * it agreed. The headbar control is the one that survived — it is the same
- * control every other screen carries, and it writes the global mode — and this
- * screen simply shows the room belonging to whatever mode is set. What the rail
- * carried and the headbar does not is the per-room unread count; that is the
- * one thing lost, and a badge on a duplicate switch is not worth the switch.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * "ONE SWITCH, NOT TWO" WAS HALF RIGHT, AND THIS IS THE HALF THAT IS BEING
+ * REVERSED (audit F13, P1)
+ * ─────────────────────────────────────────────────────────────────────────────
+ * The 7 Sept version of this header argued that a rail of day/swing/invest
+ * pills in the feed and a day/swing/invest control in the headbar were one
+ * question asked twice, and deleted the rail. That reasoning still holds. What
+ * it got wrong is WHICH ONE SURVIVED.
  *
- * The feed still SAYS which room you are reading — the room's name sits in the
- * header line under the club name. Saying it and letting you change it are two
- * different jobs, and only the second one was duplicated.
+ * `ModeSegmented` writes `profiles.primary_mode` through `PUT /mode`. It is a
+ * GLOBAL setting: it changes Home, it changes what the second tab is, and it
+ * changes what Kai looks for. Leaving it as the room switcher meant that
+ * reading the investing conversation for two minutes came back as a changed
+ * research screen and different recommendations — for somebody whose intention
+ * was to read. The audit's sentence is "A swing trader checking an investing
+ * conversation can return to a changed research screen and different
+ * recommendations without intending to change their goal", and the board's own
+ * footnote is the fix: "Reading a room keeps your trading preferences."
+ *
+ * So the mode control is gone from this header and the ROOM is the switch:
+ * `RoomTitleButton` opens `RoomSwitcherSheet`, which moves you between the
+ * three chats and touches nothing else. The Beginners pill is gone with it —
+ * it was the tell that this header held two controls that looked alike and did
+ * different amounts of damage — and Beginners is now a named row in the sheet,
+ * with a line saying what it is for.
+ *
+ * THE TRADING GOAL DID NOT DISAPPEAR. It is the last row of that sheet, and it
+ * opens the same `ModeSheet` Home and Trade open — the one that spells out
+ * every effect before the change is made. It is deliberately quiet: a
+ * preference somebody changes every few weeks should not sit at the same weight
+ * as the thing they do every time they open the tab.
+ *
+ * THE ROOM IS REMEMBERED SEPARATELY, on the device, by slug — see
+ * `features/community/last-room.ts` for why that is not a column on `profiles`.
+ * The mode still picks the FIRST room somebody sees and never picks another one
+ * again.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * AND THE ROOM IS READABLE NOW (audit F14, P2)
+ * ─────────────────────────────────────────────────────────────────────────────
+ * The header held a title, a room caption, a member count, a search button, a
+ * Beginners pill, three mode chips and a members button. It now holds the
+ * room's name at heading size with one switcher on it, and two icon buttons.
+ * An empty room offers two question starters instead of asking a newcomer to
+ * name a stock — `RoomWelcome`, and nothing in it is invented.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, View } from 'react-native';
@@ -41,17 +75,16 @@ import { MessageActionsSheet, type MessageActionsTarget } from '../../features/c
 import { CirclesRow } from '../../features/circles/CirclesRow';
 import { CreateCircleSheet } from '../../features/circles/CreateCircleSheet';
 import type { Circle, CircleTtl } from '../../features/circles/types';
-import type { MessageReactions, ReactionKind, Room, RoomMessage } from '../../features/community/types';
-import { ModeSegmented } from '../../features/home';
+import type { MessageReactions, ReactionKind, Room, RoomMessage, RoomSetup } from '../../features/community/types';
+import { PinnedSetup } from '../../features/community/ui/PinnedSetup';
+import { RoomSwitcherSheet, RoomTitleButton } from '../../features/community/ui/RoomSwitcher';
+import { RoomWelcome } from '../../features/community/ui/RoomWelcome';
+import { chatRank, ROOM_FOR_MODE } from '../../features/community/rooms';
+import { useLastRoom } from '../../features/community/last-room';
+import { ModeSheet, MODE_LABEL } from '../../features/home';
 import { DEFAULT_MODE } from '../../features/nav/second-tab';
 import { BeltUpSheet, PREVIEW_BELT, useBeltUp } from '../../features/social';
 import type { GoalMode } from '../../lib/types';
-
-const MODE_ORDER = ['day_trade', 'swing', 'invest'];
-const rank = (mode: string | null) => {
-  const i = MODE_ORDER.indexOf(String(mode));
-  return i === -1 ? MODE_ORDER.length : i;
-};
 
 const SearchIcon = () => (
   <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={color.muted} strokeWidth={2}>
@@ -121,6 +154,25 @@ export default function Community() {
 
   const [roomId, setRoomId] = useState<string | null>(null);
   const [messages, setMessages] = useState<RoomMessage[]>([]);
+  /** The room switcher, and the explicit trading-goal chooser it offers. */
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [goalOpen, setGoalOpen] = useState(false);
+  /**
+   * The setup pinned to the room being read, when there is one.
+   *
+   * A core room usually has none — `rooms.setup_id` is normally null on all
+   * three — and then nothing draws. This is the honest version of the board's
+   * "Pinned setup" card: it appears when a real setup is attached and never as
+   * a decorative placeholder.
+   */
+  const [pinnedSetup, setPinnedSetup] = useState<RoomSetup | null>(null);
+  /**
+   * Words put in the composer by something other than the keyboard — today,
+   * one of the empty room's question starters. `draftNonce` is what lets the
+   * SAME question be offered twice; without it a second tap restores nothing.
+   */
+  const [draft, setDraft] = useState('');
+  const [draftNonce, setDraftNonce] = useState(0);
   /**
    * When a reaction did NOT land. There used to be a device-local store here
    * and a line under the post saying "saved on this device only" — honest, and
@@ -154,102 +206,99 @@ export default function Community() {
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   /**
-   * BEGINNERS SORTS FIRST, not last. `rank()` sends an unknown-or-null mode to
-   * the end, which is right for the API's generic listing and wrong here: the
-   * one room with no mode is the room a new member most needs to find, and
-   * putting it after the three desks buries it under exactly the material it
-   * exists to protect them from. It is the only mode-less core room by design
-   * (0043 §1), so this is a rule about one row and not a sort order.
+   * The three chats, in the order the owner said them: Traders, Investors,
+   * Beginners. `chatRank` is the same order the API's directory uses, and
+   * anything this build has never heard of sorts last rather than vanishing.
+   *
+   * BEGINNERS NO LONGER HAS TO BE HOISTED TO THE TOP. It used to be sorted
+   * first here, because a mode-less room fell to the end of a list keyed by
+   * mode and got buried under the desks. There is no list keyed by mode any
+   * more: the three rooms are three named rows in a sheet, each with a line
+   * saying what it is for, and a new member reads "Beginners Chat — simple
+   * questions, plain answers" rather than having to notice a pill.
    */
   const coreRooms = useMemo(
-    () =>
-      rooms
-        .filter((r) => r.type === 'core')
-        .sort((a, b) => {
-          if (a.mode == null && b.mode != null) return -1;
-          if (b.mode == null && a.mode != null) return 1;
-          return rank(a.mode) - rank(b.mode);
-        }),
+    () => rooms.filter((r) => r.type === 'core').sort((a, b) => chatRank(a.slug) - chatRank(b.slug)),
     [rooms],
   );
 
-  /** The one core room that is not a desk. Absent on a stack without 0043. */
+  /** The chat that is not a desk. Absent on a stack without 0043/0045. */
   const beginnersRoom = useMemo(
-    () => coreRooms.find((r) => r.mode == null && r.slug === 'beginners') ?? null,
+    () => coreRooms.find((r) => r.slug === 'beginners') ?? null,
     [coreRooms],
   );
 
   const stage = profile?.stage ?? 'beginner';
 
   /**
-   * THE ROOM IS THE MODE. Not "the room you land on first" — the room, full
-   * stop. With the rail gone the headbar control is the only way to change
-   * rooms, so this has to hold whenever the mode changes and not only on the
-   * first frame; the old version ran once and then never again, which was
-   * correct while a rail existed to do the rest and would be a dead switch now.
-   *
-   * `ModeSegmented` also sets the room itself the instant it is pressed. That
-   * is not a second source of truth, it is the same answer arriving sooner: the
-   * press awaits the profile write, and this effect covers the case the press
-   * cannot — rooms that had not loaded yet when the mode was chosen.
+   * The room this device was last reading. Kept by SLUG, on the device, and
+   * deliberately nowhere near `profiles` — see `last-room.ts`.
    */
+  const lastRoom = useLastRoom(myUserId);
+
   /**
-   * ...WITH ONE EXCEPTION, AND IT IS THE FIRST ROOM A BEGINNER SEES.
+   * OPENING A ROOM IS NAVIGATION AND NOTHING ELSE. No profile write, no
+   * `PUT /mode`, no request at all beyond the messages for the room being
+   * opened. This is the whole of audit F13's fix in one function.
+   */
+  const openRoom = useCallback((room: Room) => {
+    setRoomId(room.id);
+    lastRoom.remember(room.slug);
+  }, [lastRoom]);
+
+  /**
+   * WHICH ROOM YOU LAND IN, ONCE, ON THE FIRST FRAME THAT KNOWS ENOUGH.
    *
-   * A member at the `beginner` stage (0042) opens Community in the Beginners
-   * room rather than in their desk. That is the recommendation the funnel is
-   * built on: their mode is still real and their desk is one tap away, but the
-   * room where questions are welcome is the one they should meet first, not the
-   * one where people are posting entries and stops.
+   * In order, and the order is the argument:
    *
-   * It applies ONLY on the first resolve — `prev` being null. Once they have a
-   * room, changing mode moves them to that desk like anybody else, and the
-   * Beginners pill in the headbar brings them back. A rule that re-asserted
-   * itself on every mode change would be a control that visibly does nothing.
+   *   1. THE ROOM YOU WERE LAST IN. Somebody who chose a room chose it; the app
+   *      re-deciding on their behalf every time they open the tab is the
+   *      behaviour F13 is about, only slower.
+   *   2. BEGINNERS, if their stage (0042) is `beginner`. The funnel is built on
+   *      this: their desk is one tap away, but the room where questions are
+   *      welcome is the one they should meet first, not the one where people
+   *      are posting entries and stops. It applies to a member who has never
+   *      picked a room — never over a choice they made.
+   *   3. THE CHAT THEIR DESK OPENS INTO — `ROOM_FOR_MODE`, which is the phone's
+   *      copy of the map 0045 asserts and rooms-bridge.ts publishes calls with.
+   *
+   * AND THEN NEVER AGAIN. Changing the trading goal does NOT move the room any
+   * more, which is the reverse of what this effect used to do. A member who
+   * sets their goal to Invest while reading Beginners stays in Beginners: they
+   * changed what Kai looks for, not what they are reading. The two facts are
+   * independent and this is the line where the app stops confusing them.
+   *
+   * IT WAITS FOR BOTH THE PROFILE AND THE DEVICE'S MEMORY. `mode` and `stage`
+   * both have a stand-in until the profile arrives, and `lastRoom` is an async
+   * read; resolving before either lands puts the member in one room and then
+   * moves them, which looks exactly like the app changing the room by itself.
    */
   const landedRef = useRef(false);
-  const lastModeRef = useRef<GoalMode | null>(null);
   useEffect(() => {
+    if (landedRef.current) return;
     if (!coreRooms.length) return;
+    if (!profile) return;
+    if (!lastRoom.ready) return;
 
+    landedRef.current = true;
+
+    const remembered = lastRoom.slug
+      ? (coreRooms.find((r) => r.slug === lastRoom.slug) ?? null)
+      : null;
+    const forStage = stage === 'beginner' ? beginnersRoom : null;
+    const forMode = coreRooms.find((r) => r.slug === ROOM_FOR_MODE[mode]) ?? null;
+
+    const room = remembered ?? forStage ?? forMode ?? coreRooms[0];
+    setRoomId(room.id);
     /*
-     * WAIT FOR THE PROFILE BEFORE CHOOSING THE FIRST ROOM. Both `mode` and
-     * `stage` are read off it and both have a stand-in until it arrives, so
-     * resolving early lands on the DEFAULT mode's desk and then — when the real
-     * profile turns up a moment later — looks exactly like the member having
-     * switched mode, which moves them off wherever they were put. That is the
-     * bug this guard exists for and it is invisible without it: the room simply
-     * is not the one you asked for.
+     * THE LANDING IS REMEMBERED TOO, which is what makes "and then never again"
+     * literally true. Without this line a member who never opens the switcher
+     * would be re-landed by rules 2 and 3 on every launch — so changing their
+     * trading goal would still move their room, one app-open later. That is the
+     * same bug F13 describes with a delay on it.
      */
-    if (!landedRef.current && !profile) return;
-
-    const mine = coreRooms.find((r) => r.mode === mode) ?? null;
-    const modeChanged = landedRef.current && lastModeRef.current !== mode;
-    lastModeRef.current = mode;
-
-    if (!landedRef.current) {
-      landedRef.current = true;
-      /*
-       * THE ONE EXCEPTION TO "THE ROOM IS THE MODE", and it is the first room a
-       * beginner sees. A member at the `beginner` stage (0042) opens Community
-       * in Beginners rather than in their desk — their mode is still real and
-       * their desk is one tap away, but the room where questions are welcome is
-       * the one they should meet first, not the one where people are posting
-       * entries and stops.
-       */
-      setRoomId(stage === 'beginner' && beginnersRoom ? beginnersRoom.id : (mine?.id ?? coreRooms[0].id));
-      return;
-    }
-
-    /*
-     * After that, only a GENUINE mode change moves the room. The old version
-     * re-asserted the mode's room on every run of this effect, which was
-     * harmless while the mode was the only thing that picked a room and is not
-     * any more: it would silently undo both the landing above and any press of
-     * the Beginners pill, a fraction of a second after either happened.
-     */
-    if (modeChanged && mine) setRoomId(mine.id);
-  }, [coreRooms, mode, stage, beginnersRoom, profile]);
+    lastRoom.remember(room.slug);
+  }, [coreRooms, mode, stage, beginnersRoom, profile, lastRoom.ready, lastRoom.slug, lastRoom.remember]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -313,6 +362,20 @@ export default function Community() {
   }, [roomId, rooms.length]);
 
   const selected = coreRooms.find((r) => r.id === roomId) ?? null;
+
+  /**
+   * Resolve the room's pinned setup, the same way the room screen does: the
+   * directory carries `setup_id`, the object itself lives on `/setups/:id`.
+   * No setup id, no request and no card.
+   */
+  useEffect(() => {
+    if (!selected?.setup_id) { setPinnedSetup(null); return; }
+    if (selected.setup) { setPinnedSetup(selected.setup); return; }
+    let alive = true;
+    setPinnedSetup(null);
+    communityApi.roomSetup(selected.setup_id).then((s) => { if (alive) setPinnedSetup(s); }).catch(() => {});
+    return () => { alive = false; };
+  }, [selected?.setup_id, selected?.setup]);
 
   /** Presence: only ever the numbers the server actually sent. */
   const online = coreRooms.reduce((s, r) => s + (r.discussing_count ?? 0), 0);
@@ -439,20 +502,26 @@ export default function Community() {
         }}
       >
         <View style={{ flex: 1, minWidth: 0 }}>
-          <T size={16} weight="bold" numberOfLines={1}>Cheat Code Club</T>
+          {/* The club is still the club; it is an eyebrow rather than the
+              heading, because the thing a reader needs to find on this screen
+              is which ROOM they are in (F14). */}
+          <T size={10} weight="semibold" ls={0.7} c={color.dim} numberOfLines={1}>CHEAT CODE CLUB</T>
+          {/*
+            THE ROOM'S NAME IS THE HEADING, AND IT IS THE SWITCH.
+            One control where there used to be five: a Beginners pill, three
+            mode chips, and a caption that named the room without letting you
+            change it. Pressing this opens the three chats; it writes nothing.
+          */}
+          {selected ? (
+            <RoomTitleButton
+              name={selected.name}
+              onPress={() => setSwitcherOpen(true)}
+              testID="club-room-name"
+            />
+          ) : (
+            <T size={20} weight="bold" numberOfLines={1}>Community</T>
+          )}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            {/* WHICH ROOM THIS IS. The rail used to answer this as a side
-                effect of being a switch; it is a caption, so it is written as
-                one. Volt, because the room is the thing the mode control
-                beside it selects. */}
-            {selected ? (
-              <>
-                <T size={10.5} weight="semibold" c={color.volt} testID="club-room-name" numberOfLines={1}>
-                  {selected.name}
-                </T>
-                <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: color.dim }} />
-              </>
-            ) : null}
             <T size={10.5} c={color.dim} testID="club-presence">{presence}</T>
             {/*
               "REFRESHING EVERY 5S" IS GONE. The mechanism is untouched — the
@@ -489,59 +558,18 @@ export default function Community() {
         </Pressable>
 
         {/*
-          Mode lives in the headbar (owner, 6 Sept), between search and the
-          people button, and since 7 Sept it is the ONLY mode control on this
-          screen. It is the same global setting the chip and the sheet write —
-          `PUT /mode` — and here it also opens the room that belongs to the mode
-          you picked, so the control is never a switch that appears to do
-          nothing.
+          THE MODE CONTROL AND THE BEGINNERS PILL WERE BOTH HERE, AND BOTH ARE
+          GONE (audit F13).
+
+          `ModeSegmented` wrote `PUT /mode` — the member's GLOBAL mode, which
+          follows them onto Home and the alert boards — so it changed the room
+          AND everything else, while the Beginners pill beside it changed only
+          the room. Two controls that looked alike, one of which quietly
+          rewrote a preference. Both are replaced by the room title above,
+          which opens the switcher; the trading goal lives in the last row of
+          that sheet, where changing it is a deliberate act with its effects
+          spelled out.
         */}
-        {/*
-          THE BEGINNERS DOOR, and the reason it is not part of the control
-          beside it. `ModeSegmented` writes `PUT /mode` — it sets the member's
-          GLOBAL mode, which follows them onto Home and the alert boards.
-          Beginners is not a mode (0043 §1): it is a room, and somebody reading
-          it is still a swing trader or an investor while they do. A fourth chip
-          in that control would quietly rewrite `primary_mode` to something that
-          is not one, so this is a separate, quieter thing that changes only
-          what you are looking at.
-
-          It is deliberately shown to everybody rather than only to beginners.
-          The room works because experienced members answer in it, and a door
-          only novices can see is a room only novices are in.
-        */}
-        {beginnersRoom ? (
-          <Pressable
-            testID="club-beginners"
-            accessibilityRole="button"
-            accessibilityLabel="Beginners room"
-            accessibilityState={{ selected: roomId === beginnersRoom.id }}
-            onPress={() => setRoomId(beginnersRoom.id)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={{
-              paddingHorizontal: 9,
-              paddingVertical: 4,
-              borderRadius: 7,
-              borderWidth: 0.5,
-              borderColor: roomId === beginnersRoom.id ? alpha.volt50 : alpha.ivory25,
-              backgroundColor: roomId === beginnersRoom.id ? alpha.volt14 : 'transparent',
-            }}
-          >
-            <T size={10} weight="bold" c={roomId === beginnersRoom.id ? color.volt : color.muted}>
-              Beginners
-            </T>
-          </Pressable>
-        ) : null}
-
-        <ModeSegmented
-          mode={mode}
-          testID="club-mode-segmented"
-          onChanged={(m) => {
-            const room = coreRooms.find((r) => r.mode === m);
-            if (room) setRoomId(room.id);
-          }}
-        />
-
         <Pressable
           testID="club-members"
           accessibilityRole="button"
@@ -663,8 +691,28 @@ export default function Community() {
             ) : null}
 
             {/* The room rail was here. It is gone — see the header of this
-                file. The headbar's mode control is the switch, and the room's
-                name is in the header line beside it. */}
+                file. The room's name at the top of the screen is both the
+                label and the switch. */}
+
+            {/*
+              THE PINNED SETUP, AT THE TOP OF THE FEED (board, left screen).
+
+              `PinnedSetup` has existed and been good since the setup rooms
+              shipped, and it was rendered in exactly one place — the room
+              screen. This is the second of its two new call sites; the third is
+              the thread. It draws only when the room really has a setup
+              attached (`rooms.setup_id`), which a core room usually does not,
+              and nothing stands in for it when it does not.
+            */}
+            {pinnedSetup ? (
+              <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+                <PinnedSetup
+                  setup={pinnedSetup}
+                  watching={selected?.member_count ?? null}
+                  testID="club-pinned-setup"
+                />
+              </View>
+            ) : null}
 
             <View style={{ paddingHorizontal: 16, gap: 14, paddingTop: 12 }}>
               {messages.length ? messages.map((m) => (
@@ -686,23 +734,26 @@ export default function Community() {
                   // of these people is the person reading.
                   showFollow={!!myUserId && m.author.user_id !== myUserId && m.author.user_id !== 'me'}
                 />
-              )) : (
-                // An empty room says it is empty and says what to do about it.
-                // Four accounts have ever existed on this database, so there is
-                // nothing here to show and nothing to invent.
-                <View
+              )) : selected ? (
+                /*
+                 * AN EMPTY ROOM OFFERS A QUESTION, NOT AN INSTRUCTION (F14).
+                 *
+                 * What was here asked the reader to "say what you are watching
+                 * and why", which is the hardest possible first message and was
+                 * being asked of the people least able to write it. Nothing
+                 * about the honesty changed: no members, no activity, no sample
+                 * conversation — four accounts have ever existed on this
+                 * database and there is still nothing to show.
+                 */
+                <RoomWelcome
                   testID="club-empty"
-                  style={{ borderLeftWidth: 2, borderLeftColor: alpha.ivory12, paddingLeft: 12, paddingVertical: 6, gap: 4 }}
-                >
-                  <T size={13.5} weight="semibold">
-                    {selected ? `Nobody has posted in ${selected.name} yet.` : 'No rooms yet.'}
-                  </T>
-                  {selected ? (
-                    <T size={12.5} lh={18} c={color.muted}>
-                      Be the first. Say what you are watching and why — the room is people showing
-                      their work, not advice.
-                    </T>
-                  ) : null}
+                  roomName={selected.name}
+                  description={selected.description}
+                  onStarter={(q) => { setDraft(q); setDraftNonce((n) => n + 1); }}
+                />
+              ) : (
+                <View testID="club-empty" style={{ borderLeftWidth: 2, borderLeftColor: alpha.ivory12, paddingLeft: 12, paddingVertical: 6 }}>
+                  <T size={13.5} weight="semibold">No rooms yet.</T>
                 </View>
               )}
             </View>
@@ -777,14 +828,52 @@ export default function Community() {
         ) : null}
         <Composer
           testID="club-composer"
-          placeholder="Message Cheat Code Club… $ @Kai"
+          /* The box names the room it posts into, not the club. Somebody who
+             has just switched rooms should be able to see where their message
+             is going without looking back up at the header. */
+          placeholder={selected ? `Message ${selected.name}… $ @Kai` : 'Message the club… $ @Kai'}
           disabled={!roomId}
           onSend={(t) => { void post(t); }}
+          /* A question starter arrives here as a draft the member can edit and
+             then send themselves. Nothing is posted by a tap on a suggestion. */
+          draft={draft}
+          draftNonce={draftNonce}
           attachments={media.attachments}
           onAttach={() => { void media.pick(); }}
           onRemoveAttachment={media.remove}
         />
       </KeyboardDock>
+
+      {/*
+        THE ROOM SWITCHER. The one control that changes what you are reading,
+        and the only place on this screen the trading goal can be changed —
+        through the same sheet Home and Trade use, which names every effect
+        before it makes the change.
+
+        The goal sheet is opened AFTER this one closes rather than on top of it.
+        Two stacked modals is a stack somebody has to unwind twice, and on
+        Android the back gesture picks the wrong one.
+      */}
+      <RoomSwitcherSheet
+        visible={switcherOpen}
+        onClose={() => setSwitcherOpen(false)}
+        rooms={coreRooms}
+        selectedId={roomId}
+        onPick={(r) => { openRoom(r); setSwitcherOpen(false); }}
+        circles={circles}
+        onOpenCircle={(c) => { setSwitcherOpen(false); openCircle(c); }}
+        onSeeCircles={() => setSwitcherOpen(false)}
+        goalLabel={MODE_LABEL[mode]}
+        onChangeGoal={() => { setSwitcherOpen(false); setGoalOpen(true); }}
+      />
+
+      {/*
+        CHANGING THE TRADING GOAL IS STILL POSSIBLE AND IS NOW DELIBERATE.
+        `ModeSheet` writes `PUT /mode` exactly as it always did; what changed is
+        that nothing on this screen does it by accident. No `onChanged` handler:
+        the room does not move when the goal moves, which is the whole of F13.
+      */}
+      <ModeSheet visible={goalOpen} onClose={() => setGoalOpen(false)} mode={mode} />
 
       <CreateCircleSheet
         visible={createOpen}

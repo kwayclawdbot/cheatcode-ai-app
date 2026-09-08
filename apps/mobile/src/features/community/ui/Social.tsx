@@ -22,7 +22,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AccessibilityInfo, Animated, Modal, Platform, Pressable, View, useWindowDimensions,
+  Animated, Modal, Platform, Pressable, View, useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { alpha, color, radius } from '../../../ui/tokens';
@@ -59,16 +59,17 @@ const toneFill = (r: ReactionDef) => (r.tone === 'market' ? alpha.cyan10 : alpha
  * fades, it just stops springing out of the button, because that spring is the
  * part that makes somebody with vestibular sensitivity feel it.
  */
-export function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    AccessibilityInfo.isReduceMotionEnabled().then((v) => { if (alive) setReduced(v); }).catch(() => {});
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduced);
-    return () => { alive = false; sub?.remove?.(); };
-  }, []);
-  return reduced;
-}
+/**
+ * RE-EXPORTED, NOT REIMPLEMENTED. This used to be a local copy that read the OS
+ * setting and nothing else, so a member who chose "Reduce motion" in Account saw
+ * the switch save and this screen keep moving — the audit's F19. The provider in
+ * `features/a11y` combines the OS setting with the member's preference, and the
+ * OR runs one way only: a phone set to reduce motion cannot be overridden from
+ * inside the app. `ui/Skeleton.tsx` imports this name from here, so the export
+ * stays put rather than making every caller move.
+ */
+import { useReducedMotion } from '../../a11y/context';
+export { useReducedMotion };
 
 /**
  * THE SIX, IN A ROW, OVER THE BUTTON THAT OPENED THEM.

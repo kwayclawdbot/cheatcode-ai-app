@@ -39,10 +39,14 @@ import type { StartAnswer } from '../../lib/types';
  * `START_PLACEMENT` in `apps/api/src/lib/stage/rules.ts`, on the server,
  * because placement and evolution have to agree about what a rung means:
  *
- *   I'm brand new                    -> beginner    · invest    · Beginners room
- *   I invest but don't really trade  -> beginner    · invest    · Beginners room
- *   I swing trade                    -> developing  · swing     · Swing room
- *   I actively trade                 -> trade_ready · day_trade · Day Trade room
+ *   I'm brand new                    -> beginner    · invest    · Beginners Chat
+ *   I invest but don't really trade  -> beginner    · invest    · Beginners Chat
+ *   I swing trade                    -> developing  · swing     · Traders Chat
+ *   I actively trade                 -> trade_ready · day_trade · Traders Chat
+ *
+ * The last two land in the same room on purpose: since 0045 there are three
+ * chats, not four, and day_trade and swing share Traders Chat. The mode still
+ * differs, because the mode is the member's desk and no longer picks a room.
  *
  * THE MODE IS A DEFAULT AND NOT A DECISION. This screen writes `goal_mode` into
  * the draft as a pre-selection, and the very next screen asks about it out

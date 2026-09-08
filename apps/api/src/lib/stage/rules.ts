@@ -192,14 +192,28 @@ export const START_ANSWERS = ['brand_new', 'investor', 'swing', 'active'] as con
 
 export type StartAnswer = (typeof START_ANSWERS)[number];
 
+/**
+ * THE ROOM SLUGS HERE ARE THE THREE CHATS (0045).
+ *
+ * They used to be `beginners | swing | day-trade`, one room per desk. Community
+ * is now three chats — Traders, Investors, Beginners (owner, 8 Sept) — so the
+ * swing answer and the active-trader answer land in the SAME room, and the
+ * mapping is the named one in `lib/social/rooms-bridge.ts` (`MODE_TO_ROOM`)
+ * rather than a slug that happened to match a mode.
+ *
+ * `mode` and `room` no longer move together and that is the point: somebody who
+ * says they swing trade still gets the swing DESK — their alerts, their charts,
+ * their risk language — and reads the same conversation as the intraday
+ * traders. The desk is what they trade; the chat is who they talk to.
+ */
 export const START_PLACEMENT: Record<
   StartAnswer,
-  { stage: Stage; mode: 'invest' | 'swing' | 'day_trade'; room: 'beginners' | 'swing' | 'day-trade' }
+  { stage: Stage; mode: 'invest' | 'swing' | 'day_trade'; room: 'beginners' | 'traders' }
 > = {
   brand_new: { stage: 'beginner', mode: 'invest', room: 'beginners' },
   investor: { stage: 'beginner', mode: 'invest', room: 'beginners' },
-  swing: { stage: 'developing', mode: 'swing', room: 'swing' },
-  active: { stage: 'trade_ready', mode: 'day_trade', room: 'day-trade' },
+  swing: { stage: 'developing', mode: 'swing', room: 'traders' },
+  active: { stage: 'trade_ready', mode: 'day_trade', room: 'traders' },
 };
 
 export function isStartAnswer(v: unknown): v is StartAnswer {

@@ -26,29 +26,33 @@ insert into scan_universes (name, symbols) values
 on conflict (name) do update set symbols = excluded.symbols, updated_at = now();
 
 -- =====================================================================
--- rooms - the four core rooms (owner decision 2026-08-26, extended 2026-09-07)
+-- rooms - the three chats (owner decision 2026-09-08)
 --
--- Community is four rooms, full stop: Beginners, Day Trade, Swing, Investing.
--- No per-mode sub-rooms and no setup rooms are surfaced. `mode` is kept on the
--- three desk rows because the schema and the API still carry it (and a desk is
--- genuinely about one horizon), but it is NOT a filter any more - every member
--- sees all four.
+-- Community is Traders Chat, Investors Chat and Beginners Chat. The owner's
+-- words: "Just make it traders chat, investors chat and beginners chat."
 --
--- BEGINNERS HAS NO MODE, and that is load-bearing rather than an omission: it
--- is a stage of the member, not an instrument, and 0040 asserts that every
--- app_mode has exactly ONE core room. Giving this row a mode fails that
--- assertion the next time the database is rebuilt. The full argument is in
--- supabase/migrations/0043_beginners_is_a_core_room.sql section 1; this file
--- and that migration must agree, because this is the one that runs on a fresh
--- database and that is the one that runs on an existing one.
+-- THIS BLOCK USED TO SEED FOUR ROOMS KEYED BY MODE and argued, correctly for
+-- its time, that every app_mode had exactly one core room and that Beginners
+-- having no mode was load-bearing rather than an omission. That rule is retired.
+-- Read section 0 of supabase/migrations/0045_three_chats.sql for what replaced
+-- it and why - in short, day_trade and swing now share one room, so a rule that
+-- demands one room per mode cannot hold, and `mode` is no longer what selects a
+-- room at all. The mapping is explicit and lives in one place per side:
+-- MODE_TO_ROOM in apps/api/src/lib/social/rooms-bridge.ts on the server, and
+-- apps/mobile/src/features/community/rooms.ts on the phone.
+--
+-- SO EVERY CORE ROOM HERE CARRIES `mode = null`, AND THAT IS ENFORCED: 0045
+-- section 4(c) raises if a core room ever grows a mode back, and its error
+-- message names this file as the likely cause. This file runs on a fresh
+-- database and 0045 runs on an existing one; they must agree or the two paths
+-- produce different products.
 --
 -- config.intel_eligible = false until community-intelligence terms are disclosed.
 -- =====================================================================
 insert into rooms (type, mode, slug, name, description, config) values
-  ('core',null,'beginners','Beginners','Simple questions, plain answers. What a term means, what an alert is saying, and the first wins.', '{"intel_eligible": false}'),
-  ('core','day_trade','day-trade','Day Trade','Intraday setups, confirmations, exits - today.',            '{"intel_eligible": false}'),
-  ('core','swing','swing','Swing','Ideas held for days or weeks: theses, catalysts, updates.',             '{"intel_eligible": false}'),
-  ('core','invest','investing','Investing','Building and reviewing a long-term portfolio.',                '{"intel_eligible": false}')
+  ('core',null,'traders','Traders Chat','Setups, entries, stops and exits - intraday and over days.', '{"intel_eligible": false}'),
+  ('core',null,'investors','Investors Chat','Companies, portfolios and long-term ideas.',              '{"intel_eligible": false}'),
+  ('core',null,'beginners','Beginners Chat','Simple questions, plain answers. Nothing here assumes you already know.', '{"intel_eligible": false}')
 on conflict (slug) do nothing;
 
 -- =====================================================================
