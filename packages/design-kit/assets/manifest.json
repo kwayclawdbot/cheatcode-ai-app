@@ -1,0 +1,152 @@
+[
+  {
+    "file": "icon-home.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-alerts.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-community.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-trade.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-account.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-arrow.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-back.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-chevron.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-down.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-menu.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-plus.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-send.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-close.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-check.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-bookmark.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-book.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-play.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-search.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-lock.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-bolt.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-clock.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-more.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-wifi.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "icon-flag.svg",
+    "source": "icons.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "belt-white.svg",
+    "source": "learning.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "belt-blue.svg",
+    "source": "learning.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "belt-purple.svg",
+    "source": "learning.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "belt-brown.svg",
+    "source": "learning.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "belt-black.svg",
+    "source": "learning.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  },
+  {
+    "file": "kai-orb.svg",
+    "source": "../KaiOrb.tsx",
+    "note": "Generated from native component. Regenerate; do not hand-edit."
+  }
+]

@@ -14,18 +14,16 @@ import {
 } from '@expo-google-fonts/jetbrains-mono';
 
 /** Round 4: mono is JetBrains Mono app-wide (was IBM Plex Mono). */
-export const family = {
-  regular: 'SpaceGrotesk_400Regular',
-  medium: 'SpaceGrotesk_500Medium',
-  semibold: 'SpaceGrotesk_600SemiBold',
-  bold: 'SpaceGrotesk_700Bold',
-  mono: 'JetBrainsMono_400Regular',
-  monoMedium: 'JetBrainsMono_500Medium',
-  monoSemibold: 'JetBrainsMono_600SemiBold',
-  monoBold: 'JetBrainsMono_700Bold',
-} as const;
-
-export type Weight = 'regular' | 'medium' | 'semibold' | 'bold';
+/**
+ * THE FAMILY MAP MOVED, AND ONLY THE MAP.
+ *
+ * The design kit needs these names from a module that pulls in NOTHING — no
+ * react-native, no `@expo-google-fonts/*` — because `scripts/gen-theme.mts`
+ * reads them under plain node and the kit's browser gallery compiles them for
+ * the web. Everything else about fonts, including the gate below and the web
+ * fallback stack, stays here. Re-exported so no existing caller had to move.
+ */
+export { family, type Weight } from './fontFamilies';
 
 /**
  * WHY THE WEB BUILD RENDERED IN TIMES.

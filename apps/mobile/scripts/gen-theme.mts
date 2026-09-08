@@ -93,6 +93,15 @@ import { color, alpha, radius, belt } from '../src/ui/tokens.ts';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, '..');
 const OUT = path.join(appRoot, 'src', 'ui', 'theme.generated.css');
+/**
+ * TWO FILES NOW, AND THEY ARE DIFFERENT KINDS OF THING.
+ *
+ * `fontFamilies.ts` is the PURE map the design kit extracted so that a module
+ * with no react-native import can name the faces — this reader and the kit's
+ * browser gallery both depend on that purity. `fonts.ts` still owns the gate
+ * and the web fallback stack, and re-exports the map for existing callers.
+ */
+const FAMILIES = path.join(appRoot, 'src', 'ui', 'fontFamilies.ts');
 const FONTS = path.join(appRoot, 'src', 'ui', 'fonts.ts');
 
 /**
@@ -106,17 +115,17 @@ const FONTS = path.join(appRoot, 'src', 'ui', 'fonts.ts');
  * guessing if the shape of that file ever changes.
  */
 function readFontFamilies(): Record<string, string> {
-  const src = readFileSync(FONTS, 'utf8');
+  const src = readFileSync(FAMILIES, 'utf8');
   const open = src.indexOf('export const family = {');
   if (open === -1) {
     throw new Error(
-      `gen-theme: could not find "export const family = {" in ${FONTS}. ` +
+      `gen-theme: could not find "export const family = {" in ${FAMILIES}. ` +
         `The font map moved or was renamed — update this reader rather than ` +
         `hardcoding family names here.`,
     );
   }
   const close = src.indexOf('} as const;', open);
-  if (close === -1) throw new Error(`gen-theme: unterminated family object in ${FONTS}`);
+  if (close === -1) throw new Error(`gen-theme: unterminated family object in ${FAMILIES}`);
   const body = src.slice(open + 'export const family = {'.length, close);
 
   const out: Record<string, string> = {};
@@ -126,7 +135,7 @@ function readFontFamilies(): Record<string, string> {
   }
   if (!out.regular || !out.mono) {
     throw new Error(
-      `gen-theme: parsed ${Object.keys(out).length} font families from ${FONTS} ` +
+      `gen-theme: parsed ${Object.keys(out).length} font families from ${FAMILIES} ` +
         `but "regular" and/or "mono" are missing. Expected a flat map of ` +
         `name -> 'FontFamilyString'.`,
     );
@@ -161,7 +170,7 @@ function readFallback(kind: 'SANS' | 'MONO'): string {
   const m = src.match(new RegExp(`const ${kind}_FALLBACK\\s*=\\s*\n?\\s*'([^']+)';`));
   if (!m) {
     throw new Error(
-      `gen-theme: could not find "const ${kind}_FALLBACK = '...'" in ${FONTS}. ` +
+      `gen-theme: could not find "const ${kind}_FALLBACK = '...'" in ${FAMILIES}. ` +
         `The web fallback stack moved or was renamed — update this reader rather ` +
         `than hardcoding a second copy of the stack here.`,
     );
