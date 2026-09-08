@@ -208,17 +208,48 @@ export default function Community() {
    * itself on every mode change would be a control that visibly does nothing.
    */
   const landedRef = useRef(false);
+  const lastModeRef = useRef<GoalMode | null>(null);
   useEffect(() => {
     if (!coreRooms.length) return;
-    const mine = coreRooms.find((r) => r.mode === mode);
-    setRoomId((prev) => {
-      if (!prev && !landedRef.current && stage === 'beginner' && beginnersRoom) {
-        landedRef.current = true;
-        return beginnersRoom.id;
-      }
-      return mine?.id ?? prev ?? coreRooms[0].id;
-    });
-  }, [coreRooms, mode, stage, beginnersRoom]);
+
+    /*
+     * WAIT FOR THE PROFILE BEFORE CHOOSING THE FIRST ROOM. Both `mode` and
+     * `stage` are read off it and both have a stand-in until it arrives, so
+     * resolving early lands on the DEFAULT mode's desk and then — when the real
+     * profile turns up a moment later — looks exactly like the member having
+     * switched mode, which moves them off wherever they were put. That is the
+     * bug this guard exists for and it is invisible without it: the room simply
+     * is not the one you asked for.
+     */
+    if (!landedRef.current && !profile) return;
+
+    const mine = coreRooms.find((r) => r.mode === mode) ?? null;
+    const modeChanged = landedRef.current && lastModeRef.current !== mode;
+    lastModeRef.current = mode;
+
+    if (!landedRef.current) {
+      landedRef.current = true;
+      /*
+       * THE ONE EXCEPTION TO "THE ROOM IS THE MODE", and it is the first room a
+       * beginner sees. A member at the `beginner` stage (0042) opens Community
+       * in Beginners rather than in their desk — their mode is still real and
+       * their desk is one tap away, but the room where questions are welcome is
+       * the one they should meet first, not the one where people are posting
+       * entries and stops.
+       */
+      setRoomId(stage === 'beginner' && beginnersRoom ? beginnersRoom.id : (mine?.id ?? coreRooms[0].id));
+      return;
+    }
+
+    /*
+     * After that, only a GENUINE mode change moves the room. The old version
+     * re-asserted the mode's room on every run of this effect, which was
+     * harmless while the mode was the only thing that picked a room and is not
+     * any more: it would silently undo both the landing above and any press of
+     * the Beginners pill, a fraction of a second after either happened.
+     */
+    if (modeChanged && mine) setRoomId(mine.id);
+  }, [coreRooms, mode, stage, beginnersRoom, profile]);
 
   useEffect(() => {
     if (!roomId) return;

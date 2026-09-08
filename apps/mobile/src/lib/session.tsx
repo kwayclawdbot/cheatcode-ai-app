@@ -82,7 +82,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (!supabase || !s) { setProfile(null); return; }
     const { data } = await supabase
       .from('profiles')
-      .select('user_id, display_name, handle, primary_mode, involvement, experience, memory_enabled, onboarding')
+      /*
+       * `stage` and `stage_locked` are 0042. They are READ here and never
+       * written: the column is client-readable through the member's own
+       * `profiles_owner_all` policy, and a database trigger refuses any write
+       * to it that does not come from the service role.
+       *
+       * This select is an explicit column list, which means a new column is
+       * invisible to the whole app until it is named here — and invisible in
+       * the quietest way possible. `homeOrderFor(profile?.stage)` treats
+       * undefined as `beginner`, so leaving `stage` out of this line did not
+       * break Home, it just silently gave every member a beginner's Home
+       * forever. Worth remembering before adding the next column.
+       */
+      .select('user_id, display_name, handle, primary_mode, involvement, experience, memory_enabled, onboarding, stage, stage_locked')
       .eq('user_id', s.user.id)
       .maybeSingle();
     if (mounted.current) setProfile((data as unknown as Profile) ?? { user_id: s.user.id, onboarding: { completed: false } });
