@@ -239,24 +239,6 @@ export function TradeMap({
 }) {
   const [width, setWidth] = useState(340);
   const g = tradeGeometry(idea, compact);
-  /**
-   * A LEVEL WITH NO NUMBER IS NOT DRAWN.
-   *
-   * These three used to render unconditionally and fall back to an em-dash,
-   * which puts a red cell labelled "Stop" on a card that has no stop — and a
-   * red cell labelled Stop is read as a stop, whatever is printed inside it.
-   * For an engine that produces no exit levels at all (the unusual-options
-   * family) that is not cosmetic: it is the kit implying a risk plan nothing
-   * behind it ever computed.
-   *
-   * This is the alert card's own long-standing rule, moved into the kit when
-   * the card moved onto the kit — the rule outlived the component that used to
-   * enforce it, which is the whole argument for the shared layer. The caller
-   * explains the absence in a sentence, which is where an absence belongs.
-   */
-  const drawn = (["entry", "stop", "target"] as const).filter(
-    (kind) => typeof idea[kind] === "number" && Number.isFinite(idea[kind] as number),
-  );
   const labels =
     g?.levels.filter(
       (l) =>
@@ -403,43 +385,85 @@ export function TradeMap({
         <T c={color.muted}>Price history unavailable</T>
       )}
       {beforeLevels}
-      {!compact && drawn.length > 0 && (
-        <View style={s.levels}>
-          {drawn.map((kind) => {
-            const content = (
-              <>
-                <T size={12} c={ink[kind]}>
-                  {LEVEL_LABEL[kind]}
-                </T>
-                <Num size={16} c={ink[kind]} style={{ marginTop: 6 }}>
-                  {levelText?.[kind] ?? price(idea[kind], idea.pricePrecision)}
-                </Num>
-              </>
-            );
-            return onLevelSelect ? (
-              <Focusable
-                key={kind}
-                accessibilityRole="button"
-                accessibilityLabel={`${LEVEL_LABEL[kind]} ${levelText?.[kind] ?? price(idea[kind], idea.pricePrecision)}`}
-                accessibilityState={{ selected: selectedLevel === kind }}
-                onPress={() => onLevelSelect(kind)}
-                style={[s.level, selectedLevel === kind && s.selected]}
-                // Three columns 6px apart, so the ring stays tight; the level
-                // cells are square-cornered, so it traces a square.
-                ringInset={2}
-                ringRadius={0}
-              >
-                {content}
-              </Focusable>
-            ) : (
-              <View key={kind} style={s.level}>
-                {content}
-              </View>
-            );
-          })}
-        </View>
+      {!compact && (
+        <TradeLevels
+          idea={idea}
+          levelText={levelText}
+          selectedLevel={selectedLevel}
+          onLevelSelect={onLevelSelect}
+        />
       )}
       {annotation && <KaiAnnotation note={annotation} />}
+    </View>
+  );
+}
+/**
+ * THE THREE LEVELS, AS NUMBERS — the smallest piece of the trade language.
+ *
+ * Extracted from `TradeMap` when the ticker page needed it: that page already
+ * draws a chart of its own, so a second one would have been two pictures of
+ * the same prices arguing about which was the real one. What it wanted was the
+ * LEVELS in the app's one vocabulary — the same order, the same three inks,
+ * the same refusal below — without a chart or a card around them.
+ *
+ * A LEVEL WITH NO NUMBER IS NOT DRAWN. These used to render unconditionally
+ * and fall back to an em-dash, which puts a red cell labelled "Stop" on a card
+ * that has no stop — and a red cell labelled Stop is read as a stop, whatever
+ * is printed inside it. For an engine that produces no exit levels at all (the
+ * unusual-options family) that is not cosmetic: it is the kit implying a risk
+ * plan nothing behind it ever computed. This is the alert card's own
+ * long-standing rule, moved into the kit when the card moved onto the kit.
+ */
+export function TradeLevels({
+  idea,
+  levelText,
+  selectedLevel = "entry",
+  onLevelSelect,
+}: {
+  idea: TradeIdea;
+  levelText?: Partial<Record<LevelKind, string | null>>;
+  selectedLevel?: LevelKind;
+  onLevelSelect?: (level: LevelKind) => void;
+}) {
+  const drawn = (["entry", "stop", "target"] as const).filter(
+    (kind) => typeof idea[kind] === "number" && Number.isFinite(idea[kind] as number),
+  );
+  if (!drawn.length) return null;
+  return (
+    <View style={s.levels}>
+      {drawn.map((kind) => {
+        const shown = levelText?.[kind] ?? price(idea[kind], idea.pricePrecision);
+        const content = (
+          <>
+            <T size={12} c={ink[kind]}>
+              {LEVEL_LABEL[kind]}
+            </T>
+            <Num size={16} c={ink[kind]} style={{ marginTop: 6 }}>
+              {shown}
+            </Num>
+          </>
+        );
+        return onLevelSelect ? (
+          <Focusable
+            key={kind}
+            accessibilityRole="button"
+            accessibilityLabel={`${LEVEL_LABEL[kind]} ${shown}`}
+            accessibilityState={{ selected: selectedLevel === kind }}
+            onPress={() => onLevelSelect(kind)}
+            style={[s.level, selectedLevel === kind && s.selected]}
+            // Three columns 6px apart, so the ring stays tight; the level
+            // cells are square-cornered, so it traces a square.
+            ringInset={2}
+            ringRadius={0}
+          >
+            {content}
+          </Focusable>
+        ) : (
+          <View key={kind} style={s.level}>
+            {content}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -548,15 +572,19 @@ export function TradeStatusStrip({
     );
     const a11y = `Trade status: ${word}${hint ? `. ${hint}` : ""}`;
     return onPress ? (
-      <Pressable
+      /* Focusable, not Pressable: every other control in this kit gained a
+         focus ring with the accessibility lane, and a single control opting out
+         is how a keyboard user finds the one place the ring disappears. */
+      <Focusable
         accessibilityRole="button"
         accessibilityLabel={a11y}
         onPress={onPress}
         testID={testID}
         style={s.pillStatus}
+        ringRadius={radius.lg}
       >
         {body}
-      </Pressable>
+      </Focusable>
     ) : (
       <View accessible accessibilityLabel={a11y} testID={testID} style={s.pillStatus}>
         {body}

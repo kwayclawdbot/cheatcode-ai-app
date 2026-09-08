@@ -24,6 +24,19 @@ import { alpha, color, radius, type } from '../../ui/tokens';
 import type { AlertCard, AlertOptionContract, CommunityCall } from '../../lib/types';
 import type { TradeRead } from '../portal2/read';
 import { CommunityCallCard } from '../social';
+/*
+  ONE TRADE LANGUAGE, WITHOUT A SECOND PICTURE OF IT.
+
+  These are the same components the alert card draws its levels and its reward
+  with, so an entry means the same thing, in the same ink and the same order,
+  on the card and on this page. What is deliberately NOT taken is the map:
+  this page already has a chart of its own further down, and a second one here
+  would be two pictures of the same prices arguing about which is real. The
+  page keeps its Block shell for the same reason it always had one — a card
+  inside a block is a card inside a card.
+*/
+import { RiskRewardRuler, TradeLevels } from '../../ui/trade';
+import { ideaFromTradeRead } from './trade-idea';
 import { distancePlain, money, pickContract, volumePlain } from './useTickerNow';
 import type { SessionBar, UserLine } from './useTickerNow';
 
@@ -204,6 +217,7 @@ export function NowBlock({
   testID?: string;
 }) {
   const contract = showContract ? pickContract(card) : null;
+  const { idea, levelText, extraLevels, zoned } = ideaFromTradeRead(read);
 
   return (
     <Block
@@ -264,28 +278,34 @@ export function NowBlock({
         {read.because.length ? (
           <View
             testID="ticker-now-levels"
-            style={{ flexDirection: 'row', borderTopWidth: 0.5, borderTopColor: alpha.ivory08, paddingTop: 10 }}
+            style={{ borderTopWidth: 0.5, borderTopColor: alpha.ivory08, paddingTop: 4 }}
           >
-            {read.because.map((lvl, i) => (
-              <View
-                key={lvl.key}
-                testID={`ticker-level-${lvl.key}`}
-                style={{
-                  flex: 1,
-                  paddingLeft: i === 0 ? 0 : 11,
-                  borderLeftWidth: i === 0 ? 0 : 0.5,
-                  borderLeftColor: alpha.ivory08,
-                  gap: 3,
-                }}
-              >
-                <Num size={14} weight="bold" c={LEVEL_INK[lvl.key] ?? color.text}>
-                  {lvl.price2 ? `${money(lvl.price)}–${money(lvl.price2)}` : money(lvl.price)}
-                </Num>
-                <T {...type.nano} c={color.dim}>
-                  {lvl.label.split(' ')[0].toUpperCase()}
-                </T>
+            {/*
+              The kit draws entry / stop / target, and it draws exactly the ones
+              that exist. `trigger` and anything else this read carries has no
+              cell in that vocabulary and is printed beside it rather than being
+              renamed into a level it is not.
+            */}
+            <TradeLevels idea={idea} levelText={levelText} />
+            {extraLevels.length ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 10 }}>
+                {extraLevels.map((lvl) => (
+                  <View key={lvl.key} testID={`ticker-level-${lvl.key}`} style={{ gap: 3 }}>
+                    <Num size={14} weight="bold" c={LEVEL_INK[lvl.key] ?? color.text}>
+                      {lvl.price2 ? `${money(lvl.price)}–${money(lvl.price2)}` : money(lvl.price)}
+                    </Num>
+                    <T {...type.nano} c={color.dim}>{lvl.label.split(' ')[0].toUpperCase()}</T>
+                  </View>
+                ))}
               </View>
-            ))}
+            ) : null}
+            {/*
+              The reward, measured by the same function the card measures with
+              and withheld under the same rule: a zone entry means the app does
+              not compute a ratio off one of its edges. Nothing is lost here —
+              `read.headline` states the desk's own ratio one line above.
+            */}
+            {zoned ? null : <RiskRewardRuler idea={idea} />}
           </View>
         ) : null}
 
