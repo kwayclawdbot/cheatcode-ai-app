@@ -3,8 +3,8 @@ import { View } from 'react-native';
 import Svg, { Line, Rect, Circle } from 'react-native-svg';
 import { alpha, color, radius } from '../../../ui/tokens';
 import { T, Num } from '../../../ui/Text';
-import { ObjectCard } from '../../../ui/Panel';
-import { FreshnessMark } from '../../../ui/FreshnessMark';
+import { PinnedTradePreview } from '../../../ui/trade';
+import { ideaFromRoomSetup } from '../trade-adapter';
 import { Eye } from './Icons';
 import type { RoomSetup } from '../types';
 
@@ -43,42 +43,49 @@ export function PinnedSetup({
   const top = hi + pad;
   const bottom = lo - pad;
 
-  return (
-    <ObjectCard testID={testID ?? 'pinned-setup'} r={radius.xl} style={{ padding: 14, gap: 8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <T size={14} weight="bold">{setup.symbol}</T>
-          {setup.grade_display ? (
-            <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: alpha.violet14, borderWidth: 0.5, borderColor: alpha.violet50 }}>
-              <T size={11} weight="bold" c={color.violet}>{setup.grade_display}</T>
-            </View>
-          ) : null}
+  /*
+   * THE CARD SHELL, THE IDENTITY AND THE LEVELS NOW COME FROM THE KIT.
+   *
+   * What used to be here was a second implementation of a trade object: the
+   * symbol printed by hand, its own grade badge, its own level row. It agreed
+   * with the alert card and the ticker page by coincidence, and it had already
+   * drifted in one visible way — the symbol was bare text, so this was the one
+   * trade surface in the app where a ticker appeared without its logo.
+   *
+   * `PinnedTradePreview` fixes that by being the same component every other
+   * trade surface will use. What it does NOT own is what this room happens to
+   * know — a last price, a watcher count, and the band below — so those stay
+   * here and go in through the slots. See features/community/trade-adapter.ts
+   * for the one place the wire's words become the kit's.
+   */
+  /*
+   * STACKED, not strung along one line. Laid out in a row this pushed the
+   * ticker down to "M…" on a 390pt screen — the symbol is the one thing on the
+   * card a member scans for, so it gets the width and the numbers go under
+   * each other. Two short right-aligned lines cost no height the card did not
+   * already have.
+   */
+  const meta = (
+    <View style={{ alignItems: 'flex-end', gap: 3 }}>
+      {setup.price || setup.change_pct ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           {setup.price ? <Num size={13} weight="semibold">{setup.price}</Num> : null}
           {setup.change_pct ? <Num size={11} weight="regular" c={color.muted}>{setup.change_pct}</Num> : null}
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-          {/*
-            The WORD alone could never print a time and could never decay, so
-            the mark said "Live" for as long as the room stayed open. It gets
-            the whole quote now: the instant, and the reason it is not live.
-          */}
-          <FreshnessMark
-            freshness={setup.freshness}
-            at={setup.quote_at}
-            delayReason={setup.delay_reason}
-            size={10}
-            testID={`pinned-freshness-${setup.symbol}`}
-          />
-          {watching != null ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-              <Eye size={11} />
-              <T size={10} c={color.muted}>{watching} watching</T>
-            </View>
-          ) : null}
+      ) : null}
+      {watching != null ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <Eye size={11} />
+          <T size={10} c={color.muted}>{watching} watching</T>
         </View>
-      </View>
+      ) : null}
+    </View>
+  );
 
-      <View style={{ position: 'relative' }}>
+  return (
+    <View testID={testID ?? 'pinned-setup'}>
+      <PinnedTradePreview idea={ideaFromRoomSetup(setup)} meta={meta}>
+      <View style={{ position: 'relative', marginTop: 12 }}>
         <Svg width="100%" height={H} viewBox={`0 0 330 ${H}`} preserveAspectRatio="none">
           {target != null ? (
             <Line x1={0} y1={yFor(target, top, bottom)} x2={330} y2={yFor(target, top, bottom)} stroke={color.green} strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />
@@ -97,27 +104,20 @@ export function PinnedSetup({
           ) : null}
         </Svg>
 
-        {setup.target ? (
-          <View style={{ position: 'absolute', right: 4, top: 0, paddingHorizontal: 7, paddingVertical: 1, borderRadius: 5, backgroundColor: color.greenTint, borderWidth: 0.5, borderColor: alpha.green40 }}>
-            <Num size={9} weight="regular" c={color.green}>{setup.target} target</Num>
-          </View>
-        ) : null}
-        {setup.entry ? (
-          <View style={{ position: 'absolute', left: 4, top: '40%', paddingHorizontal: 7, paddingVertical: 1, borderRadius: 5, backgroundColor: color.cyanTint, borderWidth: 0.5, borderColor: alpha.cyan40 }}>
-            <Num size={9} weight="regular" c={color.cyan}>{setup.entry} confirm</Num>
-          </View>
-        ) : null}
-        {setup.invalid ? (
-          <View style={{ position: 'absolute', right: 4, bottom: 0, paddingHorizontal: 7, paddingVertical: 1, borderRadius: 5, backgroundColor: color.redTint, borderWidth: 0.5, borderColor: alpha.red40 }}>
-            <Num size={9} weight="regular" c={color.red}>{setup.invalid} invalid</Num>
-          </View>
-        ) : null}
       </View>
 
-      <T size={10} c={color.muted}>
+      {/*
+        The three pills that used to be pinned to this band are gone. The kit's
+        level row above now names entry, stop and target in the same colours,
+        and printing each number twice an inch apart is exactly the duplication
+        this migration exists to remove. The band keeps the only thing it can
+        say that the row cannot — where the last price sits between the levels.
+      */}
+      <T size={10} c={color.muted} style={{ marginTop: 8 }}>
         Levels from Kai's plan · the marker is the last price we have, not a live chart
       </T>
-    </ObjectCard>
+      </PinnedTradePreview>
+    </View>
   );
 }
 
