@@ -5,11 +5,7 @@ import type { PathId } from '@/sim/personas';
 import { PathSelector } from './PathSelector';
 import { Walkthrough } from './Walkthrough';
 
-/**
- * The mobile experience. Not a shrunk landing page — it behaves like the app:
- * the selector is the first thing, the walkthrough is the second, the plan is
- * the third. There is no marketing scroll to get lost in.
- */
+/** Mobile opens with a persona, then a reveal and a curiosity-led journey. */
 export function Funnel() {
   const [path, setPath] = useState<PathId | null>(null);
 

@@ -180,3 +180,6 @@
 .deviceInner .cueBar {
   padding-bottom: 20px;
 }
+
+.cue:disabled { opacity: .45; cursor: default; }
+.railCaption { font-size:14px; letter-spacing:.08em; }

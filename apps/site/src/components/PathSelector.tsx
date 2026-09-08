@@ -5,7 +5,7 @@ import { KaiOrb } from './surfaces/kit';
 import s from './PathSelector.module.css';
 
 /**
- * The first screen, and the only question the site asks. Everything after it
+ * The first screen selects a persona before the two curiosity checkpoints. Everything after it
  * is personalized by the answer — the walkthrough, the plan, and the `path`
  * that carries into the app.
  */
@@ -13,7 +13,7 @@ export function PathSelector({
   onPick,
   inline = false,
   heading = 'What do you want CheatCode to help you do?',
-  sub = 'Pick one and walk through the part of the app that does it. About a minute, and nothing to fill in.',
+  sub = 'Your goals. Your version of CheatCode.',
 }: {
   onPick: (path: PathId) => void;
   inline?: boolean;

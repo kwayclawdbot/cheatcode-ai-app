@@ -1,12 +1,13 @@
-import Link from 'next/link';
-import type { Metadata } from 'next';
-import { PERSONAS, type PathId } from '@/sim/personas';
-import { START_ANSWER_FOR, isPathId } from '@/sim/handoff';
-import { KaiOrb } from '@/components/surfaces/kit';
-import s from './page.module.css';
+import Link from "next/link";
+import type { Metadata } from "next";
+import { PERSONAS, type PathId } from "@/sim/personas";
+import { isPathId } from "@/sim/handoff";
+import { validChoice } from "@/sim/journey";
+import { KaiOrb } from "@/components/surfaces/kit";
+import s from "./page.module.css";
 
 export const metadata: Metadata = {
-  title: 'Get CheatCode AI',
+  title: "Get CheatCode AI",
   robots: { index: false },
 };
 
@@ -24,11 +25,30 @@ export const metadata: Metadata = {
 export default async function GetTheApp({
   searchParams,
 }: {
-  searchParams: Promise<{ path?: string }>;
+  searchParams: Promise<{
+    path?: string;
+    interest?: string;
+    priority?: string;
+  }>;
 }) {
-  const { path: raw } = await searchParams;
-  const path: PathId = isPathId(raw) ? raw : 'swing';
+  const {
+    path: raw,
+    interest: rawInterest,
+    priority: rawPriority,
+  } = await searchParams;
+  const path: PathId = isPathId(raw) ? raw : "swing";
   const persona = PERSONAS[path];
+  const interest = validChoice(path, rawInterest, "interest");
+  const priority = validChoice(path, rawPriority, "priority", interest?.id);
+  const body = [
+    "I would like early access to CheatCode AI.",
+    `Path: ${persona.title}`,
+    interest ? `Interest: ${interest.label}` : "",
+    priority ? `Priority: ${priority.label}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const emailHref = `mailto:support@cheatcode.com?subject=CheatCode%20AI%20early%20access&body=${encodeURIComponent(body)}`;
 
   return (
     <main className={s.wrap}>
@@ -40,36 +60,38 @@ export default async function GetTheApp({
         <KaiOrb size={34} />
       </div>
 
-      <h1 className={s.title}>You are set up as {persona.mark.toLowerCase()}.</h1>
+      <h1 className={s.title}>Your next step starts here.</h1>
       <p className={s.lede}>
-        When you open the app, &ldquo;Where are you right now?&rdquo; will already be answered
-        &mdash; <strong>{persona.title.toLowerCase()}</strong>. You can change it in Account at any
-        time; it is not a label you are stuck with.
+        Your path: <strong>{persona.title}</strong>.
+        {interest && (
+          <>
+            {" "}
+            Your interest: <strong>{interest.label}</strong>.
+          </>
+        )}
+        {priority && (
+          <>
+            {" "}
+            Your priority: <strong>{priority.label}</strong>.
+          </>
+        )}
       </p>
 
       <div className={s.card}>
         <span className={s.eyebrow}>Where the app is</span>
         <p className={s.body}>
-          CheatCode AI is in private testing right now and is not on the App Store yet. Leave your
-          email with the owner and you will get the TestFlight invite as soon as there is one.
+          CheatCode AI is in private testing right now and is not on the App
+          Store yet. Leave your email with the owner and you will get the
+          TestFlight invite as soon as there is one.
         </p>
-        <a className={s.cta} href="mailto:support@cheatcode.com?subject=CheatCode%20AI%20early%20access">
+        <a className={s.cta} href={emailHref}>
           Ask for early access
         </a>
       </div>
 
-      <div className={s.detail}>
-        <span className={s.eyebrow}>Already testing?</span>
-        <p className={s.body}>
-          Open the app from this device and your answer travels with the link.
-        </p>
-        <code className={s.code}>cheatcodeai://start?path={path}</code>
-      </div>
-
       <p className={s.foot}>
-        Your answer is carried as <code className={s.inlineCode}>?path={path}</code>, which the app
-        reads as <code className={s.inlineCode}>{START_ANSWER_FOR[path]}</code>. Nothing about you
-        is stored on this page and no account has been created.
+        Your choices are included in your email draft. Send it to request an
+        invitation. No account or subscription has been created.
       </p>
     </main>
   );

@@ -72,3 +72,16 @@ writes screenshots to `proof/`:
 ```sh
 node scripts/walk.mjs [url]
 ```
+
+## Curiosity-led funnel
+
+`Walkthrough.tsx` now controls the cinematic reveal, three interactive feature
+chapters, two branching checkpoints, and personalized plan. The branch definitions
+are in `src/sim/journey.ts`; compact visual surfaces and motion are in
+`JourneySurfaces.tsx` and `Journey.module.css`. Desktop embeds the same journey.
+The ownership lesson uses a fictional company with exactly 100 shares, so selecting
+10 shares accurately demonstrates 10% ownership. All examples remain illustrative.
+Reduced-motion settings disable the reveal and drawing animations.
+
+The old `scripts/walk.mjs` linear screenshot harness and existing proof images
+predate this redesign; they are not validation of the new branching journey.
