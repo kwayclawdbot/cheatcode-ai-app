@@ -1,0 +1,28 @@
+/* THE SPLIT.
+ *
+ * Mobile is not a narrower desktop — the spec is explicit that a phone gets
+ * the app's own behaviour (selector → walkthrough → plan) and never a
+ * mini-desktop scroll. So both experiences are rendered and CSS decides which
+ * one exists, rather than JavaScript deciding after hydration. That keeps the
+ * full landing copy in the HTML for crawlers, and keeps a phone from ever
+ * seeing a flash of the wrong one.
+ */
+
+.mobileOnly {
+  display: block;
+}
+
+.desktopOnly {
+  display: none;
+}
+
+/* Large tablet and up gets the brand landing. */
+@media (min-width: 900px) {
+  .mobileOnly {
+    display: none;
+  }
+
+  .desktopOnly {
+    display: block;
+  }
+}

@@ -1,0 +1,312 @@
+/* PRO surfaces: the chart, Kai reading it, a plan written before the trade,
+   the trade graded after it, progression, and standing in the room. */
+
+.chartWrap {
+  border-radius: var(--r-lg);
+  border: 1px solid var(--ivory08);
+  background: var(--surface3);
+  padding: 10px 10px 8px;
+}
+
+.chartHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.tfRow {
+  display: flex;
+  gap: 4px;
+}
+
+.tf {
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono-stack);
+  font-size: 10px;
+  color: var(--dim);
+  border: 1px solid transparent;
+}
+
+.tfOn {
+  color: var(--text);
+  border-color: var(--ivory12);
+  background: var(--surface2);
+}
+
+.chartFoot {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--font-mono-stack);
+}
+
+.swatch {
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+  flex: none;
+}
+
+/* ── Kai answering on the chart ────────────────────────────────────────── */
+/* A lower third, not a bubble: the ground at 82%, no radius, no border, so
+   the chart is still visibly running underneath rather than behind a panel. */
+
+.lowerThird {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 22px 16px 14px;
+  background: rgba(11, 11, 14, 0.82);
+  animation: lowerIn 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes lowerIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.speakerBar {
+  display: block;
+  width: 34px;
+  height: 2px;
+  border-radius: var(--r-pill);
+  background: var(--violet);
+  margin-bottom: 10px;
+}
+
+.caption {
+  font-size: 15.5px;
+  line-height: 22px;
+  color: var(--text);
+}
+
+.liveMark {
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.9px;
+  color: var(--violet-light);
+}
+
+.liveDot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--violet);
+}
+
+/* ── the plan ──────────────────────────────────────────────────────────── */
+
+.planRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ivory08);
+}
+
+.planRow:last-child {
+  border-bottom: none;
+}
+
+.planLabel {
+  font-size: 12px;
+  color: var(--muted);
+  flex: none;
+}
+
+.planValue {
+  font-family: var(--font-mono-stack);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.planNote {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+  text-align: right;
+}
+
+/* ── the grade ─────────────────────────────────────────────────────────── */
+
+.gradeTop {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.gradeBig {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-pill);
+  border: 2px solid var(--grade-gold);
+  background: rgba(255, 215, 94, 0.12);
+  color: var(--grade-gold);
+  font-family: var(--font-mono-stack);
+  font-size: 24px;
+  font-weight: 600;
+  flex: none;
+}
+
+.gradeWhat {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.gradeLines {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.gradeLine {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--ivory08);
+  font-size: 13px;
+  line-height: 19px;
+}
+
+.gradeLine:last-child {
+  border-bottom: none;
+}
+
+.tickOk {
+  color: var(--green);
+  flex: none;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.tickNo {
+  color: var(--red);
+  flex: none;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+/* ── progression ───────────────────────────────────────────────────────── */
+
+.ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.rung {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: var(--r-md);
+  font-size: 13px;
+}
+
+.rungNow {
+  background: var(--ivory06);
+  border: 1px solid var(--ivory12);
+}
+
+.rungDone {
+  opacity: 0.55;
+}
+
+.rungNext {
+  opacity: 0.45;
+}
+
+.rungBar {
+  width: 3px;
+  height: 20px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.rungName {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.rungMeta {
+  margin-left: auto;
+  font-family: var(--font-mono-stack);
+  font-size: 11px;
+  color: var(--dim);
+}
+
+/* ── leaderboard ───────────────────────────────────────────────────────── */
+
+.lbRow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--ivory08);
+}
+
+.lbYou {
+  border-radius: var(--r-md);
+  padding: 11px 10px;
+  background: var(--panel-volt);
+  border: 1px solid var(--volt40);
+}
+
+.lbRank {
+  font-family: var(--font-mono-stack);
+  font-size: 12px;
+  color: var(--dim);
+  width: 20px;
+  flex: none;
+}
+
+.lbName {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lbMeta {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.lbBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.lbScore {
+  font-family: var(--font-mono-stack);
+  font-size: 13px;
+  color: var(--text);
+  flex: none;
+}

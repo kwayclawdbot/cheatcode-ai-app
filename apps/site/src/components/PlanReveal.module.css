@@ -1,0 +1,155 @@
+/* The plan, shown only after the walkthrough. One plan, theirs — not a
+   three-column comparison, because the visitor has already been placed. */
+
+.wrap {
+  padding-top: 4px;
+}
+
+.lead {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
+}
+
+.sub {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--muted);
+  margin-bottom: 18px;
+}
+
+.card {
+  border-radius: var(--r-xl);
+  border: 1px solid var(--volt40);
+  background: var(--panel-volt);
+  padding: 18px;
+}
+
+.priceRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.price {
+  font-family: var(--font-mono-stack);
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--text);
+}
+
+.per {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.planName {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.88px;
+  text-transform: uppercase;
+  color: var(--volt);
+  margin-bottom: 10px;
+  display: block;
+}
+
+.pitch {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text);
+  margin: 12px 0 14px;
+}
+
+.gets {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.get {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 0;
+  border-top: 1px solid var(--volt20);
+  font-size: 13px;
+  line-height: 19px;
+}
+
+.getTick {
+  color: var(--volt);
+  flex: none;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.cta {
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-top: 18px;
+  padding: 16px 24px;
+  border-radius: var(--r-pill);
+  background: var(--volt);
+  color: #0b0b0e;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.cta:hover {
+  background: var(--volt-hover);
+}
+
+.secondary {
+  display: block;
+  text-align: center;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.foot {
+  margin-top: 16px;
+  font-size: 11px;
+  line-height: 17px;
+  color: var(--dim);
+}
+
+.others {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ivory08);
+}
+
+.othersHead {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.88px;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 10px;
+  display: block;
+}
+
+.otherRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.otherPrice {
+  font-family: var(--font-mono-stack);
+  color: var(--text);
+}

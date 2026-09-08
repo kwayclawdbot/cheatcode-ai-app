@@ -1,0 +1,209 @@
+/**
+ * The site's ground truth is the app's own token file:
+ * apps/mobile/src/ui/tokens.ts. Values below are ported verbatim so a
+ * walkthrough surface on the website and the same screen in the app are the
+ * same object, not a lookalike.
+ *
+ * The grammar is non-negotiable and is enforced everywhere on this site:
+ *   volt   = USER action
+ *   violet = KAI intelligence
+ *   cyan   = MARKET data
+ *   green / red / gold = financial semantics only
+ */
+
+:root {
+  /* ground + surfaces */
+  --bg: #0b0b0e;
+  --surface: #1c1c22;
+  --surface2: #17171c;
+  --surface3: #111117;
+
+  /* ink */
+  --text: #fff7e8;
+  --muted: #b9b0a8;
+  --dim: #6e675f;
+
+  /* the grammar */
+  --volt: #c8ff00;
+  --volt-hover: #d6ff3d;
+  --volt-alt: #deff66;
+  --violet: #8b4dff;
+  --violet-light: #cbb2ff;
+  --violet-deep: #3b1685;
+  --cyan: #32d6ff;
+  --green: #35d07f;
+  --red: #ff5a5f;
+  --gold: #ffc857;
+  --grade-gold: #ffd75e;
+
+  /* level tints — the grounds the three trade levels sit on */
+  --cyan-tint: #0f2733;
+  --green-tint: #122a1e;
+  --red-tint: #2e1517;
+
+  /* veils, lifted from tokens.alpha */
+  --ivory04: rgba(255, 247, 232, 0.04);
+  --ivory06: rgba(255, 247, 232, 0.06);
+  --ivory08: rgba(255, 247, 232, 0.08);
+  --ivory10: rgba(255, 247, 232, 0.1);
+  --ivory12: rgba(255, 247, 232, 0.12);
+  --ivory16: rgba(255, 247, 232, 0.16);
+  --ivory20: rgba(255, 247, 232, 0.2);
+  --ivory25: rgba(255, 247, 232, 0.25);
+  --surface55: rgba(23, 23, 28, 0.55);
+  --surface60: rgba(23, 23, 28, 0.6);
+  --surface65: rgba(23, 23, 28, 0.65);
+  --surface75: rgba(23, 23, 28, 0.75);
+  --chip70: rgba(34, 34, 42, 0.7);
+  --chip85: rgba(34, 34, 42, 0.85);
+
+  --volt06: rgba(200, 255, 0, 0.06);
+  --volt10: rgba(200, 255, 0, 0.1);
+  --volt14: rgba(200, 255, 0, 0.14);
+  --volt20: rgba(200, 255, 0, 0.2);
+  --volt40: rgba(200, 255, 0, 0.4);
+  --volt50: rgba(200, 255, 0, 0.5);
+  --violet08: rgba(139, 77, 255, 0.08);
+  --violet14: rgba(139, 77, 255, 0.14);
+  --violet20: rgba(139, 77, 255, 0.2);
+  --violet22: rgba(139, 77, 255, 0.22);
+  --violet45: rgba(139, 77, 255, 0.45);
+  --violet50: rgba(139, 77, 255, 0.5);
+  --cyan10: rgba(50, 214, 255, 0.1);
+  --cyan14: rgba(50, 214, 255, 0.14);
+  --cyan40: rgba(50, 214, 255, 0.4);
+  --green12: rgba(53, 208, 127, 0.12);
+  --green40: rgba(53, 208, 127, 0.4);
+  --red12: rgba(255, 90, 95, 0.12);
+  --red40: rgba(255, 90, 95, 0.4);
+  --gold14: rgba(255, 200, 87, 0.14);
+  --gold40: rgba(255, 200, 87, 0.4);
+  --gold20: rgba(255, 200, 87, 0.2);
+  --black40: rgba(0, 0, 0, 0.4);
+
+  /* the belt ladder — dyed cloth, never at signal chroma */
+  --belt-white: #fff7e8;
+  --belt-blue: #7b9cc6;
+  --belt-purple: #be9ac8;
+  --belt-brown: #c08c5e;
+  --belt-black: #d6dae1;
+
+  /* the panel gradients, at the app's 160deg */
+  --panel: linear-gradient(160deg, var(--ivory06) 0%, var(--surface55) 45%, var(--surface75) 100%);
+  --panel-volt: linear-gradient(160deg, var(--volt14) 0%, rgba(200, 255, 0, 0.04) 55%, var(--surface60) 100%);
+  --panel-kai: linear-gradient(160deg, var(--violet22) 0%, var(--violet08) 100%);
+  --panel-user: linear-gradient(160deg, var(--volt20) 0%, rgba(200, 255, 0, 0.07) 100%);
+  --panel-gold: linear-gradient(160deg, var(--gold14) 0%, rgba(255, 200, 87, 0.04) 55%, var(--surface60) 100%);
+  --tile: linear-gradient(160deg, var(--ivory10) 0%, var(--chip70) 100%);
+
+  /* radii, from tokens.radius */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-xxl: 18px;
+  --r-xxxl: 20px;
+  --r-pill: 999px;
+
+  /* motion — strong curves only; the built-ins are too weak */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+  --font-display-stack: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  --font-mono-stack: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-display-stack);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  /* The app's corner wash: violet top-left, cyan on the right. */
+  background-image:
+    radial-gradient(420px 320px at 20% -5%, rgba(139, 77, 255, 0.14) 0%, transparent 60%),
+    radial-gradient(380px 300px at 95% 30%, rgba(50, 214, 255, 0.07) 0%, transparent 65%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  min-height: 100dvh;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure {
+  margin: 0;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Every pressable thing acknowledges the press. */
+button,
+[role='button'] {
+  transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out),
+    border-color 160ms var(--ease-out), color 160ms var(--ease-out);
+}
+
+button:active,
+[role='button']:active {
+  transform: scale(0.97);
+}
+
+:focus-visible {
+  outline: 2px solid var(--volt);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* The app's monospaced numerals — prices, levels, counts never reflow. */
+.num {
+  font-family: var(--font-mono-stack);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

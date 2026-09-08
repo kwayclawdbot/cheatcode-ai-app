@@ -1,0 +1,341 @@
+/* Shared app primitives, rendered for the web.
+   Every value here traces to a real component in apps/mobile/src — the ticker
+   mark, the belt chip, the Kai orb, the grade gauge, the two bubbles. */
+
+/* ── the card primitive (ObjectCard) ───────────────────────────────────── */
+
+.panel {
+  position: relative;
+  border-radius: var(--r-xl);
+  border: 0.5px solid var(--ivory16);
+  background: var(--panel);
+  padding: 14px;
+}
+
+/* The 1px top highlight ObjectCard draws as an overlay row. */
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--ivory16);
+  pointer-events: none;
+}
+
+.panelKai {
+  border-color: var(--violet50);
+  background: var(--panel-kai);
+}
+
+.panelVolt {
+  border-width: 1px;
+  border-color: rgba(200, 255, 0, 0.6);
+  background: var(--panel-volt);
+}
+
+.panelVolt::before {
+  background: rgba(222, 255, 102, 0.24);
+}
+
+.panelGold {
+  border-color: rgba(255, 200, 87, 0.6);
+  background: var(--panel-gold);
+}
+
+/* ── section furniture ─────────────────────────────────────────────────── */
+
+.screenTitle {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  margin-bottom: 2px;
+}
+
+.screenSub {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.88px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── ticker ────────────────────────────────────────────────────────────── */
+/* A ticker is never plain text. The mark is a cyan tile carrying the WHOLE
+   symbol in mono — never the first two letters, because ARK is a different
+   fund from ARKK. The symbol beside it is Space Grotesk: a ticker is a name,
+   not a quantity. */
+
+.ticker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  vertical-align: middle;
+}
+
+.tickerMark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--cyan-tint);
+  flex: none;
+  overflow: hidden;
+}
+
+.tickerMark::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9px;
+  border: 0.5px solid rgba(50, 214, 255, 0.14);
+  pointer-events: none;
+}
+
+.tickerGlyphs {
+  font-family: var(--font-mono-stack);
+  font-weight: 700;
+  color: var(--cyan);
+  line-height: 1.1;
+}
+
+.tickerMarkLg {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}
+
+.tickerMarkLg::after {
+  border-radius: 12px;
+}
+
+.tickerMarkSm {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+}
+
+.tickerMarkSm::after {
+  border-radius: 7px;
+}
+
+.tickerSymbol {
+  /* Space Grotesk, deliberately — mono would read as data. */
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  display: block;
+}
+
+.tickerSymbolLg {
+  font-size: 21px;
+}
+
+.tickerSub {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+/* An inline $TICKER inside a sentence. */
+.cashtag {
+  font-weight: 700;
+  color: var(--cyan);
+  background: var(--cyan14);
+  border-radius: var(--r-xs);
+  padding: 0 0.18em;
+}
+
+/* ── belt chip ─────────────────────────────────────────────────────────── */
+/* The swatch is a bar, not a dot, and the WORD is always muted at every rung —
+   the hue is carried by the member's name, not by the chip. */
+
+.belt {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  border: 0.5px solid;
+  background: none;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--muted);
+  flex: none;
+}
+
+.beltBar {
+  width: 3px;
+  height: 9px;
+  border-radius: 1.5px;
+  flex: none;
+}
+
+/* ── the Kai orb ───────────────────────────────────────────────────────── */
+
+.orb {
+  border-radius: var(--r-pill);
+  flex: none;
+  background: radial-gradient(circle at 35% 35%, #cbb2ff 0%, #8b4dff 55%, #3b1685 100%);
+}
+
+.orbGlow {
+  box-shadow: 0 0 28px rgba(139, 77, 255, 0.55);
+}
+
+/* ── speech ────────────────────────────────────────────────────────────── */
+
+.bubbleRow {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.bubbleRowUser {
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: 86%;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+/* Kai speaks in violet; the flat corner is top-left. */
+.bubbleKai {
+  padding: 10px 14px;
+  border-radius: 4px 16px 16px 16px;
+  background: var(--panel-kai);
+  border: 0.5px solid var(--violet50);
+}
+
+/* The user speaks in volt; the flat corner is top-right. */
+.bubbleUser {
+  padding: 9px 14px;
+  border-radius: 14px 4px 14px 14px;
+  background: var(--panel-user);
+  border: 0.5px solid var(--volt50);
+}
+
+/* ── chips ─────────────────────────────────────────────────────────────── */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 0.5px solid var(--ivory25);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+  flex: none;
+}
+
+.chipCyan {
+  border-color: var(--cyan40);
+  background: var(--cyan10);
+  color: var(--cyan);
+}
+
+.chipGreen {
+  border-color: var(--green40);
+  color: var(--green);
+}
+
+.chipRed {
+  border-color: var(--red40);
+  color: var(--red);
+}
+
+.chipGold {
+  border-color: var(--gold40);
+  background: var(--gold14);
+  color: var(--gold);
+}
+
+.chipViolet {
+  border-color: var(--violet50);
+  background: var(--violet20);
+  color: var(--violet-light);
+}
+
+/* ── freshness ─────────────────────────────────────────────────────────── */
+/* No price without freshness. Shape AND word AND colour. */
+
+.fresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-family: var(--font-mono-stack);
+}
+
+.freshLive {
+  color: var(--cyan);
+}
+
+.freshDot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--cyan);
+  flex: none;
+}
+
+.freshClosed {
+  color: var(--muted);
+}
+
+.freshBar {
+  width: 8px;
+  height: 2px;
+  background: var(--muted);
+  flex: none;
+}
+
+/* ── the staged-data notice ────────────────────────────────────────────── */
+
+.staged {
+  display: block;
+  margin-top: 14px;
+  font-size: 10px;
+  line-height: 15px;
+  color: var(--dim);
+}
+
+/* ── the one volt primary ──────────────────────────────────────────────── */
+
+.voltGhost {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 15px;
+  border-radius: var(--r-pill);
+  border: 1px solid rgba(200, 255, 0, 0.55);
+  background: var(--volt10);
+  color: var(--volt);
+  font-size: 12.5px;
+  font-weight: 600;
+}

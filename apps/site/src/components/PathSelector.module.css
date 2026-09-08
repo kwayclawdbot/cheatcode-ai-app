@@ -1,0 +1,169 @@
+/* The first screen. Almost empty on purpose: one question, three doors.
+   No hero image, no logo wall, no scroll — the visitor's job is to answer. */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 32px 20px calc(32px + env(safe-area-inset-bottom));
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: auto;
+  padding-top: 8px;
+}
+
+.brandName {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.q {
+  font-size: 30px;
+  line-height: 36px;
+  font-weight: 700;
+  letter-spacing: -0.6px;
+  margin: 28px 0 10px;
+  max-width: 15ch;
+}
+
+.qSub {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--muted);
+  margin-bottom: 26px;
+  max-width: 34ch;
+}
+
+.doors {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.door {
+  position: relative;
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 16px 16px 15px;
+  border-radius: var(--r-xl);
+  border: 0.5px solid var(--ivory16);
+  background: var(--panel);
+}
+
+.door::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--ivory16);
+}
+
+.door:hover {
+  border-color: rgba(200, 255, 0, 0.6);
+  background: var(--panel-volt);
+}
+
+.doorTop {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 5px;
+}
+
+.doorMark {
+  font-family: var(--font-mono-stack);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.door:hover .doorMark {
+  color: var(--volt);
+}
+
+.doorTitle {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+
+.doorLine {
+  display: block;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--muted);
+}
+
+.doorGo {
+  position: absolute;
+  right: 16px;
+  bottom: 15px;
+  font-size: 13px;
+  color: var(--dim);
+  transition: transform 200ms var(--ease-out), color 200ms var(--ease-out);
+}
+
+.door:hover .doorGo {
+  color: var(--volt);
+  transform: translateX(3px);
+}
+
+.foot {
+  margin-top: auto;
+  padding-top: 26px;
+  font-size: 11px;
+  line-height: 17px;
+  color: var(--dim);
+}
+
+/* Materialize, don't slide: 250ms, 90ms stagger, text never scales. */
+.enter {
+  animation: materialize 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes materialize {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* ── desktop variant: the doors sit inside the landing, not full screen ── */
+
+.inline {
+  min-height: 0;
+  padding: 0;
+  justify-content: flex-start;
+}
+
+.inline .brand,
+.inline .foot {
+  display: none;
+}
+
+.inline .q {
+  margin-top: 0;
+}
+
+@media (min-width: 900px) {
+  .inline .doors {
+    flex-direction: row;
+  }
+
+  .inline .door {
+    flex: 1;
+    padding-bottom: 42px;
+  }
+}

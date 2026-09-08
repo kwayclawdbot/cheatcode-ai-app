@@ -1,0 +1,285 @@
+/* LEARNER surfaces: Kai onboarding, the 7-day path, a lesson, a first idea,
+   a practice question, the belt move, the beginners room. */
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.choice {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 13px 14px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--ivory08);
+  background: var(--panel);
+}
+
+.choiceOn {
+  border-color: var(--volt40);
+  background: var(--panel-volt);
+}
+
+.choiceTitle {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.choiceSub {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--muted);
+}
+
+/* ── the 7-day path ────────────────────────────────────────────────────── */
+
+.pathHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.pathProgress {
+  font-family: var(--font-mono-stack);
+  font-size: 12px;
+  color: var(--volt);
+}
+
+.days {
+  display: flex;
+  flex-direction: column;
+}
+
+.day {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 2px;
+  border-bottom: 1px solid var(--ivory08);
+}
+
+.dayNum {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--ivory12);
+  background: var(--surface2);
+  font-family: var(--font-mono-stack);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dim);
+  flex: none;
+}
+
+.dayNow .dayNum {
+  border-color: var(--volt40);
+  background: var(--volt14);
+  color: var(--volt);
+}
+
+.dayDone .dayNum {
+  border-color: var(--green40);
+  background: var(--green12);
+  color: var(--green);
+}
+
+.dayTitle {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dayNow .dayTitle {
+  color: var(--text);
+}
+
+.dayLocked .dayTitle,
+.dayLocked .dayMeta {
+  color: var(--dim);
+}
+
+.dayMeta {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.dayBody {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── lesson ────────────────────────────────────────────────────────────── */
+
+.lessonMeta {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.lessonBody p {
+  font-size: 15px;
+  line-height: 23px;
+  color: var(--text);
+}
+
+.lessonBody p + p {
+  margin-top: 11px;
+}
+
+.lessonBody em {
+  font-style: normal;
+  color: var(--volt);
+  font-weight: 600;
+}
+
+.figure {
+  margin: 14px 0;
+  padding: 14px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--ivory08);
+  background: var(--surface3);
+}
+
+.figCap {
+  display: block;
+  margin-top: 9px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--muted);
+}
+
+/* ── practice ──────────────────────────────────────────────────────────── */
+
+.q {
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+
+.answerRight {
+  border-color: var(--green40);
+  background: linear-gradient(160deg, var(--green12), var(--surface60));
+}
+
+.answerWrong {
+  border-color: var(--ivory12);
+  opacity: 0.55;
+}
+
+.verdict {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--muted);
+}
+
+.verdict strong {
+  color: var(--green);
+}
+
+/* ── belt move ─────────────────────────────────────────────────────────── */
+
+.beltMove {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 0 14px;
+}
+
+.beltArrow {
+  color: var(--dim);
+  font-size: 14px;
+}
+
+/* The belt ladder as five discrete rungs — never one continuous bar. */
+.rungs {
+  display: flex;
+  gap: 3px;
+  margin-top: 12px;
+}
+
+.rung {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  display: block;
+}
+
+.rungFill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.rungNote {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+/* The one bar shape the training feature uses. */
+.trainBar {
+  height: 7px;
+  border-radius: var(--r-pill);
+  background: var(--ivory10);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.trainFill {
+  display: block;
+  height: 100%;
+  background: var(--volt);
+}
+
+/* ── beginners room ────────────────────────────────────────────────────── */
+
+.post {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ivory08);
+}
+
+.postHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.postName {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.postTime {
+  font-size: 11px;
+  color: var(--dim);
+  margin-left: auto;
+}
+
+.postBody {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text);
+}
+
+.postFoot {
+  display: flex;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--dim);
+}

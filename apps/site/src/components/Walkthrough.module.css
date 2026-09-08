@@ -1,0 +1,182 @@
+/* The walkthrough stage. On mobile this IS the page; on desktop it sits in a
+   device frame on a stage so the visitor understands they are looking at a
+   phone app, not at the website's own chrome. */
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+/* ── the rail ──────────────────────────────────────────────────────────── */
+
+.rail {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 14px 20px 12px;
+  background: linear-gradient(to bottom, var(--bg) 62%, transparent);
+}
+
+.railTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.railCaption {
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: -0.01em;
+}
+
+.railExit {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  padding: 4px 2px;
+}
+
+.railExit:hover {
+  color: var(--muted);
+}
+
+.ticks {
+  display: flex;
+  gap: 4px;
+}
+
+.tick {
+  height: 3px;
+  flex: 1;
+  border-radius: var(--r-pill);
+  background: var(--ivory10);
+  overflow: hidden;
+}
+
+.tickFill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: var(--r-pill);
+  background: var(--volt);
+  transition: width 420ms var(--ease-out);
+}
+
+.tickDone .tickFill {
+  width: 100%;
+}
+
+.tickNow .tickFill {
+  width: 100%;
+  background: var(--volt);
+}
+
+/* ── the surface ───────────────────────────────────────────────────────── */
+
+.surface {
+  flex: 1;
+  /* clears the sticky cue bar so the last line is never tucked under it */
+  padding: 6px 20px 12px;
+}
+
+/* Each beat arrives; it does not appear from nothing. */
+.beat {
+  animation: beatIn 380ms var(--ease-out) both;
+}
+
+@keyframes beatIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+
+/* ── the cue ───────────────────────────────────────────────────────────── */
+
+.cueBar {
+  position: sticky;
+  bottom: 0;
+  padding: 16px 20px calc(20px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, var(--bg) 58%, transparent);
+}
+
+.cue {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 52px;
+  padding: 0 24px;
+  border-radius: var(--r-pill);
+  background: var(--volt);
+  color: #0b0b0e;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.cue:hover {
+  background: var(--volt-hover);
+}
+
+.cueArrow {
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+/* ── desktop: the device frame ─────────────────────────────────────────── */
+
+.device {
+  width: 390px;
+  max-width: 100%;
+  height: 780px;
+  max-height: 78vh;
+  border-radius: 42px;
+  padding: 10px;
+  background: linear-gradient(160deg, rgba(255, 247, 232, 0.16), rgba(34, 34, 42, 0.85));
+  box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.9), 0 0 0 1px var(--ivory08);
+  flex: none;
+}
+
+.deviceInner {
+  position: relative;
+  height: 100%;
+  border-radius: 33px;
+  overflow: hidden;
+  background: var(--bg);
+  background-image:
+    radial-gradient(420px 320px at 20% -5%, rgba(139, 77, 255, 0.14) 0%, transparent 60%),
+    radial-gradient(380px 300px at 95% 30%, rgba(50, 214, 255, 0.07) 0%, transparent 65%);
+  display: flex;
+  flex-direction: column;
+}
+
+.deviceInner .stage {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.deviceInner .surface {
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.deviceInner .surface::-webkit-scrollbar {
+  display: none;
+}
+
+.deviceInner .rail,
+.deviceInner .cueBar {
+  background: none;
+}
+
+.deviceInner .cueBar {
+  padding-bottom: 20px;
+}
