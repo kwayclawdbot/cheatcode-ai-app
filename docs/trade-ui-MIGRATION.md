@@ -154,10 +154,34 @@ Either the kit grows those or it stays the preview component its name promises
 and the full row keeps its own code. **Decide which before starting**, because
 "we will extend it as we go" is how the third parallel implementation gets built.
 
-**Step 5 — the alert card and the ticker page.** These are the surfaces with
-signed-off pixels in `apps/mobile/proof/`, so they move last and only with
-before/after screenshots against the existing proofs. `SetupPreview` and
-`TradeDetail` are the kit's answers here.
+**Step 5 — the alert card. DONE, 8 September.** `StandardAlertCard` is
+`SetupPreview` collapsed and `TradeDetail` expanded, via
+`src/features/alerts/trade-adapter.ts` — the alerts twin of the room's adapter,
+and the piece that made this a day's work rather than a rewrite. Driven by
+audit F06: entry, stop, target, the risk/reward and the lifecycle are all above
+the fold now; the score, the bars and the story are behind the expander.
+
+Four things are worth carrying forward, because each was found by looking at
+the rendered card rather than at a green test:
+
+- **The alert wire has no bars.** `useAlertCandles` fetches them per symbol from
+  `/market/candles` and caches above the hook. It is a subscription, not an
+  `alive` flag in the effect: React's development double-invoke runs the
+  cleanup between the two passes, so the flag version filled the cache and
+  re-rendered nothing.
+- **Levels are display strings and some are ZONES.** `'504–507'` is a real
+  value. Strip the dash and it becomes `504507`. One number is a price, two are
+  a zone, the chart draws the near edge and the cell prints the wire's words.
+- **A card with a zone shows the server's ratio, not a computed one.** A ratio
+  measured off one edge of a range is a best case dressed as the case.
+- **A level with no number is not drawn.** That rule lived in the alert card;
+  it lives in `TradeMap` now, so it outlives the next component that draws a
+  level.
+
+**Step 5b — the ticker page.** Not moved. `/symbol/[symbol]` is a company page
+with its own chart lane (`features/chart`, `usePortalCandles`) and its own
+sections; it is a different object from a trade idea, and folding it onto the
+kit is its own decision rather than a leftover from this one.
 
 **Step 6 — the quoted post.** `QuoteBlock` is the one place in chat where a
 member's identity is flat muted text, because `MessageQuote` carries no
