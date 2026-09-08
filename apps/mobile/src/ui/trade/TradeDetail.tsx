@@ -39,9 +39,11 @@ export function TradeDetail({
   children,
   eyebrow,
   askLabel,
-  statusVariant = "steps",
-  statusLabel,
-  statusHint,
+  lead,
+  plan,
+  status,
+  showMap = true,
+  showSource = true,
   unframed = false,
   showIdentity = true,
   gradeWhenAbsent = "hide",
@@ -60,9 +62,27 @@ export function TradeDetail({
   children?: ReactNode;
   eyebrow?: string;
   askLabel?: string;
-  statusVariant?: "steps" | "pill";
-  statusLabel?: string;
-  statusHint?: string;
+  /**
+   * Drawn ABOVE the price map — the object a family leads with when a stock
+   * path is not it. An options card leads with the contract and may still have
+   * a price plan underneath; `showMap` is what removes the map, not this.
+   */
+  lead?: ReactNode;
+  /** Stands in for the ruler where a family has no exit plan to draw. */
+  plan?: ReactNode;
+  /**
+   * The lifecycle, drawn between the chart and the levels — the same slot
+   * `SetupPreview` puts it in, so a card growing from the preview into this
+   * view does not move it. Supplying it replaces the four-dot strip below the
+   * ruler, which would otherwise say the same thing twice on one card.
+   */
+  status?: ReactNode;
+  /** Off for a family with no price plan at all, so nothing draws an empty chart. */
+  showMap?: boolean;
+  /** The source/as-of line. Off where the caller draws its own footer below
+   *  the fold — the alert card keeps freshness under its expander, where it
+   *  has always been, so the story still runs straight into the button. */
+  showSource?: boolean;
   /** Drop the page padding and ground, for use inside a card that has its own. */
   unframed?: boolean;
   showIdentity?: boolean;
@@ -103,20 +123,25 @@ export function TradeDetail({
           {idea.summary}
         </T>
       ) : null}
-      <TradeMap
-        idea={idea}
-        selectedLevel={selected}
-        onLevelSelect={setSelected}
-        annotation={note ? { level: selected, text: note } : undefined}
-      />
-      <RiskRewardRuler idea={idea} />
-      <TradeStatusStrip
-        status={idea.status}
-        variant={statusVariant}
-        label={statusLabel}
-        hint={statusHint}
-        testID={testID ? `${testID}-status` : undefined}
-      />
+      {lead}
+      {showMap ? (
+        <TradeMap
+          idea={idea}
+          selectedLevel={selected}
+          onLevelSelect={setSelected}
+          annotation={note ? { level: selected, text: note } : undefined}
+          beforeLevels={status}
+        />
+      ) : status ? (
+        <View style={{ marginTop: 12 }}>{status}</View>
+      ) : null}
+      {plan ?? <RiskRewardRuler idea={idea} />}
+      {status ? null : (
+        <TradeStatusStrip
+          status={idea.status}
+          testID={testID ? `${testID}-status` : undefined}
+        />
+      )}
       {children}
       {onAsk && (
         <Pressable
@@ -138,9 +163,11 @@ export function TradeDetail({
         </Pressable>
       )}
       {composer}
-      <T size={12} c={color.muted} style={s.source}>
-        {idea.dataLabel}
-      </T>
+      {showSource ? (
+        <T size={12} c={color.muted} style={s.source}>
+          {idea.dataLabel}
+        </T>
+      ) : null}
     </View>
   );
 }

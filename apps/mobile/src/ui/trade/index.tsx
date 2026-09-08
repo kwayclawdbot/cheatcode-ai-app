@@ -26,6 +26,10 @@ import {
   type ConversationMessage,
 } from "../../../../../packages/trade-ui/model";
 export type { TradeIdea, LevelKind, TradeStatus, KaiNote, ConversationMessage };
+/* The geometry and formatting helpers travel with the components: a caller
+   deciding whether a card HAS a plan must ask the same question the ruler asks,
+   not a second one of its own that is free to disagree. */
+export { riskReward, price, LEVEL_LABEL, STATUS_LABEL } from "../../../../../packages/trade-ui/model";
 /**
  * THE GRADE, DRAWN ONE WAY.
  *
@@ -542,6 +546,8 @@ export function SetupPreview({
   status,
   plan,
   children,
+  showMap = true,
+  showSource = true,
   unframed = false,
   testID,
   gradeWhenAbsent = "hide",
@@ -556,6 +562,12 @@ export function SetupPreview({
   status?: ReactNode;
   plan?: ReactNode;
   children?: ReactNode;
+  /** Off for a family with no price plan at all, so nothing draws an empty chart. */
+  showMap?: boolean;
+  /** The source/as-of line. Off where the caller draws its own footer below
+   *  the fold — the alert card keeps freshness under its expander, where it
+   *  has always been, so the story still runs straight into the button. */
+  showSource?: boolean;
   unframed?: boolean;
   testID?: string;
   gradeWhenAbsent?: "hide" | "state";
@@ -591,8 +603,12 @@ export function SetupPreview({
         />
         <GradeBadge grade={idea.grade} whenAbsent={gradeWhenAbsent} />
       </View>
-      {lead ?? <TradeMap idea={idea} beforeLevels={status} />}
-      {lead && status ? <View style={{ marginTop: 12 }}>{status}</View> : null}
+      {lead}
+      {showMap ? (
+        <TradeMap idea={idea} beforeLevels={status} />
+      ) : status ? (
+        <View style={{ marginTop: 12 }}>{status}</View>
+      ) : null}
       {plan ?? (hasPlan ? <RiskRewardRuler idea={idea} /> : null)}
       {children}
       {onExplore && (
@@ -610,9 +626,11 @@ export function SetupPreview({
           </T>
         </Pressable>
       )}
-      <T size={12} c={color.muted} style={{ marginTop: 14 }}>
-        {idea.dataLabel}
-      </T>
+      {showSource ? (
+        <T size={12} c={color.muted} style={{ marginTop: 14 }}>
+          {idea.dataLabel}
+        </T>
+      ) : null}
     </View>
   );
 }

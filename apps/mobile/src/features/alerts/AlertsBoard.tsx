@@ -12,6 +12,7 @@ import { alpha, color, radius } from '../../ui/tokens';
 import { env } from '../../lib/env';
 import { AlertsEmpty, HistoryAlertRow, StandardAlertCard } from './AlertCard';
 import { useAlertActions, useAlertsRound4 } from './useAlerts';
+import { timeframeForHold, useAlertCandles } from './useAlertCandles';
 import { ModeControl } from '../home/ModeSheet';
 import { secondTab } from '../nav/second-tab';
 import { Avatar } from '../community/ui/Chrome';
@@ -204,6 +205,26 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
   }, [data]);
 
   /**
+   * THE BARS THE ALERT WIRE DOES NOT CARRY.
+   *
+   * The card draws its levels on a price map now, and an alert payload has no
+   * price history in it — the bars live behind `/market/candles`, the same
+   * lane the trade portal reads. Asking here rather than inside the card keeps
+   * one request per symbol for the whole board however many cards want it, and
+   * keeps the card a pure function of what it was handed.
+   *
+   * A daily bar is the wrong picture for an intraday plan, so the timeframe
+   * follows the hold: a day trade drawn on dailies would put every level
+   * inside a single candle. Anything the fetch does not return is simply
+   * absent, and the card falls back to the levels on an honest empty chart.
+   */
+  const candleRequests = useMemo(
+    () => activeList.map((a) => ({ symbol: a.symbol, tf: timeframeForHold(a.trade.hold) })),
+    [activeList],
+  );
+  const candles = useAlertCandles(candleRequests);
+
+  /**
    * COUNTS THAT ARE TRUE, and each one true in its own way.
    *
    * Active is the server's own `active` + `watching` numbers added together —
@@ -318,7 +339,9 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
             />
           )
         ) : activeList.length ? (
-          activeList.map((a) => <StandardAlertCard key={a.id} alert={a} />)
+          activeList.map((a) => (
+            <StandardAlertCard key={a.id} alert={a} candles={candles[a.symbol.toUpperCase()]} />
+          ))
         ) : (
           <AlertsEmpty
             // Active takes the server's sentence when there is one. The server

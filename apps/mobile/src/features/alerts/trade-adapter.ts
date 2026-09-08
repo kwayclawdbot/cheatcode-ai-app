@@ -1,3 +1,4 @@
+import { displayGrade } from '../grade';
 import type { AlertCard, AlertCardState, Candle } from '../../lib/types';
 import type { TradeIdea, TradeStatus, LevelKind } from '../../ui/trade';
 
@@ -136,12 +137,20 @@ export function ideaFromAlertCard(
     summary: alert.what_changed ?? '',
     direction: directionOf(alert, entry, target),
     /*
-     * An empty grade stays empty. The unusual-options family is honestly
-     * ungraded — nothing behind it ever scored a stock setup — and `GradeBadge`
-     * has a state for that. Substituting a letter here would be the adapter
-     * inventing the one fact the whole card is judged on.
+     * AN UNGRADED CARD STAYS UNGRADED, and "ungraded" has one definition.
+     *
+     * The unusual-options family is honestly ungraded — nothing behind it ever
+     * scored a stock setup — and the wire says so by sending an em-dash rather
+     * than an empty string. A truthiness check therefore is not enough: `"—"`
+     * is a perfectly true string, and passing it through produced a gold badge
+     * reading "— setup", which is worse than either a grade or nothing.
+     *
+     * `displayGrade` is the app's existing answer to "is this a grade", and it
+     * is the one `GradeMedallion` has always used. Asking it rather than
+     * writing a second test here is what keeps the badge and the medallion
+     * from ever disagreeing about whether a card was scored.
      */
-    grade: alert.grade || null,
+    grade: displayGrade(alert.grade) === '—' ? null : alert.grade,
     entry,
     stop,
     target,

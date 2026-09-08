@@ -32,8 +32,45 @@ import type { Candle } from '../../lib/types';
 
 const cache = new Map<string, Candle[]>();
 const inflight = new Map<string, Promise<void>>();
+/**
+ * WHY THIS IS A SUBSCRIPTION AND NOT A FLAG IN THE EFFECT.
+ *
+ * The obvious shape — `let alive = true` in the effect, cleanup sets it false,
+ * the promise bumps state only `if (alive)` — is silently broken here, and it
+ * cost a round of screenshots to find. React runs an effect twice in
+ * development: mount, cleanup, mount. The first pass fires the request and
+ * records it in `inflight`; the cleanup flips that pass's `alive` to false; the
+ * second pass sees the request already in flight and correctly does not fire it
+ * again — and so never attaches a callback of its own. When the bars finally
+ * arrive they resolve against the FIRST closure, find `alive === false`, and
+ * re-render nothing. The cache fills and the chart stays empty.
+ *
+ * A module-level listener set has no such seam: the fetch notifies whoever is
+ * mounted NOW, rather than whoever was mounted when it was started. It is also
+ * the honest shape for a cache several cards share — two cards on the same
+ * symbol want one request and both want telling.
+ */
+const listeners = new Set<() => void>();
+const notify = () => { listeners.forEach((l) => l()); };
 
 const key = (symbol: string, tf: '1d' | '5m') => `${symbol.toUpperCase()}:${tf}`;
+
+function ensure(symbol: string, tf: '1d' | '5m') {
+  const k = key(symbol, tf);
+  if (cache.has(k) || inflight.has(k) || !api.available()) return;
+  inflight.set(
+    k,
+    api
+      .candles(symbol, tf)
+      .then((bars) => { cache.set(k, bars); })
+      .catch(() => {
+        /* Absent, not broken. See the header. Cached as empty so a symbol whose
+           bars genuinely do not exist is not re-requested on every tick. */
+        cache.set(k, []);
+      })
+      .finally(() => { inflight.delete(k); notify(); }),
+  );
+}
 
 /**
  * Daily bars for a swing idea, five-minute bars for an intraday one.
@@ -55,30 +92,10 @@ export function useAlertCandles(
   const signature = wanted.map((w) => key(w.symbol, w.tf)).sort().join(',');
 
   useEffect(() => {
-    let alive = true;
-    for (const w of wanted) {
-      const k = key(w.symbol, w.tf);
-      if (cache.has(k) || inflight.has(k)) continue;
-      if (!api.available()) continue;
-      const p = api
-        .candles(w.symbol, w.tf)
-        .then((bars) => {
-          cache.set(k, bars);
-        })
-        .catch(() => {
-          /* Absent, not broken. See the header. Cached as empty so a symbol
-             whose bars genuinely do not exist is not re-requested every tick. */
-          cache.set(k, []);
-        })
-        .finally(() => {
-          inflight.delete(k);
-          if (alive) bump((n) => n + 1);
-        });
-      inflight.set(k, p);
-    }
-    return () => {
-      alive = false;
-    };
+    const listener = () => bump((n) => n + 1);
+    listeners.add(listener);
+    for (const w of wanted) ensure(w.symbol, w.tf);
+    return () => { listeners.delete(listener); };
   }, [signature]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const out: Record<string, Candle[]> = {};
