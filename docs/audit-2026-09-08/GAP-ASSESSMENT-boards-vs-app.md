@@ -250,11 +250,9 @@ returns timestamps.
 
 ## 6. DECISIONS THE OWNER OWES BEFORE BUILD
 
-1. **Which belt is *the* belt?** Calls-earned (0039, live, on every name) or
-   training-earned (Board 09, device-local)? If both, they need different names and
-   different marks — one member wearing two different belts on two screens is the
-   worst outcome. Board 09 shows a training belt in the same visual language as the
-   calls belt already in the room.
+1. ~~**Which belt is *the* belt?**~~ **SETTLED — owner, 8 Sept.** One belt, two income
+   streams: XP accrues from lessons *and* from resolved calls, and the belt itself is
+   earned only by passing that rung's test. Design in `BELT-MERGE-spec.md`.
 2. **Main room: rename Day Trade, or a fifth room?** 0043 asserts one core room per
    mode in SQL and will raise on a careless change.
 3. **Does reading a room still set your trading mode?** The boards say no. The current
@@ -293,9 +291,14 @@ in engineering shortens it.
 
 ## 8. WHAT I DID NOT ASSESS
 
-- The **PDF audit** (`3be587b0-CheatCodeAIUXUIAudit.pdf`) — this compares the five
-  boards to the code, not the written audit. Its findings may add to or contradict
-  what is above.
+- The **PDF audit** (`3be587b0-CheatCodeAIUXUIAudit.pdf`) was not read when this file
+  was written — it compares the five boards to the code, nothing more. It has since
+  been read and reconciled against this document in
+  `OPINION-audit-boards-and-what-to-build.md`, which supersedes this section. In
+  short: the audit agrees on training content, learner-owned progress and the room/
+  mode coupling, and adds three confirmed defects this file does not cover (Kai
+  conversation identity, mastery inflation on repeat, accessibility settings never
+  consumed).
 - `apps/site` (the marketing funnel) and `workers/kai-live` — no board touches them.
 - The four boards already in this directory (three home states, A Personal Start,
   Investing Made Clear, the trade-idea detail). The stage-aware home they show is
