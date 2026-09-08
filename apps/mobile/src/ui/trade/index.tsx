@@ -1,5 +1,14 @@
 import React, { useEffect, useRef, useState, type ReactNode } from "react";
-import { Animated, Easing, View, StyleSheet, Image } from "react-native";
+import {
+  Animated,
+  Easing,
+  View,
+  Pressable,
+  StyleSheet,
+  Image,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import Svg, {
   Line,
   Rect,
@@ -21,13 +30,17 @@ import {
   price,
   riskReward,
   tradeGeometry,
+  conversationBody,
+  quotedText,
+  nameInk,
   type TradeIdea,
   type LevelKind,
   type TradeStatus,
   type KaiNote,
   type ConversationMessage,
+  type ConversationQuote,
 } from "../../../../../packages/trade-ui/model";
-export type { TradeIdea, LevelKind, TradeStatus, KaiNote, ConversationMessage };
+export type { TradeIdea, LevelKind, TradeStatus, KaiNote, ConversationMessage, ConversationQuote };
 /* The geometry and formatting helpers travel with the components: a caller
    deciding whether a card HAS a plan must ask the same question the ruler asks,
    not a second one of its own that is free to disagree. */
@@ -834,6 +847,219 @@ export function PinnedTradePreview({
     <View style={s.pin}>{content}</View>
   );
 }
+/**
+ * THE QUOTED POST. The kit draws it because every surface quotes the same way.
+ *
+ * A removed quote says so and does NOT print what was removed — repeating the
+ * words of a deleted post through the quote of another one is the most common
+ * way a moderation decision gets undone by a component that meant well.
+ */
+export function ConversationQuoteBlock({
+  quote,
+  onOpen,
+  testID,
+}: {
+  quote: ConversationQuote;
+  onOpen?: (messageId: string) => void;
+  testID?: string;
+}) {
+  const body = (
+    <>
+      <T size={11.5} c={color.muted} numberOfLines={1}>
+        {quote.authorName}
+      </T>
+      <T size={12.5} lh={18} c={quote.deleted ? color.dim : color.muted} numberOfLines={3}>
+        {quotedText(quote)}
+      </T>
+    </>
+  );
+  return onOpen && !quote.deleted ? (
+    <Focusable
+      accessibilityRole="button"
+      accessibilityLabel={`Quoted post from ${quote.authorName}`}
+      onPress={() => onOpen(quote.messageId)}
+      testID={testID}
+      style={s.quote}
+      ringInset={2}
+      ringRadius={4}
+    >
+      {body}
+    </Focusable>
+  ) : (
+    <View style={s.quote} testID={testID}>
+      {body}
+    </View>
+  );
+}
+
+/**
+ * ONE MESSAGE — the shell, and only the shell.
+ *
+ * This is the piece the migration doc said could not exist. Its objection was
+ * real and is answered by shape rather than by growth: `RoomMessage` carries
+ * twenty-odd fields, and this component renders eight of them and takes the
+ * rest as SLOTS. Nothing about a reaction, a media strip or Kai's verification
+ * of a claim is reimplemented here — the room passes the components it already
+ * ships, and they arrive intact.
+ *
+ * What the kit owns is what every conversation in this product agrees on:
+ *
+ *   · the row geometry — avatar column, header line, body, the gaps between;
+ *   · THE BELT LAW. `features/social/belts.ts` states it — SIGNAL IS LIT, BELT
+ *     IS DYED — and it is the one rule a shared shell must hold, because it is
+ *     the rule two independent implementations were most likely to disagree
+ *     about. The name is inked with the belt; the belt is never a fill, never a
+ *     chip here, and Kai keeps violet because Kai has no rung and never will;
+ *   · THE DELETED REFUSAL. A removed message prints the caller's sentence and
+ *     none of the body, and it drops its reactions and its media with it,
+ *     because those are also things that were removed.
+ *
+ * `name` is a slot too, for the one reason worth the exception: in this app a
+ * member's name is a DOOR to that member, and routing is not the kit's
+ * business. A caller that passes one must still dye it — `MemberName` does —
+ * and a caller that passes nothing gets the kit's own belt-inked name, so the
+ * law holds either way and the default is the correct one.
+ */
+export function ConversationRow({
+  message,
+  avatar,
+  name,
+  aiTag,
+  chips,
+  contentStyle,
+  aside,
+  quote,
+  body,
+  beneath,
+  reactions,
+  thread,
+  onLongPress,
+  onPress,
+  selected = false,
+  testID,
+}: {
+  message: ConversationMessage;
+  /** An avatar that is also a door, with the caller's own role tones. */
+  avatar?: ReactNode;
+  /** A name that is also a door. Must obey the belt law; `MemberName` does. */
+  name?: ReactNode;
+  /**
+   * The marker that says this was written by Kai and not by a person.
+   *
+   * Undefined takes the kit's word; `null` suppresses it, for a surface that
+   * already says so another way — the room prints Kai's role chip an inch to
+   * the left, and two AI badges on one line is one more than the fact needs.
+   */
+  aiTag?: ReactNode | null;
+  /** Role chips, position disclosure, verification — drawn after the name. */
+  chips?: ReactNode;
+  /** Pushed to the right of the header: follow, or anything else per-surface. */
+  aside?: ReactNode;
+  /** Overrides the drawn quote — a surface with a richer one passes it here. */
+  quote?: ReactNode;
+  /** Overrides the body text — parsed cashtags, a call card, a Kai object. */
+  body?: ReactNode;
+  /** Media, structured ideas, embeds: below the body, inside the row. */
+  beneath?: ReactNode;
+  reactions?: ReactNode;
+  thread?: ReactNode;
+  onLongPress?: () => void;
+  onPress?: () => void;
+  selected?: boolean;
+  /** Decoration on the content column — e.g. Kai's violet rail on the feed. */
+  contentStyle?: StyleProp<ViewStyle>;
+  testID?: string;
+}) {
+  const kai = !!message.isKai;
+  const { removed, text: bodyText } = conversationBody(message);
+  const header = (
+    <View style={s.messageHeader}>
+      {name ?? (
+        <T weight="semibold" size={13.5} c={nameInk(message, belt, color.violetLight)}>
+          {message.name}
+        </T>
+      )}
+      {kai
+        ? aiTag === undefined
+          ? <T size={11} c={color.violetLight}>AI</T>
+          : aiTag
+        : null}
+      {message.handle ? (
+        <T size={11.5} c={color.dim}>
+          @{message.handle}
+        </T>
+      ) : null}
+      {chips}
+      <T size={10} c={color.muted} style={{ marginLeft: "auto" }}>
+        {message.timeLabel}
+      </T>
+      {aside}
+    </View>
+  );
+
+  const content = (
+    <View style={[s.flex, contentStyle]}>
+      {header}
+      {message.replyToName && !removed ? (
+        <T size={12} c={color.muted} style={s.reply}>
+          Replying to {message.replyToName}
+        </T>
+      ) : null}
+      {removed ? (
+        <T size={13} c={color.dim} testID={testID ? `${testID}-removed` : undefined}>
+          {bodyText}
+        </T>
+      ) : (
+        <>
+          {quote ??
+            (message.quote ? (
+              <ConversationQuoteBlock
+                quote={message.quote}
+                testID={testID ? `${testID}-quote` : undefined}
+              />
+            ) : null)}
+          {body ?? (
+            <T size={16} lh={24} c={kai ? color.violetLight : color.text}>
+              {bodyText}
+            </T>
+          )}
+          {beneath}
+        </>
+      )}
+      {/* Reactions and the thread line survive a removal no better than the
+          body does: both are about words that are no longer there. */}
+      {removed ? null : reactions}
+      {removed ? null : thread}
+    </View>
+  );
+
+  const inner = (
+    <>
+      {avatar ?? (kai ? <KaiOrb size={32} glow={false} /> : <MemberAvatar message={message} />)}
+      {content}
+    </>
+  );
+
+  return onPress || onLongPress ? (
+    /* No accessibilityRole on purpose where a surface nests its own buttons:
+       react-native-web renders a role="button" as a <button>, and a button
+       inside a button is invalid and swallows the inner one's clicks. */
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
+      testID={testID}
+      style={[s.message, selected && s.messageSelected]}
+    >
+      {inner}
+    </Pressable>
+  ) : (
+    <View testID={testID} style={[s.message, selected && s.messageSelected]}>
+      {inner}
+    </View>
+  );
+}
+
 /** Accept the existing app composer as a slot: this UI never sends network requests. */
 export function ConversationPreview({
   messages,
@@ -846,55 +1072,7 @@ export function ConversationPreview({
     <View style={{ marginTop: 20 }}>
       <View style={{ gap: 28 }}>
         {messages.map((m) => (
-          <View key={m.id} style={s.message}>
-            {m.isKai ? (
-              <KaiOrb size={32} glow={false} />
-            ) : (
-              <MemberAvatar message={m} />
-            )}
-            <View style={s.flex}>
-              <View style={s.messageHeader}>
-                {/*
-                 * SIGNAL IS LIT, BELT IS DYED — the law in features/social/belts.ts.
-                 *
-                 * The belt is the NAME's colour, never a chip beside it. This kit
-                 * shipped with the reverse (plain name, bordered chip) and the room
-                 * it is going into inks the name, so the two would have spent the
-                 * rest of their lives disagreeing about what a belt looks like.
-                 *
-                 * `belt.white` is #FFF7E8 — the same ivory `color.text` already was
-                 * — so a member with no rung, and a member on the bottom rung, both
-                 * render exactly as this component rendered them before. That is
-                 * the point of the ladder: four ivory names are what make the fifth
-                 * one legible as earned.
-                 *
-                 * Kai keeps violet. Kai has no rung and never will.
-                 */}
-                <T
-                  weight="semibold"
-                  c={m.isKai ? color.violetLight : belt[m.belt ?? "white"]}
-                >
-                  {m.name}
-                </T>
-                {m.isKai && (
-                  <T size={11} c={color.violetLight}>
-                    AI
-                  </T>
-                )}
-                <T size={12} c={color.muted} style={{ marginLeft: "auto" }}>
-                  {m.timeLabel}
-                </T>
-              </View>
-              {m.replyToName && (
-                <T size={12} c={color.muted} style={s.reply}>
-                  Replying to {m.replyToName}
-                </T>
-              )}
-              <T size={16} lh={24} c={m.isKai ? color.violetLight : color.text}>
-                {m.text}
-              </T>
-            </View>
-          </View>
+          <ConversationRow key={m.id} message={m} />
         ))}
       </View>
       {composer}
@@ -999,6 +1177,20 @@ const s = StyleSheet.create({
   },
   pinLevels: { flexDirection: "row", flexWrap: "wrap", gap: 20 },
   message: { flexDirection: "row", gap: 12 },
+  messageSelected: {
+    backgroundColor: alpha.violet08,
+    borderRadius: radius.lg,
+    marginHorizontal: -8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  quote: {
+    borderLeftWidth: 2,
+    borderLeftColor: alpha.ivory20,
+    paddingLeft: 9,
+    gap: 3,
+    marginBottom: 8,
+  },
   messageHeader: {
     flexDirection: "row",
     flexWrap: "wrap",

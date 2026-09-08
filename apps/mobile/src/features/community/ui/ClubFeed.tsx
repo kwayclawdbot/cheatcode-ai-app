@@ -21,6 +21,7 @@ import { PostBody } from './PostBody';
 import { FollowButton } from '../../social/FollowButton';
 import { MemberName } from '../../social/MemberName';
 import { CommunityCallCard } from '../../social/CommunityCallCard';
+import { ConversationRow, type ConversationMessage } from '../../../ui/trade';
 
 /**
  * The feed's body.
@@ -125,177 +126,152 @@ export function ClubMessage({
   const idea = message.structured_idea;
   const refSymbol = typeof message.refs?.symbol === 'string' ? (message.refs.symbol as string) : null;
 
+  /*
+    THE CLUB ROW IS THE KIT'S TOO, and the differences that mattered survived.
+
+    This component and `MessageRow` were two hand-maintained author lines, and
+    the file already records what that cost: the follow button had to be added
+    twice, the call card had to be added twice, and `$TICKER` was drawn two
+    different ways until `PostBody` was extracted. They share `ConversationRow`
+    now, so the next thing is added once.
+
+    What is NOT shared is passed explicitly rather than lost: this board's own
+    name sizes, its bordered AI pill, Kai's violet rail down the content
+    column, its own words for a removed post, and the fact that Kai's posts
+    carry no reactions here.
+  */
+  const asMessage: ConversationMessage = {
+    id: message.id,
+    name: message.author.display_name,
+    text: message.body ?? '',
+    timeLabel: message.time_label,
+    belt: message.author.belt ?? null,
+    isKai: kai,
+    handle: kai ? message.author.handle : null,
+    deleted: message.deleted,
+    /* Not "This message was removed." A moderated board says who did it; the
+       kit owns the refusal to print the body, not the sentence about it. */
+    deletedText: 'Removed by a moderator.',
+    authorDeleted: message.author.author_deleted,
+  };
+
   return (
-    // NOT `accessibilityRole="button"`. A message already contains buttons — the
-    // $TICKER chips and the reaction pills — and on web react-native renders a
-    // role of "button" as a real <button>, which cannot legally contain another
-    // one. The label and the hint still announce what press-and-hold does.
-    <Pressable
-      onLongPress={kai ? undefined : onActions}
-      delayLongPress={350}
-      accessibilityLabel={kai || !onActions ? undefined : `Post by ${message.author.display_name}`}
-      accessibilityHint={kai || !onActions ? undefined : 'Press and hold to report it, or to moderate it.'}
-      style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}
+    <ConversationRow
+      message={asMessage}
       testID={`club-message-${message.id}`}
-    >
-      {kai ? <KaiOrb size={32} /> : (
+      // NOT `accessibilityRole="button"`. A message already contains buttons —
+      // the $TICKER chips and the reaction pills — and on web react-native
+      // renders a role of "button" as a real <button>, which cannot legally
+      // contain another one. `ConversationRow` sets no role for this reason.
+      onLongPress={kai ? undefined : onActions}
+      contentStyle={kai ? { borderLeftWidth: 2, borderLeftColor: alpha.violet50, paddingLeft: 11 } : undefined}
+      avatar={kai ? <KaiOrb size={32} /> : (
         // Drawn through the shared Avatar so a member's picture appears here
         // the moment they have one, without a second copy of the fallback.
         <Avatar size={32} initial={message.author.initial} url={message.author.avatar_url} />
       )}
-      <View
-        style={{
-          flex: 1, minWidth: 0,
-          ...(kai ? { borderLeftWidth: 2, borderLeftColor: alpha.violet50, paddingLeft: 11 } : null),
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 7, flexWrap: 'wrap' }}>
-          {/*
-            THE NAME ON THIS BOARD WAS DEAD, on every post, because this
-            component was never given an `onOpenAuthor` to begin with — so the
-            most-read surface in the app was the one place a name went nowhere.
-            `MemberName` carries the route itself, which is why the gap could
-            close here without the screen above having to learn about it.
-
-            Nesting is legal: the row wrapper is a Pressable that deliberately
-            carries no `accessibilityRole`, so on web it renders as a div and
-            not a <button> — see the comment on it. The cost is that a
-            press-and-hold started on the name goes to the name and not to the
-            moderation sheet, which is the right trade: the rest of the post is
-            still a long-press target, and a name that cannot be tapped is a
-            bug a member notices every time they read the board.
-
-            Kai gets neither: violetLight is his, he has no rank, and there is
-            no profile behind him. Nor does a deleted author — their `user_id`
-            is null and a door onto a removed account is a dead end.
-          */}
-          {kai ? (
-            <T size={13} weight="bold" c={color.violetLight}>{message.author.display_name}</T>
-          ) : (
-            <MemberName
-              name={message.author.display_name}
-              userId={message.author.author_deleted ? null : message.author.user_id}
-              belt={message.author.belt}
-              handle={message.author.handle}
-              showHandle
-              size={13}
-              handleSize={10.5}
-              testID={`club-author-name-${message.id}`}
-            />
-          )}
-          {kai && message.author.handle ? (
-            <T size={10.5} c={color.dim}>{`@${message.author.handle}`}</T>
-          ) : null}
-          {kai ? (
-            <View style={{ paddingHorizontal: 5, borderRadius: 4, borderWidth: 0.5, borderColor: alpha.violet50 }}>
-              <T size={8.5} weight="bold" c={color.violetLight}>AI</T>
-            </View>
-          ) : null}
-          {message.author.role_labels.slice(0, 2).map((r) => (
-            <T key={r} size={9.5} c={color.dim}>{r}</T>
-          ))}
-          <T size={10} c={color.dim}>{message.time_label}</T>
-          {/* A sibling of the name, never a child of a pressable. The row
-              above is a Pressable but deliberately carries no button role
-              (see the comment on it), so this is legal markup on web. */}
-          {showFollow && !kai && message.author.user_id ? (
-            <View style={{ marginLeft: 'auto' }}>
-              <FollowButton userId={message.author.user_id} compact testID={`club-follow-${message.id}`} />
-            </View>
-          ) : null}
+      /*
+        THE NAME ON THIS BOARD IS A DOOR. `MemberName` carries the route
+        itself, which is why the gap could close here without the screen above
+        having to learn about it. Kai gets neither belt nor door: violetLight
+        is his, he has no rank, and there is no profile behind him. Nor does a
+        deleted author — a door onto a removed account is a dead end.
+      */
+      name={kai ? (
+        <T size={13} weight="bold" c={color.violetLight}>{message.author.display_name}</T>
+      ) : (
+        <MemberName
+          name={message.author.display_name}
+          userId={message.author.author_deleted ? null : message.author.user_id}
+          belt={message.author.belt}
+          handle={message.author.handle}
+          showHandle
+          size={13}
+          handleSize={10.5}
+          testID={`club-author-name-${message.id}`}
+        />
+      )}
+      aiTag={kai ? (
+        <View style={{ paddingHorizontal: 5, borderRadius: 4, borderWidth: 0.5, borderColor: alpha.violet50 }}>
+          <T size={8.5} weight="bold" c={color.violetLight}>AI</T>
         </View>
-
-        {message.deleted ? (
-          // The row keeps its place and loses its words (01 §14). Saying so is
-          // the point: a gap with no explanation reads as a bug, and a silent
-          // disappearance reads as nothing happening at all.
-          <View
-            testID={`club-message-removed-${message.id}`}
-            style={{ marginTop: 4, borderLeftWidth: 2, borderLeftColor: alpha.ivory12, paddingLeft: 10 }}
-          >
-            <T size={12.5} lh={18} c={color.dim}>Removed by a moderator.</T>
-          </View>
-        ) : (
-          <>
-            {message.quote ? (
-              <View style={{ marginTop: 4 }}>
-                <QuoteBlock
-                  quote={message.quote}
-                  onOpen={onOpenQuote ? () => onOpenQuote(message.quote!.message_id) : undefined}
-                  testID={`quote-${message.id}`}
-                />
-              </View>
-            ) : null}
-            {/*
-              A MEMBER'S CALL, IN THE CONVERSATION.
-
-              `ClubMessage` and `MessageRow` are separate components with
-              separate bodies, so this had to be added twice or a call would
-              render as a card in a room and as a bare sentence on the club
-              feed — the same drift that produced two `$TICKER` treatments
-              before `PostBody` was extracted.
-
-              The card replaces the body rather than joining it: the sentence
-              the message arrived with describes the same trade, and drawing
-              both says the idea twice. Nesting is legal here because the
-              wrapper above deliberately carries no `accessibilityRole`, so on
-              web it is a div and not a <button> — see the comment on it.
-            */}
-            {message.community_call ? (
-              <View style={{ marginTop: 6 }} testID={`club-message-call-${message.id}`}>
-                <CommunityCallCard call={message.community_call} compact />
-              </View>
-            ) : message.body ? (
-              <View style={{ marginTop: 2 }}>
-                <ClubBody text={message.body} onTicker={onTicker} />
-              </View>
-            ) : null}
-          </>
-        )}
-
-        {idea && refSymbol ? (
-          <SetupObjectCard
-            symbol={refSymbol}
-            grade={typeof message.refs?.grade_display === 'string' ? (message.refs.grade_display as string) : null}
-            state={typeof message.refs?.state_label === 'string' ? (message.refs.state_label as string) : null}
-            entry={idea.entry_condition || null}
-            stop={idea.invalidation || null}
-            target={idea.target_horizon || null}
-            onOpen={() => onOpenSetup?.(refSymbol)}
+      ) : null}
+      chips={message.author.role_labels.slice(0, 2).map((r) => (
+        <T key={r} size={9.5} c={color.dim}>{r}</T>
+      ))}
+      /* A sibling of the name, never a child of a pressable. */
+      aside={showFollow && !kai && message.author.user_id ? (
+        <FollowButton userId={message.author.user_id} compact testID={`club-follow-${message.id}`} />
+      ) : null}
+      quote={message.quote ? (
+        <View style={{ marginTop: 4 }}>
+          <QuoteBlock
+            quote={message.quote}
+            onOpen={onOpenQuote ? () => onOpenQuote(message.quote!.message_id) : undefined}
+            testID={`quote-${message.id}`}
           />
-        ) : null}
-
-        {kai && message.kai_object ? (
-          <View style={{ marginTop: 6, gap: 6 }}>
-            <KaiObjectView object={message.kai_object} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-              <Check size={11} color={color.green} strokeWidth={3} />
-              <T size={11} c={color.green}>Kai verified · live market data</T>
-            </View>
-          </View>
-        ) : null}
-
-        {!message.deleted && message.media.length ? (
-          <MediaStrip media={message.media} onOpen={onOpenMedia} />
-        ) : null}
-
-        {!kai && !message.deleted ? (
-          <>
-            <ReactionBar
-              reactions={message.reactions}
-              onToggle={onReact}
-              onReply={onReply}
-              testID={`reactions-${message.id}`}
+        </View>
+      ) : null}
+      /*
+        A MEMBER'S CALL, IN THE CONVERSATION. The card replaces the body rather
+        than joining it: the sentence the message arrived with describes the
+        same trade, and drawing both says the idea twice.
+      */
+      body={message.community_call ? (
+        <View style={{ marginTop: 6 }} testID={`club-message-call-${message.id}`}>
+          <CommunityCallCard call={message.community_call} compact />
+        </View>
+      ) : message.body ? (
+        <View style={{ marginTop: 2 }}>
+          <ClubBody text={message.body} onTicker={onTicker} />
+        </View>
+      ) : null}
+      beneath={(
+        <>
+          {idea && refSymbol ? (
+            <SetupObjectCard
+              symbol={refSymbol}
+              grade={typeof message.refs?.grade_display === 'string' ? (message.refs.grade_display as string) : null}
+              state={typeof message.refs?.state_label === 'string' ? (message.refs.state_label as string) : null}
+              entry={idea.entry_condition || null}
+              stop={idea.invalidation || null}
+              target={idea.target_horizon || null}
+              onOpen={() => onOpenSetup?.(refSymbol)}
             />
-            {onOpenThread ? (
-              <ThreadLine count={message.reply_count} onPress={onOpenThread} testID={`thread-${message.id}`} />
-            ) : null}
-            {reactionNotice ? (
-              <T size={9.5} c={color.gold} style={{ marginTop: 3 }}>{reactionNotice}</T>
-            ) : null}
-          </>
-        ) : null}
-      </View>
-    </Pressable>
+          ) : null}
+          {kai && message.kai_object ? (
+            <View style={{ marginTop: 6, gap: 6 }}>
+              <KaiObjectView object={message.kai_object} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <Check size={11} color={color.green} strokeWidth={3} />
+                <T size={11} c={color.green}>Kai verified · live market data</T>
+              </View>
+            </View>
+          ) : null}
+          {message.media.length ? <MediaStrip media={message.media} onOpen={onOpenMedia} /> : null}
+        </>
+      )}
+      /* Kai's posts carry no reactions on this board: there is nobody to agree
+         with, and an emoji on a machine's answer is not feedback anybody reads. */
+      reactions={kai ? null : (
+        <ReactionBar
+          reactions={message.reactions}
+          onToggle={onReact}
+          onReply={onReply}
+          testID={`reactions-${message.id}`}
+        />
+      )}
+      thread={kai ? null : (
+        <>
+          {onOpenThread ? (
+            <ThreadLine count={message.reply_count} onPress={onOpenThread} testID={`thread-${message.id}`} />
+          ) : null}
+          {/* The server's sentence when a reaction did NOT land. Never ours. */}
+          {reactionNotice ? (
+            <T size={9.5} c={color.gold} style={{ marginTop: 3 }}>{reactionNotice}</T>
+          ) : null}
+        </>
+      )}
+    />
   );
 }

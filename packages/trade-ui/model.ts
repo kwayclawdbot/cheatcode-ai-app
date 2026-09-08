@@ -36,15 +36,69 @@ export type TradeIdea = {
   dataLabel: string;
 };
 export type KaiNote = { level: LevelKind; text: string };
+export type ConversationBelt = "white" | "blue" | "purple" | "brown" | "black";
+/**
+ * A QUOTED POST, AS THE WIRE SNAPSHOTS IT.
+ *
+ * `authorName` is a snapshot rather than a live join, which is why there is no
+ * user id and no belt on it: the quote records what was said and by whom at the
+ * time, and it must keep saying that even if the account is renamed. `deleted`
+ * is not a styling hint — a removed post must be reported as removed and must
+ * never repeat the words that were removed.
+ */
+export type ConversationQuote = {
+  messageId: string;
+  authorName: string;
+  text: string;
+  deleted: boolean;
+};
+/**
+ * A MESSAGE, AND THE PARTS OF ONE THE KIT CAN HONESTLY OWN.
+ *
+ * The fields here are the ones every conversation surface has and means the
+ * same thing by: who said it, when, what it says, what it was replying to, and
+ * whether it still stands. They are data, so both twins can draw them and the
+ * shared model can be tested.
+ *
+ * Everything a particular room happens to ALSO carry — its reactions, its
+ * media, Kai's verification of a claim, a community call, a structured idea —
+ * arrives as a SLOT on `ConversationRow` instead. That line is drawn on
+ * purpose and it is the same one `PinnedTradePreview` draws: the kit owns what
+ * a message IS on every surface, and it does not grow a `reactions` prop it
+ * would then have to explain to a website that has no reactions.
+ *
+ * It is also the answer to the objection recorded in the migration doc, that
+ * `RoomMessage` has twenty-odd fields and this had eight. It still has eight
+ * that it renders and it will never have twenty; the other twelve are passed
+ * through as the room's own components, so nothing is reimplemented and
+ * nothing is lost.
+ */
 export type ConversationMessage = {
   id: string;
   name: string;
   text: string;
   timeLabel: string;
-  belt?: "white" | "blue" | "purple" | "brown" | "black";
+  /** Absent means the server did not say, which is not the same as white. */
+  belt?: ConversationBelt | null;
   avatarUrl?: string;
   replyToName?: string;
   isKai?: boolean;
+  /** "@handle", drawn beside the name. Null means not picked. */
+  handle?: string | null;
+  /** Removed. The body is replaced, never merely faded. */
+  deleted?: boolean;
+  /**
+   * What to say in place of a removed body. Surfaces differ on purpose — a room
+   * says "This message was removed.", a moderated feed says who removed it —
+   * so the sentence is the caller's and only the refusal to print the body is
+   * the kit's.
+   */
+  deletedText?: string | null;
+  /** The author's account is gone; the name must not read as Kai's. */
+  authorDeleted?: boolean;
+  quote?: ConversationQuote | null;
+  /** Replies beneath this message. Zero draws nothing, never "0 replies". */
+  replyCount?: number;
 };
 export const LEVEL_LABEL: Record<LevelKind, string> = {
   entry: "Entry",
@@ -163,4 +217,48 @@ export function tradeGeometry(idea: TradeIdea, compact = false) {
       .map((c, i) => `${i ? "L" : "M"}${c.x.toFixed(2)},${c.yClose.toFixed(2)}`)
       .join(" "),
   };
+}
+
+/** What a removed message says when its surface does not say otherwise. */
+export const REMOVED_MESSAGE = "This message was removed.";
+/** What a removed QUOTE says. Never the words that were removed. */
+export const REMOVED_QUOTE = "This post was removed";
+/**
+ * THE DELETED REFUSAL, AS A FUNCTION RATHER THAN A HABIT.
+ *
+ * A removed message must print the sentence about it and NONE of the body, and
+ * that used to be four separate `!m.deleted &&` guards in one component and
+ * three more in another — a rule that only holds while everybody remembers it.
+ * Here it is one decision that both twins call and a test can hold to account,
+ * which is the only reason a shared model is worth having.
+ *
+ * The SENTENCE is the caller's, because surfaces differ honestly: a room says
+ * the message was removed, a moderated board says who removed it. The refusal
+ * to print the body is not the caller's.
+ */
+export function conversationBody(m: ConversationMessage): {
+  removed: boolean;
+  text: string;
+} {
+  return m.deleted
+    ? { removed: true, text: m.deletedText || REMOVED_MESSAGE }
+    : { removed: false, text: m.text };
+}
+/** The same refusal, for a quotation of a post that has since been removed. */
+export function quotedText(q: ConversationQuote): string {
+  return q.deleted ? REMOVED_QUOTE : q.text;
+}
+/**
+ * The ink a name is drawn in is decided in one place.
+ *
+ * Kai is not on the ladder and never will be, so he is not given a rung to
+ * fall back to; the caller supplies the two colours because the palette has
+ * exactly one source and this file is not it.
+ */
+export function nameInk(
+  m: ConversationMessage,
+  belts: Record<ConversationBelt, string>,
+  kaiInk: string,
+): string {
+  return m.isKai ? kaiInk : belts[m.belt ?? "white"];
 }

@@ -7,6 +7,8 @@ import {
   price,
   riskReward,
   tradeGeometry,
+  conversationBody,
+  quotedText,
   type TradeIdea,
   type LevelKind,
   type TradeStatus,
@@ -432,12 +434,31 @@ export function ConversationPreview({
                   {m.name}
                 </strong>
                 {m.isKai && <span className={s.aiTag}>AI</span>}
+                {m.handle && <small>@{m.handle}</small>}
                 <small>{m.timeLabel}</small>
               </header>
-              {m.replyToName && (
+              {m.replyToName && !m.deleted && (
                 <p className={s.replyTo}>Replying to {m.replyToName}</p>
               )}
-              <p>{m.text}</p>
+              {/*
+               * THE DELETED REFUSAL, from the shared model rather than from a
+               * ternary written twice. `conversationBody` decides whether the
+               * body is printed at all, so this twin and the native one cannot
+               * drift on the one rule where drifting means showing a member
+               * words a moderator removed. The quote obeys the same rule
+               * through `quotedText`.
+               */}
+              {!m.deleted && m.quote && (
+                <p className={s.replyTo}>
+                  <strong>{m.quote.authorName}</strong> {quotedText(m.quote)}
+                </p>
+              )}
+              <p>{conversationBody(m).text}</p>
+              {!m.deleted && !!m.replyCount && (
+                <p className={s.replyTo}>
+                  {m.replyCount} {m.replyCount === 1 ? "reply" : "replies"}
+                </p>
+              )}
             </div>
           </div>
         ))}

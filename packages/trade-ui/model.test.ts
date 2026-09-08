@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
-import { riskReward, tradeGeometry, validCandles, price } from "./model";
+import {
+  conversationBody,
+  quotedText,
+  nameInk,
+  REMOVED_MESSAGE,
+  REMOVED_QUOTE, riskReward, tradeGeometry, validCandles, price } from "./model";
 import { DEMO_TRADE } from "./fixtures";
 const close = (a: number, b: number) =>
   assert.ok(Math.abs(a - b) < 1e-8, `${a} != ${b}`);
@@ -75,6 +80,45 @@ assert.deepEqual(
 assert.equal(price(null), "—");
 assert.equal(price(NaN), "—");
 assert.equal(price(178.4), "178.40");
+
+/* ── the conversation, and the one rule a shared shell exists to hold ──── */
+{
+  const base = { id: "m1", name: "Ada", text: "the words", timeLabel: "9:41" };
+
+  const plain = conversationBody(base);
+  assert.equal(plain.removed, false);
+  assert.equal(plain.text, "the words");
+
+  /* A removed message prints the sentence and NONE of the body. This is the
+     assertion the whole extension rests on: a component that forgets the rule
+     is caught here rather than by a member reading words a moderator took. */
+  const gone = conversationBody({ ...base, deleted: true });
+  assert.equal(gone.removed, true);
+  assert.equal(gone.text, REMOVED_MESSAGE);
+  assert.ok(!gone.text.includes("the words"));
+
+  /* The sentence is the caller's; the refusal is not. */
+  const moderated = conversationBody({ ...base, deleted: true, deletedText: "Removed by a moderator." });
+  assert.equal(moderated.text, "Removed by a moderator.");
+  assert.ok(!moderated.text.includes("the words"));
+
+  /* An empty override falls back rather than printing nothing at all — a blank
+     where a removal notice belongs reads as a rendering bug. */
+  assert.equal(conversationBody({ ...base, deleted: true, deletedText: "" }).text, REMOVED_MESSAGE);
+
+  /* A quoted post that has since been removed does not carry its words out. */
+  assert.equal(quotedText({ messageId: "q", authorName: "Ada", text: "quoted words", deleted: false }), "quoted words");
+  assert.equal(quotedText({ messageId: "q", authorName: "Ada", text: "quoted words", deleted: true }), REMOVED_QUOTE);
+
+  /* SIGNAL IS LIT, BELT IS DYED: the name takes the belt, Kai takes violet,
+     and an unstated belt is the house ivory rather than an invented rung. */
+  const belts = { white: "#FFF7E8", blue: "#7B9CC6", purple: "#BE9AC8", brown: "#C08C5E", black: "#D6DAE1" };
+  assert.equal(nameInk(base, belts, "#CBB2FF"), "#FFF7E8");
+  assert.equal(nameInk({ ...base, belt: "black" }, belts, "#CBB2FF"), "#D6DAE1");
+  assert.equal(nameInk({ ...base, belt: null }, belts, "#CBB2FF"), "#FFF7E8");
+  assert.equal(nameInk({ ...base, belt: "black", isKai: true }, belts, "#CBB2FF"), "#CBB2FF");
+}
+
 console.log(
-  "Trade model passed: long/short risk, invalid and missing levels, chronology, duplicate and malformed bars, empty/flat chart geometry, numeric formatting.",
+  "Trade model passed: conversation body/quote refusals, belt ink, long/short risk, invalid and missing levels, chronology, duplicate and malformed bars, empty/flat chart geometry, numeric formatting.",
 );
