@@ -60,6 +60,33 @@ export function whenPlain(iso: string | null | undefined, now = new Date()): str
   }
 }
 
+/**
+ * THE SESSION A BAR BELONGS TO, named: "Sep 4".
+ *
+ * A daily bar is not an instant, it is a TRADING DAY, and the market decides
+ * which one — so the date has to be read in New York and nowhere else. Polygon
+ * stamps a daily bar at midnight ET (`2026-09-04T04:00:00Z`), which a device
+ * formatter in London renders as 5am on the 4th, in Auckland as 4pm on the 4th,
+ * and in New York itself as 8pm on the THIRD. That last one is the one that
+ * shipped: the ticker strip printed Friday's open, high, low and volume under
+ * the words "SESSION · SEP 3". A row of real numbers under the wrong day is
+ * worse than no row at all, and it also meant a member in Accra and a member in
+ * New York could not name the same bar the same way.
+ *
+ * Returns null for anything unparseable, and the caller then says nothing.
+ */
+export function sessionDatePlain(at: string | number | Date | null | undefined): string | null {
+  if (at === null || at === undefined || at === '') return null;
+  const d = at instanceof Date ? at : new Date(at);
+  if (Number.isNaN(d.getTime())) return null;
+  try {
+    const p = parts(d, { month: 'short', day: 'numeric' });
+    return `${p.month} ${p.day}`;
+  } catch {
+    return null;
+  }
+}
+
 /** The same instant with the zone named, for anywhere it stands alone. */
 export function etStamp(iso: string | null | undefined, now = new Date()): string | null {
   const w = whenPlain(iso, now);

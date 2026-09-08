@@ -944,6 +944,66 @@ export async function fetchAggregates(
 /* candles table cache                                                  */
 /* ------------------------------------------------------------------ */
 
+/**
+ * ONE STAMP PER DAILY BAR: midnight ET on the session it covers.
+ *
+ * Polygon hands the same session out under TWO different timestamps, and until
+ * now both were stored:
+ *
+ *   /v2/aggs/ticker/AAPL/range/1/day/…   →  2026-09-04T04:00:00Z  (00:00 ET)
+ *   /v2/aggs/grouped/…/2026-09-04        →  2026-09-04T20:00:00Z  (16:00 ET)
+ *
+ * The `candles` primary key is (symbol, timeframe, ts), so those are two rows
+ * for one Friday, with identical OHLCV. Measured on 2026-09-06: AAPL had both
+ * — because its quote fell through to the grouped path, which writes below —
+ * while TSLA, only ever refilled from the range path, had one. The chart drew
+ * the phantom, `readLastDailyBars` read the pair as "last" and "previous" so a
+ * change % could be computed from a session against ITSELF, and on the ticker
+ * strip the 20:00Z stamp happened to hide the ET-date bug this shipped with.
+ *
+ * The range path wins because it is the one that draws the chart and the one
+ * every daily series is refilled from; the session-start stamp is also what
+ * `basisCloseFromDaily` and the chart's own date axis already assume. The
+ * 16:00 restamp still exists — it is `closeStampOf`, it is about how a PRICE is
+ * LABELLED ("last close 4:00 PM"), and it deliberately does not touch storage.
+ */
+export function dailyBarStamp(ts: string): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts;
+  const midnightEt = etInstant(etParts(d).date, 0);
+  return midnightEt ? midnightEt.toISOString() : ts;
+}
+
+/** How much of a bar is actually filled in — a tie-break, not a judgement. */
+function barFilled(c: Candle): number {
+  return [c.o, c.h, c.l, c.c, c.v].filter((n) => n !== null).length;
+}
+
+/**
+ * ONE CANDLE PER SESSION, whatever the store holds.
+ *
+ * Fixing the write path stops new duplicates; it does not un-write the ones
+ * already in the table, and nothing here deletes rows — a market-data table is
+ * not something to run a destructive migration against to fix a drawing. So
+ * every daily read collapses by ET session date on the way out and the phantom
+ * stops being drawn immediately, on rows that are still there.
+ *
+ * When a session does hold two rows the fuller one wins, and between two equally
+ * full ones the later stamp does: the 16:00 row is written after the close, so
+ * where they genuinely differ it is the settled one.
+ */
+export function collapseDailySessions(candles: Candle[]): Candle[] {
+  const bySession = new Map<string, Candle>();
+  for (const c of candles) {
+    const key = etDateOf(c.ts) ?? c.ts;
+    const kept = bySession.get(key);
+    const better =
+      !kept || barFilled(c) > barFilled(kept) || (barFilled(c) === barFilled(kept) && c.ts > kept.ts);
+    if (better) bySession.set(key, { ...c, ts: dailyBarStamp(c.ts) });
+  }
+  return [...bySession.values()].sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+}
+
 export async function readCachedCandles(
   symbol: string,
   tf: CandleTimeframe,
@@ -968,7 +1028,7 @@ export async function readCachedCandles(
     log('warn', '-', 'candles.read_failed', { symbol, tf, message: error.message });
     return [];
   }
-  return (data ?? []).reverse().map((r) => {
+  const rows: Candle[] = (data ?? []).reverse().map((r) => {
     const row = r as Record<string, unknown>;
     return {
       ts: new Date(String(row.ts)).toISOString(),
@@ -979,12 +1039,20 @@ export async function readCachedCandles(
       v: num(row.v),
     };
   });
+  // A session the store holds twice is still ONE session on the way out.
+  return tf === '1d' ? collapseDailySessions(rows) : rows;
 }
 
 export async function writeCandles(symbol: string, tf: CandleTimeframe, candles: Candle[]): Promise<void> {
   if (!candles.length) return;
   const db = serviceClient();
-  const rows = candles.map((c) => ({
+  // THE ONE PLACE A DAILY BAR GETS ITS STAMP. Every caller — the range refill,
+  // the grouped-daily fallback, anything added later — lands here, so a bar can
+  // only ever be stored under its session-start stamp, and a batch carrying the
+  // same session twice becomes one row rather than an upsert that touches the
+  // same key twice (which Postgres refuses outright).
+  const list = tf === '1d' ? collapseDailySessions(candles) : candles;
+  const rows = list.map((c) => ({
     symbol: symbol.toUpperCase(),
     timeframe: tf,
     ts: c.ts,
@@ -1079,8 +1147,11 @@ export async function getCandles(
 
   const fresh = await fetchAggregates(symbol, tf, from, to);
   if (fresh.ok && fresh.data.length) {
-    await writeCandles(symbol, tf, fresh.data);
-    return { candles: fresh.data, source: 'polygon', degraded: false, degraded_reason: null };
+    // Same collapse the cache read does, so a refill and a cache hit hand back
+    // the identical series rather than differing by a phantom bar.
+    const bars = tf === '1d' ? collapseDailySessions(fresh.data) : fresh.data;
+    await writeCandles(symbol, tf, bars);
+    return { candles: bars, source: 'polygon', degraded: false, degraded_reason: null };
   }
   if (cached.length) {
     return {
@@ -1470,6 +1541,9 @@ export async function getSnapshot(symbols: string[]): Promise<SnapshotResult> {
       });
       quoteCache.set(s, { at: Date.now(), value: q });
       out.push(q);
+      // The grouped file stamps this session at 16:00 ET; `writeCandles` puts it
+      // back on the session-start stamp the range aggregates use, so this row
+      // and a later refill are the same row. See `dailyBarStamp`.
       void writeCandles(s, '1d', [toCandle({ t: row.t, o: row.o, h: row.h, l: row.l, c: row.c, v: row.v })]);
       continue;
     }
@@ -1537,6 +1611,11 @@ function order(quotes: MarketQuote[], wanted: string[]): MarketQuote[] {
  * "live" to any age-based measurement and as "last close 4:00 PM" to a user, at
  * 11:32 in the morning. So a session that has not closed is stamped at `now`
  * and reported through `closeStampOf().daySoFar`, which changes the sentence.
+ *
+ * THIS IS A LABEL, NOT A KEY. It restamps the timestamp a QUOTE carries; the
+ * bar in the `candles` table keeps the session-start stamp `dailyBarStamp`
+ * gives it. Storing the 16:00 version alongside the 04:00 one is exactly the
+ * duplicate that block describes.
  */
 function closeStampOf(ts: string, now = new Date()): { ts: string; kind: PriceKind } {
   const date = etParts(new Date(ts)).date;
@@ -1566,6 +1645,11 @@ async function readLastDailyBars(
     .order('ts', { ascending: false })
     .limit(symbols.length * 12);
   if (error) return out;
+  // Gathered per symbol first, because "last" and "previous" have to be two
+  // different SESSIONS. Reading rows straight off the query made a symbol with
+  // a duplicated session its own previous close — a change % of exactly 0.00%,
+  // on real numbers, for as long as both rows existed.
+  const bySymbol = new Map<string, Candle[]>();
   for (const r of data ?? []) {
     const row = r as Record<string, unknown>;
     const sym = String(row.symbol);
@@ -1577,10 +1661,14 @@ async function readLastDailyBars(
       c: num(row.c),
       v: null,
     };
-    const cur = out.get(sym) ?? { last: null, prev: null };
-    if (!cur.last) cur.last = candle;
-    else if (!cur.prev) cur.prev = candle;
-    out.set(sym, cur);
+    const list = bySymbol.get(sym) ?? [];
+    list.push(candle);
+    bySymbol.set(sym, list);
+  }
+  for (const [sym, list] of bySymbol) {
+    // Ascending out of the collapse, and this map wants newest first.
+    const sessions = collapseDailySessions(list).reverse();
+    out.set(sym, { last: sessions[0] ?? null, prev: sessions[1] ?? null });
   }
   return out;
 }
@@ -1832,6 +1920,10 @@ async function readDailyBasisBars(symbols: string[], sinceDate: string): Promise
     list.unshift({ ts: new Date(String(row.ts)).toISOString(), o: null, h: null, l: null, c: num(row.c), v: null });
     out.set(sym, list);
   }
+  // One bar per session here too: `basisCloseFromDaily` walks this list looking
+  // for the newest session that had closed, and a session listed twice is a
+  // session it can answer from twice.
+  for (const [sym, list] of out) out.set(sym, collapseDailySessions(list));
   return out;
 }
 

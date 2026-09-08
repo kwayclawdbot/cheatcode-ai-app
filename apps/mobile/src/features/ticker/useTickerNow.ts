@@ -24,6 +24,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import type { AlertCard, AlertOptionContract, Candle, GoalMode } from '../../lib/types';
+import { sessionDatePlain } from '../../lib/when';
 import type { Annotation } from '../portal/types';
 import { KIND_LABEL } from '../portal/types';
 
@@ -128,6 +129,10 @@ export const money = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed
  * be wrong for most of the day, silently, on a row of real numbers — the worst
  * kind of wrong. So the bar states its own date and the reader decides.
  *
+ * AND THAT DATE IS THE MARKET'S, NOT THE PHONE'S. A session is a New York day;
+ * the same bar has to be called the same thing in London, Accra and New York.
+ * `sessionDatePlain` is the one place that decides.
+ *
  * Returns null when there are no daily bars, and the caller draws nothing.
  */
 export function sessionFromCandles(candles: Candle[] | null | undefined, last: number | null): SessionBar | null {
@@ -136,10 +141,11 @@ export function sessionFromCandles(candles: Candle[] | null | undefined, last: n
   const { o, h, l } = bar;
   if (![o, h, l].every((n) => typeof n === 'number' && Number.isFinite(n))) return null;
 
-  const d = new Date(bar.t);
-  const label = Number.isNaN(d.getTime())
-    ? 'Latest session'
-    : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  // THE BAR'S OWN SESSION, READ IN NEW YORK. `toLocaleDateString` with no zone
+  // formats in the DEVICE's, and a daily bar stamped at midnight ET is 8pm the
+  // PREVIOUS day to a viewer in New York — which is how Friday's numbers came
+  // to be printed under "SEP 3". See `sessionDatePlain`.
+  const label = sessionDatePlain(bar.t) ?? 'Latest session';
 
   const span = h - l;
   const price = typeof last === 'number' && Number.isFinite(last) ? last : bar.c;
