@@ -56,6 +56,10 @@ export type AuditAction =
   | 'invite.create'
   | 'invite.revoke'
   | 'invite.list'
+  // A staff member moved somebody's readiness stage by hand (0042). It carries
+  // the before and after in full, because the stage is visible next to that
+  // member's name in every room and "who decided this" is a fair question.
+  | 'stage.override'
   | 'entitlement.grant'
   | 'entitlement.revoke'
   | 'admin.audit.read'

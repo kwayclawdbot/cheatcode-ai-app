@@ -85,6 +85,10 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
         memory_enabled: profile.memory_enabled,
         timezone: profile.timezone,
         onboarding: profile.onboarding,
+        // 0042. A row written before that migration has no value here, and the
+        // bottom of the ladder is the honest reading of "we do not know yet".
+        stage: profile.stage ?? 'beginner',
+        stage_locked: profile.stage_locked ?? false,
       },
       risk_policy: risk,
       account: {

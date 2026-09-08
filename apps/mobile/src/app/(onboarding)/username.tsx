@@ -33,7 +33,7 @@ export default function OnboardingUsername() {
 
   return (
     <Screen variant="dome" layout="stack" testID="screen-username">
-      <ProgressBars total={5} done={4} />
+      <ProgressBars total={6} done={5} />
       <T size={26} weight="bold" ls={-0.4} lh={31}>What should we call you?</T>
       <T size={14} c={color.muted} style={{ marginTop: 8 }}>
         This is the name your posts are signed with in the community.

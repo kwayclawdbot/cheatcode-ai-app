@@ -920,6 +920,11 @@ export function adaptMe(v: unknown): Me {
       experience: nStr(p.experience),
       memory_enabled: bool(p.memory_enabled ?? r.memory_enabled, true),
       onboarding: obj(p.onboarding) as Profile['onboarding'],
+      // 0042. An API build older than the migration sends nothing here, and
+      // every reader treats null as `beginner` — so pass the absence through
+      // rather than defaulting it, and let one place decide what it means.
+      stage: (nStr(p.stage) as Profile['stage']) ?? null,
+      stage_locked: p.stage_locked == null ? null : bool(p.stage_locked, false),
     },
     risk_policy: {
       daily_loss_cap: nNum(rp.daily_loss_cap_usd ?? rp.daily_loss_cap) ?? 0,

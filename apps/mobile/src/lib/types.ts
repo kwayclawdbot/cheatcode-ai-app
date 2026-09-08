@@ -111,6 +111,20 @@ export type RoomRow = { id: string; slug: string; name: string; topic?: string |
 export type Instrument = { symbol: string; name: string; last?: number | null; change_pct?: number | null; quote?: Quote | null };
 
 export type GoalMode = 'day_trade' | 'swing' | 'invest';
+
+/**
+ * How ready this member is, on the ladder the funnel moves them along (0042).
+ * It EVOLVES — it is not a label somebody picks and keeps — so treat it as a
+ * fact about right now and never as an identity.
+ *
+ * Not to be confused with `experience`, which is what they said about
+ * themselves at onboarding and never changes again.
+ */
+export type Stage = 'beginner' | 'developing' | 'trade_ready';
+
+/** The four answers to onboarding's "Where are you right now?". */
+export type StartAnswer = 'brand_new' | 'investor' | 'swing' | 'active';
+
 export type Involvement = 'hands_on' | 'guided';
 export type RiskAnswer = 'careful' | 'balanced' | 'aggressive';
 export type FundingChoice = 'paper' | 'broker' | 'later';
@@ -131,7 +145,22 @@ export type Profile = {
   memory_enabled?: boolean | null;
   /** `completed_at` is the server's stamp (0016 complete_onboarding); the
    *  boolean is the pre-round-4 client flag, still read, never written. */
-  onboarding?: { completed?: boolean; completed_at?: string; focus?: string[]; experience?: string } | null;
+  onboarding?: {
+    completed?: boolean;
+    completed_at?: string;
+    focus?: string[];
+    experience?: string;
+    /** What they answered to "Where are you right now?" on day one. */
+    start_answer?: StartAnswer;
+  } | null;
+  /**
+   * Readiness stage (0042). Optional because a response from an API build that
+   * predates it has no such field; every reader treats a missing value as
+   * `beginner`, which is the honest reading of "we do not know yet".
+   */
+  stage?: Stage | null;
+  /** An admin pinned the stage. Nothing automatic moves it. */
+  stage_locked?: boolean | null;
 };
 
 export type RiskPolicy = { daily_loss_cap: number; max_position_pct: number; involvement: Involvement };

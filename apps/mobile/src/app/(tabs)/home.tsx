@@ -25,6 +25,7 @@ import { useMe } from '../../features/account/useAccount';
 import { CreditStrip } from '../../features/account/credit-instruments';
 import { fixtureCreditsCeiling, fixtureCreditsOut, fixtureCreditsWarning } from '../../lib/fixtures';
 import { ContinueTrainingObject } from '../../features/training/HomeObject';
+import { homeOrderFor, useStageEvolution } from '../../features/stage';
 import type { ConversationRow, GoalMode, WallItem } from '../../lib/types';
 
 const Hamburger = ({ onPress }: { onPress: () => void }) => (
@@ -78,10 +79,23 @@ const NewThread = ({ onPress }: { onPress: () => void }) => (
  * product; it stopped being furniture.
  */
 export default function Home() {
-  const { profile, session } = useSession();
+  const { profile, session, refreshProfile } = useSession();
   const router = useRouter();
   /** Mode is set in onboarding and changed on the Account board (Kai profile). */
   const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? DEFAULT_MODE;
+
+  /**
+   * What this member meets first (0042). Ordering only — Home draws the same
+   * objects for everybody, and which one is at the top is the whole change.
+   * The "Today's Beginner Pick" object the funnel note describes is a separate
+   * lane with its own data behind it and is not built here.
+   */
+  const homeOrder = homeOrderFor(profile?.stage);
+  // Training progress lives on the device, so the server cannot see a
+  // graduation on its own. This reports the evidence and refreshes the profile
+  // if the server decides it was worth a promotion — which is what makes the
+  // ordering above change by itself.
+  useStageEvolution(refreshProfile);
 
   /** Fixtures preview only — lets the owner and Playwright see the quiet day. */
   const params = useLocalSearchParams<{ fixture?: string; credits?: string }>();
@@ -217,6 +231,24 @@ export default function Home() {
     setThreadsOpen(false);
   };
 
+  /**
+   * The training object, built once and drawn in exactly one of two places (see
+   * `homeOrder`). It keeps the wall's 30px orb gutter so the left edge lines up
+   * wherever it lands, and it stays gated on Today: scrolled back into an older
+   * thread it would be an interruption from the present.
+   *
+   * `ContinueTrainingObject` belongs to the training lane and is untouched —
+   * this only decides where it sits. It returns null while it is loading, so
+   * nothing here may reserve space or draw a divider around it.
+   */
+  const trainingRow =
+    thread.kind === 'today' ? (
+      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+        <View style={{ width: 30 }} />
+        <View style={{ flex: 1 }}><ContinueTrainingObject /></View>
+      </View>
+    ) : null;
+
   return (
     <Screen variant="corner" layout="tab" testID="screen-home">
       {/*
@@ -265,13 +297,14 @@ export default function Home() {
         {/* Training rides with Kai's one message, not in the conversation
             below it: it is a standing invitation, not a thing he just said.
             It draws only on Today — scrolled back into an older thread it
-            would be an interruption from the present. */}
-        {thread.kind === 'today' ? (
-          <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
-            <View style={{ width: 30 }} />
-            <View style={{ flex: 1 }}><ContinueTrainingObject /></View>
-          </View>
-        ) : null}
+            would be an interruption from the present.
+
+            WHERE it rides is keyed to the member's readiness stage (0042).
+            Somebody still in Foundations meets the next lesson before the
+            market; somebody who has graduated meets the market first, and a
+            course they finished sitting above it would read as the app not
+            having noticed. `homeOrderFor` holds that argument in full. */}
+        {homeOrder.training === 'above_wall' ? trainingRow : null}
 
         {/* Then the conversation. */}
         {items.map((it, i) => {
@@ -310,6 +343,10 @@ export default function Home() {
             </View>
           );
         })}
+
+        {/* Trade-ready members get it here instead — after the setups, not
+            before them. Same object, same owner; only the position moved. */}
+        {homeOrder.training === 'below_wall' ? trainingRow : null}
 
         {/* Kai already said this in his own words; this stays for the thread views. */}
         {error && thread.kind !== 'today' ? <T size={11} c={color.muted} align="center">{error}</T> : null}

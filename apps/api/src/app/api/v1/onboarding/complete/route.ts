@@ -25,6 +25,7 @@ import { authed, ok, parseBody, type Ctx } from '@/lib/http';
 import { serviceClient } from '@/lib/db';
 import { ApiError } from '@/lib/errors';
 import { writeKaiProfile } from '@/lib/round4/profile-round4';
+import { START_PLACEMENT } from '@/lib/stage/rules';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +34,7 @@ async function loadState(userId: string) {
   const [profile, risk, account] = await Promise.all([
     db
       .from('profiles')
-      .select('user_id,handle,display_name,primary_mode,experience,involvement,explanation_level,memory_enabled,timezone,onboarding')
+      .select('user_id,handle,display_name,primary_mode,experience,involvement,explanation_level,memory_enabled,timezone,onboarding,stage,stage_locked')
       .eq('user_id', userId)
       .single(),
     db
@@ -75,6 +76,10 @@ function shape(state: Awaited<ReturnType<typeof loadState>>, replay: boolean) {
       memory_enabled: p.memory_enabled,
       timezone: p.timezone ?? null,
       onboarding: (p.onboarding ?? {}) as Record<string, unknown>,
+      // 0042. This response is read straight after placement, so it is the
+      // first thing that tells the app which Home to draw.
+      stage: (p.stage as string | null) ?? 'beginner',
+      stage_locked: (p.stage_locked as boolean | null) ?? false,
     },
     risk_policy: {
       daily_loss_cap_usd: num(state.risk?.daily_loss_cap_usd),
@@ -165,7 +170,45 @@ export const POST = authed(async (req: NextRequest, ctx: Ctx) => {
       experience: body.experience,
       focus: body.focus ?? [],
     });
-    await db.from('profiles').update({ onboarding: written.onboarding }).eq('user_id', ctx.user.id);
+
+    // "Where are you right now?" places the member on the readiness ladder
+    // (0042) before they have proved anything, which is the only way the first
+    // session can be pitched at the right level. The mapping is
+    // `START_PLACEMENT` and lives with the evolution rules on purpose: the rule
+    // that sets the starting rung and the rule that moves somebody off it have
+    // to agree about what the rungs mean.
+    //
+    // THIS IS THE ONLY PLACE A STAGE IS SET FROM AN ANSWER RATHER THAN FROM
+    // EVIDENCE, and it is a FLOOR: `decideStage`'s ratchet promotes only, so
+    // training can lift somebody off this rung and nothing sends them back down
+    // it. The raw answer is kept in the onboarding bag as well — the stage will
+    // move and the answer is a record of what they said on day one.
+    // IT DOES NOT TOUCH `primary_mode`, and that is the important half. The
+    // answer supplies the mode DEFAULT, and it does that on the phone by
+    // pre-selecting the goal screen — which asks the question directly, one
+    // screen later. By the time this request arrives the member has either
+    // accepted that default or overruled it, and `goal_mode` above already
+    // carries whichever it was. Writing the placement's mode here would throw
+    // away an explicit choice in favour of the guess that preceded it.
+    const placement = body.start_answer ? START_PLACEMENT[body.start_answer] : null;
+    const onboarding = body.start_answer
+      ? { ...written.onboarding, start_answer: body.start_answer }
+      : written.onboarding;
+
+    await db
+      .from('profiles')
+      .update({
+        onboarding,
+        ...(placement
+          ? {
+              stage: placement.stage,
+              // Deliberately NOT stamping `stage_changed_at`: they were placed,
+              // they did not move, and dating this would make 0042 §6(iv)'s
+              // "has anybody actually evolved yet" check answer yes on day one.
+            }
+          : {}),
+      })
+      .eq('user_id', ctx.user.id);
   }
 
   return ok(shape(await loadState(ctx.user.id), replay));

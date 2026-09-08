@@ -30,6 +30,27 @@ export const AppMode = z.enum(['day_trade', 'swing', 'invest']);
 export type AppMode = z.infer<typeof AppMode>;
 
 export const ExperienceLevel = z.enum(['beginner', 'intermediate', 'advanced']);
+
+/**
+ * Readiness stage (0042). Stored as `text` with a CHECK rather than an enum
+ * because the ladder is explicitly unfinished — the owner's note ends it with
+ * "→ higher status later" — and growing a CHECK is one ordinary migration where
+ * growing an enum is two. Adding a rung here means adding it there.
+ *
+ * This is a different question from `ExperienceLevel`: that one is what someone
+ * said about themselves once, this one is what they have proved since.
+ */
+export const ReadinessStage = z.enum(['beginner', 'developing', 'trade_ready']);
+export type ReadinessStage = z.infer<typeof ReadinessStage>;
+
+/**
+ * The four answers to onboarding's "Where are you right now?". They map to a
+ * starting stage, a default mode and a recommended room — the table lives on
+ * the server in `apps/api/src/lib/stage/rules.ts` (`START_PLACEMENT`) so that
+ * the placement rule and the evolution rule cannot disagree.
+ */
+export const StartAnswer = z.enum(['brand_new', 'investor', 'swing', 'active']);
+export type StartAnswer = z.infer<typeof StartAnswer>;
 export type ExperienceLevel = z.infer<typeof ExperienceLevel>;
 
 export const Involvement = z.enum(['hands_on', 'guided']);
@@ -482,6 +503,18 @@ export const ProfileResponse = z.object({
   memory_enabled: z.boolean(),
   timezone: z.string().nullable(),
   onboarding: z.record(z.string(), z.unknown()),
+  /**
+   * Readiness stage (0042). NOT the same field as `experience`, and the two are
+   * worth keeping straight: `experience` is what the member SAID about
+   * themselves at onboarding and never moves again; `stage` is what they have
+   * since PROVED in Training, and it moves on its own.
+   *
+   * Defaulted rather than required so an API build that predates 0042 — or a
+   * cached response from one — still parses instead of blanking the profile.
+   */
+  stage: ReadinessStage.default('beginner'),
+  /** An admin pinned the stage; automatic evolution leaves it alone. */
+  stage_locked: z.boolean().default(false),
 });
 export type ProfileResponse = z.infer<typeof ProfileResponse>;
 
@@ -3456,8 +3489,71 @@ export const OnboardingExperience = z.preprocess(
 export const OnboardingCompleteRound4Request = OnboardingCompleteRequest.extend({
   experience: OnboardingExperience,
   focus: z.array(FocusKey).max(6).optional(),
+  /**
+   * "Where are you right now?" — optional exactly as `focus` is, so a client
+   * built before this step existed still completes onboarding rather than being
+   * rejected at the last screen. Absent means the server places them at
+   * `beginner`, which is the honest default for an answer nobody gave.
+   */
+  start_answer: StartAnswer.optional(),
 });
 export type OnboardingCompleteRound4Request = z.infer<typeof OnboardingCompleteRound4Request>;
+
+/* ─────────────────────────── readiness stage ─────────────────────────────── */
+
+/**
+ * `POST /api/v1/stage/evaluate` — the phone reports what training has produced
+ * and the server decides what it is worth.
+ *
+ * It sends EVIDENCE and not a conclusion, and the reason is in
+ * `apps/api/src/lib/stage/rules.ts`: training progress lives only in
+ * AsyncStorage today, so the server has nothing of its own to read, and a body
+ * that simply said `{ stage: 'trade_ready' }` would make the whole ladder
+ * self-serve. Scores and completed lessons are re-graded here against the
+ * server's own copy of the gates.
+ */
+export const StageEvaluateRequest = z.object({
+  mastery: z.record(z.string(), z.number()).default({}),
+  day_progress: z
+    .record(
+      z.string(),
+      z.object({
+        completed_lesson_ids: z.array(z.string()).default([]),
+        best_score_pct: z.number().nullable().default(null),
+      })
+    )
+    .default({}),
+});
+export type StageEvaluateRequest = z.infer<typeof StageEvaluateRequest>;
+
+export const StageEvaluateResponse = z.object({
+  stage: ReadinessStage,
+  /** True when this call moved it. The client refreshes the profile if so. */
+  changed: z.boolean(),
+  reason: z.enum(['locked', 'promoted', 'unchanged', 'no_downgrade']),
+});
+export type StageEvaluateResponse = z.infer<typeof StageEvaluateResponse>;
+
+/**
+ * `POST /api/v1/admin/users/:id/stage` — a staff override.
+ *
+ * The REASON is required by the schema and not by the handler, for the same
+ * argument the entitlements route makes: six months from now the only
+ * defensible answer to "why is this account trade_ready" is a sentence somebody
+ * typed, and the moment to demand it is the moment of the override.
+ */
+export const AdminStageRequest = z.object({
+  stage: ReadinessStage,
+  /**
+   * Pin it. A pinned stage is skipped by automatic evolution — which is the
+   * point of an override, and is why this is a separate flag rather than being
+   * implied: an admin correcting somebody to `developing` who then genuinely
+   * earns `trade_ready` should usually still be allowed to earn it.
+   */
+  locked: z.boolean().default(true),
+  reason: z.string().min(8, 'Say why, in a sentence somebody can read later.'),
+});
+export type AdminStageRequest = z.infer<typeof AdminStageRequest>;
 
 export const SettingsRound4Request = z
   .object({

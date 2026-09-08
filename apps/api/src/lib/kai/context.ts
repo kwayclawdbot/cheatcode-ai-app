@@ -86,6 +86,14 @@ export type ProfileRow = {
   memory_enabled: boolean;
   onboarding: Record<string, unknown>;
   timezone: string | null;
+  /**
+   * Readiness stage (0042). Kai reads it for the same reason the Home ordering
+   * does — it is the difference between explaining what a stop is and assuming
+   * it. Nullable in the type because a profile row written before 0042 applied
+   * has no value, and the callers treat that as `beginner`.
+   */
+  stage: string | null;
+  stage_locked: boolean | null;
 };
 
 export type RiskPolicyRow = {
@@ -170,7 +178,7 @@ export async function loadProfile(userId: string): Promise<ProfileRow> {
   const db = serviceClient();
   const { data, error } = await db
     .from('profiles')
-    .select('user_id,handle,avatar_url,display_name,primary_mode,experience,involvement,explanation_level,memory_enabled,onboarding,timezone')
+    .select('user_id,handle,avatar_url,display_name,primary_mode,experience,involvement,explanation_level,memory_enabled,onboarding,timezone,stage,stage_locked')
     .eq('user_id', userId)
     .single();
   if (error) throw error;

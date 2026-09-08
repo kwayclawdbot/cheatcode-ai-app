@@ -36,7 +36,7 @@ import type {
   AlertTab, Candle, ConversationsPayload, CreditsPayload, Experience, ExplainLevel, FocusKey, GoalMode,
   GradedSetup, HomePayload, HomeV5, KaiProfile, Me, MemoryRow, NotificationRow,
   PushDevice, PushPlatform, PushRegistry, PushTestResult, PushTransport, Quote,
-  RuleAdherence, SearchResult, SetupDetail, SymbolDetail, SymbolWorkspace, TickerPage,
+  RuleAdherence, SearchResult, SetupDetail, Stage, StartAnswer, SymbolDetail, SymbolWorkspace, TickerPage,
   TradeLanding,
 } from './types';
 import type {
@@ -462,8 +462,32 @@ export const api = {
    * `focus[]`. The server maps experience onto experience_level /
    * explanation_level, so Kai's voice follows the same answer.
    */
-  completeOnboardingRound4: (body: Omit<OnboardingCompleteRequest, 'experience'> & { experience: Experience; focus: FocusKey[] }) =>
-    request<OnboardingCompleteResponse>('/onboarding/complete', { method: 'POST', body: JSON.stringify(body) }),
+  completeOnboardingRound4: (
+    body: Omit<OnboardingCompleteRequest, 'experience'> & {
+      experience: Experience;
+      focus: FocusKey[];
+      /** "Where are you right now?" — places the member on the stage ladder. */
+      start_answer?: StartAnswer;
+    }
+  ) => request<OnboardingCompleteResponse>('/onboarding/complete', { method: 'POST', body: JSON.stringify(body) }),
+
+  /**
+   * `POST /stage/evaluate` — report what training has produced and let the
+   * server decide what it is worth.
+   *
+   * This sends EVIDENCE, never a conclusion: `stage` is not writable from a
+   * client at all (0042 puts a trigger on the column), and the server re-grades
+   * these numbers against its own copy of the day gates. Safe to call as often
+   * as you like — the server's ratchet makes a repeat a no-op.
+   */
+  evaluateStage: (body: {
+    mastery: Record<string, number>;
+    day_progress: Record<string, { completed_lesson_ids: string[]; best_score_pct: number | null }>;
+  }) =>
+    request<{ stage: Stage; changed: boolean; reason: string }>('/stage/evaluate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   /** `PUT /settings` accepts experience + focus (round-4 personalize). */
   putKaiProfile: (body: { experience?: Experience; focus?: FocusKey[]; mode?: GoalMode }) =>

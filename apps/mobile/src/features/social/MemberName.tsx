@@ -5,7 +5,8 @@ import { T } from '../../ui/Text';
 import { color } from '../../ui/tokens';
 import { beltInk } from './belts';
 import { secondaryHandle } from './naming';
-import type { Belt } from '../../lib/types';
+import { StageTag } from '../stage/StageTag';
+import type { Belt, Stage } from '../../lib/types';
 
 /**
  * A MEMBER'S NAME. ONE COMPONENT, EVERYWHERE.
@@ -48,6 +49,7 @@ export function MemberName({
   showHandle = false,
   handleSize,
   numberOfLines = 1,
+  stage,
   suffix,
   testID,
 }: {
@@ -63,6 +65,19 @@ export function MemberName({
   showHandle?: boolean;
   handleSize?: number;
   numberOfLines?: number;
+  /**
+   * Readiness stage (0042), drawn as a quiet word after the handle.
+   *
+   * IT IS A PROP AND NOT SOMETHING THIS COMPONENT FETCHES, because a name
+   * renders in long lists — a room's worth of messages, a leaderboard — and a
+   * component that looked its own subject up would turn one screen into a
+   * hundred requests. The surfaces that have the fact pass it; the ones that do
+   * not pass nothing and no tag is drawn, which is correct: inventing
+   * "Beginner" for somebody the server never described is worse than silence.
+   *
+   * Absent and null both mean "not known here", never "beginner".
+   */
+  stage?: Stage | null;
   /** Anything that belongs on the name's own line — a belt chip, a time. */
   suffix?: React.ReactNode;
   testID?: string;
@@ -81,6 +96,11 @@ export function MemberName({
           {at}
         </T>
       ) : null}
+      {/* After the handle and before whatever the caller adds: the stage is a
+          fact about the member, so it belongs with their identity rather than
+          out among the per-surface furniture. It is the quietest thing on the
+          line by design — the belt is this name's colour, and stays primary. */}
+      <StageTag stage={stage} testID={testID ? `${testID}-stage` : undefined} />
       {suffix}
     </>
   );

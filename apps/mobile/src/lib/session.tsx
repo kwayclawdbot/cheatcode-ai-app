@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase, plainAuthError } from './supabase';
 import { env } from './env';
 import { fixtureProfile } from './fixtures';
-import type { Experience, FocusKey, GoalMode, Involvement, Profile, RiskAnswer, FundingChoice } from './types';
+import type { Experience, FocusKey, GoalMode, Involvement, Profile, RiskAnswer, FundingChoice, StartAnswer } from './types';
 
 type AuthResult = { ok: boolean; error?: string; needsConfirmation?: boolean };
 
@@ -24,6 +24,13 @@ const Ctx = createContext<SessionValue | null>(null);
 
 /** Onboarding answers live here until POST /onboarding/complete accepts them. */
 export type OnboardingDraft = {
+  /**
+   * "Where are you right now?" — the first thing onboarding asks, because every
+   * screen after it is pitched differently depending on the answer. It sets the
+   * starting readiness stage (0042), pre-selects the mode on the goal screen,
+   * and decides which room is recommended. Null means not answered.
+   */
+  start_answer: StartAnswer | null;
   goal_mode: GoalMode | null;
   funding: FundingChoice | null;
   risk_answer: RiskAnswer | null;
@@ -55,6 +62,7 @@ export function clampBalance(n: number): number {
 }
 
 const DEFAULT_DRAFT: OnboardingDraft = {
+  start_answer: null,
   goal_mode: null, funding: null, risk_answer: null, involvement: null,
   experience: 'new', focus: ['tech', 'ai'], starting_balance: DEFAULT_BALANCE,
 };

@@ -97,7 +97,7 @@ function Gate({ children }: { children: React.ReactNode }) {
       return;
     }
     if (!onboardingDone) {
-      if (!inOnboarding) router.replace('/goal');
+      if (!inOnboarding) router.replace('/start');
       return;
     }
     if (inAuth || inOnboarding || (!inTabs && !inStack)) {

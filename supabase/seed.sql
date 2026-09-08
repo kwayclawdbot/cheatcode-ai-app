@@ -26,15 +26,26 @@ insert into scan_universes (name, symbols) values
 on conflict (name) do update set symbols = excluded.symbols, updated_at = now();
 
 -- =====================================================================
--- rooms - the three core rooms (owner decision 2026-08-26)
+-- rooms - the four core rooms (owner decision 2026-08-26, extended 2026-09-07)
 --
--- Community is three rooms, full stop: Day Trade, Swing, Investing. No
--- per-mode sub-rooms and no setup rooms are surfaced. `mode` is kept on the row
--- because the schema and the API still carry it (and a room is genuinely about
--- one horizon), but it is NOT a filter any more - every member sees all three.
+-- Community is four rooms, full stop: Beginners, Day Trade, Swing, Investing.
+-- No per-mode sub-rooms and no setup rooms are surfaced. `mode` is kept on the
+-- three desk rows because the schema and the API still carry it (and a desk is
+-- genuinely about one horizon), but it is NOT a filter any more - every member
+-- sees all four.
+--
+-- BEGINNERS HAS NO MODE, and that is load-bearing rather than an omission: it
+-- is a stage of the member, not an instrument, and 0040 asserts that every
+-- app_mode has exactly ONE core room. Giving this row a mode fails that
+-- assertion the next time the database is rebuilt. The full argument is in
+-- supabase/migrations/0043_beginners_is_a_core_room.sql section 1; this file
+-- and that migration must agree, because this is the one that runs on a fresh
+-- database and that is the one that runs on an existing one.
+--
 -- config.intel_eligible = false until community-intelligence terms are disclosed.
 -- =====================================================================
 insert into rooms (type, mode, slug, name, description, config) values
+  ('core',null,'beginners','Beginners','Simple questions, plain answers. What a term means, what an alert is saying, and the first wins.', '{"intel_eligible": false}'),
   ('core','day_trade','day-trade','Day Trade','Intraday setups, confirmations, exits - today.',            '{"intel_eligible": false}'),
   ('core','swing','swing','Swing','Ideas held for days or weeks: theses, catalysts, updates.',             '{"intel_eligible": false}'),
   ('core','invest','investing','Investing','Building and reviewing a long-term portfolio.',                '{"intel_eligible": false}')

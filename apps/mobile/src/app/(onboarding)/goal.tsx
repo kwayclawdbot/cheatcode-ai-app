@@ -41,13 +41,22 @@ const GOALS: { key: GoalMode; title: string; sub: string; Icon: React.ComponentT
 export default function Goal() {
   const router = useRouter();
   const { draft, set } = useOnboardingDraft();
-  // Was `day_trade`. A person who taps Continue without choosing lands in the
-  // mode that is actually running, not in the one that says "not live yet".
+  // Normally already answered. `(onboarding)/start.tsx` — "Where are you right
+  // now?" — writes `goal_mode` as a PRE-SELECTION from where the member says
+  // they are, so this screen usually arrives with the sensible option already
+  // ticked and asks them to agree with it out loud. That is why the placement
+  // deliberately does not set `primary_mode` on the server: this screen is the
+  // decision, and it is one tap away from overruling the guess.
+  //
+  // The `'swing'` fallback survives for anybody who reaches this screen without
+  // that answer. Was `day_trade`: a person who taps Continue without choosing
+  // lands in the mode that is actually running, not the one that says "not live
+  // yet".
   const selected = draft.goal_mode ?? 'swing';
 
   return (
     <Screen variant="corner" layout="stack" testID="screen-goal">
-      <ProgressBars total={5} done={1} />
+      <ProgressBars total={6} done={2} />
       <T size={27} weight="bold" ls={-0.4} lh={32}>What do you want to do?</T>
       <T size={14} c={color.muted} style={{ marginTop: 8 }}>Pick your main focus. You can switch anytime.</T>
 

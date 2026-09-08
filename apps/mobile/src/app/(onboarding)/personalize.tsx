@@ -42,7 +42,7 @@ export default function Personalize() {
 
   return (
     <Screen variant="dome" layout="stack" testID="screen-personalize">
-      <ProgressBars total={5} done={3} />
+      <ProgressBars total={6} done={4} />
       <T size={26} weight="bold" ls={-0.4} lh={31}>{'Let\u2019s tune Kai to you'}</T>
       <T size={14} c={color.muted} style={{ marginTop: 8 }}>Two quick answers. You can change both later.</T>
 

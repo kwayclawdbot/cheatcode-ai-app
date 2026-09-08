@@ -64,6 +64,11 @@ export default function KaiPlan() {
           experience: draft.experience,
           focus: draft.focus,
           practice_choice: 'paper',
+          // "Where are you right now?" (the first step). The server turns this
+          // into the starting readiness stage; it is optional on the wire, and
+          // omitting it places the member at `beginner`, which is the honest
+          // default for an answer nobody gave.
+          ...(draft.start_answer ? { start_answer: draft.start_answer } : {}),
         });
         await patchProfile({
           primary_mode: mode,
@@ -84,7 +89,7 @@ export default function KaiPlan() {
 
   return (
     <Screen variant="dome" layout="stack" testID="screen-kai-plan">
-      <ProgressBars total={5} done={5} />
+      <ProgressBars total={6} done={6} />
 
       <View style={{ alignItems: 'center', gap: 14 }}>
         <KaiOrb size={62} />

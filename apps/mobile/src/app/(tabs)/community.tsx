@@ -20,7 +20,7 @@
  * header line under the club name. Saying it and letting you change it are two
  * different jobs, and only the second one was duplicated.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import Svg, { Circle as SvgCircle, Path } from 'react-native-svg';
@@ -153,10 +153,33 @@ export default function Community() {
   useEffect(() => { setLoading(true); void load(); }, [load]);
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
+  /**
+   * BEGINNERS SORTS FIRST, not last. `rank()` sends an unknown-or-null mode to
+   * the end, which is right for the API's generic listing and wrong here: the
+   * one room with no mode is the room a new member most needs to find, and
+   * putting it after the three desks buries it under exactly the material it
+   * exists to protect them from. It is the only mode-less core room by design
+   * (0043 §1), so this is a rule about one row and not a sort order.
+   */
   const coreRooms = useMemo(
-    () => rooms.filter((r) => r.type === 'core').sort((a, b) => rank(a.mode) - rank(b.mode)),
+    () =>
+      rooms
+        .filter((r) => r.type === 'core')
+        .sort((a, b) => {
+          if (a.mode == null && b.mode != null) return -1;
+          if (b.mode == null && a.mode != null) return 1;
+          return rank(a.mode) - rank(b.mode);
+        }),
     [rooms],
   );
+
+  /** The one core room that is not a desk. Absent on a stack without 0043. */
+  const beginnersRoom = useMemo(
+    () => coreRooms.find((r) => r.mode == null && r.slug === 'beginners') ?? null,
+    [coreRooms],
+  );
+
+  const stage = profile?.stage ?? 'beginner';
 
   /**
    * THE ROOM IS THE MODE. Not "the room you land on first" — the room, full
@@ -170,11 +193,32 @@ export default function Community() {
    * press awaits the profile write, and this effect covers the case the press
    * cannot — rooms that had not loaded yet when the mode was chosen.
    */
+  /**
+   * ...WITH ONE EXCEPTION, AND IT IS THE FIRST ROOM A BEGINNER SEES.
+   *
+   * A member at the `beginner` stage (0042) opens Community in the Beginners
+   * room rather than in their desk. That is the recommendation the funnel is
+   * built on: their mode is still real and their desk is one tap away, but the
+   * room where questions are welcome is the one they should meet first, not the
+   * one where people are posting entries and stops.
+   *
+   * It applies ONLY on the first resolve — `prev` being null. Once they have a
+   * room, changing mode moves them to that desk like anybody else, and the
+   * Beginners pill in the headbar brings them back. A rule that re-asserted
+   * itself on every mode change would be a control that visibly does nothing.
+   */
+  const landedRef = useRef(false);
   useEffect(() => {
     if (!coreRooms.length) return;
     const mine = coreRooms.find((r) => r.mode === mode);
-    setRoomId((prev) => mine?.id ?? prev ?? coreRooms[0].id);
-  }, [coreRooms, mode]);
+    setRoomId((prev) => {
+      if (!prev && !landedRef.current && stage === 'beginner' && beginnersRoom) {
+        landedRef.current = true;
+        return beginnersRoom.id;
+      }
+      return mine?.id ?? prev ?? coreRooms[0].id;
+    });
+  }, [coreRooms, mode, stage, beginnersRoom]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -421,6 +465,43 @@ export default function Community() {
           you picked, so the control is never a switch that appears to do
           nothing.
         */}
+        {/*
+          THE BEGINNERS DOOR, and the reason it is not part of the control
+          beside it. `ModeSegmented` writes `PUT /mode` — it sets the member's
+          GLOBAL mode, which follows them onto Home and the alert boards.
+          Beginners is not a mode (0043 §1): it is a room, and somebody reading
+          it is still a swing trader or an investor while they do. A fourth chip
+          in that control would quietly rewrite `primary_mode` to something that
+          is not one, so this is a separate, quieter thing that changes only
+          what you are looking at.
+
+          It is deliberately shown to everybody rather than only to beginners.
+          The room works because experienced members answer in it, and a door
+          only novices can see is a room only novices are in.
+        */}
+        {beginnersRoom ? (
+          <Pressable
+            testID="club-beginners"
+            accessibilityRole="button"
+            accessibilityLabel="Beginners room"
+            accessibilityState={{ selected: roomId === beginnersRoom.id }}
+            onPress={() => setRoomId(beginnersRoom.id)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{
+              paddingHorizontal: 9,
+              paddingVertical: 4,
+              borderRadius: 7,
+              borderWidth: 0.5,
+              borderColor: roomId === beginnersRoom.id ? alpha.volt50 : alpha.ivory25,
+              backgroundColor: roomId === beginnersRoom.id ? alpha.volt14 : 'transparent',
+            }}
+          >
+            <T size={10} weight="bold" c={roomId === beginnersRoom.id ? color.volt : color.muted}>
+              Beginners
+            </T>
+          </Pressable>
+        ) : null}
+
         <ModeSegmented
           mode={mode}
           testID="club-mode-segmented"
