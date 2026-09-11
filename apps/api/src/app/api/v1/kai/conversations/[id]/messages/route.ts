@@ -564,11 +564,49 @@ ${renderContext(kctx, chartOnScreen, { market: false, quotes: false })}${sheet.p
            * each and a model that keeps looking things up is a model that has
            * stopped answering; the cap ends the loop and the reply is whatever
            * he has said by then, which is still an answer.
+           *
+           * WHY THE NUMBER IS STILL 4 AFTER THE TOOLBELT TRIPLED.
+           *
+           * Going from four tools to twelve is an argument for raising it, and
+           * that argument has no evidence behind it yet. `kai_model_usage`
+           * already writes one row per round trip, so the number of turns a
+           * question TAKES has always been recoverable — but nothing recorded
+           * whether a question ENDED because Kai was finished or because this
+           * cap stopped him, and those two look identical in the ledger. That
+           * difference is the entire decision.
+           *
+           * So the loop counts itself now (see `kai.toolbelt` below) and the
+           * number stays where it is until the log says how often four was not
+           * enough, and for which tools. Raising a cap on the theory that more
+           * tools need more turns is how a chat that cost four round trips
+           * starts costing eight for the same answers.
            */
           const MAX_TOOL_TURNS = 4;
           const convo: Anthropic.MessageParam[] = turns.map((t) => ({ role: t.role, content: t.content }));
 
+          /**
+           * WHAT THIS ONE QUESTION ACTUALLY SPENT.
+           *
+           * Three facts, none of which the cost ledger can answer on its own:
+           * how many round trips it took, which tools were asked for (a tool
+           * nobody ever calls is a tool to delete; a tool called twice in one
+           * question is usually a description that did not say when to stop),
+           * and whether the cap is what ended it.
+           *
+           * Counted here rather than stored in a table: this is a measurement
+           * taken to decide a constant, and it belongs in the log next to the
+           * charge until it has been read.
+           */
+          const toolsCalled: string[] = [];
+          let turnsUsed = 0;
+          let cappedOut = false;
+
           for (let turn = 0; turn <= MAX_TOOL_TURNS; turn += 1) {
+            turnsUsed = turn + 1;
+            // Reaching the last iteration at all means the four tool rounds
+            // before it were all used, and this turn is running without tools
+            // because the budget is gone — not because Kai stopped asking.
+            if (turn === MAX_TOOL_TURNS) cappedOut = true;
             const ms = messageStream({
               system,
               messages: convo,
@@ -617,6 +655,7 @@ ${renderContext(kctx, chartOnScreen, { market: false, quotes: false })}${sheet.p
             // The assistant turn goes back UNCHANGED — the tool_use blocks in it
             // are what each result is answering.
             convo.push({ role: 'assistant', content: finished.content });
+            toolsCalled.push(...calls.map((c) => c.name));
             const results: Anthropic.ToolResultBlockParam[] = await Promise.all(
               calls.map(async (c) => ({
                 type: 'tool_result' as const,
@@ -632,6 +671,28 @@ ${renderContext(kctx, chartOnScreen, { market: false, quotes: false })}${sheet.p
             // silently teaches the model to stop asking for things in parallel.
             convo.push({ role: 'user', content: results });
           }
+
+          /**
+           * ONE LINE PER QUESTION, AND IT IS THE ONE THAT DECIDES THE CAP.
+           *
+           * `capped` is the field to watch. If it is rare, four turns is the
+           * right budget and the extra tools cost nothing. If it is common, the
+           * tools listed beside it say WHICH question is running out — and that
+           * is a different fix depending on the answer: a cap that is too low, a
+           * description that sends Kai looking things up one symbol at a time,
+           * or a tool that should have been part of the context all along.
+           */
+          log('info', requestId, 'kai.toolbelt', {
+            turns: turnsUsed,
+            max_turns: MAX_TOOL_TURNS,
+            capped: cappedOut,
+            tool_calls: toolsCalled.length,
+            tools: toolsCalled.reduce<Record<string, number>>((acc, n) => {
+              acc[n] = (acc[n] ?? 0) + 1;
+              return acc;
+            }, {}),
+          });
+
           const tail = splitter.flush();
           const chartTail = chartSplitter.push(tail.text);
           const chartFlush = chartSplitter.flush();

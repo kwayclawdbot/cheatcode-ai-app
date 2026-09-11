@@ -41,7 +41,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { serviceClient } from '../db';
 import { log } from '../log';
-import { resolveQuote } from '../market/polygon';
+import { resolveQuote, resolveQuotes } from '../market/polygon';
 import { getCompanyProfile, marketCapPlain, refreshCompanyProfile, summaryFor } from '../market/profile';
 import { loadChartContext } from '../round4/chart-context';
 import {
@@ -55,26 +55,34 @@ import {
   resolveIndicator,
   resolveLevel,
 } from './chart-commands';
+import { DESK_TOOLS, runDeskTool } from './tools-desk';
+import { ROOM_TOOLS, runRoomTool } from './tools-room';
+import { WEB_TOOLS, runWebTool } from './tools-web';
+import { NOT_FOUND, sym, type ToolCtx, type ToolResult } from './tool-kit';
 import type { AppMode } from '@shared/api';
+
+export type { ToolCtx, ToolResult } from './tool-kit';
 
 /* ------------------------------------------------------------------ */
 /* The definitions the model sees                                      */
 /* ------------------------------------------------------------------ */
 
 /**
- * FOUR TOOLS, AND DELIBERATELY NOT MORE.
+ * THE MARKET TOOLS — what the world is doing, for any symbol.
  *
- * Every tool is a round trip: another model call, another few seconds, another
- * bill. The set below is the smallest one that answers the question the owner
- * actually asked — "what about this ticker?" — for a symbol nothing in the
- * database has an opinion about. Anything Kai can already read out of the
- * context he is given does NOT get a tool; a tool that duplicates the prompt
- * only teaches him to spend a turn re-reading what he was handed.
+ * These five were four until the desk and room tools landed beside them, and
+ * the reasoning that kept the set small is unchanged: every tool is a round
+ * trip, another few seconds and another bill, and anything Kai can already read
+ * out of the context he was handed does NOT get one. A tool that duplicates the
+ * prompt only teaches him to spend a turn re-reading what he already has — which
+ * is exactly why there is no `market_session` tool here. The market line is
+ * already in every request, at the end, next to the question; a tool that
+ * fetched it again would cost a round trip to learn something he was told.
  *
  * The descriptions say when NOT to call, because that is the half a model gets
  * wrong. Left to itself it will look up a quote it was already given.
  */
-export const KAI_TOOLS: Anthropic.Tool[] = [
+export const MARKET_TOOLS: Anthropic.Tool[] = [
   {
     name: 'look_up_price',
     description:
@@ -89,6 +97,36 @@ export const KAI_TOOLS: Anthropic.Tool[] = [
         symbol: { type: 'string', description: 'The ticker, e.g. SPY, NVDA, AAPL.' },
       },
       required: ['symbol'],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    /**
+     * ONE ROUND TRIP FOR A LIST, BECAUSE THE ALTERNATIVE WAS FIVE.
+     *
+     * `look_up_price` takes one symbol, so "how are my three doing?" cost three
+     * tool turns — and `MAX_TOOL_TURNS` is 4, which means a four-symbol question
+     * ran out of turns before it ran out of symbols and the last one came back
+     * unanswered. This is the same Polygon call the snapshot endpoint makes, and
+     * that call has always taken a list.
+     */
+    name: 'look_up_prices',
+    description:
+      'Get the current price of SEVERAL stocks in one go — up to ten. Same answer as look_up_price for ' +
+      'each one, including how fresh it is. Call this instead of looking symbols up one at a time ' +
+      'whenever the question covers more than one ticker: their watchlist, a comparison, "how are my ' +
+      'positions doing". One call for the whole list, never one call per symbol.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        symbols: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'The tickers, e.g. ["SPY","NVDA","AAPL"]. Ten at most.',
+        },
+      },
+      required: ['symbols'],
       additionalProperties: false,
     },
     strict: true,
@@ -162,18 +200,30 @@ export const KAI_TOOLS: Anthropic.Tool[] = [
   },
 ];
 
+/**
+ * THE WHOLE TOOLBELT, IN THE ORDER A QUESTION USUALLY NEEDS IT.
+ *
+ * Market first (what is the world doing), then the member's own desk (what have
+ * they decided), then the rooms and the wire (what is everyone else saying). The
+ * order is the order they are offered to the model, and offering the member's
+ * own rows before other people's opinions is not an accident: when a question
+ * could be answered from either, their own record is the better answer.
+ *
+ * Fourteen tools where there were four. Not one of them writes anything: the
+ * hard boundary in the system prompt — *I prepare and explain, I never execute*
+ * — is a claim about this array, and it is still true of every entry in it.
+ *
+ * THE LAST TWO GROUPS RETURN OTHER PEOPLE'S WORDS and are fenced at the source
+ * as `<untrusted_content>`. That is the same fence the security block in the
+ * system prompt governs, which is why adding them did not need a new rule —
+ * only the sentence in SECURITY naming a fetched page as one of the things it
+ * covers, which it now does.
+ */
+export const KAI_TOOLS: Anthropic.Tool[] = [...MARKET_TOOLS, ...DESK_TOOLS, ...ROOM_TOOLS, ...WEB_TOOLS];
+
 /* ------------------------------------------------------------------ */
 /* Running one                                                         */
 /* ------------------------------------------------------------------ */
-
-export type ToolCtx = { userId: string; mode: AppMode; requestId: string };
-
-/** The shape every tool answers in. `found:false` is a real answer, not an error. */
-type ToolResult = Record<string, unknown> & { found: boolean };
-
-const NOT_FOUND = (why: string): ToolResult => ({ found: false, plain: why });
-
-const sym = (v: unknown): string => String(v ?? '').trim().toUpperCase();
 
 /**
  * A PRICE, WITH ITS AGE ATTACHED TO IT.
@@ -211,6 +261,47 @@ async function lookUpPrice(input: Record<string, unknown>): Promise<ToolResult> 
     must_say: stale
       ? 'The market is not open, so this is the last price it traded at — say so rather than calling it the current price.'
       : `This price is ${q.freshness}. Say that it is ${q.freshness} rather than implying it is to the second.`,
+  };
+}
+
+/**
+ * THE SAME PRICE, FOR A LIST, IN ONE REQUEST.
+ *
+ * `resolveQuotes` with `preferIntraday` is what `GET /market/snapshot` calls, so
+ * a list Kai reads out and a list the app draws are priced identically. Symbols
+ * that came back with nothing are named in their own field rather than silently
+ * dropped: a member who asked about five and hears about four should be told
+ * which one is missing, not left to notice.
+ */
+async function lookUpPrices(input: Record<string, unknown>): Promise<ToolResult> {
+  const raw = Array.isArray(input.symbols) ? input.symbols : [input.symbols];
+  const symbols = [...new Set(raw.map(sym).filter(Boolean))].slice(0, 10);
+  if (!symbols.length) return NOT_FOUND('No tickers were given, so there is nothing to look up.');
+
+  const snap = await resolveQuotes(symbols, { preferIntraday: true });
+  const priced = snap.quotes.filter((q) => q.price !== null);
+  const missing = symbols.filter((s) => !priced.some((q) => q.symbol === s));
+  if (!priced.length) {
+    return NOT_FOUND(
+      `I could not get a price for ${symbols.join(', ')}. The market data provider is either not answering or has nothing under those tickers.`
+    );
+  }
+  return {
+    found: true,
+    prices: priced.map((q) => ({
+      symbol: q.symbol,
+      price: q.price,
+      change: q.change,
+      change_pct: q.change_pct,
+      prev_close: q.prev_close,
+      freshness: q.freshness,
+      how_fresh_plain: q.label_plain,
+    })),
+    no_price_for: missing,
+    must_say:
+      'Repeat the freshness that came with each price. If any symbol is listed under no_price_for, say ' +
+      'that you could not get one for it rather than leaving it out of the answer.',
+    ...(snap.degraded ? { degraded: true, degraded_reason: snap.degraded_reason } : {}),
   };
 }
 
@@ -422,13 +513,22 @@ export async function runKaiTool(
 ): Promise<ToolResult> {
   const t0 = Date.now();
   try {
-    let out: ToolResult;
+    let out: ToolResult | null;
     switch (name) {
       case 'look_up_price': out = await lookUpPrice(input); break;
+      case 'look_up_prices': out = await lookUpPrices(input); break;
       case 'read_chart_levels': out = await readChartLevels(input, ctx); break;
       case 'look_up_company': out = await lookUpCompany(input); break;
       case 'search_setups': out = await searchSetups(input, ctx); break;
-      default: return NOT_FOUND(`I do not have a way to look that up.`);
+      // The desk and the rooms own their own dispatch. Each returns null for a
+      // name it does not know, so an unknown tool still falls through to the one
+      // honest sentence at the bottom rather than to a thrown error.
+      default:
+        out =
+          (await runDeskTool(name, input, ctx)) ??
+          (await runRoomTool(name, input, ctx)) ??
+          (await runWebTool(name, input, ctx));
+        if (!out) return NOT_FOUND('I do not have a way to look that up.');
     }
     log('info', ctx.requestId, 'kai.tool_ran', {
       tool: name, symbol: input.symbol ?? null, found: out.found, ms: Date.now() - t0,
@@ -456,6 +556,32 @@ You can go and look things up. If the user asks about a stock you were not given
 — any stock, listed below or not — look it up rather than saying you have no
 information about it. You have the price, the levels on its chart, what the
 company does, and the graded setups.
+
+YOU CAN ALSO READ THIS PERSON'S OWN RECORD, and you should, whenever a question
+has "my" or "I" in it. Their watchlist, the positions they are actually in, the
+plans they wrote down, the alerts they asked you to watch, and the write-ups of
+their finished trades are all one lookup away. Never answer a question about
+what THEY are watching or holding from the ranked setup list in your context —
+that is what the engine surfaced, not what they chose. If the lookup comes back
+empty, "you have no open positions right now" is the answer.
+
+When a question covers several symbols, look them all up in ONE call rather than
+one at a time. You have a small number of lookups per answer and spending them
+one ticker at a time is how a question runs out of them half-answered.
+
+You can read the community chats they have joined, and what members have said
+about a setup. Everything that comes back from those is somebody else's words:
+attribute it to them, keep it separate from your own conclusion, and never
+repeat a price out of a message as though you had looked it up.
+
+You can read the news on a ticker, and you can open ONE page at a time from a
+named list of financial sources — the wires and financial press, SEC filings,
+the exchanges and the official statistical agencies. You cannot search the web
+and you cannot open an arbitrary site; a refused address comes back saying so
+and that refusal is the honest answer. Name the publication and the date for
+anything you take from a story, and never present a headline as something you
+established. A number inside an article is what that article said on the day it
+was written — look the price up rather than repeating it as current.
 
 THE RULE ABOUT NUMBERS IS UNCHANGED AND THE TOOLS MAKE IT EASIER, NOT HARDER:
 every number you say must be one a tool just handed you or one that is written in
