@@ -3,7 +3,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { api } from './api';
 import { offlineMode } from './env';
 import { fixtureReply, fixtureSetups, fixtureSheetReply } from './fixtures';
-import type { KaiFrame, KaiObjectEnvelope } from '@cheatcode/shared';
+import type { KaiFrame, KaiObjectEnvelope, KaiWorkspaceAction, WorkspaceState } from '@cheatcode/shared';
 import { adaptActionPreview, adaptCredits, adaptGradedSetup } from './adapters';
 import {
   createThreadBinding, readTranscript, retryableTurn, suggestedQuestions, targetKey, transcriptItems,
@@ -106,6 +106,36 @@ type EngineOpts = {
   /** Pinned onto a conversation this engine creates. Never onto a saved one. */
   pinned?: { symbols?: string[]; setup_ids?: string[] };
   context?: { kind: string; id?: string; symbol?: string };
+  /**
+   * THE WORKSPACE, IF THIS THREAD HAS ONE.
+   *
+   * A FUNCTION rather than a value, deliberately: it is read at SEND time, so
+   * what travels is the screen the member is actually looking at as they press
+   * send — not whatever it was when this hook last rendered. Those differ by
+   * exactly one action every time Kai opens something and the member immediately
+   * asks about it, which is the most common turn in the whole feature.
+   *
+   * Absent on every caller without a workspace (the contextual sheet, a script),
+   * and the server then never teaches Kai how to change a screen he cannot see.
+   */
+  workspace?: () => WorkspaceState | null;
+  /** Kai opening something. Fired as the frame arrives, mid-sentence. */
+  onWorkspaceAction?: (a: KaiWorkspaceAction) => void;
+  /**
+   * `chart_command` and `chart_answer`, passed through RAW.
+   *
+   * Raw because parsing them needs `features/portal` and `features/chart`, and
+   * `lib/` sitting under a feature is the wrong way round. The host already
+   * owns the chart; it owns reading the frames that drive it.
+   *
+   * HANDLING `chart_answer` IS NOT OPTIONAL for a host with a chart. A directed
+   * answer's prose rides inside the frame and is deliberately not also streamed
+   * as `text_delta`; a host that ignores it gets a moving chart and a silent
+   * conversation.
+   */
+  onChartFrame?: (frame: unknown) => void;
+  /** Called as a question goes out, so a performance still running is abandoned. */
+  onTurnStart?: () => void;
   fixture: (text: string) => FixtureTurn;
   fixtureDelayMs: number;
   fixtureTickMs: number;
@@ -268,6 +298,10 @@ function useKaiEngine(opts: EngineOpts) {
       if (transportError) setFailed({ generation: gen, text: body, plain: transportError, restore: false });
     };
 
+    // A new question abandons whatever the last answer was still performing on
+    // the chart. Two answers racing for one canvas supersede each other's
+    // gestures half-finished.
+    optsRef.current.onTurnStart?.();
     setLive((p) => [...p, { kind: 'user_text', id: userId, text: body }, { kind: 'typing', id: typingId }]);
     setStreaming(true);
     streamingRef.current = true;
@@ -338,6 +372,21 @@ function useKaiEngine(opts: EngineOpts) {
                 const act = adaptActionPreview(envelope);
                 if (act) setLive((p) => [...p, { kind: 'action', id: nextId(), action: act }]);
               }
+            } else if (f.type === 'workspace_action') {
+              /**
+               * Kai changing what is on screen, applied the moment it lands.
+               *
+               * The server has already checked every id against a real row owned
+               * by this member, so anything that arrives here is something that
+               * exists. Applying it mid-stream is the point: the chart should be
+               * materialising as he says "pulling it up", not a beat after the
+               * last word.
+               */
+              optsRef.current.onWorkspaceAction?.(f.action);
+            } else if ((f as { type?: string }).type === 'chart_command' || (f as { type?: string }).type === 'chart_answer') {
+              // Straight through. See `EngineOpts.onChartFrame` for why this
+              // file does not parse them.
+              optsRef.current.onChartFrame?.(f);
             } else if (f.type === 'error') {
               // Kai declining, in his own voice (out of credits, a refusal).
               // That is an ANSWER, not a failed request: it stays, and it does
@@ -353,6 +402,9 @@ function useKaiEngine(opts: EngineOpts) {
           onDone: finish,
         },
         controller.signal,
+        // Read HERE, not at render: what travels is the screen as it is when
+        // send is pressed. See `EngineOpts.workspace`.
+        optsRef.current.workspace?.() ?? null,
       );
     } catch (e) {
       transportError = e instanceof Error ? e.message : UNREACHABLE_PLAIN;
@@ -450,6 +502,20 @@ export function useKaiWall(
   mode: GoalMode,
   seed: WallItem[],
   target: ThreadTarget = { kind: 'today' },
+  /**
+   * THE WORKSPACE, WHEN THE HOST HAS ONE.
+   *
+   * Optional, and absent is a real answer rather than a degraded one: a screen
+   * with no workspace is a conversation, the server is told nothing about a
+   * screen, and Kai is never taught a vocabulary for changing one. Home passes
+   * it. Anything else that hosts this wall does not have to.
+   */
+  workspaceBridge?: {
+    state: () => WorkspaceState | null;
+    onAction: (a: KaiWorkspaceAction) => void;
+    onChartFrame?: (frame: unknown) => void;
+    beginTurn?: () => void;
+  },
 ) {
   /**
    * Pinned entry (round 2): "Ask Kai about this" on a setup routes to
@@ -483,6 +549,10 @@ export function useKaiWall(
     target,
     base: seed,
     pinned,
+    workspace: workspaceBridge?.state,
+    onWorkspaceAction: workspaceBridge?.onAction,
+    onChartFrame: workspaceBridge?.onChartFrame,
+    onTurnStart: workspaceBridge?.beginTurn,
     fixture,
     fixtureDelayMs: 380,
     fixtureTickMs: 28,

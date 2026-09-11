@@ -24,6 +24,7 @@ import { Button } from '../../ui/Button';
 import { DEFAULT_MODE } from '../../features/nav/second-tab';
 import { useSession } from '../../lib/session';
 import { useKaiWall } from '../../lib/useKai';
+import { WorkspaceHost, useActiveSurface, useWorkspaceBridge, workspace } from '../../features/kai-workspace';
 import type { FailedTurn, ThreadTarget } from '../../lib/kai-continuity';
 import { env } from '../../lib/env';
 import { useMe } from '../../features/account/useAccount';
@@ -234,10 +235,57 @@ export default function Home() {
     [thread, threadNonce],
   );
 
+  /**
+   * KAI'S HANDS ON THE SCREEN.
+   *
+   * Declared BEFORE the wall because the wall takes it: what the member is
+   * looking at travels up with every question, and the surfaces Kai opens come
+   * back down through it. `append` is not available yet at this point in the
+   * file, so narration and a directed answer are queued through a ref the
+   * effect below drains — the bridge must not know how the wall stores turns.
+   */
+  const pendingKai = useRef<string[]>([]);
+  const [kaiSaid, setKaiSaid] = useState(0);
+  const sayInWall = useCallback((text: string) => {
+    if (!text.trim()) return;
+    pendingKai.current.push(text);
+    setKaiSaid((n) => n + 1);
+  }, []);
+  const bridge = useWorkspaceBridge({ onNarrate: sayInWall, onAnswer: sayInWall });
+
   const {
     items, send, append, stop, retry, clearFailure,
     streaming, loadingHistory, failed: liveFailure, suggestions, credits, setCredits,
-  } = useKaiWall(mode, seed, target);
+  } = useKaiWall(mode, seed, target, bridge);
+
+  /**
+   * Drain what the chart said into the conversation.
+   *
+   * Kai narrating a mark ("that's the previous session's high") and a directed
+   * answer's prose are both things he SAID, so they belong in the transcript
+   * next to everything else he said — not in a caption that scrolls away.
+   */
+  useEffect(() => {
+    if (!pendingKai.current.length) return;
+    const texts = pendingKai.current.splice(0, pendingKai.current.length);
+    append(texts.map((text) => ({ kind: 'kai_text' as const, id: `ws${Math.random().toString(36).slice(2)}`, text, streaming: false })));
+  }, [kaiSaid, append]);
+
+  /**
+   * HOW MUCH OF THE CANVAS THE WORKSPACE TAKES.
+   *
+   * The phone rule from the brief: the active object gets most of the screen and
+   * Kai collapses to an orb, a line and the composer underneath it. A chart is
+   * the one surface with a floor — below about 300 points a candle chart is a
+   * smear — so it gets a fixed band and the conversation keeps the rest.
+   */
+  const activeSurface = useActiveSurface();
+  const workspaceHeight = activeSurface?.kind === 'chart' ? 360 : 300;
+
+  /** A new conversation is a clean desk. */
+  useEffect(() => {
+    if (thread.kind === 'new') workspace.reset();
+  }, [thread.kind, threadNonce]);
 
   /**
    * "Ask Kai about this" arriving from a setup while an OLD conversation is
@@ -503,6 +551,26 @@ export default function Home() {
         )}
         <NewThread onPress={newThread} />
       </View>
+
+      {/*
+        THE WORKSPACE, WHICH IS NOT THERE UNTIL KAI PUTS SOMETHING IN IT.
+
+        Home stays what it was — wake-up, conversation, composer, and nothing
+        else competing before the first scroll. `WorkspaceHost` renders null
+        while nothing is open, so the resting screen is unchanged to the pixel.
+
+        When Kai opens a chart it takes the top of the canvas and the
+        conversation keeps the rest. It is NOT a route: the thread underneath is
+        still scrolled where it was, so "go back to the chart and build me a
+        plan" never leaves the conversation that asked for it.
+      */}
+      <WorkspaceHost
+        mode={mode}
+        height={workspaceHeight}
+        busy={streaming}
+        onChartRuntime={bridge.bindApply}
+        onRoute={(r) => router.push(r as never)}
+      />
 
       <ScrollView
         ref={scroller}

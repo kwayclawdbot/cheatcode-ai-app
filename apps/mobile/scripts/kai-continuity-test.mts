@@ -535,7 +535,15 @@ head('Stop and retry are on screen, not just in the hook');
   ok('and stays editable while Kai is talking',
     composerSrc.includes('editable={!disabled}') && !composerSrc.includes('editable={!disabled && !streaming}'));
   ok('it can be handed a failed turn’s words back', composerSrc.includes('draftNonce'));
-  ok('Home passes the selected thread to the wall', homeSrc.includes('useKaiWall(mode, seed, target)'));
+  /**
+   * The assertion is about the THIRD ARGUMENT, not about the call being exactly
+   * three arguments long. It used to match `useKaiWall(mode, seed, target)`
+   * literally, which went red the day Home started passing a fourth thing (the
+   * workspace bridge) — while the fact under test, that the selected thread is
+   * what the wall talks to, was still true. A test that fails on an unrelated
+   * argument is a test that teaches people to edit tests.
+   */
+  ok('Home passes the selected thread to the wall', /useKaiWall\(\s*mode,\s*seed,\s*target\b/.test(homeSrc));
   ok('Home wires Stop to the composer', homeSrc.includes('onStop={stop}'));
   ok('Home offers a retry', homeSrc.includes('testID="kai-retry"'));
   ok('Home restores the failed words', homeSrc.includes("draft={failed?.restore ? failed.text : ''}"));

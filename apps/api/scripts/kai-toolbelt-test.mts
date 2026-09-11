@@ -205,5 +205,69 @@ for (const [label, url, must] of [
   check(label, 'refused' in r && r.refused.includes(must), 'refused' in r ? r.refused.slice(0, 60) : 'ALLOWED');
 }
 
+/* --- 6. the workspace protocol -------------------------------------- */
+
+/**
+ * KAI DRIVING THE SCREEN. The resolver needs a database and is not exercised
+ * here; everything that decides WHAT IS SAID and WHAT IS SENT is pure and is.
+ *
+ * The two failures worth guarding: a malformed action becoming a screen change
+ * (it must become nothing), and the workspace line drifting into the cached
+ * system blocks — where a value that moves every turn would throw away the
+ * whole prompt cache behind it.
+ */
+console.log('\nWORKSPACE');
+const { KAI_OFFERED_ACTIONS } = await import('@shared/api');
+const { readWorkspaceAction, renderWorkspace, chartStampFor, WORKSPACE_PROTOCOL } =
+  await import('../src/lib/kai/workspace.ts');
+
+check('a good action parses', readWorkspaceAction('{"type":"open_chart","symbol":"NVDA"}')?.type === 'open_chart');
+check('and keeps its subject', (readWorkspaceAction('{"type":"open_chart","symbol":"NVDA"}') as { symbol?: string })?.symbol === 'NVDA');
+check('broken JSON is nothing, not a guess', readWorkspaceAction('{nope') === null);
+check('an unknown type is nothing', readWorkspaceAction('{"type":"launch_missiles"}') === null);
+check('a known type missing its subject is nothing', readWorkspaceAction('{"type":"show_alert"}') === null);
+
+/**
+ * THE EXECUTION BOUNDARY, CHECKED AGAINST THE UNION.
+ *
+ * "I prepare and explain, I never execute" has to be true of the UI vocabulary
+ * as well as the tool table. An action that submitted, armed or confirmed
+ * anything would move the boundary while looking like a layout change.
+ */
+for (const verb of ['submit', 'order', 'buy', 'sell', 'arm', 'execute', 'confirm', 'create']) {
+  check(`no offered action can ${verb}`, !KAI_OFFERED_ACTIONS.some((a) => a.includes(verb)));
+}
+check(
+  'every offered action is named in the protocol Kai reads',
+  KAI_OFFERED_ACTIONS.every((a) => WORKSPACE_PROTOCOL.includes(a)),
+  KAI_OFFERED_ACTIONS.filter((a) => !WORKSPACE_PROTOCOL.includes(a)),
+);
+check('the protocol asks for ONE block per reply', /ONE block per reply/i.test(WORKSPACE_PROTOCOL));
+check('and says an unresolvable id shows nothing', /discarded by the\s+server/i.test(WORKSPACE_PROTOCOL));
+
+const ws = {
+  active_surface: 'chart' as const,
+  symbol: 'NVDA',
+  timeframe: '4h',
+  open_surfaces: ['chart' as const, 'news' as const],
+  setup_id: 'setup-1',
+  alert_id: null,
+  room_id: null,
+};
+const line = renderWorkspace(ws);
+check('the workspace line names what they are looking at', line.includes('NVDA') && line.includes('4h'));
+check('and what else is one tap away', line.includes('news'));
+check('and hands over the id so "build it" resolves', line.includes('setup-1'));
+check('an empty workspace says so rather than staying silent', renderWorkspace({ ...ws, active_surface: null, symbol: null, open_surfaces: [], setup_id: null }).includes('workspace is empty'));
+check('no workspace at all renders nothing', renderWorkspace(null) === '');
+
+check('an open chart becomes a chart stamp', chartStampFor(ws)?.symbol === 'NVDA');
+check('carrying the timeframe', chartStampFor(ws)?.timeframe === '4h');
+check(
+  'a workspace with no chart stamps nothing',
+  chartStampFor({ ...ws, active_surface: 'news', open_surfaces: ['news'] }) === null,
+);
+check('and neither does an empty one', chartStampFor(null) === null);
+
 console.log(failures === 0 ? '\nALL PASS\n' : `\n${failures} FAILURE(S)\n`);
 process.exit(failures === 0 ? 0 : 1);

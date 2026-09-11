@@ -13,7 +13,7 @@ import type {
  * bundle. So the two new blocks are hand-adapted below, defensively, which is
  * what every other payload on this file already does.
  */
-import type { AdherenceCheck, HomeStanding, PlanAdherence, StandingCheck } from '@cheatcode/shared';
+import type { AdherenceCheck, HomeStanding, PlanAdherence, StandingCheck, WorkspaceState } from '@cheatcode/shared';
 import { Platform } from 'react-native';
 import { env, offlineMode } from './env';
 import { supabase } from './supabase';
@@ -340,10 +340,32 @@ export const api = {
       body: JSON.stringify({ mode, pinned, ...(context ? { context } : null) }),
     }),
 
-  streamMessage: async (conversationId: string, content: string, h: SSEHandlers, signal?: AbortSignal) =>
+  /**
+   * `workspace` is WHAT THE MEMBER IS LOOKING AT as they ask.
+   *
+   * It rides on the message rather than on the conversation because it changes
+   * every turn — a chart opened twenty turns in is invisible to a context that
+   * was stamped at creation. It is what makes "zoom in", "what are they saying"
+   * and "build it" resolve to something instead of to a clarifying question.
+   *
+   * Omitted entirely by callers with no workspace (the sheet, a script), and the
+   * server then never teaches Kai the vocabulary for changing a screen he cannot
+   * see.
+   */
+  streamMessage: async (
+    conversationId: string,
+    content: string,
+    h: SSEHandlers,
+    signal?: AbortSignal,
+    workspace?: WorkspaceState | null,
+  ) =>
     streamSSE(
       `${env.apiBase}/api/v1/kai/conversations/${conversationId}/messages`,
-      { headers: await authHeaders(), body: JSON.stringify({ content }), signal },
+      {
+        headers: await authHeaders(),
+        body: JSON.stringify(workspace ? { content, workspace } : { content }),
+        signal,
+      },
       h,
     ),
 

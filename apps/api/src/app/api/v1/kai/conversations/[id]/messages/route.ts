@@ -22,6 +22,7 @@ import {
   type ChartCommandFrame,
   type KaiObjectEnvelope,
   type KaiSheetContext,
+  type WorkspaceState,
 } from '@shared/api';
 import { requireUser } from '@/lib/auth';
 import { authedParams, ok, parseQuery, type Ctx } from '@/lib/http';
@@ -32,6 +33,14 @@ import { emitUserEvent } from '@/lib/events';
 import { assembleContext, contextNumbers, renderContext, renderMarketLine, renderQuoteLines } from '@/lib/kai/context';
 import { buildSystemPrompt } from '@/lib/kai/system-prompt';
 import { SHEET_ACTION_PROTOCOL, loadSheetContext } from '@/lib/kai/sheet-context';
+import {
+  KAI_UI_FENCE,
+  WORKSPACE_PROTOCOL,
+  chartStampFor,
+  readWorkspaceAction,
+  renderWorkspace,
+  resolveWorkspaceAction,
+} from '@/lib/kai/workspace';
 import {
   CHART_ANSWER_FENCE,
   readChartAnswer,
@@ -214,7 +223,25 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
      * fix and is also what pinning MEANS: this is the one they are looking at,
      * talk about it first.
      */
-    const chartCtx = await loadChartContext(user.id, conv.context?.chart ?? null);
+    /**
+     * WHAT THEY HAVE ON SCREEN RIGHT NOW, AND WHY IT BEATS THE STORED STAMP.
+     *
+     * `conv.context.chart` is where the THREAD started — the Trade section
+     * stamps it when the conversation is created. `workspace` is where the
+     * member IS: on Home they open a chart mid-conversation, twenty turns in,
+     * and the thread's stamp knows nothing about it.
+     *
+     * Preferring the live workspace is what makes "mark the invalidation" one
+     * behaviour instead of two. Without it the chart commands work in Trade and
+     * silently do nothing on Home, which is the worst kind of difference — the
+     * narration still arrives, so it reads as Kai marking a chart that never
+     * changes.
+     */
+    const workspace: WorkspaceState | null = parsed.data.workspace ?? null;
+    const chartCtx = await loadChartContext(
+      user.id,
+      chartStampFor(workspace) ?? conv.context?.chart ?? null
+    );
 
     const pinnedSetupIds: string[] = [...(conv.context?.pinned?.setup_ids ?? [])];
     if (chartCtx?.setup?.id && !pinnedSetupIds.includes(chartCtx.setup.id)) {
@@ -337,6 +364,20 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
       sheet.prompt_block ? SHEET_ACTION_PROTOCOL : null,
       voicePromptBlock(experience, alreadyExplained),
       TOOL_PROTOCOL,
+      /**
+       * Offered only to a client that HAS a workspace.
+       *
+       * A surface Kai cannot open is worse than one he does not know about: he
+       * would emit the action, the frame would go out, nothing would appear and
+       * the sentence promising it would already be on screen. The sheet, the
+       * briefing and every script send no `workspace`, so they never learn the
+       * vocabulary and never make the promise.
+       *
+       * It sits in the CACHED protocols block because it is the same text on
+       * every turn. What the member is currently looking at is the part that
+       * moves, and that goes at the very end with the market line.
+       */
+      workspace ? WORKSPACE_PROTOCOL : null,
       chartCtx
         ? chartCommandProtocol({
             symbol: chartCtx.symbol,
@@ -375,9 +416,14 @@ ${renderContext(kctx, chartOnScreen, { market: false, quotes: false })}${sheet.p
      * throwing away everything cached in front of it.
      */
     const quoteLines = renderQuoteLines(kctx);
+    // The workspace rides here with the market line for the same reason: it is
+    // different on almost every turn, and anything that moves must sit AFTER the
+    // last cache marker or nothing behind it is ever re-read.
+    const workspaceLine = renderWorkspace(workspace);
     const marketLine =
       `${renderMarketLine(kctx)}\nUse this as the current market state and time when you answer.` +
-      (quoteLines ? `\n\n${quoteLines}` : '');
+      (quoteLines ? `\n\n${quoteLines}` : '') +
+      (workspaceLine ? `\n\n${workspaceLine}` : '');
 
     const history: KaiTurn[] = kctx.turns
       .filter((t) => t.seq !== userSeq)
@@ -402,10 +448,24 @@ ${renderContext(kctx, chartOnScreen, { market: false, quotes: false })}${sheet.p
         // runs on the text the other two have already cleared, so a reply can
         // carry any of the three and no marker is ever leaked as visible text.
         const answerSplitter = new FenceSplitter(CHART_ANSWER_FENCE);
+        /**
+         * A FOURTH fence, for Kai changing what is on screen.
+         *
+         * Same pattern as the three above and for the same reason: it runs on
+         * the text the others have already cleared, so a reply can carry any
+         * combination and no marker ever reaches the user as visible text.
+         *
+         * Only armed when the client sent a workspace. Splitting on a fence the
+         * model was never taught costs nothing, but leaving it unarmed makes the
+         * pairing explicit — the protocol and the splitter turn on together.
+         */
+        const uiSplitter = workspace ? new FenceSplitter(KAI_UI_FENCE) : null;
         let narrative = '';
         const emitted: KaiObjectEnvelope[] = [];
         const chartFrames: ChartCommandFrame[] = [];
         const chartAnswers: ChartAnswerFrame[] = [];
+        /** The one screen change this reply is allowed. See `handleUiActions`. */
+        let uiAction: import('@shared/api').KaiWorkspaceAction | null = null;
         const answerBodies: string[] = [];
         const failedBodies: string[] = [];
         let degraded = false;
@@ -461,6 +521,37 @@ ${renderContext(kctx, chartOnScreen, { market: false, quotes: false })}${sheet.p
             } else {
               log('warn', requestId, 'chart_command.unresolved', { command: req_.data.command });
             }
+          }
+        };
+
+        /**
+         * Kai changing what is on screen.
+         *
+         * ONE PER REPLY, ENFORCED HERE rather than trusted to the prompt. The
+         * protocol asks for one; a model that emits three would make the screen
+         * flicker through two surfaces to land on a third, and the member would
+         * watch their workspace thrash. The first that RESOLVES wins — not the
+         * first that parses, so a valid-looking action with a dead id does not
+         * consume the budget and silence a good one behind it.
+         *
+         * Every id is checked against a real row owned by this user before the
+         * frame goes out. An action that does not resolve produces nothing at
+         * all, exactly as an unresolvable chart command does.
+         */
+        const handleUiActions = async (bodies: string[]) => {
+          if (!workspace) return;
+          for (const body of bodies) {
+            if (uiAction) return;
+            const action = readWorkspaceAction(body);
+            if (!action) {
+              log('warn', requestId, 'workspace_action.bad_shape', {});
+              continue;
+            }
+            const resolved = await resolveWorkspaceAction(action, { userId: user.id, requestId });
+            if (!resolved) continue;
+            uiAction = resolved;
+            sse.frame('workspace_action', { type: 'workspace_action', action: resolved });
+            log('info', requestId, 'kai.workspace_action', { type: resolved.type });
           }
         };
 
@@ -632,12 +723,18 @@ ${renderContext(kctx, chartOnScreen, { market: false, quotes: false })}${sheet.p
                 const { text, objects } = splitter.push(event.delta.text);
                 const chart = chartSplitter.push(text);
                 const ans = answerSplitter.push(chart.text);
-                if (ans.text) {
-                  narrative += ans.text;
-                  sse.textDelta(ans.text);
+                // Last in the chain, so a ui block is stripped from text the
+                // other three have already cleared and never reaches the user.
+                const ui = uiSplitter ? uiSplitter.push(ans.text) : { text: ans.text, objects: [] };
+                if (ui.text) {
+                  narrative += ui.text;
+                  sse.textDelta(ui.text);
                 }
                 if (objects.length) await handleObjects(objects);
                 if (chart.objects.length) await handleChartCommands(chart.objects);
+                // Sent the moment it is read, mid-sentence: the chart should be
+                // materialising as Kai says "pulling it up", not after.
+                if (ui.objects.length) await handleUiActions(ui.objects);
                 // Directed at the flush, not here: an answer is one performance
                 // and the whole body has to be in hand before it can be timed.
                 if (ans.objects.length) answerBodies.push(...ans.objects);
@@ -698,11 +795,17 @@ ${renderContext(kctx, chartOnScreen, { market: false, quotes: false })}${sheet.p
           const chartFlush = chartSplitter.flush();
           const answerTail = answerSplitter.push(chartTail.text + chartFlush.text);
           const answerFlush = answerSplitter.flush();
-          const trailing = answerTail.text + answerFlush.text;
+          const uiTail = uiSplitter
+            ? uiSplitter.push(answerTail.text + answerFlush.text)
+            : { text: answerTail.text + answerFlush.text, objects: [] as string[] };
+          const uiFlush = uiSplitter ? uiSplitter.flush() : { text: '', objects: [] as string[] };
+          const trailing = uiTail.text + uiFlush.text;
           if (trailing) {
             narrative += trailing;
             sse.textDelta(trailing);
           }
+          const trailingUi = [...uiTail.objects, ...uiFlush.objects];
+          if (trailingUi.length) await handleUiActions(trailingUi);
           if (tail.objects.length) await handleObjects(tail.objects);
           const trailingCommands = [...chartTail.objects, ...chartFlush.objects];
           if (trailingCommands.length) await handleChartCommands(trailingCommands);

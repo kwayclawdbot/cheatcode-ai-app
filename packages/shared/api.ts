@@ -437,16 +437,158 @@ export const KaiFrameCredits = z.object({
   credits: CreditsBlock,
 });
 
+/* ------------------------------------------------------------------ */
+/* THE KAI WORKSPACE — Kai talks, and the workspace responds            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A TOOL GETS INFORMATION. AN ACTION SHOWS IT. THEY ARE NOT THE SAME THING.
+ *
+ * `read_community_messages('NVDA')` fetches what the room said. `show_community`
+ * puts the room on the screen. Kai needs both and they must stay separate: fold
+ * them together and every tool acquires a second, invisible job — deciding what
+ * the user is looking at — which is how a question that only wanted an answer
+ * ends up rearranging the screen, and how a screen change becomes impossible to
+ * make without spending a round trip on a lookup nobody asked for.
+ *
+ * So: tools are in `apps/api/src/lib/kai/tools*.ts` and return DATA. The actions
+ * below are emitted alongside the prose and return nothing — they are a request
+ * to the client to show something it can already reach.
+ *
+ * WHAT THEY ARE NOT. None of them writes, buys, sizes or confirms anything.
+ * "Open the order ticket" is not in this union and must not be added to it: the
+ * execution boundary is that the member walks to the ticket themselves. An
+ * action may put a chart, a setup or a plan in front of them. It may not press
+ * anything.
+ *
+ * WHERE THE CHART VERBS WENT: nowhere. The ~40 chart commands
+ * (`mark_level`, `mark_zone`, `fib`, `anchored_vwap`, `trendline`,
+ * `show_invalidation`, …) keep their own frame — `ChartCommandFrame`, resolved
+ * server-side against real rows — and are NOT duplicated here. This union says
+ * WHICH SURFACE IS ON SCREEN; that one says what happens on the chart once it
+ * is. Two vocabularies, one for the furniture and one for the drawing, is what
+ * stops this becoming a flat list of ninety special cases.
+ */
+export const WorkspaceSurfaceKind = z.enum([
+  'chart',
+  'setup',
+  'alert',
+  'community',
+  'news',
+  'web',
+  /**
+   * DEFINED, NOT YET OFFERED.
+   *
+   * The kind exists here so the client's switch is exhaustive from day one and
+   * a stored surface stack does not fail to parse the week one of these lands.
+   * They are deliberately absent from `KAI_OFFERED_ACTIONS` below, because Kai
+   * must never be able to say "here it is" about a surface that will not appear.
+   * Adding the surface and adding it to that list are the same commit.
+   */
+  'watchlist',
+  'portfolio',
+  'training',
+  'plan',
+]);
+export type WorkspaceSurfaceKind = z.infer<typeof WorkspaceSurfaceKind>;
+
+export const KaiWorkspaceAction = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('open_chart'),
+    symbol: z.string().min(1).max(12),
+    timeframe: z.string().max(8).nullable().default(null),
+    /** Set when the chart is being opened ABOUT something. Never invented. */
+    setup_id: z.string().nullable().default(null),
+  }),
+  z.object({ type: z.literal('show_setup'), setup_id: z.string().min(1), symbol: z.string().nullable().default(null) }),
+  z.object({ type: z.literal('show_alert'), alert_id: z.string().min(1) }),
+  z.object({
+    type: z.literal('show_community'),
+    room_id: z.string().nullable().default(null),
+    room: z.string().nullable().default(null),
+    symbol: z.string().nullable().default(null),
+  }),
+  z.object({ type: z.literal('show_news'), symbol: z.string().min(1) }),
+  z.object({ type: z.literal('show_web'), url: z.string().min(1), title: z.string().nullable().default(null) }),
+  z.object({ type: z.literal('focus_surface'), surface_id: z.string().min(1) }),
+  z.object({ type: z.literal('close_surface'), surface_id: z.string().min(1) }),
+]);
+export type KaiWorkspaceAction = z.infer<typeof KaiWorkspaceAction>;
+
+/**
+ * The actions Kai is actually told about, and the only ones the server emits.
+ *
+ * Kept as data rather than as prose in the prompt so that "what can Kai open"
+ * has one answer, and so the proof script can assert that every offered action
+ * has a surface behind it.
+ */
+export const KAI_OFFERED_ACTIONS = [
+  'open_chart',
+  'show_setup',
+  'show_alert',
+  'show_community',
+  'show_news',
+  'show_web',
+  'focus_surface',
+  'close_surface',
+] as const;
+
+/**
+ * One action, on the wire.
+ *
+ * Its own frame rather than a field on `done`, for the same reason
+ * `chart_command` has one: it arrives WHILE Kai is talking. The chart should be
+ * materialising as he says "pulling it up", not a beat after the last word.
+ */
+export const KaiFrameWorkspaceAction = z.object({
+  type: z.literal('workspace_action'),
+  action: KaiWorkspaceAction,
+});
+export type KaiFrameWorkspaceAction = z.infer<typeof KaiFrameWorkspaceAction>;
+
+/**
+ * WHAT THE MEMBER IS LOOKING AT, SENT BACK UP WITH EVERY QUESTION.
+ *
+ * This is the half that makes the workspace feel like an assistant rather than
+ * a remote control. Without it:
+ *
+ *   "Zoom in."               → zoom what?
+ *   "Show me where I'm wrong" → on which chart, at which timeframe?
+ *   "What are they saying?"   → who is *they*?
+ *   "Build it."               → build what?
+ *
+ * Every one of those is answerable from four fields, and none of them is
+ * answerable from the text of the question. It rides on the MESSAGE rather than
+ * on the conversation because it changes every turn — a conversation-level
+ * context would be stamped once at creation and then be wrong for the rest of
+ * the thread.
+ *
+ * IT IS A CLAIM BY THE CLIENT, NOT A CAPABILITY. Nothing here grants access:
+ * the server still loads every id against `user_id`, so a workspace state naming
+ * somebody else's alert resolves to nothing rather than to their alert.
+ */
+export const WorkspaceState = z.object({
+  active_surface: WorkspaceSurfaceKind.nullable().default(null),
+  symbol: z.string().max(12).nullable().default(null),
+  timeframe: z.string().max(8).nullable().default(null),
+  open_surfaces: z.array(WorkspaceSurfaceKind).max(8).default([]),
+  setup_id: z.string().nullable().default(null),
+  alert_id: z.string().nullable().default(null),
+  room_id: z.string().nullable().default(null),
+});
+export type WorkspaceState = z.infer<typeof WorkspaceState>;
+
 export const KaiFrame = z.discriminatedUnion('type', [
   KaiFrameTextDelta,
   KaiFrameObject,
   KaiFrameDone,
   KaiFrameError,
   KaiFrameCredits,
+  KaiFrameWorkspaceAction,
 ]);
 export type KaiFrame = z.infer<typeof KaiFrame>;
 /** SSE `event:` names, one per frame type. */
-export const KAI_SSE_EVENTS = ['text_delta', 'object', 'done', 'error', 'credits'] as const;
+export const KAI_SSE_EVENTS = ['text_delta', 'object', 'done', 'error', 'credits', 'workspace_action'] as const;
 
 /* ------------------------------------------------------------------ */
 /* POST /api/v1/onboarding/complete                                     */
@@ -703,6 +845,12 @@ export type CreateConversationResponse = z.infer<typeof CreateConversationRespon
 
 export const PostMessageRequest = z.object({
   content: z.string().min(1).max(4000),
+  /**
+   * What the member has on screen as they ask this. Optional, and absent from
+   * every caller that has no workspace — the sheet, a script, an older build.
+   * See `WorkspaceState` for why it rides on the message and not the thread.
+   */
+  workspace: WorkspaceState.optional(),
 });
 export type PostMessageRequest = z.infer<typeof PostMessageRequest>;
 

@@ -20,10 +20,11 @@
  *   the drawers + ticker switcher ............... unchanged, in the top bar
  *   the annotation sheet ........................ unchanged, on tapping a level
  *
- * THE MACHINERY IS THE OLD MACHINERY. `usePortal`, `usePortalCandles`,
- * `useKaiPortal`, `planCommand` and `applyChartCommand` are the same objects the
- * v1 portal drives, so Kai's chart vocabulary — the levels he can now name and
- * the server resolves — works here on day one and any fix to it lands on both.
+ * THE MACHINERY IS THE OLD MACHINERY, AND IT NOW LIVES SOMEWHERE BOTH PLACES
+ * CAN REACH. The chart, the candles, the annotations and the command applier are
+ * `features/kai-workspace/chart-runtime.ts` — moved out of this file, not
+ * rewritten — so Home's workspace and this screen run ONE chart implementation.
+ * Kai's chart vocabulary works identically in both and any fix lands on both.
  *
  * PAPER ONLY. See `venues.ts` for the seam a brokerage would slot into.
  */
@@ -42,20 +43,16 @@ import { useSession } from '../../lib/session';
 import { env } from '../../lib/env';
 import type { GoalMode } from '../../lib/types';
 import { AnnotationRail } from '../chart/AnnotationRail';
-import { applyChartCommand } from '../chart/apply';
 import { SymbolChart } from '../chart/SymbolChart';
-import type { ChartHandle } from '../chart/apply';
 import { AnnotationSheet, PortalTopBar, TickerSwitcherSheet } from '../portal/chrome';
 import { PortalDrawersSheet } from '../portal/Drawers';
 import { KaiPanel, PortalNotice } from '../portal/panels';
-import { usePortal, usePortalCandles } from '../portal/usePortal';
-import { planCommand, useKaiPortal } from '../portal/useKaiPortal';
-import type { PortalCommandResult } from '../portal/useKaiPortal';
+import { useChartRuntime } from '../kai-workspace';
+import { useKaiPortal } from '../portal/useKaiPortal';
 import { rememberSymbol } from '../portal/last-symbol';
-import { visibleAnnotations } from '../portal/visible-annotations';
 import { SymbolOfferCard } from '../portal/SymbolOfferCard';
 import type { SymbolOffer } from '../portal/plan-command';
-import type { Annotation, ChartCommand, PortalTimeframe } from '../portal/types';
+import type { Annotation, PortalTimeframe } from '../portal/types';
 import { TradeLocked } from './TradeLocked';
 import { Spine, SpineFooter } from './Spine';
 import { DecideBeat, type KaiReadState } from './Decide';
@@ -123,51 +120,56 @@ export default function TradePortalV2() {
   const alertId = params.alert ? String(params.alert) : null;
   const setupId = params.setup ? String(params.setup) : null;
 
+  /**
+   * THE CHART AND KAI'S HANDS ON IT NOW COME FROM ONE PLACE.
+   *
+   * Every line of this — the portal payload, the candles, the annotation set,
+   * the timeframe, the focus bar, the reveal set and the forty-line command
+   * applier — used to live in this file, which meant the chart could only exist
+   * at `/trade/[symbol]`. It is `features/kai-workspace/chart-runtime.ts` now,
+   * and Home's workspace mounts the SAME hook behind the same `SymbolChart`.
+   *
+   * THIS IS THE PARITY, AND IT IS THE POINT OF THE MOVE. There is one chart
+   * implementation in this app, not a Trade chart and a Home chart that drift
+   * apart on the first bug fix. The code was moved, not rewritten — including
+   * the ordering that matters most, that React state is committed AFTER the
+   * choreography so levels do not snap into existence before Kai's pointer
+   * reaches them.
+   *
+   * `onRoute` stays a `router.push` here because in the Trade section that is
+   * right: you are already on the chart's own stack. On Home the same command
+   * must not throw somebody out of the conversation they are having, which is
+   * exactly why the runtime takes it as a callback rather than deciding.
+   */
+  const [offer, setOffer] = useState<SymbolOffer | null>(null);
+  const rt = useChartRuntime({
+    symbol,
+    mode,
+    alertId,
+    setupId,
+    onRoute: (r) => router.push(r as never),
+    onOffer: setOffer,
+  });
   const {
-    data, annotations, upsertAnnotation, createUserAnnotation, updateUserAnnotation,
-    setAnnotationStatus, loading, error, locked, reload,
-  } = usePortal(symbol, { alert: alertId, setup: setupId, ctx: 'kai', mode });
+    data, annotations, onChart, candles, exact, revealed, reveal,
+    upsertAnnotation, createUserAnnotation, updateUserAnnotation, setAnnotationStatus,
+    loading, error, locked, reload, hideAnnotations, setHideAnnotations, focusTs,
+    applyCommand,
+  } = rt;
+  const tf = rt.timeframe;
+  const setTf = rt.setTimeframe;
 
   const [beat, setBeat] = useState<Beat>(
     params.beat === 'decide' || params.beat === 'take' ? (params.beat as Beat) : 'look',
   );
-  const [tf, setTf] = useState<PortalTimeframe | null>(null);
-  const [focusTs, setFocusTs] = useState<string | null>(null);
-  const [hideAnnotations, setHideAnnotations] = useState(false);
   const [inspecting, setInspecting] = useState<Annotation | null>(null);
   const [drawersOpen, setDrawersOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [stageOpen, setStageOpen] = useState(false);
   const [levelsOpen, setLevelsOpen] = useState(false);
 
   useEffect(() => { if (symbol) rememberSymbol(symbol); }, [symbol]);
-  useEffect(() => {
-    if (!data) return;
-    setTf(data.chart.timeframe);
-    setFocusTs(data.chart.focus_ts);
-  }, [data]);
 
-  const { candles, exact } = usePortalCandles(symbol, tf);
-  const chart = useRef<ChartHandle | null>(null);
-  const stageChart = useRef<ChartHandle | null>(null);
-  const activeChart = () => (stageOpen ? stageChart.current ?? chart.current : chart.current);
-
-  /**
-   * WHAT HAS BEEN SUMMONED ONTO THE CHART THIS VISIT.
-   *
-   * The chart opens with what this trade is about and nothing else (see
-   * `visible-annotations.ts`). Everything else — the shelves, the averages, the
-   * zones, every level Kai marked in some earlier conversation — is still in
-   * `annotations`, still in the rail, still tappable; it simply is not on the
-   * canvas until something puts it there. This is the set of things that have
-   * been put there.
-   *
-   * IT IS KEYED TO THE SYMBOL. Walking to a different ticker is a different
-   * chart and starts clean again, which is also what makes the reveal legible
-   * the second time you ask for a read.
-   */
-  const [revealed, setRevealed] = useState<Set<string>>(() => new Set());
-  useEffect(() => { setRevealed(new Set()); }, [symbol]);
+  /* The reveal set lives in the runtime now — see `useChartRuntime`. */
 
   /**
    * WHETHER THE READ HAS ALREADY BEEN ASKED FOR ON THIS CHART.
@@ -193,7 +195,6 @@ export default function TradePortalV2() {
    * mentioned three tickers should leave one card, not a stack of them, and the
    * newest is the one the conversation is on.
    */
-  const [offer, setOffer] = useState<SymbolOffer | null>(null);
   useEffect(() => { setOffer(null); }, [symbol]);
 
   /**
@@ -223,62 +224,7 @@ export default function TradePortalV2() {
   useEffect(() => {
     if (simOffer) setOffer({ symbol: 'AMKR', hook: 'the one you asked about' });
   }, [simOffer, symbol]);
-  const reveal = useCallback((ids: string[]) => {
-    if (!ids.length) return;
-    setRevealed((prev) => {
-      const next = new Set(prev);
-      for (const id of ids) next.add(id);
-      return next;
-    });
-  }, []);
-
-  /**
-   * One chart command → the chart performs it, and Kai says what he did.
-   * Lifted from the v1 portal unchanged, including the rule that React state is
-   * committed AFTER the choreography so levels do not snap into existence before
-   * Kai's pointer reaches them — which is what makes a read REVEAL its levels
-   * one at a time rather than arriving as a set.
-   */
-  const applyCommand = useCallback((c: ChartCommand): PortalCommandResult | null => {
-    const p = planCommand(c, data, annotations);
-    if (!p) return null;
-    if (p.timeframe) setTf(p.timeframe);
-    if (p.focusTs) setFocusTs(p.focusTs);
-    if (p.upsert.length) setHideAnnotations(false);
-    if (p.offer) setOffer(p.offer);
-
-    const handle = activeChart();
-    const commit = () => {
-      p.upsert.forEach(upsertAnnotation);
-      p.remove.forEach((id) => setAnnotationStatus(id, 'deleted'));
-      // A mark Kai just drew is a mark that has been summoned. Without this the
-      // choreography would stage it onto the canvas and the next render — which
-      // sends the visible set — would take it straight back off.
-      reveal(p.upsert.map((a) => a.id));
-    };
-    let done: Promise<unknown> = Promise.resolve();
-    if (handle) {
-      done = applyChartCommand(handle, {
-        command: c.command,
-        payload: c.payload,
-        annotations: p.upsert.map((a) => ({
-          id: a.id, kind: a.kind, price: a.price, price2: a.price2,
-          ts_from: a.ts_from, ts_to: a.ts_to, text: a.text,
-          provenance: a.provenance, status: a.status,
-        })),
-        removeIds: p.remove,
-        timeframe: p.timeframe,
-        focusTs: p.focusTs,
-      }).then(commit, commit);
-    } else {
-      commit();
-    }
-    if (p.route) router.push(p.route as never);
-    // `marks` is how many lines this actually put on the chart. Zero is right
-    // for a camera move and wrong-and-silent for a marking command that
-    // resolved to nothing; the hook uses the count to tell the two apart.
-    return { narration: p.narration, done, marks: p.upsert.length };
-  }, [data, annotations, upsertAnnotation, setAnnotationStatus, router]);
+  /* `reveal` and `applyCommand` come from the runtime — see the block above. */
 
   const { turns, send, streaming, narrate, answer, status } = useKaiPortal({
     mode,
@@ -293,10 +239,7 @@ export default function TradePortalV2() {
    * WHAT THE CANVAS ACTUALLY GETS. `annotations` stays the whole set — the rail,
    * the count and the inspector all read it — and only the chart is narrowed.
    */
-  const onChart = useMemo(
-    () => visibleAnnotations(annotations, data, revealed),
-    [annotations, data, revealed],
-  );
+  /* `onChart` — the narrowed canvas set — is the runtime's. */
 
   const read = useMemo(() => (data ? readPortal(data) : null), [data]);
   const take = useTake(read, data);
@@ -450,9 +393,9 @@ export default function TradePortalV2() {
           onReveal={reveal}
           onTimeframeChange={setTf}
           onSelectAnnotation={(a) => { reveal([a.id]); setInspecting(a); }}
-          onChartHandle={(h) => { chart.current = h; }}
-          onStageHandle={(h) => { stageChart.current = h; }}
-          onStageOpenChange={setStageOpen}
+          onChartHandle={rt.bindChart}
+          onStageHandle={rt.bindStage}
+          onStageOpenChange={rt.setStageOpen}
           onDrawCreate={(a) => { void createUserAnnotation(a); }}
           onDrawUpdate={updateUserAnnotation}
           onDrawDelete={(id) => setAnnotationStatus(id, 'deleted')}
