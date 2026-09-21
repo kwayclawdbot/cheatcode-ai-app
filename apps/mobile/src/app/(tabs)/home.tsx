@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, ScrollView, Pressable } from 'react-native';
+import { View, ScrollView, Pressable, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import { Screen } from '../../ui/Screen';
@@ -36,7 +36,8 @@ import { homeOrderFor, useStageEvolution } from '../../features/stage';
 import { STAGE_LABEL } from '../../features/stage/labels';
 import { brainCaption, chartCaption, kaiStateFor, litRegions } from '../../features/home/warroom';
 import type { ConversationRow, GoalMode, Stage, WallItem } from '../../lib/types';
-import { useKaiVoice } from '../../features/voice'; // LANE C voice
+import { KaiMicButton, previewVoiceInFixtures, useKaiVoice } from '../../features/voice'; // LANE C voice
+import { useTextScale } from '../../features/a11y/context';
 
 /** The five read-only panels, which get a taller band than the object surfaces. */
 const PANEL_KINDS = new Set<string>(['quote', 'earnings', 'options', 'watchlist', 'portfolio']);
@@ -119,6 +120,7 @@ const NewThread = ({ onPress }: { onPress: () => void }) => (
  */
 export default function Home() {
   const { profile, session, refreshProfile } = useSession();
+  const textScale = useTextScale();
   const router = useRouter();
   /** Mode is set in onboarding and changed on the Account board (Kai profile). */
   const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? DEFAULT_MODE;
@@ -130,7 +132,7 @@ export default function Home() {
    * The "Today's Beginner Pick" object the funnel note describes is a separate
    * lane with its own data behind it and is not built here.
    */
-  const params = useLocalSearchParams<{ fixture?: string; credits?: string; ask?: string; stage?: string }>();
+  const params = useLocalSearchParams<{ fixture?: string; credits?: string; ask?: string; stage?: string; voice?: string }>();
   /**
    * Fixtures preview only: `?stage=beginner|developing|trade_ready` shows Home
    * as that member would see it, so the stage-aware brain can be photographed.
@@ -379,6 +381,9 @@ export default function Home() {
   /** A question that got out is no longer a draft. */
   const sendAndClear = useCallback((text: string) => { drafts.clear(); void send(text); }, [drafts, send]);
   // LANE C voice: the mic beside Send, and Kai reading replies out when that is switched on.
+  /** Fixtures preview only: `?voice=on` draws the mic as if the server had said voice is live. */
+  const voicePreview = env.FIXTURES && params.voice === 'on';
+  useEffect(() => { if (voicePreview) previewVoiceInFixtures(true); }, [voicePreview]);
   const voice = useKaiVoice({ onTranscript: sendAndClear, items, streaming });
 
   /**
@@ -428,6 +433,19 @@ export default function Home() {
   });
   /** Kai's latest line over the chart while he draws on it (the workspace host draws it). */
   const onChart = chartCaption(items, streaming && activeSurface?.kind === 'chart');
+
+  /**
+   * THE BRAIN GIVES WAY TO THE FIRST THING TO DO.
+   *
+   * At the design's own text size on a 390×844 phone, the brain, Kai's two
+   * lines and the opening card's button all fit above the fold. Larger text
+   * (the member's own setting, or the phone's) or a shorter screen pushes that
+   * button under the composer, and the button is the point of the screen. So
+   * the brain shrinks rather than the card: a smaller drawing, tighter labels,
+   * a one-line caption.
+   */
+  const { height: windowHeight, fontScale } = useWindowDimensions();
+  const compactBrain = textScale * (fontScale || 1) >= 1.15 || windowHeight < 800;
 
   const seedCount = seed.length;
   useEffect(() => {
@@ -675,17 +693,16 @@ export default function Home() {
             testID="warroom-brain"
             label="KAI · BRAIN"
             dim={kaiState === 'offline'}
-            right={
-              <T mono size={11} ls={0.6} c={color.dim}>{`${lit.length}/8 LIT`}</T>
-            }
+            compact={compactBrain}
           >
-            <KaiBrain state={kaiState} lit={lit} level={voice.level} height={150} />
+            <KaiBrain state={kaiState} lit={lit} level={voice.level} height={compactBrain ? 80 : 124} compact={compactBrain} />
             <T
               size={12.5}
               lh={17}
               c={kaiState === 'offline' ? color.muted : color.violetLight}
               align="center"
-              style={{ marginTop: 6 }}
+              style={{ marginTop: compactBrain ? 2 : 6 }}
+              numberOfLines={compactBrain ? 1 : 2}
               testID="warroom-caption"
             >
               {caption}
@@ -931,16 +948,44 @@ export default function Home() {
           </T>
         ) : null}
 
-        <Composer
-          placeholder="Message Kai…"
-          onSend={sendAndClear}
-          streaming={streaming}
-          onStop={stop}
-          draft={failed?.restore ? failed.text : ''}
-          draftNonce={draftNonce}
-          voiceButton={voice.button /* LANE C voice */}
-          voiceOverlay={voice.overlay}
-        />
+        {/*
+          THE MIC IS THE MAIN CONTROL WHEN VOICE IS LIVE (War Room style).
+          It sits beside the message box, larger than Send and lit volt, with
+          a one-word status under it; typing is the backup. When the server
+          has not said voice is live nothing here changes: the composer is the
+          same pill it always was, with no mic in it.
+        */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Composer
+              placeholder={voice.enabled ? 'Or type to Kai…' : 'Message Kai…'}
+              onSend={sendAndClear}
+              streaming={streaming}
+              onStop={stop}
+              draft={failed?.restore ? failed.text : ''}
+              draftNonce={draftNonce}
+              voiceOverlay={voice.overlay /* LANE C voice */}
+            />
+          </View>
+          {voice.enabled ? (
+            <View style={{ alignItems: 'center', gap: 3 }} testID="warroom-mic">
+              <KaiMicButton
+                phase={voice.phase}
+                level={voice.level}
+                onPress={voice.press}
+                waiting={voice.waiting}
+                size={52}
+                primary
+              />
+              <T mono size={11} ls={0} c={voice.phase === 'recording' ? color.volt : voice.phase === 'speaking' ? color.violetLight : color.dim} testID="warroom-mic-word">
+                {voice.phase === 'recording' ? 'LISTENING…'
+                  : voice.phase === 'speaking' ? 'SPEAKING'
+                    : voice.phase === 'transcribing' || voice.phase === 'starting' ? 'ONE SEC'
+                      : 'TAP TO TALK'}
+              </T>
+            </View>
+          ) : null}
+        </View>
       </KeyboardDock>
 
       <ConversationsDrawer

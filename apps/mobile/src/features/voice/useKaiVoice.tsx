@@ -325,7 +325,7 @@ export function useKaiVoice(opts: {
   const level = phase === 'recording' ? (levels[levels.length - 1] ?? 0) : 0;
 
   const enabled = prefs.available && webCanRecord();
-  if (!enabled) return { enabled: false as const, phase, level: 0, button: null, overlay: null, stopSpeaking };
+  if (!enabled) return { enabled: false as const, phase, level: 0, press, waiting: false, button: null, overlay: null, stopSpeaking };
 
   const button = (
     <KaiMicButton
@@ -351,5 +351,11 @@ export function useKaiVoice(opts: {
       />
     ) : null;
 
-  return { enabled: true as const, phase, level, button, overlay, stopSpeaking };
+  /**
+   * `press` and `waiting` are handed out too, so a screen that wants the mic
+   * somewhere other than beside Send (Home, where it is the main control) can
+   * draw its own `KaiMicButton` on the same state instead of a second copy.
+   */
+  const waiting = opts.streaming && phase === 'idle';
+  return { enabled: true as const, phase, level, press, waiting, button, overlay, stopSpeaking };
 }

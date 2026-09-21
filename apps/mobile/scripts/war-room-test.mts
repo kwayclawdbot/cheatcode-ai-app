@@ -117,6 +117,13 @@ head('The parts that live in components');
   ok('and the host draws it over the chart', host.includes('warroom-chart-caption') && host.includes("active.kind === 'chart' && props.caption"));
   ok('Home keeps its three controls', home.includes('<Hamburger') && home.includes('<PanelLauncherButton') && home.includes('<NewThread'));
   ok('and the brain gives way to a panel', home.includes('{!activeSurface ? ('));
+  ok('no "n/8 LIT" counter — members read it as jargon', !/LIT`/.test(home) && !home.includes('/8 LIT'));
+  ok('the brain shrinks for large text or a short screen',
+    home.includes('const compactBrain') && home.includes('height={compactBrain ? 80 : 124}'));
+  ok('the mic is the main control when voice is live',
+    home.includes('<KaiMicButton') && home.includes('size={52}') && home.includes('primary'));
+  ok('and the composer no longer carries a second mic', !home.includes('voiceButton={voice.button'));
+  ok('the mic has a status word under it', home.includes('TAP TO TALK') && home.includes('LISTENING…'));
 }
 
 console.log(failures ? `\n${failures} failed\n` : '\nall passed\n');

@@ -178,10 +178,12 @@ export type KaiBrainProps = {
   level?: number;
   /** Height of the drawing itself, labels beside it. */
   height?: number;
+  /** Larger text or a short screen: tighter labels so the drawing keeps its share. */
+  compact?: boolean;
   testID?: string;
 };
 
-export function KaiBrain({ state, lit, level = 0, height = 150, testID = 'kai-brain' }: KaiBrainProps) {
+export function KaiBrain({ state, lit, level = 0, height = 150, compact = false, testID = 'kai-brain' }: KaiBrainProps) {
   const reduced = useReducedMotion();
   const offline = state === 'offline';
   const litSet = useMemo(() => new Set(lit), [lit]);
@@ -261,10 +263,10 @@ export function KaiBrain({ state, lit, level = 0, height = 150, testID = 'kai-br
       <View
         key={key}
         testID={on ? `kai-brain-lit-${key}` : `kai-brain-region-${key}`}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: side === 'left' ? 'flex-end' : 'flex-start' }}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 4 : 5, justifyContent: side === 'left' ? 'flex-end' : 'flex-start' }}
       >
         {side === 'right' ? dot : null}
-        <T mono size={11} weight={on ? 'bold' : 'medium'} ls={0.6} c={on ? color.violetLight : color.dim} numberOfLines={1}>
+        <T mono size={11} weight={on ? 'bold' : 'medium'} ls={compact ? 0.2 : 0.6} lh={compact ? 13 : undefined} c={on ? color.violetLight : color.dim} numberOfLines={1}>
           {text.toUpperCase()}
         </T>
         {side === 'left' ? dot : null}
@@ -273,7 +275,7 @@ export function KaiBrain({ state, lit, level = 0, height = 150, testID = 'kai-br
   };
 
   const column = (keys: typeof BRAIN_REGIONS, side: 'left' | 'right') => (
-    <View style={{ justifyContent: 'space-between', paddingVertical: height * 0.1, flexShrink: 0 }}>
+    <View style={{ justifyContent: 'space-between', paddingVertical: compact ? 0 : height * 0.1, flexShrink: 0 }}>
       {keys.map((r) => label(r.key, r.label, side))}
     </View>
   );
@@ -389,9 +391,11 @@ export function KaiStatusLight({ state, testID = 'kai-status' }: { state: KaiSta
  * as something on the glass rather than a panel in a list.
  */
 export function HudFrame({
-  label, right, children, dim = false, style, testID,
+  label, right, children, dim = false, compact = false, style, testID,
 }: {
   label: string;
+  /** Tighter padding and a smaller header gap, for large text or short screens. */
+  compact?: boolean;
   right?: React.ReactNode;
   children: React.ReactNode;
   dim?: boolean;
@@ -418,12 +422,16 @@ export function HudFrame({
     />
   );
   return (
-    <View testID={testID} style={[{ paddingHorizontal: 10, paddingTop: 8, paddingBottom: 10 }, style]}>
+    <View testID={testID} style={[{ paddingHorizontal: 10, paddingTop: compact ? 4 : 8, paddingBottom: compact ? 5 : 10 }, style]}>
       {corner('tl')}{corner('tr')}{corner('bl')}{corner('br')}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-        <T mono size={11} weight="semibold" ls={1.1} c={color.dim}>{label}</T>
-        {right}
-      </View>
+      {/* Compact drops the label row: the bar above already reads KAI · WAR ROOM,
+          and on large text those 18 points are what keep the first button in view. */}
+      {compact && !right ? null : (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+          <T mono size={11} weight="semibold" ls={1.1} c={color.dim}>{label}</T>
+          {right}
+        </View>
+      )}
       {children}
     </View>
   );
