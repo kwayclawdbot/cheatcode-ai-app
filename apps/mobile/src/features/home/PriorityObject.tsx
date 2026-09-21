@@ -32,7 +32,14 @@ export function PriorityObject({ priority, candles, testID = 'home-priority' }: 
 
   return (
     <ObjectCard testID={testID} r={radius.xxxl} style={{ padding: 16, gap: 12 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      {/*
+        THE HEADER WRAPS; IT NEVER CUTS (owner, 21 September: "Delayed 15m ·
+        Aug 26, 9:41 AM" was clipped at 390pt, and at 130% text the time lost
+        its last letter — "9:41 AN"). A time and a state are facts; when the
+        row cannot hold them beside the symbol they drop to a second line of
+        their own, right-aligned, whole.
+      */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 4 }}>
         <T size={20} weight="bold" testID="priority-symbol">{title}</T>
         {priority.grade_display ? (
           <View style={{ paddingHorizontal: 9, paddingVertical: 2, borderRadius: radius.sm, backgroundColor: alpha.violet14, borderWidth: 0.5, borderColor: alpha.violet50 }}>
@@ -41,7 +48,7 @@ export function PriorityObject({ priority, candles, testID = 'home-priority' }: 
         ) : null}
         {/* Freshness rides in the header so the card keeps the artboard's
             rhythm — a price on screen is never unlabelled (07 §10). */}
-        <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+        <View style={{ marginLeft: 'auto', flexShrink: 1, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', columnGap: 9, rowGap: 2 }}>
           {priority.quote ? (
             <FreshnessMark
               freshness={priority.quote.freshness ?? 'unknown'}
