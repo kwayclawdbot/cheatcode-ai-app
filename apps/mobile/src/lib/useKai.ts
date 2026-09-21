@@ -67,6 +67,8 @@ const UNREACHABLE_PLAIN = "I couldn't answer that just now.";
 const HISTORY_FAILED_PLAIN =
   "I couldn't load the earlier messages in this conversation. Anything you send still goes to it.";
 const HISTORY_EMPTY_PLAIN = 'Nothing was said in this conversation yet.';
+/** How long the wall waits before its one second try at a saved transcript. */
+const HISTORY_RETRY_MS = 900;
 const HISTORY_OFFLINE_PLAIN = 'Saved messages need the service; this build is running on examples.';
 
 /**
@@ -194,7 +196,25 @@ function useKaiEngine(opts: EngineOpts) {
     loadGen.current = gen;
     setLoadingHistory(true);
     try {
-      const items = await fetchTranscript(id);
+      /*
+       * ONE QUIET SECOND TRY before saying the history could not be read.
+       *
+       * The owner's audit (21 September) opened a saved conversation and got
+       * "I couldn't load the earlier messages" on a thread the route serves
+       * perfectly well a moment later — a cold serverless start or a token
+       * being refreshed underneath the first request. The wall IS bound to the
+       * selected conversation (see `kai-continuity.ts`); what failed was one
+       * request, and one request failing is not worth telling a member their
+       * history is gone. A second failure still says so, in the same words.
+       */
+      let items: WallItem[];
+      try {
+        items = await fetchTranscript(id);
+      } catch {
+        await new Promise((r) => setTimeout(r, HISTORY_RETRY_MS));
+        if (!binding.owns(gen)) return;
+        items = await fetchTranscript(id);
+      }
       if (binding.owns(gen)) setHead(items);
     } catch {
       if (binding.owns(gen)) setHead([{ kind: 'notice', id: `h:${id}:failed`, text: HISTORY_FAILED_PLAIN }]);
