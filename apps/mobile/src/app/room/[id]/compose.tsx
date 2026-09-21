@@ -8,7 +8,7 @@ import { ObjectCard } from '../../../ui/Panel';
 import { Button } from '../../../ui/Button';
 import { Toggle } from '../../../ui/Toggle';
 import { family, fontStack } from '../../../ui/fonts';
-import { alpha, color, radius } from '../../../ui/tokens';
+import { alpha, color, radius, typeScale } from '../../../ui/tokens';
 import { communityApi } from '../../../lib/community-api';
 import { StackHeader } from '../../../features/community/ui/Chrome';
 import { STRUCTURED_FIELDS, type Room, type StructuredIdea } from '../../../features/community/types';
@@ -39,7 +39,7 @@ function Field({
 }) {
   return (
     <View style={{ paddingVertical: 11, borderBottomWidth: 0.5, borderBottomColor: missing ? alpha.gold40 : alpha.ivory08 }}>
-      <T size={11} c={missing ? color.gold : color.muted}>{label}{missing ? ' · missing' : ''}</T>
+      <T variant="meta" c={missing ? color.gold : color.muted}>{label}{missing ? ' · missing' : ''}</T>
       <TextInput
         testID={testID}
         accessibilityLabel={label}
@@ -50,7 +50,7 @@ function Field({
         multiline
         style={{
           fontFamily: fontStack(family.regular),
-          fontSize: 14,
+          fontSize: typeScale.body.size,
           lineHeight: 20,
           color: color.text,
           marginTop: 3,
@@ -162,7 +162,7 @@ export default function Compose() {
             onPress={post}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <T size={14} weight="bold" c={canPost ? color.volt : color.dim}>Post</T>
+            <T variant="body" weight="bold" c={canPost ? color.volt : color.dim}>Post</T>
           </Pressable>
         }
       />
@@ -187,7 +187,7 @@ export default function Compose() {
               />
             ))}
             <View style={{ paddingVertical: 11 }}>
-              <T size={11} c={color.muted}>Evidence</T>
+              <T variant="meta" c={color.muted}>Evidence</T>
               <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
                 {EVIDENCE_OPTIONS.map((e) => {
                   const on = idea.evidence.includes(e);
@@ -210,7 +210,7 @@ export default function Compose() {
                         backgroundColor: on ? alpha.cyan07 : 'transparent',
                       }}
                     >
-                      <T size={11} c={on ? color.cyan : color.muted}>{e}</T>
+                      <T variant="meta" c={on ? color.cyan : color.muted}>{e}</T>
                     </Pressable>
                   );
                 })}
@@ -224,7 +224,7 @@ export default function Compose() {
               POSITION DISCLOSURE {disclosed ? '' : '· REQUIRED'}
             </Eyebrow>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <T size={13} lh={19} style={{ flex: 1 }}>
+              <T variant="meta" lh={19} style={{ flex: 1 }}>
                 Do you currently hold {symbol ?? 'the thing you are writing about'}?
               </T>
               <Toggle
@@ -235,7 +235,7 @@ export default function Compose() {
               />
             </View>
             {disclosed ? (
-              <T size={11} c={color.muted}>
+              <T variant="meta" c={color.muted}>
                 Your post will carry “{holds ? `Holds ${symbol ?? 'this'}` : 'No position'}”. Everyone reading it sees that.
               </T>
             ) : (
@@ -246,7 +246,7 @@ export default function Compose() {
                 onPress={() => { setHolds(false); setDisclosed(true); }}
                 hitSlop={{ top: 8, bottom: 8 }}
               >
-                <T size={12} weight="semibold" c={color.volt}>I have no position →</T>
+                <T variant="meta" weight="semibold" c={color.volt}>I have no position →</T>
               </Pressable>
             )}
           </ObjectCard>
@@ -255,18 +255,18 @@ export default function Compose() {
           <ObjectCard tone="kai" r={radius.xl} style={{ padding: 14, gap: 9 }} testID="kai-review">
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <KaiDot size={22} />
-              <T size={12} weight="bold" c={color.violetLight}>Kai's feedback · optional</T>
+              <T variant="meta" weight="bold" c={color.violetLight}>Kai's feedback · optional</T>
             </View>
 
             {assist ? (
               <>
-                <T size={13} lh={19}>{assist.feedback}</T>
+                <T variant="meta" lh={19}>{assist.feedback}</T>
                 {showDraft ? (
                   <View style={{ gap: 8, padding: 12, borderRadius: radius.lg, backgroundColor: alpha.bg40, borderWidth: 0.5, borderColor: alpha.ivory08 }}>
                     {STRUCTURED_FIELDS.map((f) => (
                       <View key={f.key} style={{ gap: 2 }}>
-                        <T size={10} c={color.muted}>{f.label}</T>
-                        <T size={13} lh={18}>{assist.draft[f.key]}</T>
+                        <T variant="meta" c={color.muted}>{f.label}</T>
+                        <T variant="meta" lh={18}>{assist.draft[f.key]}</T>
                       </View>
                     ))}
                     <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
@@ -299,7 +299,7 @@ export default function Compose() {
               </>
             ) : (
               <>
-                <T size={13} lh={19} c={color.muted}>
+                <T variant="meta" lh={19} c={color.muted}>
                   {missing.length
                     ? `Kai can look for gaps once you have written something. Still empty: ${missing.join(', ')}.`
                     : 'Kai can check this for missing risk, a vague entry, or a thesis that cannot be proven wrong.'}
@@ -316,17 +316,17 @@ export default function Compose() {
               </>
             )}
 
-            <T size={10} c={color.muted}>Kai never publishes or rewrites without your approval.</T>
+            <T variant="meta" c={color.muted}>Kai never publishes or rewrites without your approval.</T>
           </ObjectCard>
 
           {error ? (
             <ObjectCard tone="gold" r={radius.lg} style={{ padding: 12 }}>
-              <T size={12} c={color.gold}>{error}</T>
+              <T variant="meta" c={color.gold}>{error}</T>
             </ObjectCard>
           ) : null}
 
           {!canPost ? (
-            <T size={11} c={color.muted}>
+            <T variant="meta" c={color.muted}>
               {missing.length ? `Post opens when every field is filled. Still missing: ${missing.join(', ')}.` : 'Answer the position disclosure to post.'}
             </T>
           ) : null}
@@ -334,7 +334,7 @@ export default function Compose() {
           {posting ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <ActivityIndicator size="small" color={color.volt} />
-              <T size={12} c={color.muted}>Posting…</T>
+              <T variant="meta" c={color.muted}>Posting…</T>
             </View>
           ) : null}
         </ScrollView>

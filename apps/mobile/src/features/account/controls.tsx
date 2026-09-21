@@ -69,8 +69,8 @@ export function NavRow({
             {icon}
           </View>
         ) : null}
-        <T size={13.5} style={{ flex: 1 }}>{label}</T>
-        {value ? <T size={12} c={color.muted}>{value}</T> : null}
+        <T variant="meta" style={{ flex: 1 }}>{label}</T>
+        {value ? <T variant="meta" c={color.muted}>{value}</T> : null}
         <ArrowRight size={12} color={color.muted} />
       </Pressable>
     </Row>
@@ -104,10 +104,10 @@ export function SettingRow({
         style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }}
       >
         <View style={{ flex: 1 }}>
-          <T size={13.5}>{label}</T>
-          {hint ? <T size={11.5} lh={16.5} c={color.muted} style={{ marginTop: 2 }}>{hint}</T> : null}
+          <T variant="meta">{label}</T>
+          {hint ? <T variant="meta" lh={16.5} c={color.muted} style={{ marginTop: 2 }}>{hint}</T> : null}
         </View>
-        <T size={12.5} weight="semibold" c={color.volt} align="right" style={{ maxWidth: '48%' }}>{value}</T>
+        <T variant="meta" weight="semibold" c={color.volt} align="right" style={{ maxWidth: '48%' }}>{value}</T>
         <ArrowRight size={12} color={color.volt} />
       </Pressable>
     </Row>
@@ -140,7 +140,7 @@ export function ChoiceSheet<K extends string>({
 }) {
   return (
     <Sheet visible={visible} onClose={onClose} title={title} testID={testID}>
-      {intro ? <T size={12.5} lh={18} c={color.muted}>{intro}</T> : null}
+      {intro ? <T variant="meta" lh={18} c={color.muted}>{intro}</T> : null}
       <View style={{ gap: 8 }}>
         {options.map((o) => {
           const on = o.key === value;
@@ -162,8 +162,8 @@ export function ChoiceSheet<K extends string>({
               })}
             >
               <View style={{ flex: 1 }}>
-                <T size={14} weight={on ? 'semibold' : 'regular'} c={on ? color.volt : color.text}>{o.label}</T>
-                <T size={12} lh={17.5} c={color.muted} style={{ marginTop: 3 }}>{o.detail}</T>
+                <T variant="body" weight={on ? 'semibold' : 'regular'} c={on ? color.volt : color.text}>{o.label}</T>
+                <T variant="meta" lh={17.5} c={color.muted} style={{ marginTop: 3 }}>{o.detail}</T>
               </View>
               {on ? <Check size={14} color={color.volt} strokeWidth={2.6} /> : null}
             </Pressable>
@@ -195,19 +195,19 @@ export function SaveNote({
 }) {
   if (status === 'idle') return null;
   if (status === 'saving') {
-    return <T size={11.5} c={color.muted} testID={testID} style={{ marginTop: -4 }}>Saving…</T>;
+    return <T variant="meta" c={color.muted} testID={testID} style={{ marginTop: -4 }}>Saving…</T>;
   }
   if (status === 'saved') {
     return (
       <View testID={testID} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -4 }}>
         <Check size={11} color={color.green} strokeWidth={2.6} />
-        <T size={11.5} c={color.green}>Saved</T>
+        <T variant="meta" c={color.green}>Saved</T>
       </View>
     );
   }
   return (
     <View testID={testID} style={{ marginTop: -4, gap: 4 }}>
-      <T size={11.5} lh={17} c={color.red}>{message ?? "That didn't save."}</T>
+      <T variant="meta" lh={17} c={color.red}>{message ?? "That didn't save."}</T>
       {onRetry ? (
         <Pressable
           testID={testID ? `${testID}-retry` : undefined}
@@ -216,7 +216,7 @@ export function SaveNote({
           onPress={onRetry}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <T size={11.5} weight="semibold" c={color.volt}>Try again</T>
+          <T variant="meta" weight="semibold" c={color.volt}>Try again</T>
         </Pressable>
       ) : null}
     </View>

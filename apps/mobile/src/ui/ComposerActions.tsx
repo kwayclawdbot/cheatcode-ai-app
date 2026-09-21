@@ -248,8 +248,8 @@ function ActionRow({
       ringInset={1}
       ringRadius={radius.sm}
     >
-      <T size={14} weight="semibold" c={tint}>{action.label}</T>
-      {hint ? <T size={11} lh={15} c={color.muted} style={{ marginTop: 2 }}>{hint}</T> : null}
+      <T variant="body" weight="semibold" c={tint}>{action.label}</T>
+      {hint ? <T variant="meta" lh={15} c={color.muted} style={{ marginTop: 2 }}>{hint}</T> : null}
     </Focusable>
   );
 }

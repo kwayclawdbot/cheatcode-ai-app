@@ -84,8 +84,8 @@ export default function Memory() {
         <ObjectCard tone="kai" r={radius.xl} style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <KaiOrb size={24} />
           <View style={{ flex: 1 }}>
-            <T size={13} weight="semibold">Memory is {enabled ? 'on' : 'off'}</T>
-            <T size={11} c={color.muted} lh={16} style={{ marginTop: 2 }}>
+            <T variant="meta" weight="semibold">Memory is {enabled ? 'on' : 'off'}</T>
+            <T variant="meta" c={color.muted} lh={16} style={{ marginTop: 2 }}>
               {enabled
                 ? 'Kai carries what you tell him between conversations.'
                 : 'Every conversation starts fresh. Nothing below is used.'}
@@ -98,7 +98,7 @@ export default function Memory() {
 
         {!rows.length ? (
           <ObjectCard r={radius.xl} style={{ padding: 18 }}>
-            <T size={13} c={color.muted} lh={19}>
+            <T variant="meta" c={color.muted} lh={19}>
               Kai hasn&apos;t kept anything yet. He remembers what you correct him on and the lessons you save from a debrief.
             </T>
           </ObjectCard>
@@ -107,9 +107,9 @@ export default function Memory() {
             <ObjectCard key={m.id} r={radius.xl} style={{ padding: 14, gap: 8, opacity: enabled ? 1 : 0.55 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: alpha.violet50 }}>
-                  <T size={9} c={color.violetLight}>{(KIND_LABEL[m.kind] ?? m.kind).toUpperCase()}</T>
+                  <T variant="meta" c={color.violetLight}>{(KIND_LABEL[m.kind] ?? m.kind).toUpperCase()}</T>
                 </View>
-                {m.created_at ? <T size={10} c={color.dim}>{when(m.created_at)}</T> : null}
+                {m.created_at ? <T variant="meta" c={color.dim}>{when(m.created_at)}</T> : null}
                 <Pressable
                   testID={`forget-${m.id}`}
                   accessibilityRole="button"
@@ -118,10 +118,10 @@ export default function Memory() {
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   style={{ marginLeft: 'auto' }}
                 >
-                  <T size={12} c={color.red}>Forget</T>
+                  <T variant="meta" c={color.red}>Forget</T>
                 </Pressable>
               </View>
-              <T size={13.5} lh={20}>{m.content}</T>
+              <T variant="meta" lh={20}>{m.content}</T>
             </ObjectCard>
           ))
         )}
@@ -130,12 +130,12 @@ export default function Memory() {
           <Button testID="cta-forget-all" label="Forget everything" kind="outline" height={46} onPress={() => setConfirmAll(true)} />
         ) : null}
 
-        {notAvailable ? <NotConnected what="What Kai remembers" /> : error ? <T size={11} c={color.muted} align="center">{error}</T> : null}
-        {isFixture ? <T size={10} c={color.dim} align="center">Sample memory — the service is not connected here.</T> : null}
+        {notAvailable ? <NotConnected what="What Kai remembers" /> : error ? <T variant="meta" c={color.muted} align="center">{error}</T> : null}
+        {isFixture ? <T variant="meta" c={color.dim} align="center">Sample memory — the service is not connected here.</T> : null}
       </ScrollView>
 
       <Sheet visible={confirmAll} onClose={() => setConfirmAll(false)} title="Forget everything?" testID="sheet-forget-all">
-        <T size={13} lh={20} c={color.muted}>
+        <T variant="meta" lh={20} c={color.muted}>
           Kai will lose every preference, pattern and lesson he holds about you. This cannot be undone.
         </T>
         <Button label="Yes, forget it all" kind="volt" height={48} loading={busy} onPress={removeAll} />

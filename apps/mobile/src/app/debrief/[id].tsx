@@ -136,8 +136,8 @@ function AdherenceList({ checks }: { checks: PlanAdherence['checks'] }) {
               <Icon size={14} color={spec.c} />
             </View>
             <View style={{ flex: 1, gap: 2 }}>
-              <T size={14} weight="semibold" c={c.status === 'not_planned' ? color.muted : color.text}>{c.label}</T>
-              <T size={12.5} lh={18} c={color.muted}>{c.detail_plain}</T>
+              <T variant="body" weight="semibold" c={c.status === 'not_planned' ? color.muted : color.text}>{c.label}</T>
+              <T variant="meta" lh={18} c={color.muted}>{c.detail_plain}</T>
             </View>
           </View>
         );
@@ -253,7 +253,7 @@ export default function DebriefDetail() {
         <StackHeader title="Debrief" onBack={() => router.back()} />
         <View style={{ padding: 16 }}>
           <ObjectCard r={radius.xl} style={{ padding: 18 }}>
-            <T size={13} c={color.muted}>That debrief isn't there. It may have been removed.</T>
+            <T variant="meta" c={color.muted}>That debrief isn't there. It may have been removed.</T>
           </ObjectCard>
         </View>
       </View>
@@ -287,7 +287,7 @@ export default function DebriefDetail() {
         */}
         {adherence ? (
           <View style={{ gap: 16 }} testID="plan-adherence">
-            <T size={26} weight="bold" lh={31} ls={-0.5} testID="adherence-headline">{adherence.headline}</T>
+            <T variant="screenTitle" weight="bold" lh={31} ls={-0.5} testID="adherence-headline">{adherence.headline}</T>
 
             {/* The closed trade, drawn only from bars that arrived. */}
             {kitCandles.length ? (
@@ -313,7 +313,7 @@ export default function DebriefDetail() {
                     its level kinds, so it is stated rather than drawn — the
                     checklist below carries the number. */}
                 {adherence.actual_levels.exit !== null ? (
-                  <T size={11} c={color.dim} style={{ marginTop: 6 }} testID="adherence-exit-note">
+                  <T variant="meta" c={color.dim} style={{ marginTop: 6 }} testID="adherence-exit-note">
                     {`You came out at ${adherence.actual_levels.exit.toFixed(2)}. The chart marks the plan\u2019s levels, not your exit.`}
                   </T>
                 ) : null}
@@ -352,11 +352,11 @@ export default function DebriefDetail() {
           </View>
           <View style={{ flex: 1 }}>
             <Num size={adherence ? 24 : 34} weight="semibold" c={tone}>{o.pnl_label}</Num>
-            <T size={13} c={color.muted} style={{ marginTop: 2 }}>
+            <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>
               {o.symbol} · {o.exit_reason}{o.held ? ` · ${o.held}` : ''}
             </T>
             {debrief.simulated ? (
-              <T size={11} c={color.muted} style={{ marginTop: 6 }}>
+              <T variant="meta" c={color.muted} style={{ marginTop: 6 }}>
                 A simulated paper trade, created for testing. No money moved.
               </T>
             ) : null}
@@ -369,15 +369,15 @@ export default function DebriefDetail() {
         <ObjectCard tone="kai" r={radius.xl} style={{ padding: 13, paddingHorizontal: 15, gap: 8 }} testID="kai-lesson">
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
             <KaiDot size={24} />
-            <T size={13} lh={20} style={{ flex: 1 }}>
+            <T variant="meta" lh={20} style={{ flex: 1 }}>
               {debrief.lesson_plain}
               {debrief.lesson_detail && !expanded ? (
-                <T size={13} weight="semibold" c={color.violetLight} onPress={() => setExpanded(true)}> More</T>
+                <T variant="meta" weight="semibold" c={color.violetLight} onPress={() => setExpanded(true)}> More</T>
               ) : null}
             </T>
           </View>
           {expanded && debrief.lesson_detail ? (
-            <T size={13} lh={20} c={color.violetLight}>{debrief.lesson_detail}</T>
+            <T variant="meta" lh={20} c={color.violetLight}>{debrief.lesson_detail}</T>
           ) : null}
           {/*
             The one instruction that follows from the leg that slipped. It is
@@ -386,7 +386,7 @@ export default function DebriefDetail() {
             words did not come through.
           */}
           {adherence?.practice ? (
-            <T size={13} lh={19} weight="semibold" c={color.violetLight} testID="adherence-practice-line">
+            <T variant="meta" lh={19} weight="semibold" c={color.violetLight} testID="adherence-practice-line">
               {adherence.practice.plain}
             </T>
           ) : null}
@@ -406,7 +406,7 @@ export default function DebriefDetail() {
               arrow
               onPress={() => router.push(practice.route as never)}
             />
-            {practice.note ? <T size={11} lh={16} c={color.muted}>{practice.note}</T> : null}
+            {practice.note ? <T variant="meta" lh={16} c={color.muted}>{practice.note}</T> : null}
           </View>
         ) : null}
 
@@ -434,19 +434,19 @@ export default function DebriefDetail() {
           />
         </View>
         {saved ? (
-          <T size={12} c={color.violetLight} testID="saved-note">Saved to what Kai remembers.</T>
+          <T variant="meta" c={color.violetLight} testID="saved-note">Saved to what Kai remembers.</T>
         ) : (
-          <T size={11} c={color.muted} testID="replay-note">
+          <T variant="meta" c={color.muted} testID="replay-note">
             {kitCandles.length
               ? 'The chart above is the closed trade against its daily bars. Stepping through it bar by bar arrives with live market data.'
               : 'Chart replay arrives with live market data.'}
           </T>
         )}
-        {error ? <T size={12} c={color.gold}>{error}</T> : null}
+        {error ? <T variant="meta" c={color.gold}>{error}</T> : null}
 
         {debrief.process_receipt.length ? (
           <ObjectCard r={radius.xl} style={{ padding: 14, gap: 10 }}>
-            <Eyebrow>PROCESS RECEIPT</Eyebrow>
+            <Eyebrow>Process receipt</Eyebrow>
             <ReceiptList items={debrief.process_receipt} />
           </ObjectCard>
         ) : null}
@@ -455,14 +455,14 @@ export default function DebriefDetail() {
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {debrief.what_worked.length ? (
               <View style={{ flex: 1, gap: 6, padding: 13, borderRadius: radius.xl, backgroundColor: color.greenTint, borderWidth: 0.5, borderColor: alpha.green40 }}>
-                <Eyebrow c={color.green}>WHAT WORKED</Eyebrow>
-                {debrief.what_worked.map((w) => <T key={w} size={12} lh={17}>{w}</T>)}
+                <Eyebrow c={color.green}>What worked</Eyebrow>
+                {debrief.what_worked.map((w) => <T key={w} variant="meta" lh={17}>{w}</T>)}
               </View>
             ) : null}
             {debrief.what_failed.length ? (
               <View style={{ flex: 1, gap: 6, padding: 13, borderRadius: radius.xl, backgroundColor: color.redTint, borderWidth: 0.5, borderColor: alpha.red40 }}>
-                <Eyebrow c={color.red}>WHAT DIDN'T</Eyebrow>
-                {debrief.what_failed.map((w) => <T key={w} size={12} lh={17}>{w}</T>)}
+                <Eyebrow c={color.red}>What didn't</Eyebrow>
+                {debrief.what_failed.map((w) => <T key={w} variant="meta" lh={17}>{w}</T>)}
               </View>
             ) : null}
           </View>
@@ -470,11 +470,11 @@ export default function DebriefDetail() {
 
         {debrief.timeline.length ? (
           <ObjectCard r={radius.xl} style={{ padding: 14, gap: 12 }} testID="timeline">
-            <Eyebrow>WHAT HAPPENED, IN ORDER</Eyebrow>
+            <Eyebrow>What happened, in order</Eyebrow>
             {debrief.timeline.map((t, i) => (
               <View key={`${t.at}-${i}`} style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ alignItems: 'center', width: 44 }}>
-                  <Num size={11} weight="regular" c={color.muted}>{t.time_label}</Num>
+                  <Num variant="meta" weight="regular" c={color.muted}>{t.time_label}</Num>
                 </View>
                 <View style={{ alignItems: 'center', width: 10 }}>
                   <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: t.kind === 'exit' ? color.cyan : alpha.ivory25, marginTop: 4 }} />
@@ -483,8 +483,8 @@ export default function DebriefDetail() {
                   ) : null}
                 </View>
                 <View style={{ flex: 1, paddingBottom: i < debrief.timeline.length - 1 ? 6 : 0 }}>
-                  <T size={13} weight="semibold">{t.label}</T>
-                  {t.detail ? <T size={11} c={color.muted} style={{ marginTop: 1 }}>{t.detail}</T> : null}
+                  <T variant="meta" weight="semibold">{t.label}</T>
+                  {t.detail ? <T variant="meta" c={color.muted} style={{ marginTop: 1 }}>{t.detail}</T> : null}
                 </View>
               </View>
             ))}

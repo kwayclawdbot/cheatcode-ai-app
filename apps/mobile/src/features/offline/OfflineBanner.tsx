@@ -54,7 +54,7 @@ export function OfflineBanner({
       }}
     >
       <CapabilityMark state="offline" size={17} />
-      <T size={13} weight="semibold" c={color.gold} style={{ flex: 1 }}>
+      <T variant="meta" weight="semibold" c={color.gold} style={{ flex: 1 }}>
         {stamp ? `Offline · ${stamp}` : 'Offline · nothing saved for this screen'}
       </T>
       {onRetry ? (
@@ -73,7 +73,7 @@ export function OfflineBanner({
             opacity: pressed || retrying ? 0.6 : 1,
           })}
         >
-          <T size={12} weight="bold" c={color.gold}>{retrying ? 'Trying…' : 'Retry'}</T>
+          <T variant="meta" weight="bold" c={color.gold}>{retrying ? 'Trying…' : 'Retry'}</T>
         </Pressable>
       ) : null}
     </View>

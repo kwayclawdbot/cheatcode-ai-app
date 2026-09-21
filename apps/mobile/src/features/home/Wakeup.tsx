@@ -96,7 +96,7 @@ function DirectionPill({ d, onPress, step, still }: { d: WakeDirection; onPress:
           opacity: pressed ? 0.72 : 1,
         })}
       >
-        <T size={13} weight="semibold" c={color.volt}>{d.label}</T>
+        <T variant="meta" weight="semibold" c={color.volt}>{d.label}</T>
       </Pressable>
     </Materialize>
   );
@@ -126,7 +126,7 @@ export function Wakeup({
   return (
     <View testID={testID} style={{ gap: compact ? 10 : 12, paddingTop: 6 }}>
       {message && !animate ? (
-        <T size={10} weight="bold" ls={0.8} c={color.dim} testID="wakeup-earlier">
+        <T variant="meta" weight="bold" ls={0.8} c={color.dim} testID="wakeup-earlier">
           {`EARLIER TODAY · ${shownAtLabel(message.at).toUpperCase()}`}
         </T>
       ) : null}
@@ -141,7 +141,7 @@ export function Wakeup({
 
       {message?.state && !compact ? (
         <Materialize step={next()} still={still}>
-          <T size={14} lh={20} c={color.muted} testID="wakeup-state">{message.state}</T>
+          <T variant="body" lh={20} c={color.muted} testID="wakeup-state">{message.state}</T>
         </Materialize>
       ) : null}
 
@@ -163,7 +163,7 @@ export function Wakeup({
 
       {message?.evidence && !compact ? (
         <Materialize step={next()} still={still}>
-          <T size={13} lh={19} c={color.muted} testID="wakeup-evidence">{message.evidence}</T>
+          <T variant="meta" lh={19} c={color.muted} testID="wakeup-evidence">{message.evidence}</T>
         </Materialize>
       ) : null}
 
@@ -171,7 +171,7 @@ export function Wakeup({
         <Materialize step={next()} still={still}>
           <View style={{ flexDirection: 'row', gap: 9, alignItems: 'flex-start' }}>
             <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color.gold, marginTop: 6 }} />
-            <T size={13} lh={19} c={color.gold} style={{ flex: 1 }} testID="wakeup-aside">{message.aside}</T>
+            <T variant="meta" lh={19} c={color.gold} style={{ flex: 1 }} testID="wakeup-aside">{message.aside}</T>
           </View>
         </Materialize>
       ) : null}
@@ -191,7 +191,7 @@ export function Wakeup({
 
       {message && !compact ? (
         <Materialize step={next()} still={still} style={{ paddingTop: 2 }}>
-          <T size={15} lh={21} weight="semibold" c={color.violetLight} testID="wakeup-question">{message.question}</T>
+          <T variant="body" lh={21} weight="semibold" c={color.violetLight} testID="wakeup-question">{message.question}</T>
         </Materialize>
       ) : null}
 

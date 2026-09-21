@@ -85,7 +85,7 @@ function useLoad<T>(run: () => Promise<T>, deps: unknown[], fallback: string): L
 function Status({ text, testID }: { text: string; testID?: string }) {
   return (
     <View style={{ padding: 18 }} testID={testID}>
-      <T size={14} c={color.dim} lh={20}>{text}</T>
+      <T variant="body" c={color.dim} lh={20}>{text}</T>
     </View>
   );
 }
@@ -100,7 +100,7 @@ function Caveat({ text, testID }: { text: string; testID?: string }) {
         paddingLeft: 10, paddingVertical: 2,
       }}
     >
-      <T size={12} c={color.muted} lh={17}>{text}</T>
+      <T variant="meta" c={color.muted} lh={17}>{text}</T>
     </View>
   );
 }
@@ -109,10 +109,10 @@ function Caveat({ text, testID }: { text: string; testID?: string }) {
 function Stat({ label, value, testID }: { label: string; value: string | null; testID?: string }) {
   return (
     <View style={{ flex: 1, minWidth: 0, gap: 2, paddingVertical: 7 }} testID={testID}>
-      <T size={11} c={color.dim}>{label}</T>
+      <T variant="meta" c={color.dim}>{label}</T>
       {value === null
-        ? <T size={12.5} c={color.dim}>not known</T>
-        : <Num size={14} weight="semibold">{value}</Num>}
+        ? <T variant="meta" c={color.dim}>not known</T>
+        : <Num variant="body" weight="semibold">{value}</Num>}
     </View>
   );
 }
@@ -142,7 +142,7 @@ function Jump({ label, onPress, testID }: { label: string; onPress: () => void; 
         opacity: pressed ? 0.7 : 1,
       })}
     >
-      <T size={12} weight="semibold" c={color.volt}>{label}</T>
+      <T variant="meta" weight="semibold" c={color.volt}>{label}</T>
     </Pressable>
   );
 }
@@ -181,10 +181,10 @@ function RangeBar({ low, high, price, label }: { low: number | null; high: numbe
   return (
     <View style={{ gap: 6 }} testID="quote-range">
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <T size={11} c={color.dim}>{`Day range · ${label}`}</T>
+        <T variant="meta" c={color.dim}>{`Day range · ${label}`}</T>
       </View>
       {at === null ? (
-        <T size={12.5} c={color.dim}>The range is not known yet.</T>
+        <T variant="meta" c={color.dim}>The range is not known yet.</T>
       ) : (
         <>
           <View style={{ height: 4, borderRadius: 2, backgroundColor: alpha.ivory12 }}>
@@ -196,8 +196,8 @@ function RangeBar({ low, high, price, label }: { low: number | null; high: numbe
             />
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Num size={12} weight="regular" c={color.muted}>{usd(low)}</Num>
-            <Num size={12} weight="regular" c={color.muted}>{usd(high)}</Num>
+            <Num variant="meta" weight="regular" c={color.muted}>{usd(low)}</Num>
+            <Num variant="meta" weight="regular" c={color.muted}>{usd(high)}</Num>
           </View>
         </>
       )}
@@ -245,54 +245,54 @@ export function EarningsSurface({ symbol }: { symbol: string }) {
       <Ticker symbol={d.symbol} size={30} sub={d.name ? `${d.name} · Earnings` : 'Earnings'} />
 
       <View style={{ gap: 4 }} testID="earnings-next">
-        <Eyebrow>NEXT REPORT</Eyebrow>
+        <Eyebrow>Next report</Eyebrow>
         {d.next ? (
           <>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-              <T size={22} weight="bold">{shortDate(d.next.date) ?? d.next.date}</T>
+              <T variant="sectionTitle" weight="bold">{shortDate(d.next.date) ?? d.next.date}</T>
               {d.next.days_away !== null ? (
-                <T size={13} c={color.muted}>
+                <T variant="meta" c={color.muted}>
                   {d.next.days_away === 0 ? 'today' : d.next.days_away === 1 ? 'tomorrow' : `in ${d.next.days_away} days`}
                 </T>
               ) : null}
             </View>
-            <T size={12} c={color.dim} lh={17}>{d.next.source_plain}</T>
+            <T variant="meta" c={color.dim} lh={17}>{d.next.source_plain}</T>
           </>
         ) : (
-          <T size={13} c={color.muted} lh={19} testID="earnings-next-unknown">{d.next_plain}</T>
+          <T variant="meta" c={color.muted} lh={19} testID="earnings-next-unknown">{d.next_plain}</T>
         )}
       </View>
 
       {d.quarters.length ? (
         <View testID="earnings-quarters">
           <View style={{ flexDirection: 'row', paddingBottom: 4, borderBottomWidth: 0.5, borderBottomColor: alpha.ivory12 }}>
-            <T size={11} c={color.dim} style={{ flex: 1.1 }}>Quarter</T>
-            <T size={11} c={color.dim} style={{ flex: 1 }}>Filed</T>
-            <T size={11} c={color.dim} style={{ flex: 0.9 }} align="right">EPS</T>
-            <T size={11} c={color.dim} style={{ flex: 1 }} align="right">Revenue</T>
+            <T variant="meta" c={color.dim} style={{ flex: 1.1 }}>Quarter</T>
+            <T variant="meta" c={color.dim} style={{ flex: 1 }}>Filed</T>
+            <T variant="meta" c={color.dim} style={{ flex: 0.9 }} align="right">EPS</T>
+            <T variant="meta" c={color.dim} style={{ flex: 1 }} align="right">Revenue</T>
           </View>
           {d.quarters.map((q) => (
             <View
               key={`${q.fiscal_year}-${q.fiscal_period}-${q.period_end}`}
               style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: alpha.ivory08 }}
             >
-              <T size={13} weight="semibold" style={{ flex: 1.1 }}>{`${q.fiscal_period} ${q.fiscal_year}`.trim() || '—'}</T>
-              <T size={12} c={color.muted} style={{ flex: 1 }}>{shortDate(q.filed) ?? 'not known'}</T>
+              <T variant="meta" weight="semibold" style={{ flex: 1.1 }}>{`${q.fiscal_period} ${q.fiscal_year}`.trim() || '—'}</T>
+              <T variant="meta" c={color.muted} style={{ flex: 1 }}>{shortDate(q.filed) ?? 'not known'}</T>
               <View style={{ flex: 0.9, alignItems: 'flex-end' }}>
                 {q.eps_diluted === null
-                  ? <T size={12} c={color.dim}>not known</T>
-                  : <Num size={13}>{`$${q.eps_diluted.toFixed(2)}`}</Num>}
+                  ? <T variant="meta" c={color.dim}>not known</T>
+                  : <Num variant="meta">{`$${q.eps_diluted.toFixed(2)}`}</Num>}
               </View>
               <View style={{ flex: 1, alignItems: 'flex-end' }}>
                 {q.revenue === null
-                  ? <T size={12} c={color.dim}>not known</T>
-                  : <Num size={13}>{bigMoney(q.revenue)}</Num>}
+                  ? <T variant="meta" c={color.dim}>not known</T>
+                  : <Num variant="meta">{bigMoney(q.revenue)}</Num>}
               </View>
             </View>
           ))}
         </View>
       ) : (
-        <T size={13} c={color.dim}>{d.degraded_reason ?? 'No reported quarters are on file.'}</T>
+        <T variant="meta" c={color.dim}>{d.degraded_reason ?? 'No reported quarters are on file.'}</T>
       )}
 
       <Caveat text={d.estimates_plain} testID="earnings-no-estimates" />
@@ -313,15 +313,15 @@ function Side({ q, flow, align }: { q: OptionQuote | null; flow: OptionsFlowPrin
   if (!q) {
     return (
       <View style={{ flex: 1, alignItems: align }}>
-        <T size={12} c={color.dim}>not listed</T>
+        <T variant="meta" c={color.dim}>not listed</T>
       </View>
     );
   }
   const quote = bidAsk(q);
   return (
     <View style={{ flex: 1, alignItems: align }} testID={flow ? 'options-flow-cell' : 'options-quote-cell'}>
-      {quote ? <Num size={12.5} c={color.text}>{quote}</Num> : <T size={12} c={color.dim}>no quote</T>}
-      <T size={10.5} c={flow ? color.muted : color.dim} numberOfLines={1}>
+      {quote ? <Num variant="meta" c={color.text}>{quote}</Num> : <T variant="meta" c={color.dim}>no quote</T>}
+      <T variant="meta" c={flow ? color.muted : color.dim} numberOfLines={1}>
         {flow ? 'flow bought this' : q.volume !== null && q.volume > 0 ? `${compact(q.volume)} traded` : 'no trades yet'}
       </T>
     </View>
@@ -341,23 +341,23 @@ export function OptionsSurface({ symbol }: { symbol: string }) {
           <Ticker symbol={d.symbol} size={30} sub={d.expiry ? `Options · expiring ${shortDate(d.expiry)}` : 'Options'} />
         </View>
         <View style={{ alignItems: 'flex-end' }}>
-          <Num size={15}>{usd(d.spot) ?? 'not known'}</Num>
-          <T size={10.5} c={color.dim} numberOfLines={1}>{d.spot_plain}</T>
+          <Num variant="body">{usd(d.spot) ?? 'not known'}</Num>
+          <T variant="meta" c={color.dim} numberOfLines={1}>{d.spot_plain}</T>
         </View>
       </View>
 
       {/* The short form sits where the eye lands first; the full sentence is
           under the ladder, still on the panel, for anyone who wants the why. */}
-      <T size={12} c={color.muted}>
+      <T variant="meta" c={color.muted}>
         {d.prices_as_of ? `Bid / ask per contract · as of ${etStampOf(d.prices_as_of) ?? 'an unknown time'}` : 'Bid / ask per contract'}
       </T>
 
       {d.rows.length ? (
         <View testID="options-ladder">
           <View style={{ flexDirection: 'row', paddingBottom: 4, borderBottomWidth: 0.5, borderBottomColor: alpha.ivory12 }}>
-            <T size={11} c={color.dim} style={{ flex: 1 }}>Calls</T>
-            <T size={11} c={color.dim} style={{ width: 76 }} align="center">Strike</T>
-            <T size={11} c={color.dim} style={{ flex: 1 }} align="right">Puts</T>
+            <T variant="meta" c={color.dim} style={{ flex: 1 }}>Calls</T>
+            <T variant="meta" c={color.dim} style={{ width: 76 }} align="center">Strike</T>
+            <T variant="meta" c={color.dim} style={{ flex: 1 }} align="right">Puts</T>
           </View>
           {d.rows.map((row) => (
             <View
@@ -372,20 +372,20 @@ export function OptionsSurface({ symbol }: { symbol: string }) {
             >
               <Side q={row.call} flow={row.call_flow} align="flex-start" />
               <View style={{ width: 76, alignItems: 'center' }}>
-                <Num size={13} weight={row.nearest_the_money ? 'bold' : 'semibold'}>{strikeLabel(row.strike)}</Num>
-                {row.nearest_the_money ? <T size={9.5} c={color.muted}>nearest price</T> : null}
+                <Num variant="meta" weight={row.nearest_the_money ? 'bold' : 'semibold'}>{strikeLabel(row.strike)}</Num>
+                {row.nearest_the_money ? <T variant="meta" c={color.muted}>nearest price</T> : null}
               </View>
               <Side q={row.put} flow={row.put_flow} align="flex-end" />
             </View>
           ))}
         </View>
       ) : (
-        <T size={13} c={color.dim}>{d.degraded_reason ?? 'No contracts came back.'}</T>
+        <T variant="meta" c={color.dim}>{d.degraded_reason ?? 'No contracts came back.'}</T>
       )}
 
       {d.flow.length ? (
         <View testID="options-flow">
-          <Eyebrow>WHAT THE OPTIONS FLOW BOUGHT</Eyebrow>
+          <Eyebrow>What the options flow bought</Eyebrow>
           {d.flow.map((f, i) => (
             <DataRow
               key={f.option_symbol}
@@ -403,7 +403,7 @@ export function OptionsSurface({ symbol }: { symbol: string }) {
       ) : null}
 
       <Caveat text={d.prices_plain} testID="options-prices-source" />
-      {later.length ? <T size={12} c={color.dim}>{`Also listed: ${later.join(', ')}.`}</T> : null}
+      {later.length ? <T variant="meta" c={color.dim}>{`Also listed: ${later.join(', ')}.`}</T> : null}
       <Jumps symbol={d.symbol} except="options" />
     </ScrollView>
   );
@@ -434,7 +434,7 @@ export function WatchlistSurface() {
           valueNode={<Price quote={it.quote ? toQuote(it.quote) : null} showChange size={13} prefix="$" />}
         />
       ))}
-      <T size={11.5} c={color.dim}>Tap one to open its price card here.</T>
+      <T variant="meta" c={color.dim}>Tap one to open its price card here.</T>
     </ScrollView>
   );
 }
@@ -459,13 +459,13 @@ export function PortfolioSurface({ onRoute }: { onRoute?: (r: string) => void })
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
         <View style={{ gap: 2 }}>
           <Eyebrow>{`PAPER POSITIONS · ${open.length}`}</Eyebrow>
-          <T size={11.5} c={color.dim}>Practice money — nothing real moved.</T>
+          <T variant="meta" c={color.dim}>Practice money — nothing real moved.</T>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 1 }}>
-          <T size={11} c={color.dim}>Today</T>
+          <T variant="meta" c={color.dim}>Today</T>
           {today === null
-            ? <T size={13} c={color.dim}>not known</T>
-            : <Num size={16} weight="bold" c={today >= 0 ? color.green : color.red}>{signedUsd(today)}</Num>}
+            ? <T variant="meta" c={color.dim}>not known</T>
+            : <Num variant="body" weight="bold" c={today >= 0 ? color.green : color.red}>{signedUsd(today)}</Num>}
         </View>
       </View>
       {open.map((p, i) => {
@@ -492,10 +492,10 @@ export function PortfolioSurface({ onRoute }: { onRoute?: (r: string) => void })
             valueNode={
               <View style={{ alignItems: 'flex-end', gap: 2 }}>
                 {pnl === null
-                  ? <T size={12} c={color.dim}>not known</T>
-                  : <Num size={13} c={pnl >= 0 ? color.green : color.red}>{signedUsd(pnl)}</Num>}
+                  ? <T variant="meta" c={color.dim}>not known</T>
+                  : <Num variant="meta" c={pnl >= 0 ? color.green : color.red}>{signedUsd(pnl)}</Num>}
                 {p.unrealized_pnl_pct !== null
-                  ? <Num size={11} weight="regular" c={color.muted}>{`${p.unrealized_pnl_pct >= 0 ? '+' : '−'}${Math.abs(p.unrealized_pnl_pct).toFixed(2)}%`}</Num>
+                  ? <Num variant="meta" weight="regular" c={color.muted}>{`${p.unrealized_pnl_pct >= 0 ? '+' : '−'}${Math.abs(p.unrealized_pnl_pct).toFixed(2)}%`}</Num>
                   : null}
               </View>
             }

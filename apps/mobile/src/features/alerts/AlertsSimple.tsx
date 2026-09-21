@@ -7,7 +7,7 @@ import { T, Num, Eyebrow } from '../../ui/Text';
 import { KaiOrb } from '../../ui/KaiOrb';
 import { FreshnessMark } from '../../ui/FreshnessMark';
 import { family } from '../../ui/fonts';
-import { alpha, color, gradient, gradientAngle, radius } from '../../ui/tokens';
+import { alpha, color, gradient, gradientAngle, radius, typeScale } from '../../ui/tokens';
 import { openKaiSheet } from '../kai-sheet';
 import type { AlertFilterKey, AttentionAlert, MonitoringRow } from '../../lib/types';
 
@@ -47,10 +47,10 @@ export function FilterPills({
               opacity: pressed && !active ? 0.75 : 1,
             })}
           >
-            <T size={12} weight={active ? 'bold' : 'regular'} c={active ? color.volt : color.muted}>{it.label}</T>
+            <T variant="meta" weight={active ? 'bold' : 'regular'} c={active ? color.volt : color.muted}>{it.label}</T>
             {it.badge && counts.attention > 0 ? (
               <View style={{ minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, backgroundColor: color.volt, alignItems: 'center', justifyContent: 'center' }}>
-                <T size={9} weight="bold" c={color.bg}>{String(counts.attention)}</T>
+                <T variant="meta" weight="bold" c={color.bg}>{String(counts.attention)}</T>
               </View>
             ) : null}
           </Pressable>
@@ -70,20 +70,20 @@ export function AttentionCard({ a, testID }: { a: AttentionAlert; testID?: strin
   return (
     <ObjectCard testID={testID ?? `attention-${a.symbol}`} tone="gold" r={radius.xxl} style={{ paddingVertical: 14, paddingHorizontal: 15, gap: 10 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-        <T size={17} weight="bold">{a.symbol}</T>
+        <T variant="cardTitle" weight="bold">{a.symbol}</T>
         {a.grade_change ? (
           <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.sm, backgroundColor: alpha.gold14, borderWidth: 0.5, borderColor: alpha.gold40 }}>
-            <T size={11} weight="bold" c={color.gold}>{a.grade_change}</T>
+            <T variant="meta" weight="bold" c={color.gold}>{a.grade_change}</T>
           </View>
         ) : null}
-        {a.age ? <T size={10} c={color.muted} style={{ marginLeft: 'auto' }}>{a.age}</T> : null}
+        {a.age ? <T variant="meta" c={color.muted} style={{ marginLeft: 'auto' }}>{a.age}</T> : null}
       </View>
 
-      <T size={14} lh={20}>{a.message}</T>
+      <T variant="body" lh={20}>{a.message}</T>
 
       {a.quote?.price != null ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-          <Num size={12} weight="regular" c={color.muted}>{`Now ${a.quote.price.toFixed(2)}`}</Num>
+          <Num variant="meta" weight="regular" c={color.muted}>{`Now ${a.quote.price.toFixed(2)}`}</Num>
           <FreshnessMark freshness={a.quote.freshness ?? 'unknown'} delayReason={a.quote.delay_reason} at={a.quote.source_ts} size={10} />
         </View>
       ) : null}
@@ -99,7 +99,7 @@ export function AttentionCard({ a, testID }: { a: AttentionAlert; testID?: strin
             alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.85 : 1,
           })}
         >
-          <T size={13} weight="bold" c={color.bg}>{`Open ${a.symbol}`}</T>
+          <T variant="meta" weight="bold" c={color.bg}>{`Open ${a.symbol}`}</T>
         </Pressable>
         <Pressable
           testID="attention-ask-kai"
@@ -115,7 +115,7 @@ export function AttentionCard({ a, testID }: { a: AttentionAlert; testID?: strin
             alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.85 : 1,
           })}
         >
-          <T size={13} weight="semibold" c={color.violetLight}>Ask Kai</T>
+          <T variant="meta" weight="semibold" c={color.violetLight}>Ask Kai</T>
         </Pressable>
       </View>
     </ObjectCard>
@@ -147,9 +147,9 @@ function ValueCell({ value, tone }: { value?: string | null; tone?: MonitoringRo
   return (
     <View style={{ alignItems: 'flex-end', maxWidth: 104 }}>
       {/^[+\-\u2212$]?[\d.,:]+$/.test(head)
-        ? <Num size={11} weight="regular" c={c}>{head}</Num>
-        : <T size={11} align="right" c={c}>{head}</T>}
-      {rest ? <T size={9} c={color.dim} align="right" style={{ marginTop: 2 }}>{rest}</T> : null}
+        ? <Num variant="meta" weight="regular" c={c}>{head}</Num>
+        : <T variant="meta" align="right" c={c}>{head}</T>}
+      {rest ? <T variant="meta" c={color.dim} align="right" style={{ marginTop: 2 }}>{rest}</T> : null}
     </View>
   );
 }
@@ -159,7 +159,7 @@ export function MonitoringList({ rows, testID = 'monitoring-list' }: { rows: Mon
   const router = useRouter();
   if (!rows.length) {
     return (
-      <T testID="monitoring-empty" size={12.5} lh={18} c={color.muted} style={{ paddingVertical: 8 }}>
+      <T testID="monitoring-empty" variant="meta" lh={18} c={color.muted} style={{ paddingVertical: 8 }}>
         Kai is not watching anything for you right now. Tell him what matters in the box below.
       </T>
     );
@@ -178,8 +178,8 @@ export function MonitoringList({ rows, testID = 'monitoring-list' }: { rows: Mon
               borderBottomColor: alpha.ivory08,
             }}
           >
-            <T size={13} weight="bold" style={{ width: 50 }}>{r.symbol}</T>
-            <T size={12} lh={17} c={color.muted} style={{ flex: 1 }}>{r.condition}</T>
+            <T variant="meta" weight="bold" style={{ width: 50 }}>{r.symbol}</T>
+            <T variant="meta" lh={17} c={color.muted} style={{ flex: 1 }}>{r.condition}</T>
             <ValueCell value={r.value} tone={r.value_tone} />
           </View>
         );
@@ -236,7 +236,7 @@ export function AlertComposer({
         placeholderTextColor={color.muted}
         returnKeyType="go"
         style={{
-          flex: 1, fontFamily: family.regular, fontSize: 13, color: color.text,
+          flex: 1, fontFamily: family.regular, fontSize: typeScale.body.size, color: color.text,
           ...(({ outlineStyle: 'none' } as unknown) as object),
         }}
       />
@@ -253,7 +253,7 @@ export function AlertComposer({
           opacity: can ? (pressed ? 0.82 : 1) : 0.45,
         })}
       >
-        <T size={12} weight="bold" c={color.bg}>{pending ? 'Reading…' : 'Read it'}</T>
+        <T variant="meta" weight="bold" c={color.bg}>{pending ? 'Reading…' : 'Read it'}</T>
       </Pressable>
     </LinearGradient>
   );

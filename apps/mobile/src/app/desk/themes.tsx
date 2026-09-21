@@ -39,13 +39,13 @@ export default function DeskThemes() {
         <T size={typeScale.screenTitle.size} weight="bold" c={color.text} style={{ marginTop: space.x8 }}>
           What the desk is reading
         </T>
-        <T size={14} lh={20} c={color.muted} style={{ marginTop: space.x10, maxWidth: 460 }}>
+        <T variant="body" lh={20} c={color.muted} style={{ marginTop: space.x10, maxWidth: 460 }}>
           Scored on how much moves if it is right, at the theme&rsquo;s ceiling —
           never on how much is being written about it. Size and timing are
           separate numbers and nothing is marked down for being years out.
         </T>
         {res.data?.asOf && (
-          <T size={12} c={color.dim} style={{ marginTop: space.x8 }}>
+          <T variant="meta" c={color.dim} style={{ marginTop: space.x8 }}>
             Judged {res.data.asOf} · {themes.length} live
           </T>
         )}
@@ -55,7 +55,7 @@ export default function DeskThemes() {
             <ActivityIndicator color={color.violet} />
           </View>
         ) : res.error ? (
-          <T size={14} c={color.red} style={{ marginTop: space.x24 }}>{res.error}</T>
+          <T variant="body" c={color.red} style={{ marginTop: space.x24 }}>{res.error}</T>
         ) : (
           <View style={{ marginTop: space.x22, borderTopWidth: 1, borderTopColor: alpha.ivory16 }}>
             {themes.map((t) => (
@@ -109,13 +109,13 @@ function ThemeRow({ theme, onPress }: { theme: DeskTheme; onPress: () => void })
           {m === null ? (
             // Nothing has ever been judged about this one. Said, not drawn:
             // ten empty segments beside a dash is a picture of a zero.
-            <T size={11} lh={15} c={color.dim}>not judged yet</T>
+            <T variant="meta" lh={15} c={color.dim}>not judged yet</T>
           ) : (
             <>
-          <Num size={24} weight="bold" c={big ? color.violetLight : color.muted} style={{ lineHeight: 26 }}>
+          <Num variant="keyPrice" weight="bold" c={big ? color.violetLight : color.muted} style={{ lineHeight: 26 }}>
             {m.toFixed(1)}
           </Num>
-          <T size={9} c={color.dim}>of 10</T>
+          <T variant="meta" c={color.dim}>of 10</T>
           <View style={{ flexDirection: 'row', gap: 1.5, marginTop: space.x6 }}>
             {Array.from({ length: 10 }, (_, i) => {
               const full = m >= i + 1;
@@ -142,7 +142,7 @@ function ThemeRow({ theme, onPress }: { theme: DeskTheme; onPress: () => void })
 
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x8, flexWrap: 'wrap' }}>
-            <T size={16} weight="bold" c={color.text} style={{ flexShrink: 1 }}>
+            <T variant="body" weight="bold" c={color.text} style={{ flexShrink: 1 }}>
               {theme.theme.replace(/-/g, ' ')}
             </T>
             {theme.outOfFavour && (
@@ -150,12 +150,12 @@ function ThemeRow({ theme, onPress }: { theme: DeskTheme; onPress: () => void })
                 paddingHorizontal: space.x6, paddingVertical: 1,
                 borderRadius: radius.xs, backgroundColor: alpha.gold14,
               }}>
-                <T size={9} weight="bold" c={color.gold}>OUT OF FAVOUR</T>
+                <T variant="meta" weight="bold" c={color.gold}>OUT OF FAVOUR</T>
               </View>
             )}
           </View>
           {theme.reason && (
-            <T size={13} lh={18} c={color.muted} numberOfLines={2} style={{ marginTop: space.x4 }}>
+            <T variant="meta" lh={18} c={color.muted} numberOfLines={2} style={{ marginTop: space.x4 }}>
               {theme.reason}
             </T>
           )}
@@ -163,7 +163,7 @@ function ThemeRow({ theme, onPress }: { theme: DeskTheme; onPress: () => void })
           {/* timing, on its own clock — never averaged into the size */}
           <View style={{ marginTop: space.x10 }}>
             {at < 0 ? (
-              <T size={11} c={theme.timeline ? color.cyan : color.dim}>{theme.timeline ?? 'timing not judged'}</T>
+              <T variant="meta" c={theme.timeline ? color.cyan : color.dim}>{theme.timeline ?? 'timing not judged'}</T>
             ) : (
               <View>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -179,7 +179,7 @@ function ThemeRow({ theme, onPress }: { theme: DeskTheme; onPress: () => void })
                 </View>
                 <View style={{ flexDirection: 'row', marginTop: space.x4 }}>
                   {TIME_AXIS.map((t, i) => (
-                    <T key={t} size={9} c={i === at ? color.cyan : color.dim}
+                    <T key={t} variant="meta" c={i === at ? color.cyan : color.dim}
                        align={i === 0 ? 'left' : i === TIME_AXIS.length - 1 ? 'right' : 'center'}
                        style={{ flex: 1 }}>
                       {t}
@@ -197,7 +197,7 @@ function ThemeRow({ theme, onPress }: { theme: DeskTheme; onPress: () => void })
             actually made — the 6 September run could not judge at all, and a
             reading from the 5th must not be shown as though it were today's.
           */}
-          <T size={11} c={color.dim} style={{ marginTop: space.x8 }}>
+          <T variant="meta" c={color.dim} style={{ marginTop: space.x8 }}>
             {theme.conviction === null ? 'how sure — not judged' : `how sure ${theme.conviction}/10`}
             {theme.judgedOn ? ` · judged ${theme.judgedOn}` : ''}
             {theme.entriesTotal != null ? ` · ${theme.entriesTotal} entries kept` : ''}

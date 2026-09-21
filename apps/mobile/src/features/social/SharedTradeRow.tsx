@@ -75,21 +75,21 @@ export function SharedTradeRow({ trade, testID }: { trade: SharedTrade; testID?:
           testID={`shared-trade-author-${trade.id}`}
         />
         <BeltChip belt={trade.author.belt} />
-        <T size={10} c={color.dim} style={{ marginLeft: 'auto' }}>{trade.time_label}</T>
+        <T variant="meta" c={color.dim} style={{ marginLeft: 'auto' }}>{trade.time_label}</T>
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
         <TickerMark symbol={trade.symbol} size={24} />
-        <T size={14} weight="bold">{trade.symbol}</T>
+        <T variant="body" weight="bold">{trade.symbol}</T>
         <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5, backgroundColor: alpha.ivory08 }}>
-          <T size={10} weight="semibold" c={color.muted}>{DIRECTION_LABEL[trade.direction]}</T>
+          <T variant="meta" weight="semibold" c={color.muted}>{DIRECTION_LABEL[trade.direction]}</T>
         </View>
         <View style={{ flex: 1 }} />
         {trade.outcome_label ? (
-          <T size={11} weight="semibold" c={tone} testID={`shared-outcome-${trade.id}`}>{trade.outcome_label}</T>
+          <T variant="meta" weight="semibold" c={tone} testID={`shared-outcome-${trade.id}`}>{trade.outcome_label}</T>
         ) : null}
         {trade.result_pct != null ? (
-          <Num size={11.5} weight="semibold" c={tone}>
+          <Num variant="meta" weight="semibold" c={tone}>
             {`${trade.result_pct > 0 ? '+' : ''}${trade.result_pct.toFixed(1)}%`}
           </Num>
         ) : null}
@@ -98,8 +98,8 @@ export function SharedTradeRow({ trade, testID }: { trade: SharedTrade; testID?:
       <View style={{ flexDirection: 'row', gap: 14, flexWrap: 'wrap' }}>
         {levels.map((l) => (
           <View key={l.label} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
-            <T size={10} c={color.muted}>{l.label}</T>
-            <Num size={11.5} weight="semibold" c={l.c}>{l.value!}</Num>
+            <T variant="meta" c={color.muted}>{l.label}</T>
+            <Num variant="meta" weight="semibold" c={l.c}>{l.value!}</Num>
           </View>
         ))}
       </View>

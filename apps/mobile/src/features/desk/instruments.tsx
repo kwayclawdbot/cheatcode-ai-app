@@ -134,11 +134,11 @@ export function GradeScale({ grade }: { grade: IdeaGrade | null }) {
       <Eyebrow c={color.dim}>Idea grade</Eyebrow>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.x14, marginTop: space.x8 }}>
         {grade ? (
-          <Num size={34} weight="bold" c={color.violetLight} style={{ lineHeight: 36 }}>{grade}</Num>
+          <Num variant="keyPrice" weight="bold" c={color.violetLight} style={{ lineHeight: 36 }}>{grade}</Num>
         ) : (
           // No mark. Said in words rather than as a dash, which a person reads
           // as a value that failed to load rather than as an empty scale.
-          <T size={15} weight="bold" c={color.muted} style={{ lineHeight: 36, width: 62 }}>
+          <T variant="body" weight="bold" c={color.muted} style={{ lineHeight: 36, width: 62 }}>
             no mark
           </T>
         )}
@@ -154,7 +154,7 @@ export function GradeScale({ grade }: { grade: IdeaGrade | null }) {
                     borderRadius: 2,
                     backgroundColor: on ? color.violet : alpha.ivory12,
                   }} />
-                  <T size={9} weight={on ? 'bold' : 'regular'} c={on ? color.violetLight : color.dim}
+                  <T variant="meta" weight={on ? 'bold' : 'regular'} c={on ? color.violetLight : color.dim}
                      numberOfLines={1} style={{ marginTop: space.x4 }}>
                     {g}
                   </T>
@@ -164,7 +164,7 @@ export function GradeScale({ grade }: { grade: IdeaGrade | null }) {
           </View>
         </View>
       </View>
-      <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x8 }}>
+      <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x8 }}>
         {grade
           ? `${ORDINAL[at][0].toUpperCase()}${ORDINAL[at].slice(1)} of the ${STEPS} marks the desk uses. The grade is on the idea, not on this quarter.`
           : 'The desk has not put a mark on this one. Most of its write-ups carry no grade — that is a gap in the record, not a low score.'}
@@ -199,8 +199,8 @@ export function CallMark({ direction, status }: { direction: Dir; status?: strin
     return (
       <View accessibilityLabel="No call stated">
         <Eyebrow c={color.dim}>The call</Eyebrow>
-        <T size={17} weight="bold" c={color.muted} style={{ marginTop: space.x6 }}>None stated</T>
-        <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
+        <T variant="cardTitle" weight="bold" c={color.muted} style={{ marginTop: space.x6 }}>None stated</T>
+        <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
           The write-up did not get as far as a claim.
         </T>
       </View>
@@ -212,14 +212,14 @@ export function CallMark({ direction, status }: { direction: Dir; status?: strin
       <Eyebrow c={color.dim}>The call</Eyebrow>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x10, marginTop: space.x6 }}>
         <DirGlyph direction={direction} tone={spec.tone} />
-        <T size={22} weight="bold" c={spec.tone}>{spec.word}</T>
+        <T variant="sectionTitle" weight="bold" c={spec.tone}>{spec.word}</T>
         {status ? (
-          <T size={11} weight="semibold" c={color.dim} style={{ marginLeft: 'auto' }}>
+          <T variant="meta" weight="semibold" c={color.dim} style={{ marginLeft: 'auto' }}>
             {status.toUpperCase()}
           </T>
         ) : null}
       </View>
-      <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x6 }}>{spec.sub}</T>
+      <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x6 }}>{spec.sub}</T>
     </View>
   );
 }
@@ -275,7 +275,7 @@ export function HorizonTrack({ horizon }: { horizon: string | null }) {
   return (
     <View accessibilityLabel={horizon ? `Horizon ${HORIZON_WORDS[horizon] ?? horizon}` : 'No horizon set'}>
       <Eyebrow c={color.dim}>Time frame</Eyebrow>
-      <T size={17} weight="bold" c={filled ? color.text : color.muted} style={{ marginTop: space.x6 }}>
+      <T variant="cardTitle" weight="bold" c={filled ? color.text : color.muted} style={{ marginTop: space.x6 }}>
         {filled ? (HORIZON_WORDS[horizon!] ?? horizon) : 'Open ended'}
       </T>
       <View style={{ flexDirection: 'row', gap: space.x4, marginTop: space.x8 }}>
@@ -285,12 +285,12 @@ export function HorizonTrack({ horizon }: { horizon: string | null }) {
               height: 4, borderRadius: 2,
               backgroundColor: i < filled ? color.cyan : alpha.ivory12,
             }} />
-            <T size={9} c={i < filled ? color.cyan : color.dim} style={{ marginTop: space.x4 }}>{q}</T>
+            <T variant="meta" c={i < filled ? color.cyan : color.dim} style={{ marginTop: space.x4 }}>{q}</T>
           </View>
         ))}
       </View>
       {!filled && (
-        <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x6 }}>
+        <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x6 }}>
           No horizon was written down for this one.
         </T>
       )}
@@ -350,7 +350,7 @@ export function PotentialMove({ pct }: { pct: number | null }) {
         </Svg>
       </View>
       {!known && (
-        <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
+        <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
           The desk does not publish a target. This is the place one will sit
           when the brain starts working it out — it is left empty rather than
           filled with a guess.
@@ -400,7 +400,7 @@ export function ThemeGauges({
     return (
       <View accessibilityLabel="The desk has not judged this theme yet">
         <Eyebrow c={color.dim}>The theme’s own judgement</Eyebrow>
-        <T size={13} lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
+        <T variant="meta" lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
           The desk has not judged this theme yet — no size, no timing and no
           conviction have been scored for it. That is a gap in the record, not a
           low score.
@@ -423,21 +423,21 @@ export function ThemeGauges({
         is a number a reader will assume is current.
       */}
       {judgedOn ? (
-        <T size={11} c={color.dim} style={{ marginTop: space.x10 }}>
+        <T variant="meta" c={color.dim} style={{ marginTop: space.x10 }}>
           {`Judged ${saidDate(judgedOn) ?? judgedOn}.`}
         </T>
       ) : null}
       {(trajectory || outOfFavour) && (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x8, marginTop: space.x12 }}>
           {trajectory ? (
-            <T size={12} c={color.muted}>
-              Heading: <T size={12} weight="semibold" c={color.violetLight}>
+            <T variant="meta" c={color.muted}>
+              Heading: <T variant="meta" weight="semibold" c={color.violetLight}>
                 {TRAJECTORY_WORDS[trajectory.toUpperCase()] ?? trajectory.toLowerCase()}
               </T>
             </T>
           ) : null}
           {outOfFavour ? (
-            <T size={12} c={color.gold}>· attention has moved on</T>
+            <T variant="meta" c={color.gold}>· attention has moved on</T>
           ) : null}
         </View>
       )}
@@ -465,10 +465,10 @@ export function SizeMeter({ magnitude, label = 'How big if it is right' }: {
     <View accessibilityLabel={`Theme size ${magnitude} out of 10`}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x8 }}>
         <Eyebrow c={color.dim}>{label}</Eyebrow>
-        <Num size={15} weight="bold" c={big ? color.violetLight : color.text} style={{ marginLeft: 'auto' }}>
+        <Num variant="body" weight="bold" c={big ? color.violetLight : color.text} style={{ marginLeft: 'auto' }}>
           {magnitude.toFixed(1)}
         </Num>
-        <T size={10} c={color.dim}>of 10</T>
+        <T variant="meta" c={color.dim}>of 10</T>
       </View>
       <View style={{ flexDirection: 'row', gap: 3, marginTop: space.x8 }}>
         {Array.from({ length: 10 }, (_, i) => {
@@ -498,7 +498,7 @@ export function TimeAxis({ timeline }: { timeline: string | null }) {
     <View accessibilityLabel={`Timing ${timeline ?? 'unknown'}`}>
       <Eyebrow c={color.dim}>When it lands</Eyebrow>
       {at < 0 ? (
-        <T size={15} weight="semibold" c={timeline ? color.cyan : color.dim} style={{ marginTop: space.x6 }}>
+        <T variant="body" weight="semibold" c={timeline ? color.cyan : color.dim} style={{ marginTop: space.x6 }}>
           {timeline ?? 'not judged'}
         </T>
       ) : (
@@ -519,7 +519,7 @@ export function TimeAxis({ timeline }: { timeline: string | null }) {
           </View>
           <View style={{ flexDirection: 'row', marginTop: space.x6 }}>
             {TIME_AXIS.map((t, i) => (
-              <T key={t} size={9} c={i === at ? color.cyan : color.dim}
+              <T key={t} variant="meta" c={i === at ? color.cyan : color.dim}
                  align={i === 0 ? 'left' : i === TIME_AXIS.length - 1 ? 'right' : 'center'}
                  style={{ flex: 1 }}>
                 {t}
@@ -545,8 +545,8 @@ export function ConvictionMeter({ conviction }: { conviction: number | null }) {
     <View accessibilityLabel={`Conviction ${conviction} out of 10`}>
       <Eyebrow c={color.dim}>How sure</Eyebrow>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x4, marginTop: space.x6 }}>
-        <Num size={15} weight="bold" c={color.text}>{conviction}</Num>
-        <T size={10} c={color.dim}>of 10</T>
+        <Num variant="body" weight="bold" c={color.text}>{conviction}</Num>
+        <T variant="meta" c={color.dim}>of 10</T>
       </View>
       <View style={{ height: 4, borderRadius: 2, backgroundColor: alpha.ivory08, marginTop: space.x8 }}>
         <View style={{
@@ -569,7 +569,7 @@ function NotJudged({ label }: { label: string }) {
   return (
     <View accessibilityLabel={`${label}: the desk has not judged this theme yet`}>
       <Eyebrow c={color.dim}>{label}</Eyebrow>
-      <T size={13} lh={18} c={color.muted} style={{ marginTop: space.x6 }}>
+      <T variant="meta" lh={18} c={color.muted} style={{ marginTop: space.x6 }}>
         The desk has not judged this theme yet.
       </T>
     </View>
@@ -593,7 +593,7 @@ export function Ledger({ why, blockers }: { why: string[]; blockers: string[] })
     <View>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x8 }}>
         <Eyebrow c={color.muted}>What the screen found</Eyebrow>
-        <T size={11} c={color.dim} style={{ marginLeft: 'auto' }}>
+        <T variant="meta" c={color.dim} style={{ marginLeft: 'auto' }}>
           {why.length} for · {blockers.length} against
         </T>
       </View>
@@ -614,8 +614,8 @@ function LedgerLine({ tone, mark, text }: { tone: string; mark: string; text: st
       backgroundColor: tone === color.green ? alpha.green12 : alpha.red10,
       borderTopRightRadius: radius.xs, borderBottomRightRadius: radius.xs,
     }}>
-      <Num size={13} weight="bold" c={tone}>{mark}</Num>
-      <T size={13} lh={19} c={color.text} style={{ flex: 1 }}>{text}</T>
+      <Num variant="meta" weight="bold" c={tone}>{mark}</Num>
+      <T variant="meta" lh={19} c={color.text} style={{ flex: 1 }}>{text}</T>
     </View>
   );
 }
@@ -640,8 +640,8 @@ export function CatalystSpine({ items }: { items: { when: string; what: string }
               )}
             </View>
             <View style={{ flex: 1, paddingBottom: i < items.length - 1 ? space.x16 : 0 }}>
-              <Num size={12} weight="bold" c={color.cyan}>{c.when}</Num>
-              <T size={13} lh={19} c={color.muted} style={{ marginTop: space.x2 }}>{c.what}</T>
+              <Num variant="meta" weight="bold" c={color.cyan}>{c.when}</Num>
+              <T variant="meta" lh={19} c={color.muted} style={{ marginTop: space.x2 }}>{c.what}</T>
             </View>
           </View>
         ))}
@@ -675,8 +675,8 @@ export function LevelTrack({ price, trigger, invalidation }: {
         }} />
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: space.x4 }}>
-        <T size={9} c={color.red}>kills</T>
-        <T size={9} c={color.green}>arms</T>
+        <T variant="meta" c={color.red}>kills</T>
+        <T variant="meta" c={color.green}>arms</T>
       </View>
     </View>
   );
@@ -754,7 +754,7 @@ export function Scoreboard({
       <Bay first>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x8 }}>
           <Eyebrow c={color.violetLight}>Against the market</Eyebrow>
-          <T size={11} c={color.dim} style={{ marginLeft: 'auto' }}>
+          <T variant="meta" c={color.dim} style={{ marginLeft: 'auto' }}>
             {settled ? `settled ${saidDate(gradedAt) ?? ''}`.trim() : 'not settled'}
           </T>
         </View>
@@ -823,14 +823,14 @@ function Settled({ outcome, returnPct, excessPct, direction }: {
           <Num size={38} weight="bold" c={tone} style={{ lineHeight: 42 }} testID="scoreboard-excess">
             {pct(excessPct)}
           </Num>
-          <T size={14} weight="semibold" c={tone} style={{ flex: 1 }}>
+          <T variant="body" weight="semibold" c={tone} style={{ flex: 1 }}>
             {isPass
               ? `what it did against the S&P 500 after the desk declined it`
               : ahead ? 'ahead of the S&P 500' : 'behind the S&P 500'}
           </T>
         </View>
       ) : (
-        <T size={17} weight="bold" c={color.muted} testID="scoreboard-excess">
+        <T variant="cardTitle" weight="bold" c={color.muted} testID="scoreboard-excess">
           The gap against the market was never worked out
         </T>
       )}
@@ -858,12 +858,12 @@ function Settled({ outcome, returnPct, excessPct, direction }: {
           />
           <RunBar label="The S&P 500" value={market} span={span} tone={color.cyan} />
         </View>
-        <T size={9} c={color.dim} align="center" style={{ marginTop: space.x4 }}>
+        <T variant="meta" c={color.dim} align="center" style={{ marginTop: space.x4 }}>
           flat — where both started
         </T>
       </View>
 
-      <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x12 }}>
+      <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x12 }}>
         {verdict}{nn(returnPct) && nn(excessPct)
           ? ''
           : ' The desk settled it without publishing both halves, so only what it wrote is shown.'}
@@ -882,8 +882,8 @@ function RunBar({ label, value, span, tone }: {
   return (
     <View accessibilityLabel={`${label} ${known ? pct(value!) : 'not published'}`}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x8 }}>
-        <T size={12} c={color.muted}>{label}</T>
-        <Num size={13} weight="bold" c={known ? tone : color.dim} style={{ marginLeft: 'auto' }}>
+        <T variant="meta" c={color.muted}>{label}</T>
+        <Num variant="meta" weight="bold" c={known ? tone : color.dim} style={{ marginLeft: 'auto' }}>
           {known ? pct(value!) : 'not published'}
         </Num>
       </View>
@@ -930,7 +930,7 @@ function Waiting({ entryPrice, entryBenchmark, pickDate, horizon, settlesOn }: {
 
   return (
     <View style={{ marginTop: space.x10 }}>
-      <T size={19} weight="bold" c={color.muted} testID="scoreboard-excess">
+      <T variant="sectionTitle" weight="bold" c={color.muted} testID="scoreboard-excess">
         No result yet
       </T>
 
@@ -939,25 +939,25 @@ function Waiting({ entryPrice, entryBenchmark, pickDate, horizon, settlesOn }: {
           <Eyebrow c={color.dim}>Where it starts from</Eyebrow>
           <View style={{ flexDirection: 'row', marginTop: space.x8 }}>
             <View style={{ flex: 1 }}>
-              <T size={12} c={color.muted}>This idea</T>
-              <Num size={20} weight="bold" c={color.violetLight} testID="scoreboard-entry">
+              <T variant="meta" c={color.muted}>This idea</T>
+              <Num variant="sectionTitle" weight="bold" c={color.violetLight} testID="scoreboard-entry">
                 {`$${entryPrice!.toFixed(2)}`}
               </Num>
             </View>
             <View style={{ width: 1, backgroundColor: alpha.ivory08 }} />
             <View style={{ flex: 1, paddingLeft: space.x14 }}>
-              <T size={12} c={color.muted}>The S&P 500</T>
+              <T variant="meta" c={color.muted}>The S&P 500</T>
               {nn(entryBenchmark) ? (
-                <Num size={20} weight="bold" c={color.cyan} testID="scoreboard-benchmark">
+                <Num variant="sectionTitle" weight="bold" c={color.cyan} testID="scoreboard-benchmark">
                   {entryBenchmark.toFixed(2)}
                 </Num>
               ) : (
-                <T size={15} weight="bold" c={color.dim}>not stamped</T>
+                <T variant="body" weight="bold" c={color.dim}>not stamped</T>
               )}
             </View>
           </View>
           {pickDate ? (
-            <T size={11} c={color.dim} style={{ marginTop: space.x6 }}>
+            <T variant="meta" c={color.dim} style={{ marginTop: space.x6 }}>
               {`both taken at the close on ${saidDate(pickDate)}`}
             </T>
           ) : null}
@@ -978,7 +978,7 @@ function Waiting({ entryPrice, entryBenchmark, pickDate, horizon, settlesOn }: {
         </Svg>
       </View>
 
-      <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x6 }}>{why}</T>
+      <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x6 }}>{why}</T>
     </View>
   );
 }
@@ -1027,11 +1027,11 @@ export function Provenance({ revisitCount, revisitCheckedAt, news90d, nominatedB
           })}
         >
           <TickerMark symbol={nominatedBy} size={22} />
-          <Num size={15} weight="bold" c={color.text}>{nominatedBy}</Num>
-          <T size={12} c={color.dim} style={{ flex: 1 }}>
+          <Num variant="body" weight="bold" c={color.text}>{nominatedBy}</Num>
+          <T variant="meta" c={color.dim} style={{ flex: 1 }}>
             named this company in its own write-up
           </T>
-          {onOpenNominator ? <T size={12} c={color.volt}>open ›</T> : null}
+          {onOpenNominator ? <T variant="meta" c={color.volt}>open ›</T> : null}
         </Pressable>
       </Fact>,
     );
@@ -1039,14 +1039,14 @@ export function Provenance({ revisitCount, revisitCheckedAt, news90d, nominatedB
 
   rows.push(
     <Fact key="revisit" label="Times revisited" first={rows.length === 0}>
-      <T size={15} weight="bold" c={revisitCount ? color.text : color.muted}>
+      <T variant="body" weight="bold" c={revisitCount ? color.text : color.muted}>
         {revisitCount == null
           ? 'not recorded'
           : revisitCount === 0
             ? 'Never'
             : `${revisitCount} time${revisitCount === 1 ? '' : 's'}`}
       </T>
-      <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
+      <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
         {revisitCount === 0
           ? 'Every write-up in the desk reads zero here, because nothing in the research brain goes back and counts. It is a gap in the record, not evidence the idea was ignored.'
           : revisitCheckedAt
@@ -1059,16 +1059,16 @@ export function Provenance({ revisitCount, revisitCheckedAt, news90d, nominatedB
   rows.push(
     <Fact key="news" label="Press in the 90 days before">
       {news90d == null ? (
-        <T size={15} weight="bold" c={color.muted}>not counted</T>
+        <T variant="body" weight="bold" c={color.muted}>not counted</T>
       ) : (
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x8 }}>
-          <Num size={22} weight="bold" c={color.cyan} testID="provenance-news">{news90d}</Num>
-          <T size={13} c={color.muted}>
+          <Num variant="sectionTitle" weight="bold" c={color.cyan} testID="provenance-news">{news90d}</Num>
+          <T variant="meta" c={color.muted}>
             {news90d === 1 ? 'news item' : 'news items'}
           </T>
         </View>
       )}
-      <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
+      <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
         A plain count of what the search found. On its own it says nothing — the
         same number is silence for a giant and a crowd for a small company — so
         the desk only draws a conclusion from it in the evidence above, and only

@@ -60,7 +60,7 @@ export function UserBubble({ children, style, maxWidth }: {
         style,
       ]}
     >
-      {typeof children === 'string' ? <T size={14}>{children}</T> : children}
+      {typeof children === 'string' ? <T variant="body">{children}</T> : children}
     </LinearGradient>
   );
 }

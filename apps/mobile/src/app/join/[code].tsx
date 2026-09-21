@@ -49,18 +49,18 @@ export default function Join() {
   return (
     <Screen variant="dome" layout="stack" testID="screen-join">
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
-        <Eyebrow>YOU WERE SENT A CODE</Eyebrow>
-        <Num size={30} weight="bold" testID="join-code" style={{ marginTop: space.x10 }}>{clean || '—'}</Num>
+        <Eyebrow>You were sent a code</Eyebrow>
+        <Num variant="keyPrice" weight="bold" testID="join-code" style={{ marginTop: space.x10 }}>{clean || '—'}</Num>
 
         {result ? (
           <View style={{ gap: space.x12, marginTop: space.x24 }} testID="join-done">
             <Rule />
-            <T size={17} weight="bold">{result.already_redeemed ? 'You had already used this one' : 'Code accepted'}</T>
-            <T size={14} c={color.muted} lh={21} testID="join-plain">{result.plain}</T>
-            <T size={13} c={color.muted} lh={20}>{result.subscription_plain}</T>
+            <T variant="cardTitle" weight="bold">{result.already_redeemed ? 'You had already used this one' : 'Code accepted'}</T>
+            <T variant="body" c={color.muted} lh={21} testID="join-plain">{result.plain}</T>
+            <T variant="meta" c={color.muted} lh={20}>{result.subscription_plain}</T>
           </View>
         ) : (
-          <T size={14} c={color.muted} lh={21} style={{ marginTop: space.x14 }}>
+          <T variant="body" c={color.muted} lh={21} style={{ marginTop: space.x14 }}>
             Using it puts whatever it carries on your account straight away. Nothing is charged and no card is asked for.
           </T>
         )}
@@ -68,7 +68,7 @@ export default function Join() {
         {refusal ? (
           <View style={{ gap: 8, marginTop: space.x20 }} testID="join-refused">
             <Rule />
-            <T size={14} lh={21}>{refusal}</T>
+            <T variant="body" lh={21}>{refusal}</T>
           </View>
         ) : null}
 

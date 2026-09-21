@@ -81,7 +81,7 @@ export function TradeLocked({
           list cannot end up calling one capability two things. The eyebrow
           above is that heading, verbatim, for the same reason.
         */}
-        <T size={22} weight="bold" c={color.text} style={{ marginTop: space.x10, lineHeight: 28 }}>
+        <T variant="sectionTitle" weight="bold" c={color.text} style={{ marginTop: space.x10, lineHeight: 28 }}>
           {`${CAPABILITY_LABEL.trade_panel} is not on your plan`}
         </T>
 
@@ -90,7 +90,7 @@ export function TradeLocked({
           actually said. The fallback is only for the case where we got here
           without a server answer at all — a hidden tab, a restored route.
         */}
-        <T size={14} lh={21} c={color.muted} style={{ marginTop: space.x12 }}>
+        <T variant="body" lh={21} c={color.muted} style={{ marginTop: space.x12 }}>
           {plain
             ?? 'Your plan does not include the Trade section — the chart Kai marks up, the grade, and the order tickets. That is the plan, not a fault at our end.'}
         </T>
@@ -100,7 +100,7 @@ export function TradeLocked({
           borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: alpha.ivory12,
         }}>
           <Eyebrow c={color.dim}>What you still have</Eyebrow>
-          <T size={14} lh={21} c={color.muted} style={{ marginTop: space.x8 }}>
+          <T variant="body" lh={21} c={color.muted} style={{ marginTop: space.x8 }}>
             Kai, every day, on any question you want to ask him. The community.
             The research desk. Your alerts. None of that changes.
           </T>

@@ -84,7 +84,7 @@ export default function AdminPeople() {
         placeholder="Name, email or phone"
       />
       {data?.searched.length ? (
-        <T size={10.5} c={color.dim} style={{ marginTop: -8 }} testID="people-searched">
+        <T variant="meta" c={color.dim} style={{ marginTop: -8 }} testID="people-searched">
           {`Searched ${data.searched.join(', ')}. Nothing else.`}
         </T>
       ) : null}
@@ -125,16 +125,16 @@ export default function AdminPeople() {
               sub={
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                   <StatusMark status={p.status} />
-                  <T size={11} c={color.dim}>·</T>
-                  <T size={11} c={color.muted} numberOfLines={1} style={{ flex: 1 }}>
+                  <T variant="meta" c={color.dim}>·</T>
+                  <T variant="meta" c={color.muted} numberOfLines={1} style={{ flex: 1 }}>
                     {`${p.primary_tier ?? 'no tier'} · ${sourceLabel(p.source)}`}
                   </T>
                 </View>
               }
               valueNode={
                 <View style={{ alignItems: 'flex-end', gap: 2 }}>
-                  <Num size={11} weight="medium" c={color.muted}>{when(p.last_active_at)}</Num>
-                  {p.tags.length ? <T size={10} c={color.dim}>{p.tags.slice(0, 2).join(' · ')}</T> : null}
+                  <Num variant="meta" weight="medium" c={color.muted}>{when(p.last_active_at)}</Num>
+                  {p.tags.length ? <T variant="meta" c={color.dim}>{p.tags.slice(0, 2).join(' · ')}</T> : null}
                 </View>
               }
               onPress={() => router.push(`/admin/person/${p.id}` as never)}
@@ -145,7 +145,7 @@ export default function AdminPeople() {
           ))}
         </Section>
       ) : (
-        <T size={13} c={color.muted} lh={20} testID="people-empty">
+        <T variant="meta" c={color.muted} lh={20} testID="people-empty">
           {data?.plain ?? 'Nobody matches that.'}
         </T>
       )}

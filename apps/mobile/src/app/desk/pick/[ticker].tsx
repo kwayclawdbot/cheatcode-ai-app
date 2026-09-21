@@ -62,9 +62,9 @@ export default function DeskPickDetail() {
   if (res.error || !res.data) {
     return (
       <Screen variant="dome" layout="stack">
-        <T size={15} c={color.text}>{res.error ?? `Nothing written up for ${symbol}.`}</T>
+        <T variant="body" c={color.text}>{res.error ?? `Nothing written up for ${symbol}.`}</T>
         <Pressable onPress={() => router.back()} style={{ marginTop: space.x16 }}>
-          <T size={14} c={color.volt}>Back to the watchlist</T>
+          <T variant="body" c={color.volt}>Back to the watchlist</T>
         </Pressable>
       </Screen>
     );
@@ -79,14 +79,14 @@ export default function DeskPickDetail() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x12 }}>
           <TickerMark symbol={pick.ticker} size={44} />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Num size={26} weight="bold" c={color.text}>{pick.ticker}</Num>
-            <T size={13} c={color.dim} numberOfLines={1}>{pick.company ?? '—'}</T>
+            <Num variant="keyPrice" weight="bold" c={color.text}>{pick.ticker}</Num>
+            <T variant="meta" c={color.dim} numberOfLines={1}>{pick.company ?? '—'}</T>
           </View>
           <View style={{ alignItems: 'flex-end', gap: space.x4 }}>
             {pick.marketCap != null && (
-              <Num size={13} weight="semibold" c={color.muted}>{money(pick.marketCap)}</Num>
+              <Num variant="meta" weight="semibold" c={color.muted}>{money(pick.marketCap)}</Num>
             )}
-            {pick.pickDate && <T size={11} c={color.dim}>written {pick.pickDate}</T>}
+            {pick.pickDate && <T variant="meta" c={color.dim}>written {pick.pickDate}</T>}
           </View>
         </View>
 
@@ -110,7 +110,7 @@ export default function DeskPickDetail() {
             }}
           >
             <Eyebrow c={color.violetLight}>The desk went looking for</Eyebrow>
-            <T size={15} lh={22} c={color.text} style={{ marginTop: space.x6 }}>
+            <T variant="body" lh={22} c={color.text} style={{ marginTop: space.x6 }}>
               {pick.hypothesis}
             </T>
           </View>
@@ -146,11 +146,11 @@ export default function DeskPickDetail() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x8 }}>
                   <Eyebrow c={color.violetLight}>Found under</Eyebrow>
                   {pick.themeRank === 1 && (
-                    <T size={10} weight="bold" c={color.violetLight}>· BEST FIT IN THE THEME</T>
+                    <T variant="meta" weight="bold" c={color.violetLight}>· BEST FIT IN THE THEME</T>
                   )}
-                  <T size={12} c={color.volt} style={{ marginLeft: 'auto' }}>open ›</T>
+                  <T variant="meta" c={color.volt} style={{ marginLeft: 'auto' }}>open ›</T>
                 </View>
-                <T size={17} weight="bold" c={color.text} style={{ marginTop: space.x4 }}>
+                <T variant="cardTitle" weight="bold" c={color.text} style={{ marginTop: space.x4 }}>
                   {themeJudgement.theme.replace(/-/g, ' ')}
                 </T>
                 <View style={{ marginTop: space.x12 }}>
@@ -174,10 +174,10 @@ export default function DeskPickDetail() {
                 style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
               >
                 <Eyebrow c={color.violetLight}>Found under</Eyebrow>
-                <T size={17} weight="bold" c={color.text} style={{ marginTop: space.x4 }}>
+                <T variant="cardTitle" weight="bold" c={color.text} style={{ marginTop: space.x4 }}>
                   {pick.theme.replace(/-/g, ' ')}
                 </T>
-                <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x6 }}>
+                <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x6 }}>
                   The desk is no longer judging this theme, so its size and
                   timing are not being shown.
                 </T>
@@ -225,12 +225,12 @@ export default function DeskPickDetail() {
         {pick.gradeWhy && (
           <View style={{ marginTop: space.x24 }} testID="desk-pick-grade-why">
             <Eyebrow c={color.muted}>Why that grade</Eyebrow>
-            <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
+            <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
               The grade asks one thing: does this look like a company before a
               very big move? Five things count.
             </T>
             <GradeLegs />
-            <T size={14} lh={21} c={color.text} style={{ marginTop: space.x16 }}>
+            <T variant="body" lh={21} c={color.text} style={{ marginTop: space.x16 }}>
               {pick.gradeWhy}
             </T>
           </View>
@@ -257,7 +257,7 @@ export default function DeskPickDetail() {
         {alsoWrittenUp.length > 0 && (
           <View style={{ marginTop: space.x30 }}>
             <Eyebrow c={color.muted}>Also written up under</Eyebrow>
-            <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
+            <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
               The search runs per theme, so the same company can be argued more
               than once. These are different arguments, not copies.
             </T>
@@ -273,11 +273,11 @@ export default function DeskPickDetail() {
                   opacity: pressed ? 0.6 : 1,
                 })}
               >
-                <T size={13} c={color.text} style={{ flex: 1 }} numberOfLines={1}>
+                <T variant="meta" c={color.text} style={{ flex: 1 }} numberOfLines={1}>
                   {a.theme.replace(/-/g, ' ')}
                 </T>
                 <GradeMark grade={a.grade} size={12} />
-                <T size={11} c={color.dim}>{a.pickDate ?? ''}</T>
+                <T variant="meta" c={color.dim}>{a.pickDate ?? ''}</T>
               </Pressable>
             ))}
           </View>
@@ -297,7 +297,7 @@ export default function DeskPickDetail() {
         </View>
 
         {res.isFixture ? (
-          <T size={10} c={color.dim} style={{ marginTop: space.x20 }}>
+          <T variant="meta" c={color.dim} style={{ marginTop: space.x20 }}>
             Sample desk — the research service is not connected here.
           </T>
         ) : null}

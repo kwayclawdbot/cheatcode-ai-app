@@ -94,7 +94,7 @@ export default function Settings() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 28, gap: 11 }}
         showsVerticalScrollIndicator={false}
       >
-        <Eyebrow c={color.violetLight}>EXPLANATION LEVEL</Eyebrow>
+        <Eyebrow c={color.violetLight}>Explanation level</Eyebrow>
         <ChipRail
           options={LEVELS}
           value={level}
@@ -103,19 +103,19 @@ export default function Settings() {
           testID="settings-level"
         />
         <ObjectCard r={radius.xl} style={{ padding: 14 }}>
-          <T size={11} c={color.muted} ls={0.6}>SAMPLE</T>
-          <T size={15} lh={22} style={{ marginTop: 6 }}>{SAMPLE[level]}</T>
+          <T variant="meta" c={color.muted}>Sample</T>
+          <T variant="body" lh={22} style={{ marginTop: 6 }}>{SAMPLE[level]}</T>
         </ObjectCard>
 
         {/* LANE C voice: drawn only when the server says Kai's voice is live. */}
         <VoiceRepliesRow />
 
-        <Eyebrow c={color.gold}>QUIET HOURS</Eyebrow>
+        <Eyebrow c={color.gold}>Quiet hours</Eyebrow>
         <RowList>
           <Row last={!quiet}>
             <View style={{ flex: 1 }}>
-              <T size={14}>Hold notifications overnight</T>
-              <T size={12} c={color.muted} style={{ marginTop: 2 }}>Anything urgent still waits for you in the morning.</T>
+              <T variant="body">Hold notifications overnight</T>
+              <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>Anything urgent still waits for you in the morning.</T>
             </View>
             <Toggle
               testID="toggle-quiet"
@@ -127,7 +127,7 @@ export default function Settings() {
           {quiet ? (
             <>
               <Row>
-                <T size={14} c={color.muted} style={{ flex: 1 }}>From</T>
+                <T variant="body" c={color.muted} style={{ flex: 1 }}>From</T>
                 <View style={{ flexDirection: 'row', gap: tap.gap }}>
                   {HOURS.map((h) => (
                     <Pressable
@@ -139,13 +139,13 @@ export default function Settings() {
                       onPress={() => { setStart(h); void save({ quiet_hours: { enabled: true, start: h, end } }); }}
                       style={{ minHeight: tap.min, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, borderRadius: radius.sm, borderWidth: 0.5, borderColor: h === start ? alpha.volt55 : alpha.ivory12, backgroundColor: h === start ? alpha.volt10 : 'transparent' }}
                     >
-                      <Num size={12} weight="regular" c={h === start ? color.volt : color.muted}>{h}</Num>
+                      <Num variant="meta" weight="regular" c={h === start ? color.volt : color.muted}>{h}</Num>
                     </Pressable>
                   ))}
                 </View>
               </Row>
               <Row last>
-                <T size={14} c={color.muted} style={{ flex: 1 }}>Until</T>
+                <T variant="body" c={color.muted} style={{ flex: 1 }}>Until</T>
                 <View style={{ flexDirection: 'row', gap: tap.gap }}>
                   {MORNINGS.map((h) => (
                     <Pressable
@@ -157,7 +157,7 @@ export default function Settings() {
                       onPress={() => { setEnd(h); void save({ quiet_hours: { enabled: true, start, end: h } }); }}
                       style={{ minHeight: tap.min, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, borderRadius: radius.sm, borderWidth: 0.5, borderColor: h === end ? alpha.volt55 : alpha.ivory12, backgroundColor: h === end ? alpha.volt10 : 'transparent' }}
                     >
-                      <Num size={12} weight="regular" c={h === end ? color.volt : color.muted}>{h}</Num>
+                      <Num variant="meta" weight="regular" c={h === end ? color.volt : color.muted}>{h}</Num>
                     </Pressable>
                   ))}
                 </View>
@@ -168,11 +168,11 @@ export default function Settings() {
 
         {modes.length ? (
           <>
-            <Eyebrow>NOTIFY ME ABOUT</Eyebrow>
+            <Eyebrow>Notify me about</Eyebrow>
             <RowList>
               {modes.map(([m, on], i) => (
                 <Row key={m} last={i === modes.length - 1}>
-                  <T size={14} style={{ flex: 1 }}>{m.replace(/_/g, ' ')}</T>
+                  <T variant="body" style={{ flex: 1 }}>{m.replace(/_/g, ' ')}</T>
                   <Toggle
                     testID={`notify-${m}`}
                     value={!!on}
@@ -185,12 +185,12 @@ export default function Settings() {
           </>
         ) : null}
 
-        <Eyebrow>ACCESSIBILITY</Eyebrow>
+        <Eyebrow>Accessibility</Eyebrow>
         <RowList>
           <Row>
             <View style={{ flex: 1, paddingRight: 12 }}>
-              <T size={14}>Reduce motion</T>
-              <T size={12} c={color.muted} style={{ marginTop: 2 }}>
+              <T variant="body">Reduce motion</T>
+              <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>
                 {a11y.systemReducedMotion
                   /* The OR runs one way only: the phone can turn motion off for
                      the app, the app can never turn it back on. Saying so is
@@ -211,7 +211,7 @@ export default function Settings() {
             />
           </Row>
           <Row last>
-            <T size={14} style={{ flex: 1 }}>Text size</T>
+            <T variant="body" style={{ flex: 1 }}>Text size</T>
             <View style={{ flexDirection: 'row', gap: tap.gap }}>
               {SCALES.map((s) => (
                 <Pressable
@@ -229,7 +229,7 @@ export default function Settings() {
                      weight; it is the TOUCHABLE box that grew. */
                   style={{ minHeight: tap.min, minWidth: tap.min, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, borderRadius: radius.sm, borderWidth: 0.5, borderColor: s.key === scale ? alpha.volt55 : alpha.ivory12, backgroundColor: s.key === scale ? alpha.volt10 : 'transparent' }}
                 >
-                  <T size={12} c={s.key === scale ? color.volt : color.muted}>{s.label}</T>
+                  <T variant="meta" c={s.key === scale ? color.volt : color.muted}>{s.label}</T>
                 </Pressable>
               ))}
             </View>
@@ -238,13 +238,13 @@ export default function Settings() {
         {/* This sentence is set in `T` like everything else, so it is itself the
             demonstration: pick Largest and the explanation of what Largest does
             gets larger while you are reading it. */}
-        <T size={12} c={color.dim} lh={18}>
+        <T variant="meta" c={color.dim} lh={18}>
           Both apply everywhere in the app straight away and stay set the next time you open it. Text size is on top of
           whatever size your phone is already set to — the app never overrides that.
         </T>
 
         {notAvailable ? <NotConnected what="Your saved settings" /> : null}
-        {error ? <T size={13} c={color.red}>{error}</T> : null}
+        {error ? <T variant="meta" c={color.red}>{error}</T> : null}
       </ScrollView>
     </Screen>
   );

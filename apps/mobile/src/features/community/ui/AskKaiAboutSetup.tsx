@@ -144,7 +144,7 @@ export function AskKaiAboutSetup({
     >
       <KaiOrb size={20} glow={false} />
       <View style={{ flex: 1, minWidth: 0 }}>
-        <T size={13} weight="semibold" c={color.violetLight} numberOfLines={1}>
+        <T variant="meta" weight="semibold" c={color.violetLight} numberOfLines={1}>
           Ask Kai to explain {ask.label}
         </T>
       </View>

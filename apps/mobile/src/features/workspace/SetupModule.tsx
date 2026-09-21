@@ -18,8 +18,8 @@ function Level({ label, value, c, bg, border, testID }: {
       testID={testID}
       style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 11, backgroundColor: bg, borderWidth: 0.5, borderColor: border, alignItems: 'center' }}
     >
-      <T size={9} c={color.muted}>{label}</T>
-      <Num size={13} weight="semibold" c={c} style={{ marginTop: 1 }}>{value}</Num>
+      <T variant="meta" c={color.muted}>{label}</T>
+      <Num variant="meta" weight="semibold" c={c} style={{ marginTop: 1 }}>{value}</Num>
     </View>
   );
 }
@@ -35,7 +35,7 @@ function TextAction({ label, c, onPress, testID }: { label: string; c: string; o
       hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
       style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
     >
-      <T size={12} weight="semibold" c={c}>{label}</T>
+      <T variant="meta" weight="semibold" c={c}>{label}</T>
     </Pressable>
   );
 }
@@ -65,13 +65,13 @@ export function SetupModuleCard({
     <ObjectCard testID={testID} tone="kai" r={radius.xxl} style={{ paddingVertical: 14, paddingHorizontal: 15, gap: 10 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <KaiOrb size={20} />
-        <T size={12} weight="bold" c={color.violetLight} testID="setup-state">{module.state_label}</T>
+        <T variant="meta" weight="bold" c={color.violetLight} testID="setup-state">{module.state_label}</T>
         <View style={{ paddingHorizontal: 7, paddingVertical: 1, borderRadius: radius.sm, backgroundColor: alpha.violet14, borderWidth: 0.5, borderColor: alpha.violet50 }}>
-          <T size={11} weight="bold" c={color.violet}>{module.grade_display}</T>
+          <T variant="meta" weight="bold" c={color.violet}>{module.grade_display}</T>
         </View>
         {/* Distance to entry only matters while the idea is still live. */}
         {module.distance_label && module.state !== 'invalidated' && module.state !== 'expired' ? (
-          <T size={11} c={color.cyan} style={{ marginLeft: 'auto' }}>{module.distance_label}</T>
+          <T variant="meta" c={color.cyan} style={{ marginLeft: 'auto' }}>{module.distance_label}</T>
         ) : null}
       </View>
 
@@ -99,13 +99,13 @@ export function SetupModuleCard({
         >
           {/* The bell belongs to "Watch this" — not to "Review what changed". */}
           {/^watch/i.test(primaryLabel) ? <Bell size={13} color={watching ? color.volt : color.bg} /> : null}
-          <T size={13} weight="bold" c={watching ? color.volt : color.bg}>{primaryLabel}</T>
+          <T variant="meta" weight="bold" c={watching ? color.volt : color.bg}>{primaryLabel}</T>
         </Pressable>
         <TextAction testID="setup-see-why" label="See why" c={color.violetLight} onPress={onSeeWhy} />
         <TextAction testID="setup-build-plan" label="Build a plan" c={color.muted} onPress={onBuildPlan} />
       </View>
 
-      {module.note ? <T size={11} lh={16} c={color.muted}>{module.note}</T> : null}
+      {module.note ? <T variant="meta" lh={16} c={color.muted}>{module.note}</T> : null}
 
       {/*
         THE MOST ADVICE-SHAPED SURFACE IN THE APP GETS ITS OWN LINE.
@@ -115,7 +115,7 @@ export function SetupModuleCard({
         wording is a DRAFT pending the owner's legal review — see
         `features/legal/disclaimers.ts`.
       */}
-      <T size={9.5} lh={14} c={color.dim} testID="setup-not-advice">{NOT_ADVICE_SETUP}</T>
+      <T variant="meta" lh={14} c={color.dim} testID="setup-not-advice">{NOT_ADVICE_SETUP}</T>
     </ObjectCard>
   );
 }
@@ -133,18 +133,18 @@ export function PositionModuleCard({ symbol, position, testID = 'position-module
   return (
     <ObjectCard testID={testID} r={radius.xxl} style={{ paddingVertical: 13, paddingHorizontal: 15, gap: 9 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-        <T size={12} weight="bold" c={color.muted}>YOUR POSITION</T>
+        <T variant="meta" weight="bold" c={color.muted}>YOUR POSITION</T>
         {position.health_label ? (
-          <T size={11} c={position.health_label.toLowerCase().includes('risk') ? color.gold : color.green}>{position.health_label}</T>
+          <T variant="meta" c={position.health_label.toLowerCase().includes('risk') ? color.gold : color.green}>{position.health_label}</T>
         ) : null}
         {position.unrealized_pnl != null ? (
-          <Num size={13} weight="semibold" c={up ? color.green : color.red} style={{ marginLeft: 'auto' }}>
+          <Num variant="meta" weight="semibold" c={up ? color.green : color.red} style={{ marginLeft: 'auto' }}>
             {`${up ? '+' : '−'}$${Math.abs(position.unrealized_pnl).toFixed(2)}`}
           </Num>
         ) : null}
       </View>
 
-      <T size={12.5} lh={18} c={color.muted}>
+      <T variant="meta" lh={18} c={color.muted}>
         {position.plain
           ?? [
             position.qty != null ? `${position.qty} shares` : null,

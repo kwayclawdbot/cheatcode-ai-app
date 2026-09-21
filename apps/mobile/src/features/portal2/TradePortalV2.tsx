@@ -306,7 +306,7 @@ export default function TradePortalV2() {
     return (
       <Screen variant="corner" layout="tab" testID="screen-trade-portal-v2">
         <View style={{ padding: 16 }}>
-          <T size={13} c={color.muted}>No symbol was passed to the Trade section.</T>
+          <T variant="meta" c={color.muted}>No symbol was passed to the Trade section.</T>
         </View>
       </Screen>
     );
@@ -339,8 +339,8 @@ export default function TradePortalV2() {
       <Screen variant="corner" layout="tab" testID="screen-trade-portal-v2">
         <View style={{ paddingHorizontal: 16, gap: 12 }} testID="portal2-error">
           <ObjectCard r={radius.xl} style={{ padding: 18, gap: 8 }}>
-            <Eyebrow c={color.muted}>NOTHING LOADED</Eyebrow>
-            <T size={13} c={color.muted} lh={19}>{error ?? `I could not open ${symbol} just now.`}</T>
+            <Eyebrow c={color.muted}>Nothing loaded</Eyebrow>
+            <T variant="meta" c={color.muted} lh={19}>{error ?? `I could not open ${symbol} just now.`}</T>
           </ObjectCard>
           <Button label="Try again" kind="outline" onPress={reload} testID="portal2-retry" />
         </View>
@@ -492,8 +492,8 @@ export default function TradePortalV2() {
               /* NOTHING WAS PRICED BECAUSE NO ORDER COULD BE BUILT — said as
                  that, with the reason, rather than as a pricing failure. */
               <ObjectCard r={radius.xl} style={{ padding: 16, gap: 10 }} testID="take-unsized">
-                <Eyebrow c={color.muted}>NO ORDER TO PRICE</Eyebrow>
-                <T size={15} lh={21}>{take.error}</T>
+                <Eyebrow c={color.muted}>No order to price</Eyebrow>
+                <T variant="body" lh={21}>{take.error}</T>
                 <Button
                   label="Open the full ticket"
                   kind="outline"
@@ -504,9 +504,9 @@ export default function TradePortalV2() {
               </ObjectCard>
             ) : take.phase === 'failed' ? (
               <ObjectCard r={radius.xl} style={{ padding: 16, gap: 10 }} testID="take-failed">
-                <Eyebrow c={color.muted}>NOT PRICED</Eyebrow>
-                <T size={15} lh={21}>{take.error}</T>
-                {take.size?.plain ? <T size={13} lh={19} c={color.muted}>{take.size.plain}</T> : null}
+                <Eyebrow c={color.muted}>Not priced</Eyebrow>
+                <T variant="body" lh={21}>{take.error}</T>
+                {take.size?.plain ? <T variant="meta" lh={19} c={color.muted}>{take.size.plain}</T> : null}
                 <Button
                   label="Try again"
                   kind="outline"
@@ -524,8 +524,8 @@ export default function TradePortalV2() {
               </ObjectCard>
             ) : (
               <ObjectCard r={radius.xl} style={{ padding: 16, gap: 8 }} testID="take-preparing">
-                <Eyebrow c={color.muted}>PRICING IT</Eyebrow>
-                <T size={15} lh={21} c={color.muted}>Working out the size and what it costs…</T>
+                <Eyebrow c={color.muted}>Pricing it</Eyebrow>
+                <T variant="body" lh={21} c={color.muted}>Working out the size and what it costs…</T>
               </ObjectCard>
             )}
           </View>
@@ -703,7 +703,7 @@ function LookBeat({
       */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <T
-          size={13}
+          variant="meta"
           c={color.muted}
           onPress={onToggleLevels}
           testID="look-levels-toggle"
@@ -723,7 +723,7 @@ function LookBeat({
               ? `${markedCount} mark${markedCount === 1 ? '' : 's'} on the chart \u00b7 ${levelsOpen ? 'hide' : 'show'}`
               : `${onChartCount} on the chart \u00b7 ${markedCount} saved \u00b7 ${levelsOpen ? 'hide' : 'show'}`}
         </T>
-        {!exact ? <T size={11.5} c={color.gold} testID="look-coarser">Coarser bars</T> : null}
+        {!exact ? <T variant="meta" c={color.gold} testID="look-coarser">Coarser bars</T> : null}
       </View>
 
       {levelsOpen ? <AnnotationRail annotations={annotations} onSelect={onInspect} /> : null}

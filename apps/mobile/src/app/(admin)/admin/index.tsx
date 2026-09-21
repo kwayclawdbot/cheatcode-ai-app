@@ -43,7 +43,7 @@ export default function AdminOverview() {
     >
       {data ? (
         <>
-          <T size={13} c={color.muted} lh={20} testID="overview-plain">{data.plain}</T>
+          <T variant="meta" c={color.muted} lh={20} testID="overview-plain">{data.plain}</T>
 
           <Section label="THE FUNNEL" note="Every stage is derived from rows, never stored twice.">
             {FUNNEL_ORDER.map((s, i) => (
@@ -89,8 +89,8 @@ export default function AdminOverview() {
                   testID={`mix-${m.source ?? 'none'}`}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-                    <T size={13} c={m.source ? color.text : color.muted} style={{ flex: 1 }}>{sourceLabel(m.source)}</T>
-                    <Num size={13} weight="semibold">{m.people.toLocaleString('en-US')}</Num>
+                    <T variant="meta" c={m.source ? color.text : color.muted} style={{ flex: 1 }}>{sourceLabel(m.source)}</T>
+                    <Num variant="meta" weight="semibold">{m.people.toLocaleString('en-US')}</Num>
                   </View>
                   <ShareBar share={m.people / mixTotal} />
                 </View>
@@ -113,8 +113,8 @@ export default function AdminOverview() {
                 <React.Fragment key={label}>
                   {i ? <VRule /> : null}
                   <View style={{ flex: 1, gap: 3 }}>
-                    <Num size={18} weight="bold">{n.toLocaleString('en-US')}</Num>
-                    <T size={10} weight="bold" ls={0.8} c={color.dim} numberOfLines={1}>{label.toUpperCase()}</T>
+                    <Num variant="cardTitle" weight="bold">{n.toLocaleString('en-US')}</Num>
+                    <T variant="meta" weight="bold" ls={0.8} c={color.dim} numberOfLines={1}>{label.toUpperCase()}</T>
                   </View>
                 </React.Fragment>
               ))}
@@ -147,7 +147,7 @@ export default function AdminOverview() {
             ))}
           </Section>
 
-          <T size={10} c={color.dim} align="center" style={{ marginTop: space.x8 }}>
+          <T variant="meta" c={color.dim} align="center" style={{ marginTop: space.x8 }}>
             {`Read at ${stamp(data.generated_at)}. Opening this board is written to the audit log.`}
           </T>
         </>

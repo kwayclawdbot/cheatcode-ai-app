@@ -115,7 +115,7 @@ export function PanelLauncher({ visible, onClose }: { visible: boolean; onClose:
             );
           })}
         </View>
-        <T size={11.5} c={color.dim}>It opens above the conversation. Kai can see what you opened.</T>
+        <T variant="meta" c={color.dim}>It opens above the conversation. Kai can see what you opened.</T>
       </View>
     </Sheet>
   );

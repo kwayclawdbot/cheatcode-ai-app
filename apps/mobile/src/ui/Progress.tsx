@@ -21,7 +21,7 @@ export function ProgressDots({ total, done, caption, testID }: { total: number; 
       {Array.from({ length: total }).map((_, i) => (
         <View key={i} style={{ width: 22, height: 4, borderRadius: 2, backgroundColor: i < done ? color.volt : alpha.ivory14 }} />
       ))}
-      <T size={11} c={color.muted}>{` ${caption}`}</T>
+      <T variant="meta" c={color.muted}>{` ${caption}`}</T>
     </View>
   );
 }

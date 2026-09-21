@@ -46,7 +46,7 @@ export function ThesisReader({ thesis }: { thesis: string | null }) {
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.x12 }}>
         <View style={{ flex: 1 }}>
           <Eyebrow c={color.violetLight}>The argument</Eyebrow>
-          <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
+          <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
             Every figure quoted below comes from a named filing period or a real
             daily bar. Nothing in it was estimated.
           </T>
@@ -59,7 +59,7 @@ export function ThesisReader({ thesis }: { thesis: string | null }) {
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, paddingTop: space.x2 })}
           >
-            <T size={12} weight="semibold" c={color.volt}>
+            <T variant="meta" weight="semibold" c={color.volt}>
               {allOpen ? 'Close all' : 'Read it all'}
             </T>
           </Pressable>
@@ -72,7 +72,7 @@ export function ThesisReader({ thesis }: { thesis: string | null }) {
           <View style={{
             paddingLeft: space.x12, borderLeftWidth: 2, borderLeftColor: alpha.gold40,
           }}>
-            <T size={13} lh={19} c={color.muted}>
+            <T variant="meta" lh={19} c={color.muted}>
               This one was not filed in sections, so there is nothing to break it
               into. It is shown whole, exactly as it was written.
             </T>
@@ -112,16 +112,16 @@ export function ThesisReader({ thesis }: { thesis: string | null }) {
                       paddingVertical: space.x14, opacity: pressed ? 0.6 : 1,
                     })}
                   >
-                    <Num size={11} weight="bold" c={isOpen ? color.violetLight : color.dim} style={{ width: 16 }}>
+                    <Num variant="meta" weight="bold" c={isOpen ? color.violetLight : color.dim} style={{ width: 16 }}>
                       {String(i + 1).padStart(2, '0')}
                     </Num>
 
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <T size={14} weight="bold" c={isOpen ? color.text : color.muted} ls={0.4}>
+                      <T variant="body" weight="bold" c={isOpen ? color.text : color.muted} ls={0.4}>
                         {s.name}
                       </T>
                       {gloss ? (
-                        <T size={11.5} c={color.dim} style={{ marginTop: space.x2 }}>{gloss}</T>
+                        <T variant="meta" c={color.dim} style={{ marginTop: space.x2 }}>{gloss}</T>
                       ) : null}
                     </View>
 
@@ -131,7 +131,7 @@ export function ThesisReader({ thesis }: { thesis: string | null }) {
                         height: 3, borderRadius: 2, width: `${Math.max(12, (s.words / longest) * 100)}%`,
                         backgroundColor: isOpen ? color.violet : alpha.ivory20,
                       }} />
-                      <T size={9} c={color.dim}>{s.words}w</T>
+                      <T variant="meta" c={color.dim}>{s.words}w</T>
                     </View>
 
                     <View style={{
@@ -139,7 +139,7 @@ export function ThesisReader({ thesis }: { thesis: string | null }) {
                       alignItems: 'center', justifyContent: 'center',
                       backgroundColor: isOpen ? alpha.violet20 : alpha.ivory06,
                     }}>
-                      <T size={13} weight="bold" c={isOpen ? color.violetLight : color.muted}>
+                      <T variant="meta" weight="bold" c={isOpen ? color.violetLight : color.muted}>
                         {isOpen ? '−' : '+'}
                       </T>
                     </View>
@@ -150,7 +150,7 @@ export function ThesisReader({ thesis }: { thesis: string | null }) {
                       {s.body ? (
                         <Prose text={s.body} />
                       ) : (
-                        <T size={13} lh={19} c={color.dim}>
+                        <T variant="meta" lh={19} c={color.dim}>
                           The desk wrote this heading and left it empty.
                         </T>
                       )}

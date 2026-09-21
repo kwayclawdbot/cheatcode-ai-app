@@ -63,8 +63,8 @@ function LevelCell({ label, value, c, bg, border, mark }: {
 }) {
   return (
     <View style={{ flex: 1, paddingVertical: 7, paddingHorizontal: 3, borderRadius: 10, backgroundColor: bg, borderWidth: 0.5, borderColor: border, alignItems: 'center' }}>
-      <T size={8.5} c={color.muted}>{label}</T>
-      <Num size={12} weight="semibold" c={c} style={{ marginTop: 2 }}>{value}</Num>
+      <T variant="meta" c={color.muted}>{label}</T>
+      <Num variant="meta" weight="semibold" c={c} style={{ marginTop: 2 }}>{value}</Num>
       {mark ? <View style={{ marginTop: 3 }}>{mark}</View> : null}
     </View>
   );
@@ -91,13 +91,13 @@ function GradeBar({ label, pct, readout, mono, testID }: {
     >
       {/* Wide enough for "Options activity" on one line — a wrapped label
           pushes the three bars out of alignment and they stop reading as a set. */}
-      <T size={11} c={color.muted} numberOfLines={1} style={{ width: 99 }}>{label}</T>
+      <T variant="meta" c={color.muted} numberOfLines={1} style={{ width: 99 }}>{label}</T>
       <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: alpha.ivory08, overflow: 'hidden' }}>
         <View style={{ width: `${w}%`, height: '100%', borderRadius: 3, backgroundColor: tone }} />
       </View>
       {mono
-        ? <Num size={11} c={tone} style={{ minWidth: 46, textAlign: 'right' }}>{readout}</Num>
-        : <T size={11} c={tone} style={{ minWidth: 46, textAlign: 'right' }}>{readout}</T>}
+        ? <Num variant="meta" c={tone} style={{ minWidth: 46, textAlign: 'right' }}>{readout}</Num>
+        : <T variant="meta" c={tone} style={{ minWidth: 46, textAlign: 'right' }}>{readout}</T>}
     </View>
   );
 }
@@ -652,7 +652,7 @@ function StatCell({ label, value, tone, size, minWidth, testID }: {
 }) {
   return (
     <View testID={testID} accessibilityLabel={`${label}, ${value}`} style={{ minWidth }}>
-      <T size={8.5} weight="bold" c={color.dim} ls={0.7}>{label.toUpperCase()}</T>
+      <T variant="meta" weight="bold" c={color.dim} ls={0.7}>{label.toUpperCase()}</T>
       <Num size={size} weight={size >= 18 ? 'bold' : 'semibold'} c={tone ?? color.text} style={{ marginTop: 3 }}>
         {value}
       </Num>
@@ -764,7 +764,7 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
         {/* Who, which way round, how well graded, and when it finished. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <TickerMark symbol={alert.symbol} size={22} />
-          <T size={15} weight="bold">{alert.symbol}</T>
+          <T variant="body" weight="bold">{alert.symbol}</T>
           {/*
             Direction is part of the record, not decoration: a short read as a
             long is read backwards. It sits next to the ticker on every history
@@ -775,7 +775,7 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
               testID={`direction-${alert.symbol}`}
               style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5, backgroundColor: alpha.ivory08 }}
             >
-              <T size={10} weight="semibold" c={color.muted} style={{ textTransform: 'capitalize' }}>{alert.direction_label}</T>
+              <T variant="meta" weight="semibold" c={color.muted} style={{ textTransform: 'capitalize' }}>{alert.direction_label}</T>
             </View>
           ) : null}
           {/*
@@ -784,9 +784,9 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
           */}
           <GradeChip grade={alert.grade} score={alert.score} />
           <View style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
-            {alert.resolved_label ? <T size={10} c={color.muted}>{alert.resolved_label}</T> : null}
+            {alert.resolved_label ? <T variant="meta" c={color.muted}>{alert.resolved_label}</T> : null}
             {/* The word, always — the red wash on an invalidated row is never the only thing saying so. */}
-            <T size={10.5} weight="semibold" c={bad ? color.red : color.muted}>{alert.state_label}</T>
+            <T variant="meta" weight="semibold" c={bad ? color.red : color.muted}>{alert.state_label}</T>
           </View>
           <ChevronRight />
         </View>
@@ -826,7 +826,7 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
         */}
         {contract ? <ContractLine c={contract} symbol={alert.symbol} /> : null}
 
-        {note ? <T size={10.5} c={color.dim} lh={15}>{note}</T> : null}
+        {note ? <T variant="meta" c={color.dim} lh={15}>{note}</T> : null}
       </LinearGradient>
     </Pressable>
   );
@@ -845,8 +845,8 @@ export function AlertsEmpty({ copy, offers = [] }: {
 }) {
   return (
     <View style={{ paddingVertical: 40, paddingHorizontal: 20, gap: 8, alignItems: 'center' }} testID="alerts-empty">
-      <Eyebrow c={color.dim}>NOTHING HERE</Eyebrow>
-      <T size={13} c={color.muted} align="center" lh={19}>{copy}</T>
+      <Eyebrow c={color.dim}>Nothing here</Eyebrow>
+      <T variant="meta" c={color.muted} align="center" lh={19}>{copy}</T>
       {offers.length ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 6 }}>
           {offers.map((o) => (
@@ -863,7 +863,7 @@ export function AlertsEmpty({ copy, offers = [] }: {
                 opacity: pressed ? 0.7 : 1,
               })}
             >
-              <T size={12.5} weight="semibold" c={color.volt}>{o.label}</T>
+              <T variant="meta" weight="semibold" c={color.volt}>{o.label}</T>
             </Pressable>
           ))}
         </View>

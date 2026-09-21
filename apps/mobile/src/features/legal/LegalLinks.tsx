@@ -61,8 +61,8 @@ function LegalRow({ label, url, first, testID }: {
       })}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x10 }}>
-        <T size={13} c={color.muted} style={{ flex: 1 }}>{label}</T>
-        <T size={12} c={color.dim}>›</T>
+        <T variant="meta" c={color.muted} style={{ flex: 1 }}>{label}</T>
+        <T variant="meta" c={color.dim}>›</T>
       </View>
     </Pressable>
   );
@@ -82,7 +82,7 @@ export function LegalLinks({ style, compact = false, testID = 'legal-links' }: {
   return (
     <View testID={testID} style={style}>
       {compact ? null : (
-        <T size={10.5} weight="semibold" c={color.dim} style={{ letterSpacing: 0.8, marginBottom: space.x4 }}>
+        <T variant="meta" weight="semibold" c={color.dim} style={{ letterSpacing: 0.8, marginBottom: space.x4 }}>
           LEGAL
         </T>
       )}
@@ -129,11 +129,11 @@ export function LegalFootnote({ style, testID = 'legal-footnote' }: {
           hitSlop={10}
           style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, minHeight: 30, justifyContent: 'center' })}
         >
-          <T size={11.5} c={color.muted}>Privacy Policy</T>
+          <T variant="meta" c={color.muted}>Privacy Policy</T>
         </Pressable>
       ) : null}
       {privacy && terms ? (
-        <T size={11.5} c={color.dim} style={{ paddingHorizontal: space.x8, lineHeight: 30 }}>·</T>
+        <T variant="meta" c={color.dim} style={{ paddingHorizontal: space.x8, lineHeight: 30 }}>·</T>
       ) : null}
       {terms ? (
         <Pressable
@@ -144,7 +144,7 @@ export function LegalFootnote({ style, testID = 'legal-footnote' }: {
           hitSlop={10}
           style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, minHeight: 30, justifyContent: 'center' })}
         >
-          <T size={11.5} c={color.muted}>Terms of Service</T>
+          <T variant="meta" c={color.muted}>Terms of Service</T>
         </Pressable>
       ) : null}
     </View>

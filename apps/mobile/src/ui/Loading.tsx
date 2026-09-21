@@ -15,7 +15,7 @@ export function ScreenLoading({ label, testID }: { label?: string; testID?: stri
   return (
     <View testID={testID ?? 'loading'} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
       <ActivityIndicator color={color.violet} />
-      {label ? <T size={12} c={color.muted}>{label}</T> : null}
+      {label ? <T variant="meta" c={color.muted}>{label}</T> : null}
     </View>
   );
 }
@@ -37,8 +37,8 @@ export function NotConnected({ what, testID }: { what: string; testID?: string }
         gap: 7,
       }}
     >
-      <T size={14} weight="bold">{`${what} isn't live yet`}</T>
-      <T size={12.5} lh={19} c={color.muted}>
+      <T variant="body" weight="bold">{`${what} isn't live yet`}</T>
+      <T variant="meta" lh={19} c={color.muted}>
         This part of the service is still being connected. Nothing is missing from your account — there is just
         nothing for Kai to show here until it is.
       </T>

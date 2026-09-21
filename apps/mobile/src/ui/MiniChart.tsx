@@ -86,7 +86,7 @@ export function LevelChart({
                 backgroundColor: color.cyanTint, borderWidth: 0.5, borderColor: alpha.cyan40,
               }}
             >
-              <Num size={10} weight="regular" c={color.cyan}>{k}</Num>
+              <Num variant="meta" weight="regular" c={color.cyan}>{k}</Num>
             </View>
           </Pressable>
         );
@@ -98,9 +98,9 @@ export function LevelChart({
 export function LevelLegend() {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-      <Num size={10} weight="regular" c={color.red}>460 invalid</Num>
-      <Num size={10} weight="regular" c={color.cyan}>504 confirm</Num>
-      <Num size={10} weight="regular" c={color.green}>540 target</Num>
+      <Num variant="meta" weight="regular" c={color.red}>460 invalid</Num>
+      <Num variant="meta" weight="regular" c={color.cyan}>504 confirm</Num>
+      <Num variant="meta" weight="regular" c={color.green}>540 target</Num>
     </View>
   );
 }
@@ -177,14 +177,14 @@ export function CandleChart({
             {sorted.map((l) => (
               <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <View style={{ flex: 1, height: 1, backgroundColor: `${l.c}66` }} />
-                <Num size={10} weight="medium" c={l.c}>{l.label}</Num>
+                <Num variant="meta" weight="medium" c={l.c}>{l.label}</Num>
               </View>
             ))}
           </View>
         ) : null}
         <View style={{ gap: 3 }}>
-          <T size={12.5} c={color.muted}>No price bars for this range yet</T>
-          <T size={11} c={color.dim} lh={16}>
+          <T variant="meta" c={color.muted}>No price bars for this range yet</T>
+          <T variant="meta" c={color.dim} lh={16}>
             Kai draws the chart as soon as the market-data service has them. The levels above are real.
           </T>
         </View>
@@ -308,15 +308,15 @@ export function CandleChart({
               borderColor: `${l.c}66`,
             }}
           >
-            <Num size={9} weight="medium" c={l.c}>{l.label}</Num>
+            <Num variant="meta" weight="medium" c={l.c}>{l.label}</Num>
           </View>
         ))}
       </View>
 
       {footerLeft || footerRight ? (
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
-          <Num size={10} weight="regular" c={color.dim}>{footerLeft ?? ''}</Num>
-          <Num size={10} weight="regular" c={color.dim}>{footerRight ?? ''}</Num>
+          <Num variant="meta" weight="regular" c={color.dim}>{footerLeft ?? ''}</Num>
+          <Num variant="meta" weight="regular" c={color.dim}>{footerRight ?? ''}</Num>
         </View>
       ) : null}
     </View>
@@ -355,8 +355,8 @@ export function PriceLine({
         testID={testID}
         style={{ height, borderRadius: radius.lg, borderWidth: 0.5, borderColor: alpha.ivory12, backgroundColor: color.surface3, justifyContent: 'center', paddingHorizontal: 12, gap: 3 }}
       >
-        <T size={12} c={color.muted}>No price bars yet</T>
-        {level != null ? <Num size={11} weight="medium" c={color.cyan}>{note ?? `Level ${level}`}</Num> : null}
+        <T variant="meta" c={color.muted}>No price bars yet</T>
+        {level != null ? <Num variant="meta" weight="medium" c={color.cyan}>{note ?? `Level ${level}`}</Num> : null}
       </View>
     );
   }
@@ -395,7 +395,7 @@ export function PriceLine({
             backgroundColor: color.cyanTint, borderWidth: 0.5, borderColor: alpha.cyan40,
           }}
         >
-          <Num size={9} weight="medium" c={color.cyan}>{note}</Num>
+          <Num variant="meta" weight="medium" c={color.cyan}>{note}</Num>
         </View>
       ) : null}
     </View>

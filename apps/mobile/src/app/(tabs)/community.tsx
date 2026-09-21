@@ -506,7 +506,7 @@ export default function Community() {
           {/* The club is still the club; it is an eyebrow rather than the
               heading, because the thing a reader needs to find on this screen
               is which ROOM they are in (F14). */}
-          <T size={10} weight="semibold" ls={0.7} c={color.dim} numberOfLines={1}>CHEAT CODE CLUB</T>
+          <T variant="meta" weight="semibold" c={color.dim} numberOfLines={1}>Cheat Code Club</T>
           {/*
             THE ROOM'S NAME IS THE HEADING, AND IT IS THE SWITCH.
             One control where there used to be five: a Beginners pill, three
@@ -520,10 +520,10 @@ export default function Community() {
               testID="club-room-name"
             />
           ) : (
-            <T size={20} weight="bold" numberOfLines={1}>Community</T>
+            <T variant="sectionTitle" weight="bold" numberOfLines={1}>Community</T>
           )}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <T size={10.5} c={color.dim} testID="club-presence">{presence}</T>
+            <T variant="meta" c={color.dim} testID="club-presence">{presence}</T>
             {/*
               "REFRESHING EVERY 5S" IS GONE. The mechanism is untouched — the
               poll still runs and `useFreshness` still reports it — but the
@@ -541,7 +541,7 @@ export default function Community() {
             {freshness === 'realtime' ? (
               <>
                 <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: color.dim }} />
-                <T size={10.5} c={color.volt} testID="club-freshness">
+                <T variant="meta" c={color.volt} testID="club-freshness">
                   {transportLabel(freshness)}
                 </T>
               </>
@@ -614,7 +614,7 @@ export default function Community() {
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
             >
-              <T size={11.5} weight="semibold" c={color.muted}>Your calls</T>
+              <T variant="meta" weight="semibold" c={color.muted}>Your calls</T>
             </Pressable>
           ) : null}
           <Pressable
@@ -626,7 +626,7 @@ export default function Community() {
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
           >
-            <T size={11.5} weight="semibold" c={color.muted}>The board</T>
+            <T variant="meta" weight="semibold" c={color.muted}>The board</T>
           </Pressable>
         </View>
       </View>
@@ -667,7 +667,7 @@ export default function Community() {
                 testID="circles-empty"
                 style={{ paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: alpha.ivory07 }}
               >
-                <T size={11.5} lh={16} c={color.dim}>
+                <T variant="meta" lh={16} c={color.dim}>
                   No circles are open. A circle is a room the team opens around one name, with a
                   clock on it. The three rooms below are always here.
                 </T>
@@ -684,8 +684,8 @@ export default function Community() {
                 }}
               >
                 <KaiOrb size={17} glow={false} />
-                <T size={11.5} lh={16} c={color.muted} style={{ flex: 1 }}>
-                  <T size={11.5} weight="bold" c={color.violetLight}>Kai</T>
+                <T variant="meta" lh={16} c={color.muted} style={{ flex: 1 }}>
+                  <T variant="meta" weight="bold" c={color.violetLight}>Kai</T>
                   {` · ${kaiPinned}`}
                 </T>
               </View>
@@ -751,12 +751,12 @@ export default function Community() {
                 />
               ) : (
                 <View testID="club-empty" style={{ borderLeftWidth: 2, borderLeftColor: alpha.ivory12, paddingLeft: 12, paddingVertical: 6 }}>
-                  <T size={13.5} weight="semibold">No rooms yet.</T>
+                  <T variant="meta" weight="semibold">No rooms yet.</T>
                 </View>
               )}
             </View>
 
-            {note ? <T size={11} c={color.gold} style={{ paddingHorizontal: 16, paddingTop: 10 }}>{note}</T> : null}
+            {note ? <T variant="meta" c={color.gold} style={{ paddingHorizontal: 16, paddingTop: 10 }}>{note}</T> : null}
             {/*
               The standing "Claims stay unverified until Kai checks them"
               disclaimer was removed here (owner, 6 Sept). It said the same
@@ -769,7 +769,7 @@ export default function Community() {
             {source === 'fixtures' ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 12 }}>
                 <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color.dim }} />
-                <T size={10} lh={14} c={color.dim} style={{ flex: 1 }}>Example rooms</T>
+                <T variant="meta" lh={14} c={color.dim} style={{ flex: 1 }}>Example rooms</T>
               </View>
             ) : null}
 
@@ -781,8 +781,8 @@ export default function Community() {
             */}
             {source === 'unreachable' ? (
               <View style={{ paddingHorizontal: 16, paddingTop: 16, gap: 10 }} testID="community-unreachable">
-                <T size={15} weight="bold">We couldn't load the club</T>
-                <T size={12} lh={18} c={color.muted}>
+                <T variant="body" weight="bold">We couldn't load the club</T>
+                <T variant="meta" lh={18} c={color.muted}>
                   Nothing was reached, so nothing is shown. The rooms below would have been made up,
                   and an invented club is worse than an empty screen.
                 </T>
@@ -798,7 +798,7 @@ export default function Community() {
                     opacity: pressed ? 0.7 : 1,
                   })}
                 >
-                  <T size={12} weight="semibold" c={color.volt}>Try again</T>
+                  <T variant="meta" weight="semibold" c={color.volt}>Try again</T>
                 </Pressable>
               </View>
             ) : null}
@@ -818,11 +818,11 @@ export default function Community() {
             onPress={() => setPostNotice(null)}
             style={{ borderLeftWidth: 2, borderLeftColor: color.gold, paddingLeft: 11, paddingVertical: 2 }}
           >
-            <T size={12} lh={17} c={color.gold}>{postNotice}</T>
+            <T variant="meta" lh={17} c={color.gold}>{postNotice}</T>
           </Pressable>
         ) : null}
         {media.notice ? (
-          <T size={11} c={color.gold} style={{ paddingBottom: 8 }}>{media.notice}</T>
+          <T variant="meta" c={color.gold} style={{ paddingBottom: 8 }}>{media.notice}</T>
         ) : null}
         <Composer
           testID="club-composer"

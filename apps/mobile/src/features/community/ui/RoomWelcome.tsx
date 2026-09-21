@@ -70,11 +70,11 @@ export function RoomWelcome({
       }}
     >
       <View style={{ gap: 4 }}>
-        <T size={15} weight="bold">Nobody has posted in {roomName} yet.</T>
+        <T variant="body" weight="bold">Nobody has posted in {roomName} yet.</T>
         {description ? (
-          <T size={12.5} lh={18} c={color.muted}>{description}</T>
+          <T variant="meta" lh={18} c={color.muted}>{description}</T>
         ) : null}
-        <T size={12.5} lh={18} c={color.muted}>
+        <T variant="meta" lh={18} c={color.muted}>
           A question is a good first post. Nobody here minds being asked.
         </T>
       </View>
@@ -99,12 +99,12 @@ export function RoomWelcome({
               opacity: pressed ? 0.75 : 1,
             })}
           >
-            <T size={12.5} weight="semibold" c={color.volt}>{q}</T>
+            <T variant="meta" weight="semibold" c={color.volt}>{q}</T>
           </Pressable>
         ))}
       </View>
 
-      <T size={10.5} lh={15} c={color.dim}>
+      <T variant="meta" lh={15} c={color.dim}>
         Tapping one writes it in the box below. Nothing is sent until you send it.
       </T>
     </View>

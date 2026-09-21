@@ -52,7 +52,7 @@ export function ModeChip({ mode, onPress, testID = 'mode-chip' }: { mode: GoalMo
         }}
       >
         <Bolt size={11} color={color.volt} />
-        <T size={12} weight="semibold" c={color.volt}>{MODE_LABEL[mode]}</T>
+        <T variant="meta" weight="semibold" c={color.volt}>{MODE_LABEL[mode]}</T>
       </LinearGradient>
     </Pressable>
   );
@@ -80,7 +80,7 @@ export function ModeSheet({
 
   return (
     <Sheet visible={visible} onClose={onClose} title="How are you trading today?" testID="mode-sheet">
-      <T size={13} c={color.muted} lh={19}>
+      <T variant="meta" c={color.muted} lh={19}>
         This changes what Kai looks for, how far out the ideas reach, which chart you land on and how risk is worded.
       </T>
       {(['day_trade', 'swing', 'invest'] as GoalMode[]).map((m) => {
@@ -106,10 +106,10 @@ export function ModeSheet({
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <T size={15} weight="bold" c={on ? color.volt : color.text} style={{ flex: 1 }}>{MODE_LABEL[m]}</T>
+                <T variant="body" weight="bold" c={on ? color.volt : color.text} style={{ flex: 1 }}>{MODE_LABEL[m]}</T>
                 {on ? <Check size={15} color={color.volt} /> : null}
               </View>
-              <T size={12} c={color.muted} lh={17}>{MODE_EFFECT[m]}</T>
+              <T variant="meta" c={color.muted} lh={17}>{MODE_EFFECT[m]}</T>
             </LinearGradient>
           </Pressable>
         );

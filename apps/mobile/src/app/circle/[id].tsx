@@ -72,11 +72,11 @@ function CircleChart({ candles, levels }: { candles: Candle[]; levels: CircleDet
           return (
             <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <View style={{ flex: 1, height: 1, backgroundColor: `${c}55` }} />
-              <Num size={9} weight="regular" c={c}>{l.label}</Num>
+              <Num variant="meta" weight="regular" c={c}>{l.label}</Num>
             </View>
           );
         })}
-        <T size={11} c={color.dim}>No price bars for this room yet. The levels above are real.</T>
+        <T variant="meta" c={color.dim}>No price bars for this room yet. The levels above are real.</T>
       </View>
     );
   }
@@ -119,7 +119,7 @@ function CircleChart({ candles, levels }: { candles: Candle[]; levels: CircleDet
               backgroundColor: bg, borderWidth: 0.5, borderColor: `${c}66`,
             }}
           >
-            <Num size={9} weight="regular" c={c}>{l.label}</Num>
+            <Num variant="meta" weight="regular" c={c}>{l.label}</Num>
           </View>
         );
       })}
@@ -150,7 +150,7 @@ function Message({ m, onActions, onReact }: {
             borderWidth: 0.5, borderColor: alpha.ivory14, alignItems: 'center', justifyContent: 'center',
           }}
         >
-          <T size={13} weight="bold">{m.initial}</T>
+          <T variant="meta" weight="bold">{m.initial}</T>
         </View>
       )}
       <View style={{ flex: 1 }}>
@@ -172,20 +172,20 @@ function Message({ m, onActions, onReact }: {
             can actually support.
           */}
           {m.is_kai || m.role ? (
-            <T size={13.5} weight="bold" c={m.is_kai ? color.violetLight : color.gold}>{m.author}</T>
+            <T variant="meta" weight="bold" c={m.is_kai ? color.violetLight : color.gold}>{m.author}</T>
           ) : (
             <MemberName name={m.author} size={13.5} testID={`circle-author-name-${m.id}`} />
           )}
           {m.is_kai ? (
             <View style={{ paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, backgroundColor: alpha.violet20, borderWidth: 0.5, borderColor: alpha.violet50 }}>
-              <T size={8.5} weight="bold" c={color.violetLight}>AI</T>
+              <T variant="meta" weight="bold" c={color.violetLight}>AI</T>
             </View>
           ) : m.role ? (
             <View style={{ paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, backgroundColor: alpha.gold14, borderWidth: 0.5, borderColor: alpha.gold40 }}>
-              <T size={8.5} weight="bold" c={color.gold}>{m.role}</T>
+              <T variant="meta" weight="bold" c={color.gold}>{m.role}</T>
             </View>
           ) : null}
-          {m.at ? <T size={10} c={color.dim}>{m.at}</T> : null}
+          {m.at ? <T variant="meta" c={color.dim}>{m.at}</T> : null}
         </View>
 
         {m.verification ? (
@@ -198,13 +198,13 @@ function Message({ m, onActions, onReact }: {
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <T size={11} weight="bold" c={color.violetLight}>{m.verification.title}</T>
+              <T variant="meta" weight="bold" c={color.violetLight}>{m.verification.title}</T>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Check size={10} color={color.green} strokeWidth={3} />
-                <T size={10} c={color.green}>{m.verification.result_plain}</T>
+                <T variant="meta" c={color.green}>{m.verification.result_plain}</T>
               </View>
             </View>
-            <T size={12} lh={17}>{m.verification.body}</T>
+            <T variant="meta" lh={17}>{m.verification.body}</T>
           </View>
         ) : (
           <View style={{ marginTop: 2 }}><ClubBody text={m.body} size={13.5} /></View>
@@ -312,7 +312,7 @@ export default function CircleRoom() {
       <Screen variant="corner" layout="tab" testID="screen-circle">
         <View style={{ padding: 16 }}>
           <ObjectCard r={radius.xl} style={{ padding: 18 }}>
-            <T size={13} c={color.muted} lh={19}>{error}</T>
+            <T variant="meta" c={color.muted} lh={19}>{error}</T>
           </ObjectCard>
         </View>
       </Screen>
@@ -358,8 +358,8 @@ export default function CircleRoom() {
           />
         </HeaderRing>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <T size={15} weight="bold" numberOfLines={1} testID="circle-name">{c.name}</T>
-          <T size={10} c={color.dim} testID="circle-meta">
+          <T variant="body" weight="bold" numberOfLines={1} testID="circle-name">{c.name}</T>
+          <T variant="meta" c={color.dim} testID="circle-meta">
             {transportLabel(freshness) ? `${daysLine} · ${transportLabel(freshness)}` : daysLine}
           </T>
         </View>
@@ -371,7 +371,7 @@ export default function CircleRoom() {
             onPress={() => router.push(`/trade/${encodeURIComponent(c.symbol)}` as never)}
             hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
           >
-            <T size={11.5} weight="semibold" c={color.volt}>Chart ›</T>
+            <T variant="meta" weight="semibold" c={color.volt}>Chart ›</T>
           </Pressable>
         ) : null}
       </View>
@@ -386,19 +386,19 @@ export default function CircleRoom() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               {detail.quote?.price != null ? (
                 <>
-                  <Num size={13} weight="semibold">{detail.quote.price.toFixed(2)}</Num>
+                  <Num variant="meta" weight="semibold">{detail.quote.price.toFixed(2)}</Num>
                   {detail.quote.change_pct != null ? (
-                    <Num size={11} weight="regular" c={detail.quote.change_pct >= 0 ? color.green : color.red}>
+                    <Num variant="meta" weight="regular" c={detail.quote.change_pct >= 0 ? color.green : color.red}>
                       {`${detail.quote.change_pct >= 0 ? '+' : ''}${detail.quote.change_pct.toFixed(2)}%`}
                     </Num>
                   ) : null}
                   <FreshnessMark freshness={(detail.quote.freshness as Freshness) ?? 'unknown'} size={10} />
                 </>
               ) : (
-                <T size={11} c={color.dim}>No quote yet</T>
+                <T variant="meta" c={color.dim}>No quote yet</T>
               )}
             </View>
-            {detail.watching != null ? <T size={10} c={color.muted}>{`${detail.watching} watching`}</T> : null}
+            {detail.watching != null ? <T variant="meta" c={color.muted}>{`${detail.watching} watching`}</T> : null}
           </View>
           <CircleChart candles={candles} levels={detail.levels} />
         </ObjectCard>
@@ -406,7 +406,7 @@ export default function CircleRoom() {
         {detail.kai_read ? (
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
             <KaiOrb size={26} />
-            <T size={13.5} lh={20} style={{ flex: 1 }} testID="circle-kai-read">{detail.kai_read}</T>
+            <T variant="meta" lh={20} style={{ flex: 1 }} testID="circle-kai-read">{detail.kai_read}</T>
           </View>
         ) : null}
 
@@ -434,17 +434,17 @@ export default function CircleRoom() {
 
         {detail.locked ? (
           <ObjectCard r={radius.xl} style={{ padding: 15, gap: 6 }} testID="circle-locked">
-            <T size={13} weight="bold">You are not in this circle yet</T>
-            <T size={12.5} lh={18} c={color.muted}>
+            <T variant="meta" weight="bold">You are not in this circle yet</T>
+            <T variant="meta" lh={18} c={color.muted}>
               {detail.locked.plain} The levels above are the setup&apos;s own, and they are live.
             </T>
           </ObjectCard>
         ) : !detail.messages.length ? (
-          <T size={12.5} c={color.muted}>Nobody has posted in this circle yet.</T>
+          <T variant="meta" c={color.muted}>Nobody has posted in this circle yet.</T>
         ) : null}
 
         {c.closed ? (
-          <T size={11.5} c={color.gold} testID="circle-closed">
+          <T variant="meta" c={color.gold} testID="circle-closed">
             This circle has closed. It stays readable, but nothing new can be posted.
           </T>
         ) : null}
@@ -461,7 +461,7 @@ export default function CircleRoom() {
             onPress={() => setPostNotice(null)}
             style={{ borderLeftWidth: 2, borderLeftColor: color.gold, paddingLeft: 11, paddingVertical: 2 }}
           >
-            <T size={12} lh={17} c={color.gold}>{postNotice}</T>
+            <T variant="meta" lh={17} c={color.gold}>{postNotice}</T>
           </Pressable>
         ) : null}
         <Composer

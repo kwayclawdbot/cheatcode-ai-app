@@ -22,14 +22,14 @@ function KaiHeader({ title, right }: { title: string; right?: React.ReactNode })
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <KaiDot size={22} />
-      <T size={12} weight="bold" c={color.violetLight} style={{ flexShrink: 1 }}>{title}</T>
+      <T variant="meta" weight="bold" c={color.violetLight} style={{ flexShrink: 1 }}>{title}</T>
       {right ? <View style={{ marginLeft: 'auto' }}>{right}</View> : null}
     </View>
   );
 }
 
 function Footnote({ children }: { children: React.ReactNode }) {
-  return <T size={10} lh={14} c={color.muted}>{children}</T>;
+  return <T variant="meta" lh={14} c={color.muted}>{children}</T>;
 }
 
 /* ---------------- room_summary ---------------- */
@@ -45,19 +45,19 @@ const RESULT_TONE: Record<string, { c: string; Icon: React.ComponentType<{ size?
 function RoomSummary({ o }: { o: Extract<KaiRoomObject, { type: 'room_summary' }> }) {
   return (
     <ObjectCard tone="kai" r={radius.xxl} style={{ padding: 15, gap: 11 }} testID="kai-room-summary">
-      <KaiHeader title={o.title} right={<T size={10} c={color.muted}>{o.window_label}</T>} />
+      <KaiHeader title={o.title} right={<T variant="meta" c={color.muted}>{o.window_label}</T>} />
 
       <View style={{ gap: 8 }}>
         {o.bull_case ? (
           <View style={{ flexDirection: 'row', gap: 9 }}>
-            <T size={13} weight="bold" c={color.green} style={{ width: 64 }}>Bull case</T>
-            <T size={13} lh={18} style={{ flex: 1 }}>{o.bull_case}</T>
+            <T variant="meta" weight="bold" c={color.green} style={{ width: 64 }}>Bull case</T>
+            <T variant="meta" lh={18} style={{ flex: 1 }}>{o.bull_case}</T>
           </View>
         ) : null}
         {o.bear_case ? (
           <View style={{ flexDirection: 'row', gap: 9 }}>
-            <T size={13} weight="bold" c={color.red} style={{ width: 64 }}>Bear case</T>
-            <T size={13} lh={18} style={{ flex: 1 }}>{o.bear_case}</T>
+            <T variant="meta" weight="bold" c={color.red} style={{ width: 64 }}>Bear case</T>
+            <T variant="meta" lh={18} style={{ flex: 1 }}>{o.bear_case}</T>
           </View>
         ) : null}
       </View>
@@ -66,11 +66,11 @@ function RoomSummary({ o }: { o: Extract<KaiRoomObject, { type: 'room_summary' }
 
       {o.themes.length ? (
         <View style={{ gap: 4 }}>
-          <Eyebrow>WHAT THE ROOM KEEPS COMING BACK TO</Eyebrow>
+          <Eyebrow>What the room keeps coming back to</Eyebrow>
           {o.themes.map((t, i) => (
             <View key={i} style={{ flexDirection: 'row', gap: 7 }}>
-              <T size={12} c={color.muted}>·</T>
-              <T size={12} lh={17} style={{ flex: 1 }}>{t}</T>
+              <T variant="meta" c={color.muted}>·</T>
+              <T variant="meta" lh={17} style={{ flex: 1 }}>{t}</T>
             </View>
           ))}
         </View>
@@ -78,7 +78,7 @@ function RoomSummary({ o }: { o: Extract<KaiRoomObject, { type: 'room_summary' }
 
       {o.claims.length ? (
         <View style={{ gap: 6 }}>
-          <Eyebrow>CLAIMS MADE HERE</Eyebrow>
+          <Eyebrow>Claims made here</Eyebrow>
           {o.claims.map((c, i) => {
             const t = RESULT_TONE[c.verified] ?? RESULT_TONE.unverified;
             const Icon = t.Icon;
@@ -86,8 +86,8 @@ function RoomSummary({ o }: { o: Extract<KaiRoomObject, { type: 'room_summary' }
               <View key={i} style={{ flexDirection: 'row', gap: 7, alignItems: 'flex-start' }}>
                 <View style={{ paddingTop: 3 }}><Icon size={11} color={t.c} /></View>
                 <View style={{ flex: 1 }}>
-                  <T size={12} lh={17}>{c.claim}</T>
-                  {c.plain ? <T size={10} lh={14} c={color.muted}>{c.plain}</T> : null}
+                  <T variant="meta" lh={17}>{c.claim}</T>
+                  {c.plain ? <T variant="meta" lh={14} c={color.muted}>{c.plain}</T> : null}
                 </View>
               </View>
             );
@@ -97,15 +97,15 @@ function RoomSummary({ o }: { o: Extract<KaiRoomObject, { type: 'room_summary' }
 
       {o.disagreements.length ? (
         <View style={{ gap: 4 }}>
-          <Eyebrow>WHERE THE ROOM DISAGREES</Eyebrow>
-          {o.disagreements.map((d, i) => <T key={i} size={12} lh={17}>{d}</T>)}
+          <Eyebrow>Where the room disagrees</Eyebrow>
+          {o.disagreements.map((d, i) => <T key={i} variant="meta" lh={17}>{d}</T>)}
         </View>
       ) : null}
 
       {o.missed.length ? (
         <View style={{ gap: 4 }}>
-          <Eyebrow c={color.gold}>WHILE YOU WERE AWAY</Eyebrow>
-          {o.missed.map((t, i) => <T key={i} size={12} lh={17} c={color.gold}>{t}</T>)}
+          <Eyebrow c={color.gold}>While you were away</Eyebrow>
+          {o.missed.map((t, i) => <T key={i} variant="meta" lh={17} c={color.gold}>{t}</T>)}
         </View>
       ) : null}
 
@@ -117,9 +117,9 @@ function RoomSummary({ o }: { o: Extract<KaiRoomObject, { type: 'room_summary' }
             backgroundColor: alpha.bg40, borderWidth: 0.5, borderColor: alpha.ivory08,
           }}
         >
-          <T size={12} weight="bold" c={color.violetLight}>Kai</T>
-          <T size={12} style={{ flex: 1 }}>{o.take}</T>
-          {o.grade_display ? <T size={12} weight="bold" c={color.violet}>{o.grade_display}</T> : null}
+          <T variant="meta" weight="bold" c={color.violetLight}>Kai</T>
+          <T variant="meta" style={{ flex: 1 }}>{o.take}</T>
+          {o.grade_display ? <T variant="meta" weight="bold" c={color.violet}>{o.grade_display}</T> : null}
         </View>
       ) : null}
 
@@ -140,13 +140,13 @@ function Verification({ o }: { o: Extract<KaiRoomObject, { type: 'verification_c
         right={
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Icon size={11} color={tone.c} />
-            <T size={10} c={tone.c}>{o.result_label}</T>
+            <T variant="meta" c={tone.c}>{o.result_label}</T>
           </View>
         }
       />
       {o.claim ? (
-        <T size={12} lh={17} c={color.muted}>
-          <T size={12} weight="bold" c={color.muted}>Claim: </T>{o.claim}
+        <T variant="meta" lh={17} c={color.muted}>
+          <T variant="meta" weight="bold" c={color.muted}>Claim: </T>{o.claim}
         </T>
       ) : null}
       {o.detail ? <RichText text={o.detail} size={13} lh={19} /> : null}
@@ -154,7 +154,7 @@ function Verification({ o }: { o: Extract<KaiRoomObject, { type: 'verification_c
       {o.sources.length ? (
         <View style={{ gap: 3 }}>
           {o.sources.map((s, i) => (
-            <T key={i} size={10} c={color.muted}>
+            <T key={i} variant="meta" c={color.muted}>
               Source: {s.label}{s.at ? ` · ${s.at}` : ''}
             </T>
           ))}
@@ -180,22 +180,22 @@ function AlertPreview({
   return (
     <ObjectCard tone="kai" r={radius.xl} style={{ padding: 14, gap: 10 }} testID="kai-alert-preview">
       <KaiHeader title={o.title} />
-      <T size={14} lh={20}>{o.natural_language}</T>
+      <T variant="body" lh={20}>{o.natural_language}</T>
 
       <View style={{ gap: 6, padding: 11, borderRadius: 10, backgroundColor: alpha.bg40, borderWidth: 0.5, borderColor: alpha.ivory08 }}>
-        <Eyebrow>WHAT KAI WILL WATCH</Eyebrow>
+        <Eyebrow>What Kai will watch</Eyebrow>
         {o.condition_lines.map((l, i) => (
           <View key={i} style={{ flexDirection: 'row', gap: 7 }}>
-            <T size={12} c={color.cyan}>·</T>
-            <Num size={12} weight="regular" c={color.text} style={{ flex: 1 }}>{l}</Num>
+            <T variant="meta" c={color.cyan}>·</T>
+            <Num variant="meta" weight="regular" c={color.text} style={{ flex: 1 }}>{l}</Num>
           </View>
         ))}
         <View style={{ height: 0.5, backgroundColor: alpha.ivory08, marginVertical: 2 }} />
-        <T size={11} c={color.muted}>Data: {o.data_dependency}</T>
-        <T size={11} c={color.muted}>Fires: {o.frequency} · {o.expires_label}</T>
+        <T variant="meta" c={color.muted}>Data: {o.data_dependency}</T>
+        <T variant="meta" c={color.muted}>Fires: {o.frequency} · {o.expires_label}</T>
       </View>
 
-      {o.summary_plain ? <T size={13} lh={19}>{o.summary_plain}</T> : null}
+      {o.summary_plain ? <T variant="meta" lh={19}>{o.summary_plain}</T> : null}
       {o.monitoring_note ? <Footnote>{o.monitoring_note}</Footnote> : null}
       <Footnote>Nothing is bought or sold. You approve before it arms.</Footnote>
     </ObjectCard>
@@ -210,21 +210,21 @@ function Comparison({ o }: { o: Extract<KaiRoomObject, { type: 'comparison' }> }
       <KaiHeader title={o.title} />
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <View style={{ flex: 1, gap: 6, padding: 11, borderRadius: radius.lg, backgroundColor: color.greenTint, borderWidth: 0.5, borderColor: alpha.green40 }}>
-          <Eyebrow c={color.green}>BULL CASE</Eyebrow>
-          {o.bull.map((b, i) => <T key={i} size={12} lh={17}>{b}</T>)}
+          <Eyebrow c={color.green}>Bull case</Eyebrow>
+          {o.bull.map((b, i) => <T key={i} variant="meta" lh={17}>{b}</T>)}
         </View>
         <View style={{ flex: 1, gap: 6, padding: 11, borderRadius: radius.lg, backgroundColor: color.redTint, borderWidth: 0.5, borderColor: alpha.red40 }}>
-          <Eyebrow c={color.red}>BEAR CASE</Eyebrow>
-          {o.bear.map((b, i) => <T key={i} size={12} lh={17}>{b}</T>)}
+          <Eyebrow c={color.red}>Bear case</Eyebrow>
+          {o.bear.map((b, i) => <T key={i} variant="meta" lh={17}>{b}</T>)}
         </View>
       </View>
       {o.bull_plain || o.bear_plain ? (
         <View style={{ gap: 6 }}>
-          {o.bull_plain ? <T size={12} lh={17} c={color.muted}>{o.bull_plain}</T> : null}
-          {o.bear_plain ? <T size={12} lh={17} c={color.muted}>{o.bear_plain}</T> : null}
+          {o.bull_plain ? <T variant="meta" lh={17} c={color.muted}>{o.bull_plain}</T> : null}
+          {o.bear_plain ? <T variant="meta" lh={17} c={color.muted}>{o.bear_plain}</T> : null}
         </View>
       ) : null}
-      {o.conclusion ? <T size={13} lh={19}>{o.conclusion}</T> : null}
+      {o.conclusion ? <T variant="meta" lh={19}>{o.conclusion}</T> : null}
       <Footnote>{o.footnote}</Footnote>
     </ObjectCard>
   );
@@ -239,8 +239,8 @@ function Explain({ o }: { o: Extract<KaiRoomObject, { type: 'explain' }> }) {
       <View style={{ gap: 8 }}>
         {o.lines.map((l, i) => (
           <View key={i} style={{ gap: 2 }}>
-            {l.label ? <T size={11} weight="bold" c={color.violetLight}>{l.label}</T> : null}
-            <T size={13} lh={19}>{l.text}</T>
+            {l.label ? <T variant="meta" weight="bold" c={color.violetLight}>{l.label}</T> : null}
+            <T variant="meta" lh={19}>{l.text}</T>
           </View>
         ))}
       </View>

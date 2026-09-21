@@ -193,11 +193,11 @@ export function TradeDetail({
           <GradeBadge grade={idea.grade} whenAbsent={gradeWhenAbsent} />
         </View>
       ) : null}
-      <T size={28} weight="medium" ls={-0.8} lh={33} style={s.heading}>
+      <T variant="screenTitle" weight="medium" ls={-0.8} lh={33} style={s.heading}>
         {idea.title}
       </T>
       {idea.summary ? (
-        <T c={color.muted} size={15} lh={22} style={{ marginTop: 8 }}>
+        <T c={color.muted} variant="body" lh={22} style={{ marginTop: 8 }}>
           {idea.summary}
         </T>
       ) : null}
@@ -236,14 +236,14 @@ export function TradeDetail({
             })
           }
         >
-          <T c={color.violetLight} size={16}>
+          <T c={color.violetLight} variant="body">
             {askLabel ?? `Ask Kai about this ${selected} ↗`}
           </T>
         </Pressable>
       )}
       {composer}
       {showSource ? (
-        <T size={12} c={color.muted} style={s.source}>
+        <T variant="meta" c={color.muted} style={s.source}>
           {idea.dataLabel}
         </T>
       ) : null}

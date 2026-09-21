@@ -610,8 +610,8 @@ export default function Home() {
                 <KaiOrb size={18} glow={kaiState !== 'offline'} />
               </View>
             ) : null}
-            <T mono size={11} weight="bold" ls={1.3} c={color.muted} numberOfLines={1} testID="warroom-title">
-              KAI · WAR ROOM
+            <T variant="meta" weight="bold" c={color.muted} numberOfLines={1} testID="warroom-title">
+              Kai · war room
             </T>
           </View>
           <PanelLauncherButton onPress={() => setPanelsOpen(true)} />
@@ -620,7 +620,7 @@ export default function Home() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 18 }}>
           <KaiStatusLight state={kaiState} />
           {stage ? (
-            <T mono size={11} ls={0.6} c={color.dim} numberOfLines={1} testID="warroom-stage">
+            <T mono variant="meta" ls={0.6} c={color.dim} numberOfLines={1} testID="warroom-stage">
               {`· ${STAGE_LABEL[stage].toUpperCase()}`}
             </T>
           ) : null}
@@ -634,7 +634,7 @@ export default function Home() {
               onPress={backToToday}
               style={({ pressed }) => ({ flex: 1, minWidth: 0, opacity: pressed ? 0.7 : 1 })}
             >
-              <T size={12} weight="semibold" c={color.muted} numberOfLines={1} align="right">
+              <T variant="meta" weight="semibold" c={color.muted} numberOfLines={1} align="right">
                 {thread.kind === 'saved' ? thread.row.title : 'New conversation'}
               </T>
             </Pressable>
@@ -697,7 +697,7 @@ export default function Home() {
           >
             <KaiBrain state={kaiState} lit={lit} level={voice.level} height={compactBrain ? 80 : 124} compact={compactBrain} />
             <T
-              size={12.5}
+              variant="meta"
               lh={17}
               c={kaiState === 'offline' ? color.muted : color.violetLight}
               align="center"
@@ -768,7 +768,7 @@ export default function Home() {
             />
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
               <CapabilityMark state="quiet" size={13} />
-              <T size={12} c={color.muted} testID="offline-plan-safe">Your plan is saved.</T>
+              <T variant="meta" c={color.muted} testID="offline-plan-safe">Your plan is saved.</T>
             </View>
           </View>
         ) : null}
@@ -790,7 +790,7 @@ export default function Home() {
             skeleton: an empty wall under a thread title is the one thing this
             screen must never look like again. */}
         {loadingHistory ? (
-          <T size={11} c={color.dim} align="center" testID="home-thread-loading">
+          <T variant="meta" c={color.dim} align="center" testID="home-thread-loading">
             Getting the rest of this conversation…
           </T>
         ) : null}
@@ -817,11 +817,11 @@ export default function Home() {
               <TypingDots testID="typing" />
             ) : it.kind === 'action' ? (
               <ObjectCard tone="kai" r={radius.xl} style={{ padding: 13 }}>
-                <T size={13} lh={19} c={color.violetLight}>{it.action.summary_plain ?? it.action.label}</T>
+                <T variant="meta" lh={19} c={color.violetLight}>{it.action.summary_plain ?? it.action.label}</T>
               </ObjectCard>
             ) : (
               <ObjectCard tone="kai" r={radius.xl} style={{ padding: 13 }}>
-                <T size={13} lh={19} c={color.violetLight}>{it.text}</T>
+                <T variant="meta" lh={19} c={color.violetLight}>{it.text}</T>
               </ObjectCard>
             );
 
@@ -838,7 +838,7 @@ export default function Home() {
         {homeOrder.training === 'below_wall' ? trainingRow : null}
 
         {/* Kai already said this in his own words; this stays for the thread views. */}
-        {error && thread.kind !== 'today' ? <T size={11} c={color.muted} align="center">{error}</T> : null}
+        {error && thread.kind !== 'today' ? <T variant="meta" c={color.muted} align="center">{error}</T> : null}
       </ScrollView>
 
       {/* The composer rides the keyboard up instead of being buried under it —
@@ -856,7 +856,7 @@ export default function Home() {
           onPress={() => router.push('/account/credits')}
           testID="home-credit-strip"
         />
-        {isFixture ? <T size={10} c={color.dim} align="center">Sample data — the service is not connected here.</T> : null}
+        {isFixture ? <T variant="meta" c={color.dim} align="center">Sample data — the service is not connected here.</T> : null}
 
         {/*
           RECOVERY, WHERE THE WORK WAS (audit F05). A request that never reached
@@ -868,7 +868,7 @@ export default function Home() {
         */}
         {liveFailure ? (
           <View style={{ gap: 6 }} testID="kai-failure">
-            <T size={11} lh={16} c={color.muted} align="center">{liveFailure.plain}</T>
+            <T variant="meta" lh={16} c={color.muted} align="center">{liveFailure.plain}</T>
             <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
               <Pressable
                 testID="kai-retry"
@@ -885,7 +885,7 @@ export default function Home() {
                   opacity: pressed ? 0.7 : 1,
                 })}
               >
-                <T size={12} weight="bold" c={color.volt}>Send that again</T>
+                <T variant="meta" weight="bold" c={color.volt}>Send that again</T>
               </Pressable>
               <Pressable
                 testID="kai-failure-dismiss"
@@ -894,7 +894,7 @@ export default function Home() {
                 onPress={clearFailure}
                 style={({ pressed }) => ({ paddingVertical: 7, paddingHorizontal: 10, opacity: pressed ? 0.6 : 1 })}
               >
-                <T size={12} c={color.dim}>Dismiss</T>
+                <T variant="meta" c={color.dim}>Dismiss</T>
               </Pressable>
             </View>
           </View>
@@ -929,7 +929,7 @@ export default function Home() {
                   opacity: pressed ? 0.6 : 1,
                 })}
               >
-                <T size={11.5} c={color.violetLight}>{q}</T>
+                <T variant="meta" c={color.violetLight}>{q}</T>
               </Pressable>
             ))}
           </View>
@@ -943,7 +943,7 @@ export default function Home() {
           claim about nothing.
         */}
         {savedTurn ? (
-          <T size={11} c={color.dim} align="center" testID="composer-draft-saved">
+          <T variant="meta" c={color.dim} align="center" testID="composer-draft-saved">
             Draft saved — this is the question you did not get to send.
           </T>
         ) : null}
@@ -977,7 +977,7 @@ export default function Home() {
                 size={52}
                 primary
               />
-              <T mono size={11} ls={0} c={voice.phase === 'recording' ? color.volt : voice.phase === 'speaking' ? color.violetLight : color.dim} testID="warroom-mic-word">
+              <T mono variant="meta" ls={0} c={voice.phase === 'recording' ? color.volt : voice.phase === 'speaking' ? color.violetLight : color.dim} testID="warroom-mic-word">
                 {voice.phase === 'recording' ? 'LISTENING…'
                   : voice.phase === 'speaking' ? 'SPEAKING'
                     : voice.phase === 'transcribing' || voice.phase === 'starting' ? 'ONE SEC'

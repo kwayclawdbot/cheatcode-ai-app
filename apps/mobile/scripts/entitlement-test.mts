@@ -228,7 +228,7 @@ ok('and the step functions they needed no longer exist', !/export function nextM
 ok('the goal and guidance rows open a chooser', account.includes('setModeOpen(true)') && account.includes('setGuidanceOpen(true)'));
 ok('guidance has an explicit selection sheet', account.includes('ChoiceSheet') && account.includes('sheet-guidance'));
 ok('the board leads with Profile, Guidance, Practice account, Notifications, Plan', (() => {
-  const order = ['PROFILE', 'GUIDANCE', 'PRACTICE ACCOUNT', 'NOTIFICATIONS', 'PLAN'];
+  const order = ['Profile', 'Guidance', 'Practice account', 'Notifications', 'Plan']; // sentence case since the 2026-09-21 redesign
   const at = order.map((s) => account.indexOf(`<Eyebrow>${s}</Eyebrow>`));
   return at.every((i) => i > 0) && at.every((v, i) => i === 0 || v > at[i - 1]);
 })());

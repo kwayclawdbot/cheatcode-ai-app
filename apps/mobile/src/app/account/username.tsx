@@ -43,7 +43,7 @@ export default function Username() {
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 6, paddingBottom: 60, gap: 18 }}
         keyboardShouldPersistTaps="handled"
       >
-        <Eyebrow>YOUR NAME IN THE COMMUNITY</Eyebrow>
+        <Eyebrow>Your name in the community</Eyebrow>
 
         <UsernameForm
           current={current}
@@ -58,7 +58,7 @@ export default function Username() {
         />
 
         {!current ? (
-          <T size={12} lh={18} c={color.dim}>
+          <T variant="meta" lh={18} c={color.dim}>
             You can read every room without one. Posting asks for it, because a post nobody can
             name cannot be replied to or mentioned.
           </T>

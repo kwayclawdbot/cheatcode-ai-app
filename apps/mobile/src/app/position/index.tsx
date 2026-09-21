@@ -35,19 +35,19 @@ function PositionCard({ p, onOpen, onExit }: { p: PositionRow; onOpen: () => voi
       style={{ paddingVertical: 14, paddingHorizontal: 15, gap: 10 }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-        <T size={17} weight="bold">{p.symbol}</T>
-        <T size={10} c={color.muted} style={{ flex: 1 }}>
+        <T variant="cardTitle" weight="bold">{p.symbol}</T>
+        <T variant="meta" c={color.muted} style={{ flex: 1 }}>
           {`${p.side === 'short' ? 'Short' : 'Long'} · ${p.notional != null ? money(p.notional, 0) : shareLabel(p.qty)}`}
         </T>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
           <StatusDot c={atRisk ? color.gold : p.status === 'closed' ? color.muted : color.green} />
-          <T size={11} c={atRisk ? color.gold : p.status === 'closed' ? color.muted : color.green}>{p.health_label}</T>
+          <T variant="meta" c={atRisk ? color.gold : p.status === 'closed' ? color.muted : color.green}>{p.health_label}</T>
         </View>
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-        <Num size={19} weight="semibold" c={pnlColor(pnl)} testID={`position-pnl-${p.id}`}>{signedMoney(pnl)}</Num>
-        <Num size={11} weight="regular" c={color.muted}>
+        <Num variant="sectionTitle" weight="semibold" c={pnlColor(pnl)} testID={`position-pnl-${p.id}`}>{signedMoney(pnl)}</Num>
+        <Num variant="meta" weight="regular" c={color.muted}>
           {[p.unrealized_pnl_pct != null ? `${p.unrealized_pnl_pct < 0 ? '−' : '+'}${Math.abs(p.unrealized_pnl_pct).toFixed(1)}%` : null, p.pnl_detail]
             .filter(Boolean).join(' · ')}
         </Num>
@@ -115,13 +115,13 @@ export default function Positions() {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
           <BackButton onPress={back} />
-          <T size={28} weight="bold" style={{ flex: 1 }}>Positions</T>
+          <T variant="screenTitle" weight="bold" style={{ flex: 1 }}>Positions</T>
           <PaperChip />
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-          <Num size={30} weight="semibold" c={pnlColor(today)} testID="positions-pl">{signedMoney(today)}</Num>
-          <T size={12} c={color.muted}>
+          <Num variant="keyPrice" weight="semibold" c={pnlColor(today)} testID="positions-pl">{signedMoney(today)}</Num>
+          <T variant="meta" c={color.muted}>
             {`today · ${data?.open_count ?? rows.filter((r) => r.status === 'open').length} open`}
           </T>
         </View>
@@ -142,7 +142,7 @@ export default function Positions() {
           ))
         ) : (
           <ObjectCard r={radius.xl} style={{ padding: 18 }}>
-            <T size={13} c={color.muted} lh={19}>
+            <T variant="meta" c={color.muted} lh={19}>
               {notAvailable
                 ? "Positions aren't live on this build yet."
                 : error ?? data?.empty_copy ?? 'No positions yet.'}
@@ -154,7 +154,7 @@ export default function Positions() {
           <RiskBar label="Daily risk used" used={data.daily_risk.used} cap={data.daily_risk.cap} testID="daily-risk" />
         ) : null}
 
-        <T size={11} c={color.dim} lh={16} style={{ paddingHorizontal: 2 }}>
+        <T variant="meta" c={color.dim} lh={16} style={{ paddingHorizontal: 2 }}>
           Paper positions are marked with delayed prices, so what you see here can lag the market by about 15 minutes.
         </T>
       </ScrollView>

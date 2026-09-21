@@ -28,7 +28,7 @@ export function Collapsible({
           borderBottomWidth: last && open ? 0 : 0.5, borderBottomColor: alpha.ivory08,
         }}
       >
-        <T size={13.5} weight="semibold" style={{ flex: 1 }}>{title}</T>
+        <T variant="meta" weight="semibold" style={{ flex: 1 }}>{title}</T>
         <Svg width={13} height={13} viewBox="0 0 24 24" fill="none" style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}>
           <Path d="M6 9l6 6 6-6" stroke={color.muted} strokeWidth={2} />
         </Svg>
@@ -41,10 +41,10 @@ export function Collapsible({
 function Stat({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
   return (
     <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, backgroundColor: alpha.ivory04 }}>
-      <T size={9.5} c={color.muted}>{label}</T>
+      <T variant="meta" c={color.muted}>{label}</T>
       {mono
-        ? <Num size={12.5} weight="semibold" style={{ marginTop: 2 }}>{value}</Num>
-        : <T size={12.5} weight="semibold" style={{ marginTop: 2 }}>{value}</T>}
+        ? <Num variant="meta" weight="semibold" style={{ marginTop: 2 }}>{value}</Num>
+        : <T variant="meta" weight="semibold" style={{ marginTop: 2 }}>{value}</T>}
     </View>
   );
 }
@@ -87,9 +87,9 @@ export function KaiView({ take, actions, onAsk }: { take: string; actions: strin
     >
       <KaiOrb size={22} glow={false} />
       <View style={{ flex: 1, gap: 8 }}>
-        <T size={13} lh={19}>
-          <T size={13} weight="bold" c={color.violetLight}>Kai's view</T>
-          <T size={13} c={color.muted}> · </T>
+        <T variant="meta" lh={19}>
+          <T variant="meta" weight="bold" c={color.violetLight}>Kai's view</T>
+          <T variant="meta" c={color.muted}> · </T>
           {take}
         </T>
         <View style={{ flexDirection: 'row', gap: 7, flexWrap: 'wrap' }}>
@@ -105,7 +105,7 @@ export function KaiView({ take, actions, onAsk }: { take: string; actions: strin
                 backgroundColor: i === 0 ? alpha.violet08 : 'transparent',
               }}
             >
-              <T size={11} c={i === 0 ? color.violetLight : color.muted}>{a}</T>
+              <T variant="meta" c={i === 0 ? color.violetLight : color.muted}>{a}</T>
             </Pressable>
           ))}
         </View>
@@ -129,7 +129,7 @@ export function KaiView({ take, actions, onAsk }: { take: string; actions: strin
 export function OverviewBody({ overview }: { overview: TickerPage['overview'] }) {
   return (
     <View style={{ paddingTop: 4, paddingBottom: 13, gap: 9 }} testID="ticker-overview-body">
-      {overview.summary ? <T size={12.5} c={color.muted} lh={19}>{overview.summary}</T> : null}
+      {overview.summary ? <T variant="meta" c={color.muted} lh={19}>{overview.summary}</T> : null}
       {/*
         A BLANK NEVER LOOKS BLANK — it looks like a finding.
         These four were `?? '—'`, so a symbol whose fundamentals had not loaded
@@ -160,12 +160,12 @@ export function TechnicalsBody({ technicals }: { technicals: TickerPage['technic
         <View style={{ flexDirection: 'row', gap: 6, marginTop: 2 }}>
           {technicals.support ? (
             <View style={{ flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 9, backgroundColor: color.cyanTint, borderWidth: 0.5, borderColor: alpha.cyan40 }}>
-              <Num size={11} c={color.cyan}>{technicals.support}</Num>
+              <Num variant="meta" c={color.cyan}>{technicals.support}</Num>
             </View>
           ) : null}
           {technicals.resistance ? (
             <View style={{ flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 9, backgroundColor: color.greenTint, borderWidth: 0.5, borderColor: alpha.green40 }}>
-              <Num size={11} c={color.green}>{technicals.resistance}</Num>
+              <Num variant="meta" c={color.green}>{technicals.resistance}</Num>
             </View>
           ) : null}
         </View>
@@ -186,25 +186,25 @@ export function CommunityBody({
         simply not made.
       */}
       {community.common_level ? (
-        <T size={12} c={color.muted}>
-          Most-mentioned level <Num size={12} c={color.cyan}>{community.common_level}</Num>
+        <T variant="meta" c={color.muted}>
+          Most-mentioned level <Num variant="meta" c={color.cyan}>{community.common_level}</Num>
           {community.posts_today != null ? ` · ${community.posts_today} posts today` : ''}
         </T>
       ) : community.posts_today != null ? (
-        <T size={12} c={color.muted}>{community.posts_today} posts today</T>
+        <T variant="meta" c={color.muted}>{community.posts_today} posts today</T>
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <View style={{ flex: 1, height: 6, borderRadius: 3, overflow: 'hidden', flexDirection: 'row' }}>
           <View style={{ width: `${bull}%`, backgroundColor: alpha.green50 }} />
           <View style={{ flex: 1, backgroundColor: alpha.red45 }} />
         </View>
-        <T size={10.5} c={color.muted}>
+        <T variant="meta" c={color.muted}>
           {bull}% bullish{community.sample != null ? ` · sample ${community.sample}` : ''}
         </T>
       </View>
       {community.circle ? (
         <Pressable onPress={onOpenCircle} accessibilityRole="button" testID="ticker-open-circle">
-          <T size={11.5} weight="semibold" c={color.violetLight}>{community.circle.label} ›</T>
+          <T variant="meta" weight="semibold" c={color.violetLight}>{community.circle.label} ›</T>
         </Pressable>
       ) : null}
     </View>

@@ -266,7 +266,7 @@ export function KaiBrain({ state, lit, level = 0, height = 150, compact = false,
         style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 4 : 5, justifyContent: side === 'left' ? 'flex-end' : 'flex-start' }}
       >
         {side === 'right' ? dot : null}
-        <T mono size={11} weight={on ? 'bold' : 'medium'} ls={compact ? 0.2 : 0.6} lh={compact ? 13 : undefined} c={on ? color.violetLight : color.dim} numberOfLines={1}>
+        <T mono variant="meta" weight={on ? 'bold' : 'medium'} ls={compact ? 0.2 : 0.6} lh={compact ? 13 : undefined} c={on ? color.violetLight : color.dim} numberOfLines={1}>
           {text.toUpperCase()}
         </T>
         {side === 'left' ? dot : null}
@@ -376,7 +376,7 @@ export function KaiStatusLight({ state, testID = 'kai-status' }: { state: KaiSta
           shadowColor: ink, shadowOpacity: state === 'offline' ? 0 : 0.8, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },
         }}
       />
-      <T mono size={11} weight="semibold" ls={0.6} c={state === 'offline' ? color.muted : ink} testID={`${testID}-word`}>
+      <T mono variant="meta" weight="semibold" ls={0.6} c={state === 'offline' ? color.muted : ink} testID={`${testID}-word`}>
         {STATE_WORD[state].toUpperCase()}
       </T>
     </View>
@@ -428,7 +428,7 @@ export function HudFrame({
           and on large text those 18 points are what keep the first button in view. */}
       {compact && !right ? null : (
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-          <T mono size={11} weight="semibold" ls={1.1} c={color.dim}>{label}</T>
+          <T mono variant="meta" weight="semibold" ls={1.1} c={color.dim}>{label}</T>
           {right}
         </View>
       )}

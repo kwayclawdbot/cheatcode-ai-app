@@ -62,9 +62,9 @@ export function StackHeader({
       {leading ? <View style={{ marginLeft: 8 }}>{leading}</View> : null}
 
       <View style={{ flex: 1, alignItems: 'center' }}>
-        <T size={16} weight="bold" numberOfLines={1}>{title}</T>
+        <T variant="body" weight="bold" numberOfLines={1}>{title}</T>
         {typeof subtitle === 'string'
-          ? <T size={10} c={subtitleColor ?? color.muted} style={{ marginTop: 1 }}>{subtitle}</T>
+          ? <T variant="meta" c={subtitleColor ?? color.muted} style={{ marginTop: 1 }}>{subtitle}</T>
           : subtitle ?? null}
       </View>
 
@@ -159,7 +159,7 @@ export function RoleChip({ label, tone = 'neutral' }: { label: string; tone?: 'n
   const bg = tone === 'kai' ? alpha.violet20 : tone === 'gold' ? alpha.gold14 : 'transparent';
   return (
     <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: border, backgroundColor: bg }}>
-      <T size={9} weight="bold" c={c}>{label}</T>
+      <T variant="meta" weight="bold" c={c}>{label}</T>
     </View>
   );
 }
@@ -174,7 +174,7 @@ export function DisclosureChip({ label, holds }: { label: string; holds: boolean
         borderWidth: 0.5, borderColor: holds ? alpha.gold50 : alpha.ivory25,
       }}
     >
-      <T size={9} c={holds ? color.gold : color.muted}>{label}</T>
+      <T variant="meta" c={holds ? color.gold : color.muted}>{label}</T>
     </View>
   );
 }
@@ -196,8 +196,8 @@ export function ClaimChip({ state, label }: { state: 'unverified' | 'verified' |
       accessibilityLabel={spec.text}
       style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: spec.border }}
     >
-      <T size={9} c={spec.c}>{spec.mark}</T>
-      <T size={9} c={spec.c}>{spec.text}</T>
+      <T variant="meta" c={spec.c}>{spec.mark}</T>
+      <T variant="meta" c={spec.c}>{spec.text}</T>
     </View>
   );
 }
@@ -217,14 +217,14 @@ export function SentimentBar({ bullPct, sample, compact = false }: { bullPct: nu
       style={{ gap: 6 }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        {compact ? <T size={11} c={color.muted} style={{ width: 64 }}>Community</T> : null}
+        {compact ? <T variant="meta" c={color.muted} style={{ width: 64 }}>Community</T> : null}
         <View style={{ flex: 1, height: 6, borderRadius: 3, overflow: 'hidden', flexDirection: 'row', backgroundColor: alpha.ivory08 }}>
           <View style={{ width: `${bull}%`, backgroundColor: alpha.ivory25 }} />
           <View style={{ flex: 1, backgroundColor: alpha.ivory10 }} />
         </View>
-        <Num size={11} weight="medium">{bull}%</Num>
+        <Num variant="meta" weight="medium">{bull}%</Num>
       </View>
-      <T size={10} c={color.muted}>
+      <T variant="meta" c={color.muted}>
         {bull}% read it bullish · {100 - bull}% bearish · {sample} posts · sentiment is not evidence
       </T>
     </View>
@@ -236,7 +236,7 @@ export function NewMessagesRule({ label }: { label: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <View style={{ flex: 1, height: 1, backgroundColor: alpha.red45 }} />
-      <T size={9} weight="bold" ls={0.72} c={color.red}>{label}</T>
+      <T variant="meta" weight="bold" ls={0.72} c={color.red}>{label}</T>
       <View style={{ flex: 1, height: 1, backgroundColor: alpha.red45 }} />
     </View>
   );
@@ -259,7 +259,7 @@ export function CatchUpPill({ count, onPress, testID }: { count: number; onPress
       })}
     >
       <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color.volt }} />
-      <T size={11} weight="semibold" c={color.volt}>{count} new since you left</T>
+      <T variant="meta" weight="semibold" c={color.volt}>{count} new since you left</T>
     </Pressable>
   );
 }
@@ -277,8 +277,8 @@ export function PinnedStrip({ kind, text }: { kind: 'kai' | 'moderator' | 'warni
       <View style={{ paddingTop: 2 }}>
         <Pin size={12} color={isKai ? color.violetLight : isWarn ? color.gold : color.muted} />
       </View>
-      <T size={12} lh={17} style={{ flex: 1 }}>
-        <T size={12} weight="bold" c={isKai ? color.violetLight : isWarn ? color.gold : color.muted}>
+      <T variant="meta" lh={17} style={{ flex: 1 }}>
+        <T variant="meta" weight="bold" c={isKai ? color.violetLight : isWarn ? color.gold : color.muted}>
           {isKai ? 'Pinned · Kai' : isWarn ? 'Pinned · Warning' : 'Pinned'}
         </T>
         {'  '}{text}
@@ -320,8 +320,8 @@ export function Sheet({
           style={{ padding: 18, gap: 12 }}
         >
           <View style={{ gap: 3 }}>
-            <T size={18} weight="bold">{title}</T>
-            {subtitle ? <T size={12} c={color.muted}>{subtitle}</T> : null}
+            <T variant="cardTitle" weight="bold">{title}</T>
+            {subtitle ? <T variant="meta" c={color.muted}>{subtitle}</T> : null}
           </View>
           {children}
         </ObjectCard>
@@ -354,8 +354,8 @@ export function SheetRow({
         opacity: disabled ? 0.45 : pressed ? 0.75 : 1,
       })}
     >
-      <T size={14} weight="semibold" c={c}>{label}</T>
-      {hint ? <T size={11} c={color.muted} style={{ marginTop: 2 }}>{hint}</T> : null}
+      <T variant="body" weight="semibold" c={c}>{label}</T>
+      {hint ? <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>{hint}</T> : null}
     </Pressable>
   );
 }
@@ -366,7 +366,7 @@ export function RoomStateNote({ slowModeS, restricted }: { slowModeS?: number; r
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
       <Slow size={11} />
-      <T size={10} c={color.gold}>
+      <T variant="meta" c={color.gold}>
         {restricted ? 'Posting restricted' : `Slow mode · one message every ${slowModeS}s`}
       </T>
     </View>
@@ -379,7 +379,7 @@ export function LevelToken({ value, tone = 'market' }: { value: string; tone?: '
   const bg = tone === 'target' ? color.greenTint : tone === 'invalid' ? color.redTint : alpha.cyan10;
   return (
     <View style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, backgroundColor: bg }}>
-      <Num size={12} weight="medium" c={c}>{value}</Num>
+      <Num variant="meta" weight="medium" c={c}>{value}</Num>
     </View>
   );
 }

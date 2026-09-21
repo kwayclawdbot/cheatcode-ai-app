@@ -83,7 +83,7 @@ export default function CreditsScreen() {
         <StackHeader title="Credits" />
         <View style={{ paddingHorizontal: 16, gap: space.x12 }}>
           <NotConnected what="Credits" />
-          {error ? <T size={12} c={color.muted} lh={18}>{error}</T> : null}
+          {error ? <T variant="meta" c={color.muted} lh={18}>{error}</T> : null}
         </View>
       </Screen>
     );
@@ -116,13 +116,13 @@ export default function CreditsScreen() {
             the meter, rather than only further down the page.
           */}
           {c.topup > 0 ? (
-            <T size={13} c={color.muted} style={{ marginTop: space.x8 }} testID="credits-plus-bought">
-              <T size={13} weight="bold" c={color.volt}>+{c.topup}</T>
+            <T variant="meta" c={color.muted} style={{ marginTop: space.x8 }} testID="credits-plus-bought">
+              <T variant="meta" weight="bold" c={color.volt}>+{c.topup}</T>
               {' you bought, which do not reset'}
             </T>
           ) : null}
           {resets ? (
-            <T size={12} c={color.dim} style={{ marginTop: space.x10 }} testID="credits-resets">
+            <T variant="meta" c={color.dim} style={{ marginTop: space.x10 }} testID="credits-resets">
               {resets}. They do not carry over.
             </T>
           ) : null}
@@ -135,7 +135,7 @@ export default function CreditsScreen() {
         <Strip style={{ marginTop: space.x20 }} testID="credits-strip">
           <Bay first>
             <Eyebrow c={color.dim}>What a credit is</Eyebrow>
-            <T size={14} lh={21} c={color.muted} style={{ marginTop: space.x6 }}>
+            <T variant="body" lh={21} c={color.muted} style={{ marginTop: space.x6 }}>
               {c.what_a_credit_is}
             </T>
           </Bay>
@@ -149,10 +149,10 @@ export default function CreditsScreen() {
           {c.topup > 0 ? (
             <Bay testID="credits-topup-balance">
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.x10 }}>
-                <Num size={22} weight="bold" c={color.volt}>{c.topup}</Num>
-                <T size={14} c={color.text} style={{ flex: 1 }}>credits you bought</T>
+                <Num variant="sectionTitle" weight="bold" c={color.volt}>{c.topup}</Num>
+                <T variant="body" c={color.text} style={{ flex: 1 }}>credits you bought</T>
               </View>
-              <T size={12} lh={18} c={color.dim} style={{ marginTop: space.x6 }}>
+              <T variant="meta" lh={18} c={color.dim} style={{ marginTop: space.x6 }}>
                 These stay with you. They are not part of today&apos;s {c.granted} and
                 they do not disappear overnight — today&apos;s credits are spent
                 first, so what you paid for is still there tomorrow.
@@ -167,10 +167,10 @@ export default function CreditsScreen() {
           {current ? (
             <Bay testID="credits-current-plan">
               <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: space.x10 }}>
-                <T size={15} weight="bold" c={color.text}>{current.name}</T>
-                <T size={12} c={color.muted}>{current.daily_credits} credits a day</T>
+                <T variant="body" weight="bold" c={color.text}>{current.name}</T>
+                <T variant="meta" c={color.muted}>{current.daily_credits} credits a day</T>
               </View>
-              <T size={13} lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
+              <T variant="meta" lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
                 {current.blurb}
               </T>
             </Bay>
@@ -194,7 +194,7 @@ export default function CreditsScreen() {
         {resets ? (
           <View style={{ marginTop: space.x24 }} testID="credits-next">
             <Eyebrow c={color.dim}>If today is not enough</Eyebrow>
-            <T size={14} lh={21} c={color.muted} style={{ marginTop: space.x10 }}>
+            <T variant="body" lh={21} c={color.muted} style={{ marginTop: space.x10 }}>
               {`${resets}. Nothing is lost in the meantime — every conversation stays exactly where it is, and Kai picks up where you left off.`}
             </T>
           </View>
@@ -204,7 +204,7 @@ export default function CreditsScreen() {
           marginTop: space.x24, paddingTop: space.x12,
           borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: alpha.ivory10,
         }}>
-          <T size={11} lh={17} c={color.dim}>
+          <T variant="meta" lh={17} c={color.dim}>
             Cheat Code AI is education and preparation. Kai never places a trade
             and never promises an outcome.
           </T>
@@ -212,7 +212,7 @@ export default function CreditsScreen() {
 
         {notAvailable ? <NotConnected what="Credits" /> : null}
         {isFixture ? (
-          <T size={10} c={color.dim} align="center" style={{ marginTop: space.x14 }}>
+          <T variant="meta" c={color.dim} align="center" style={{ marginTop: space.x14 }}>
             Sample balance — the service is not connected here.
           </T>
         ) : null}

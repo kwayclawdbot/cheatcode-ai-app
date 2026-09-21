@@ -36,7 +36,7 @@ export function KaiPanel({ turns, symbol }: { turns: PortalTurn[]; symbol: strin
                 backgroundColor: alpha.volt14, borderWidth: 0.5, borderColor: alpha.volt50,
               }}
             >
-              <T size={13} lh={19}>{t.text}</T>
+              <T variant="meta" lh={19}>{t.text}</T>
             </View>
           );
         }
@@ -44,7 +44,7 @@ export function KaiPanel({ turns, symbol }: { turns: PortalTurn[]; symbol: strin
           return (
             <View key={t.id} testID="kai-typing" style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
               <KaiOrb size={24} />
-              <T size={13} c={color.muted}>Kai is reading the chart…</T>
+              <T variant="meta" c={color.muted}>Kai is reading the chart…</T>
             </View>
           );
         }
@@ -58,7 +58,7 @@ export function KaiPanel({ turns, symbol }: { turns: PortalTurn[]; symbol: strin
                 borderRadius: radius.lg, backgroundColor: alpha.violet08, borderLeftWidth: 2, borderLeftColor: color.violet,
               }}
             >
-              <T size={12.5} lh={18} c={color.violetLight} style={{ flex: 1 }}>{t.text}</T>
+              <T variant="meta" lh={18} c={color.violetLight} style={{ flex: 1 }}>{t.text}</T>
             </View>
           );
         }
@@ -72,13 +72,13 @@ export function KaiPanel({ turns, symbol }: { turns: PortalTurn[]; symbol: strin
                 backgroundColor: alpha.violet14, borderWidth: 0.5, borderColor: alpha.violet50,
               }}
             >
-              <T size={13} lh={19} testID="kai-reply">{t.text}</T>
+              <T variant="meta" lh={19} testID="kai-reply">{t.text}</T>
             </View>
           </View>
         );
       })}
       {!turns.length ? (
-        <T size={12.5} lh={18} c={color.muted}>{`Ask Kai anything about the ${symbol} chart.`}</T>
+        <T variant="meta" lh={18} c={color.muted}>{`Ask Kai anything about the ${symbol} chart.`}</T>
       ) : null}
     </View>
   );
@@ -88,7 +88,7 @@ export function PortalNotice({ text }: { text: string }) {
   return (
     <View style={{ flexDirection: 'row', gap: 7, alignItems: 'flex-start', paddingTop: 2 }}>
       <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color.dim, marginTop: 6 }} />
-      <T size={10.5} lh={15} c={color.dim} style={{ flex: 1 }} testID="portal-notice">{text}</T>
+      <T variant="meta" lh={15} c={color.dim} style={{ flex: 1 }} testID="portal-notice">{text}</T>
     </View>
   );
 }

@@ -315,13 +315,13 @@ export function LessonRunner({
             }}
           >
             <View style={{ flex: 1 }}>
-              <T size={12} weight="bold" c={color.volt}>Picked up where you left off</T>
-              <T size={11} lh={16} c={color.muted}>
+              <T variant="meta" weight="bold" c={color.volt}>Picked up where you left off</T>
+              <T variant="meta" lh={16} c={color.muted}>
                 {`Screen ${index + 1} of ${screens.length}. Your answers so far are still counted.`}
               </T>
             </View>
             <Pressable testID="training-lesson-start-over" onPress={startOver} hitSlop={8}>
-              <T size={11.5} weight="bold" c={color.muted}>Start over</T>
+              <T variant="meta" weight="bold" c={color.muted}>Start over</T>
             </Pressable>
           </View>
         ) : null}
@@ -343,11 +343,11 @@ export function LessonRunner({
           <View style={{ width: 92, alignItems: 'flex-start' }}>
             {index > 0 && screen.type !== 'completion' ? (
               <Pressable testID="training-lesson-back" onPress={goBack} hitSlop={10}>
-                <T size={11.5} c={color.muted}>‹ Back</T>
+                <T variant="meta" c={color.muted}>‹ Back</T>
               </Pressable>
             ) : null}
           </View>
-          <T size={10.5} align="center" c={color.dim} style={{ flex: 1 }}>
+          <T variant="meta" align="center" c={color.dim} style={{ flex: 1 }}>
             {day ? `Day ${day.index} · ${node.title}` : node.title} · {index + 1} of {screens.length}
           </T>
           <View style={{ width: 92 }} />

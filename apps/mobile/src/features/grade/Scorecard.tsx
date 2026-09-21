@@ -65,12 +65,12 @@ export function ScoreRow({ component, expanded, onPress }: {
       style={{ gap: 6 }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-        <T size={11.5} c={color.muted} style={{ width: 74 }}>{component.label}</T>
+        <T variant="meta" c={color.muted} style={{ width: 74 }}>{component.label}</T>
         <StrengthMeter strength={component.strength} tone={tone} />
-        <T size={11} c={tone} style={{ marginLeft: 'auto' }}>{component.status}</T>
+        <T variant="meta" c={tone} style={{ marginLeft: 'auto' }}>{component.status}</T>
       </View>
       {expanded && component.explanation ? (
-        <T size={11} c={color.dim} lh={16} style={{ paddingLeft: 83 }}>{component.explanation}</T>
+        <T variant="meta" c={color.dim} lh={16} style={{ paddingLeft: 83 }}>{component.explanation}</T>
       ) : null}
     </Pressable>
   );
@@ -98,10 +98,10 @@ export function Scorecard({
     >
       {heading ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Eyebrow c={color.muted}>WHY THIS GRADE</Eyebrow>
+          <Eyebrow c={color.muted}>Why this grade</Eyebrow>
           {onToggleEvidence ? (
             <Pressable onPress={onToggleEvidence} accessibilityRole="button" testID="scorecard-evidence">
-              <T size={11} weight="semibold" c={color.violetLight}>
+              <T variant="meta" weight="semibold" c={color.violetLight}>
                 {showEvidence ? 'Hide evidence' : 'See evidence'}
               </T>
             </Pressable>
@@ -122,9 +122,9 @@ export function MeterRow({ label, status, strength, width = 74 }: {
   const tone = statusTone(status);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }} accessibilityLabel={`${label}, ${status}`}>
-      <T size={11.5} c={color.muted} style={{ width }}>{label}</T>
+      <T variant="meta" c={color.muted} style={{ width }}>{label}</T>
       <StrengthMeter strength={strength} tone={tone} />
-      <T size={11} c={tone} style={{ marginLeft: 'auto' }}>{status}</T>
+      <T variant="meta" c={tone} style={{ marginLeft: 'auto' }}>{status}</T>
     </View>
   );
 }

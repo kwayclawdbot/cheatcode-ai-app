@@ -42,8 +42,8 @@ export default function SignUp() {
   return (
     <Screen variant="dome" layout="stack" testID="screen-sign-up">
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
-        <T size={27} weight="bold" ls={-0.4} lh={32}>Create your account</T>
-        <T size={14} c={color.muted} style={{ marginTop: 8 }}>
+        <T variant="screenTitle" weight="bold" ls={-0.4} lh={32}>Create your account</T>
+        <T variant="body" c={color.muted} style={{ marginTop: 8 }}>
           You'll practise with paper money first. No card, no broker, nothing at risk.
         </T>
 
@@ -51,9 +51,9 @@ export default function SignUp() {
           <ObjectCard style={{ marginTop: 26, padding: 16, gap: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Check size={18} color={color.green} />
-              <T size={17} weight="bold">Check your email to confirm</T>
+              <T variant="cardTitle" weight="bold">Check your email to confirm</T>
             </View>
-            <T size={14} lh={20} c={color.muted}>
+            <T variant="body" lh={20} c={color.muted}>
               We sent a link to {email}. Open it on this device and you'll land right back here.
             </T>
             <Button label="I've confirmed — sign in" kind="outline" height={44} onPress={() => router.replace('/sign-in')} />
@@ -88,7 +88,7 @@ export default function SignUp() {
             <View style={{ gap: 12, marginTop: 26 }}>
               <Button testID="cta-create" label="Create account" height={52} arrow loading={busy} onPress={submit} />
               <Pressable onPress={() => router.replace('/sign-in')} hitSlop={12} style={{ alignItems: 'center', minHeight: 44, justifyContent: 'center' }}>
-                <T size={13} c={color.muted}>Already have an account? <T size={13} weight="semibold" c={color.text}>Sign in</T></T>
+                <T variant="meta" c={color.muted}>Already have an account? <T variant="meta" weight="semibold" c={color.text}>Sign in</T></T>
               </Pressable>
               {/* The documents a person is agreeing to, reachable at the moment
                   they agree to them — not only afterwards in Account. */}

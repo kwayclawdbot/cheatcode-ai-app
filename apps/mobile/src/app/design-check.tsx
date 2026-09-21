@@ -38,7 +38,7 @@ function WasLogoTile({ symbol }: { symbol: string }) {
       end={gradientAngle.end}
       style={{ width: 30, height: 30, borderRadius: 9, borderWidth: 0.5, borderColor: alpha.ivory14, alignItems: 'center', justifyContent: 'center' }}
     >
-      <T size={13} weight="bold">{symbol.slice(0, 1)}</T>
+      <T variant="meta" weight="bold">{symbol.slice(0, 1)}</T>
     </LinearGradient>
   );
 }
@@ -82,7 +82,7 @@ function WasChip({ grade, score }: { grade?: string | null; score?: number | nul
         borderWidth: 0.5, borderColor: band.cardBorder, backgroundColor: band.cardVeil,
       }}
     >
-      <T size={10} weight="bold" c={band.letter}>{displayGrade(grade)}</T>
+      <T variant="meta" weight="bold" c={band.letter}>{displayGrade(grade)}</T>
     </View>
   );
 }
@@ -96,7 +96,7 @@ function Section({ id, title, note, children }: { id: string; title: string; not
     <View testID={`section-${id}`} style={{ gap: 12, paddingTop: 22, paddingBottom: 10, borderTopWidth: 0.5, borderTopColor: alpha.ivory12 }}>
       <View style={{ gap: 4 }}>
         <Eyebrow c={color.muted}>{title}</Eyebrow>
-        {note ? <T size={11.5} c={color.dim} lh={17}>{note}</T> : null}
+        {note ? <T variant="meta" c={color.dim} lh={17}>{note}</T> : null}
       </View>
       {children}
     </View>
@@ -140,8 +140,8 @@ export default function DesignCheck() {
       style={{ flex: 1, backgroundColor: color.bg }}
       contentContainerStyle={{ padding: 20, paddingTop: 54, paddingBottom: 60, gap: 4 }}
     >
-      <T size={26} weight="bold" ls={-0.4}>Ticker &amp; grade</T>
-      <T size={12.5} c={color.muted} lh={18} style={{ marginBottom: 8 }}>
+      <T variant="screenTitle" weight="bold" ls={-0.4}>Ticker &amp; grade</T>
+      <T variant="meta" c={color.muted} lh={18} style={{ marginBottom: 8 }}>
         Left column is what shipped before. Right column is the proposal. Same fonts, same palette, same screen.
       </T>
 
@@ -160,9 +160,9 @@ export default function DesignCheck() {
             <WasMedallion grade={b.grade || null} score={b.score} size={78} />
             <GradeMedallion grade={b.grade || null} score={b.score} size={78} testID={`medallion-${b.label}`} />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <T size={13} weight="bold">{b.label}</T>
-              <T size={11} c={color.muted}>{gradeBand(b.grade || null, b.score).quality}</T>
-              <T size={10} c={color.dim}>{b.share}</T>
+              <T variant="meta" weight="bold">{b.label}</T>
+              <T variant="meta" c={color.muted}>{gradeBand(b.grade || null, b.score).quality}</T>
+              <T variant="meta" c={color.dim}>{b.share}</T>
             </View>
           </View>
         ))}
@@ -175,30 +175,30 @@ export default function DesignCheck() {
         note="One family, not two designs: the medallion's gauge is a rule bent into a circle, and at chip scale it straightens back out. No box — the row already has enough boxes."
       >
         <View style={{ gap: 10 }}>
-          <T size={10.5} c={color.dim}>before</T>
+          <T variant="meta" c={color.dim}>before</T>
           {BANDS.slice(0, 4).map((b) => (
             <View key={`was-${b.label}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <T size={15} weight="bold">{['NVDA', 'SOFI', 'PLTR', 'GOOGL'][BANDS.indexOf(b)] ?? 'NVDA'}</T>
+              <T variant="body" weight="bold">{['NVDA', 'SOFI', 'PLTR', 'GOOGL'][BANDS.indexOf(b)] ?? 'NVDA'}</T>
               <WasChip grade={b.grade || null} score={b.score} />
               <View style={{ paddingHorizontal: 7, paddingVertical: 1, borderRadius: 5, borderWidth: 0.5, borderColor: alpha.green50 }}>
-                <T size={10} c={color.green}>Target hit</T>
+                <T variant="meta" c={color.green}>Target hit</T>
               </View>
-              <T size={10} c={color.muted} style={{ marginLeft: 'auto' }}>2d ago</T>
+              <T variant="meta" c={color.muted} style={{ marginLeft: 'auto' }}>2d ago</T>
             </View>
           ))}
         </View>
 
         <View style={{ gap: 10, paddingTop: 14, borderTopWidth: 0.5, borderTopColor: alpha.ivory08 }}>
-          <T size={10.5} c={color.dim}>after</T>
+          <T variant="meta" c={color.dim}>after</T>
           {BANDS.slice(0, 4).map((b) => (
             <View key={`is-${b.label}`} testID={`chip-row-${b.label}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <TickerMark symbol={['NVDA', 'SOFI', 'PLTR', 'GOOGL'][BANDS.indexOf(b)] ?? 'NVDA'} size={22} />
-              <T size={15} weight="bold">{['NVDA', 'SOFI', 'PLTR', 'GOOGL'][BANDS.indexOf(b)] ?? 'NVDA'}</T>
+              <T variant="body" weight="bold">{['NVDA', 'SOFI', 'PLTR', 'GOOGL'][BANDS.indexOf(b)] ?? 'NVDA'}</T>
               <GradeChip grade={b.grade || null} score={b.score} />
               <View style={{ paddingHorizontal: 7, paddingVertical: 1, borderRadius: 5, borderWidth: 0.5, borderColor: alpha.green50 }}>
-                <T size={10} c={color.green}>Target hit</T>
+                <T variant="meta" c={color.green}>Target hit</T>
               </View>
-              <T size={10} c={color.muted} style={{ marginLeft: 'auto' }}>2d ago</T>
+              <T variant="meta" c={color.muted} style={{ marginLeft: 'auto' }}>2d ago</T>
             </View>
           ))}
         </View>
@@ -214,7 +214,7 @@ export default function DesignCheck() {
           {[...WITH_LOGO, ...NO_LOGO, ...LONG].map((s) => (
             <View key={`was-${s}`} style={{ alignItems: 'center', gap: 5, width: 54 }}>
               <WasLogoTile symbol={s} />
-              <T size={10} c={color.muted}>{s}</T>
+              <T variant="meta" c={color.muted}>{s}</T>
             </View>
           ))}
         </View>
@@ -265,13 +265,13 @@ export default function DesignCheck() {
           {[22, 30, 38, 44, 56].map((n) => (
             <View key={n} style={{ alignItems: 'center', gap: 6 }}>
               <TickerMark symbol="NVDA" size={n} />
-              <Num size={9} c={color.dim}>{String(n)}</Num>
+              <Num variant="meta" c={color.dim}>{String(n)}</Num>
             </View>
           ))}
           {[22, 30, 38, 44, 56].map((n) => (
             <View key={`f-${n}`} style={{ alignItems: 'center', gap: 6 }}>
               <TickerMark symbol="ARKK" size={n} noLogo />
-              <Num size={9} c={color.dim}>{String(n)}</Num>
+              <Num variant="meta" c={color.dim}>{String(n)}</Num>
             </View>
           ))}
         </View>
@@ -291,19 +291,19 @@ export default function DesignCheck() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <TickerMark symbol="NVDA" size={30} />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <T size={16} weight="bold">NVDA</T>
-              <T size={10} c={color.muted}>Nvidia Corp · Swing · Long · Shares</T>
+              <T variant="body" weight="bold">NVDA</T>
+              <T variant="meta" c={color.muted}>Nvidia Corp · Swing · Long · Shares</T>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <T size={10.5} c={color.muted}>09:41</T>
-              <T size={11} weight="bold" c={color.green}>Entry reached</T>
+              <T variant="meta" c={color.muted}>09:41</T>
+              <T variant="meta" weight="bold" c={color.green}>Entry reached</T>
             </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
             <GradeMedallion grade="A−" score={87} size={90} testID="medallion-context" />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <T size={16} weight="bold" lh={20}>Held the breakout retest on rising volume</T>
-              <T size={12.5} c={color.muted} lh={18} style={{ marginTop: 6 }}>
+              <T variant="body" weight="bold" lh={20}>Held the breakout retest on rising volume</T>
+              <T variant="meta" c={color.muted} lh={18} style={{ marginTop: 6 }}>
                 Price came back to 178.40 and buyers took it. That is the level the whole plan was built on.
               </T>
             </View>

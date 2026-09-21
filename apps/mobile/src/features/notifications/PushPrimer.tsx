@@ -128,8 +128,8 @@ export function PushPrimingBlock({
       <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
         <KaiOrb size={24} />
         <View style={{ flex: 1, gap: 6 }}>
-          <T size={15} weight="bold">Want a buzz when this triggers?</T>
-          <T size={13} lh={20} c={color.muted}>
+          <T variant="body" weight="bold">Want a buzz when this triggers?</T>
+          <T variant="meta" lh={20} c={color.muted}>
             {summaryPlain
               ? `I can send this to your ${Platform.OS === 'web' ? 'browser' : 'phone'} the moment it happens, in the same words you will read in your inbox.`
               : 'I can send it the moment it happens, in the same words you will read in your inbox.'}
@@ -137,7 +137,7 @@ export function PushPrimingBlock({
         </View>
       </View>
 
-      {message ? <T size={12.5} lh={19} c={color.gold}>{message}</T> : null}
+      {message ? <T variant="meta" lh={19} c={color.gold}>{message}</T> : null}
 
       <Button
         testID="priming-turn-on"

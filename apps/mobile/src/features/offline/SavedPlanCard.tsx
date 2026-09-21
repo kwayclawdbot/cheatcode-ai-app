@@ -58,11 +58,11 @@ export function SavedPlanCard({
   const stamp = updatedAtLabel(fetchedAt, 'Saved');
   const level = (label: string, value: number | null, c: string, id: string) => (
     <View style={{ flex: 1, gap: 3 }}>
-      <T size={11} c={color.dim}>{label}</T>
+      <T variant="meta" c={color.dim}>{label}</T>
       {value === null ? (
-        <T size={13} c={color.muted} testID={`${id}-absent`}>Not set</T>
+        <T variant="meta" c={color.muted} testID={`${id}-absent`}>Not set</T>
       ) : (
-        <Num size={18} weight="bold" c={c} testID={id}>{value.toFixed(2)}</Num>
+        <Num variant="cardTitle" weight="bold" c={c} testID={id}>{value.toFixed(2)}</Num>
       )}
     </View>
   );
@@ -70,7 +70,7 @@ export function SavedPlanCard({
   return (
     <ObjectCard testID={testID} r={radius.xxxl} style={{ padding: 15, gap: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <T size={17} weight="bold">{symbol}</T>
+        <T variant="cardTitle" weight="bold">{symbol}</T>
         <View
           style={{
             marginLeft: 'auto',
@@ -81,7 +81,7 @@ export function SavedPlanCard({
             borderColor: alpha.gold40,
           }}
         >
-          <T size={10} weight="bold" ls={0.6} c={color.gold}>SAVED PLAN</T>
+          <T variant="meta" weight="bold" c={color.gold}>Saved plan</T>
         </View>
       </View>
 
@@ -107,7 +107,7 @@ export function SavedPlanCard({
       </View>
 
       <View style={{ gap: 8 }}>
-        <Eyebrow>SAVED PLAN (NOT LIVE)</Eyebrow>
+        <Eyebrow>Saved plan (not live)</Eyebrow>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           {level('Entry', entry, color.cyan, 'saved-entry')}
           {level('Stop', stop, color.red, 'saved-stop')}
@@ -115,7 +115,7 @@ export function SavedPlanCard({
         </View>
       </View>
 
-      <T size={11} c={color.dim} testID="saved-plan-stamp">
+      <T variant="meta" c={color.dim} testID="saved-plan-stamp">
         {stamp ? `${stamp}. Prices are not moving here.` : 'Saved before the connection dropped. Prices are not moving here.'}
       </T>
     </ObjectCard>

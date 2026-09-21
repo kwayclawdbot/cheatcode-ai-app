@@ -64,13 +64,13 @@ export function Spine({
             >
               <T
                 mono
-                size={11}
+                variant="meta"
                 weight="bold"
                 c={active ? color.volt : locked ? color.dim : color.muted}
               >
                 {BEAT_STEP[b]}
               </T>
-              <T size={12} weight={active ? 'bold' : 'semibold'} ls={0.6} c={tint}>
+              <T variant="meta" weight={active ? 'bold' : 'semibold'} ls={0.6} c={tint}>
                 {BEAT_LABEL[b].toUpperCase()}
               </T>
             </Pressable>
@@ -101,7 +101,7 @@ export function SpineFooter({
   if (blocked) {
     return (
       <View style={{ paddingHorizontal: 16, paddingTop: 2, paddingBottom: 8 }}>
-        <T size={12.5} lh={18} c={color.muted} testID={`${testID ?? 'spine-footer'}-blocked`}>{blocked}</T>
+        <T variant="meta" lh={18} c={color.muted} testID={`${testID ?? 'spine-footer'}-blocked`}>{blocked}</T>
       </View>
     );
   }
@@ -122,7 +122,7 @@ export function SpineFooter({
           opacity: disabled ? 0.6 : 1,
         }}
       >
-        <T size={14.5} weight="bold" c={color.bg}>{label}</T>
+        <T variant="body" weight="bold" c={color.bg}>{label}</T>
       </Pressable>
     </View>
   );

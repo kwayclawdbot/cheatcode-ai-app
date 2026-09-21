@@ -18,7 +18,7 @@ import { Button } from '../../ui/Button';
 import { FreshnessMark } from '../../ui/FreshnessMark';
 import { Search } from '../../ui/Icons';
 import { TickerMark } from '../../ui/Ticker';
-import { alpha, color, gradient, gradientAngle, radius } from '../../ui/tokens';
+import { alpha, color, gradient, gradientAngle, radius, typeScale } from '../../ui/tokens';
 import { family } from '../../ui/fonts';
 import { PaperChip } from '../trade/components';
 import { api } from '../../lib/api';
@@ -120,8 +120,8 @@ export function PortalTopBar({
           }}
         >
           <Search size={13} color={color.muted} />
-          <T size={15} weight="bold">{symbol}</T>
-          <T size={11.5} c={color.dim} numberOfLines={1} style={{ flex: 1 }}>
+          <T variant="body" weight="bold">{symbol}</T>
+          <T variant="meta" c={color.dim} numberOfLines={1} style={{ flex: 1 }}>
             {name ?? 'Search'}
           </T>
           <Chevron />
@@ -140,11 +140,11 @@ export function PortalTopBar({
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 9, paddingHorizontal: 16, paddingBottom: 2 }}>
-        <Num size={27} weight="semibold" c={color.cyan} testID="portal-price">
+        <Num variant="keyPrice" weight="semibold" c={color.cyan} testID="portal-price">
           {quote?.price != null ? quote.price.toFixed(2) : '—'}
         </Num>
         {quote?.change_pct != null ? (
-          <Num size={13} weight="regular" c={up ? color.green : color.red}>
+          <Num variant="meta" weight="regular" c={up ? color.green : color.red}>
             {`${up ? '+' : ''}${quote.change_pct.toFixed(2)}%`}
           </Num>
         ) : null}
@@ -152,7 +152,7 @@ export function PortalTopBar({
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingBottom: 6 }}>
-        <Num size={10.5} weight="regular" c={color.dim}>
+        <Num variant="meta" weight="regular" c={color.dim}>
           {[volumeLine, marketState].filter(Boolean).join(' · ') || (name ?? '')}
         </Num>
       </View>
@@ -195,7 +195,7 @@ function PortalSearchField({ onPress }: { onPress: () => void }) {
           }}
         >
           <Search size={14} color={color.muted} />
-          <T size={12.5} c={color.dim} numberOfLines={1} style={{ flex: 1 }}>
+          <T variant="meta" c={color.dim} numberOfLines={1} style={{ flex: 1 }}>
             Search symbol, company, or ask Kai
           </T>
         </LinearGradient>
@@ -236,7 +236,7 @@ export function PortalChromeSkeleton({ label }: { label?: string }) {
           }}
         >
           <Search size={14} color={color.muted} />
-          <T size={12.5} c={color.dim}>Search symbol, company, or ask Kai</T>
+          <T variant="meta" c={color.dim}>Search symbol, company, or ask Kai</T>
         </View>
       </View>
       <View style={{ paddingHorizontal: 16, gap: 11 }}>
@@ -248,7 +248,7 @@ export function PortalChromeSkeleton({ label }: { label?: string }) {
           }}
         >
           <ActivityIndicator size="small" color={color.muted} />
-          <T size={11.5} c={color.dim} testID="portal-skeleton-label">{label ?? 'Opening your chart…'}</T>
+          <T variant="meta" c={color.dim} testID="portal-skeleton-label">{label ?? 'Opening your chart…'}</T>
         </View>
         <View style={{ flexDirection: 'row', gap: 24 }}>
           {bar(28, 13)}{bar(34, 13)}{bar(30, 13)}{bar(66, 13)}
@@ -283,23 +283,23 @@ export function AnnotationSheet({
                 backgroundColor: `${kindColor(a.kind)}1F`, borderWidth: 0.5, borderColor: `${kindColor(a.kind)}88`,
               }}
             >
-              <T size={11} weight="bold" c={kindColor(a.kind)}>{KIND_LABEL[a.kind]}</T>
+              <T variant="meta" weight="bold" c={kindColor(a.kind)}>{KIND_LABEL[a.kind]}</T>
             </View>
-            <Num size={18} weight="semibold" c={kindColor(a.kind)} testID="annotation-price">
+            <Num variant="cardTitle" weight="semibold" c={kindColor(a.kind)} testID="annotation-price">
               {a.price2 != null && a.price != null
                 ? `${a.price.toFixed(2)}–${a.price2.toFixed(2)}`
                 : a.price != null ? a.price.toFixed(2) : '—'}
             </Num>
-            {a.status === 'invalidated' ? <T size={11} c={color.red}>No longer valid</T> : null}
+            {a.status === 'invalidated' ? <T variant="meta" c={color.red}>No longer valid</T> : null}
           </View>
 
-          <T size={13.5} lh={20} testID="annotation-reason">
+          <T variant="meta" lh={20} testID="annotation-reason">
             {a.reason ?? 'No reason was recorded for this level.'}
           </T>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: a.provenance === 'kai' ? color.violet : color.dim }} />
-            <T size={11.5} c={color.muted} testID="annotation-provenance">
+            <T variant="meta" c={color.muted} testID="annotation-provenance">
               {PROVENANCE_LABEL[a.provenance]}
               {a.timeframe ? ` · ${a.timeframe} chart` : ''}
             </T>
@@ -320,7 +320,7 @@ export function AnnotationSheet({
             onPress={() => onDelete(a)}
             style={{ alignSelf: 'center', minHeight: 40, justifyContent: 'center' }}
           >
-            <T size={12} weight="semibold" c={color.red}>Delete</T>
+            <T variant="meta" weight="semibold" c={color.red}>Delete</T>
           </Pressable>
         </View>
       ) : null}
@@ -498,7 +498,7 @@ export function TickerSwitcherSheet({
           }}
           placeholder="Symbol, company, or ask Kai"
           placeholderTextColor={color.muted}
-          style={{ flex: 1, fontFamily: family.regular, fontSize: 14, color: color.text, ...(({ outlineStyle: 'none' } as unknown) as object) }}
+          style={{ flex: 1, fontFamily: family.regular, fontSize: typeScale.body.size, color: color.text, ...(({ outlineStyle: 'none' } as unknown) as object) }}
         />
         {searching ? <ActivityIndicator size="small" color={color.muted} /> : null}
       </View>
@@ -514,14 +514,14 @@ export function TickerSwitcherSheet({
           >
             {/* A ticker always appears with its mark, everywhere in this app. */}
             <TickerMark symbol={s.symbol} size={26} />
-            <T size={14} weight="bold" style={{ width: 58 }}>{s.symbol}</T>
-            <T size={12} c={color.muted} numberOfLines={1} style={{ flex: 1 }}>{s.name ?? ''}</T>
+            <T variant="body" weight="bold" style={{ width: 58 }}>{s.symbol}</T>
+            <T variant="meta" c={color.muted} numberOfLines={1} style={{ flex: 1 }}>{s.name ?? ''}</T>
             {s.why ? (
-              <T size={10.5} c={color.dim} numberOfLines={1}>{s.why}</T>
+              <T variant="meta" c={color.dim} numberOfLines={1}>{s.why}</T>
             ) : null}
           </Pressable>
         )) : (
-          <T size={12.5} c={color.muted} style={{ paddingVertical: 14 }}>
+          <T variant="meta" c={color.muted} style={{ paddingVertical: 14 }}>
             {term ? 'No symbol matched that.' : 'Your watchlist and recent symbols show up here.'}
           </T>
         )}
@@ -535,7 +535,7 @@ export function TickerSwitcherSheet({
             style={{ flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 46 }}
           >
             <KaiOrb size={18} glow={false} />
-            <T size={12.5} c={color.violetLight} numberOfLines={1} style={{ flex: 1 }}>
+            <T variant="meta" c={color.violetLight} numberOfLines={1} style={{ flex: 1 }}>
               {`Ask Kai about “${term}”`}
             </T>
           </Pressable>

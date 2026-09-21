@@ -39,9 +39,9 @@ export default function Welcome() {
           </Svg>
         </View>
 
-        <T size={32} weight="bold" ls={-0.5}>Cheat Code AI</T>
+        <T variant="screenTitle" weight="bold" ls={-0.5}>Cheat Code AI</T>
 
-        <T size={15} c={color.muted} align="center" lh={22}>
+        <T variant="body" c={color.muted} align="center" lh={22}>
           Trade with Kai — an AI that grades setups, watches your risk, and never spends a dollar without you.
         </T>
 
@@ -56,7 +56,7 @@ export default function Welcome() {
           }}
         >
           <KaiOrb size={28} />
-          <T size={13} lh={18}>“I'll show you one real setup in the first minute.”</T>
+          <T variant="meta" lh={18}>“I'll show you one real setup in the first minute.”</T>
         </LinearGradient>
       </View>
 

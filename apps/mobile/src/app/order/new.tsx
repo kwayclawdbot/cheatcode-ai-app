@@ -149,7 +149,7 @@ export default function OrderTicket() {
           <Segmented options={sideOptions} value={side} onChange={setSide} testID="side" />
         ) : null}
 
-        <Eyebrow>HOW MUCH</Eyebrow>
+        <Eyebrow>How much</Eyebrow>
         <Segmented
           options={[{ key: 'dollars', label: 'Dollars' }, { key: 'shares', label: 'Shares' }] as { key: SizeMode; label: string }[]}
           value={sizeMode}
@@ -178,14 +178,14 @@ export default function OrderTicket() {
           />
         )}
         {impliedShares != null ? (
-          <T size={11} c={color.muted} lh={16} style={{ paddingHorizontal: 4 }}>
+          <T variant="meta" c={color.muted} lh={16} style={{ paddingHorizontal: 4 }}>
             {sizeMode === 'dollars'
               ? `That buys ${impliedShares} share${impliedShares === 1 ? '' : 's'} at about ${price != null ? money(price) : "today's price"}${estTotal != null ? ` — ${money(estTotal)}` : ''}. Paper orders are whole shares.`
               : `About ${money(estTotal)} at ${price != null ? money(price) : "today's price"}.`}
           </T>
         ) : null}
 
-        <Eyebrow>HOW IT GOES IN</Eyebrow>
+        <Eyebrow>How it goes in</Eyebrow>
         <Segmented
           options={[
             { key: 'market', label: 'Market' },
@@ -196,7 +196,7 @@ export default function OrderTicket() {
           onChange={setType}
           testID="order-type"
         />
-        <T size={11} c={color.muted} lh={16} style={{ paddingHorizontal: 4 }}>
+        <T variant="meta" c={color.muted} lh={16} style={{ paddingHorizontal: 4 }}>
           {type === 'market'
             ? 'Fills at whatever the next price is. Paper fills use delayed prices, so it can differ from a real one.'
             : type === 'limit'
@@ -226,7 +226,7 @@ export default function OrderTicket() {
           />
         ) : null}
 
-        <Eyebrow>HOW LONG IT LIVES</Eyebrow>
+        <Eyebrow>How long it lives</Eyebrow>
         <Segmented
           options={[
             { key: 'day', label: 'Today only' },
@@ -244,7 +244,7 @@ export default function OrderTicket() {
         </ObjectCard>
 
         {powerError ? (
-          <T size={12} c={color.red} lh={17} testID="power-error">{powerError}</T>
+          <T variant="meta" c={color.red} lh={17} testID="power-error">{powerError}</T>
         ) : null}
 
         <QuoteLine quote={quote} note={quote ? null : 'No quote yet'} />
@@ -255,10 +255,10 @@ export default function OrderTicket() {
           testID="cta-review"
           accessibilityHint="Shows you the full order and Kai's risk check before anything is sent"
         />
-        <T size={11} c={color.dim} align="center" lh={16}>
+        <T variant="meta" c={color.dim} align="center" lh={16}>
           Nothing is sent until you confirm on the next screen.
         </T>
-        <Num size={11} c={color.dim} style={{ alignSelf: 'center' }}>
+        <Num variant="meta" c={color.dim} style={{ alignSelf: 'center' }}>
           {`Practice account · ${money(buyingPower, 0)} available`}
         </Num>
       </ScrollView>

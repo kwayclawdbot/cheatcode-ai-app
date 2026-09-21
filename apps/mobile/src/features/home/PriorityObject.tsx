@@ -40,10 +40,10 @@ export function PriorityObject({ priority, candles, testID = 'home-priority' }: 
         their own, right-aligned, whole.
       */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 4 }}>
-        <T size={20} weight="bold" testID="priority-symbol">{title}</T>
+        <T variant="sectionTitle" weight="bold" testID="priority-symbol">{title}</T>
         {priority.grade_display ? (
           <View style={{ paddingHorizontal: 9, paddingVertical: 2, borderRadius: radius.sm, backgroundColor: alpha.violet14, borderWidth: 0.5, borderColor: alpha.violet50 }}>
-            <T size={12} weight="bold" c={color.violet}>{priority.grade_display}</T>
+            <T variant="meta" weight="bold" c={color.violet}>{priority.grade_display}</T>
           </View>
         ) : null}
         {/* Freshness rides in the header so the card keeps the artboard's
@@ -61,7 +61,7 @@ export function PriorityObject({ priority, candles, testID = 'home-priority' }: 
           {priority.state_label ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: tone }} />
-              <T size={11} c={tone}>{priority.state_label}</T>
+              <T variant="meta" c={tone}>{priority.state_label}</T>
             </View>
           ) : null}
         </View>
@@ -78,11 +78,11 @@ export function PriorityObject({ priority, candles, testID = 'home-priority' }: 
       ) : null}
 
       {priority.title && priority.symbol ? (
-        <T size={14} lh={20} weight="semibold">{priority.title}</T>
+        <T variant="body" lh={20} weight="semibold">{priority.title}</T>
       ) : null}
 
       {priority.detail ? (
-        <T size={13} lh={19} c={color.muted} testID="priority-detail">{priority.detail}</T>
+        <T variant="meta" lh={19} c={color.muted} testID="priority-detail">{priority.detail}</T>
       ) : null}
 
       <Button

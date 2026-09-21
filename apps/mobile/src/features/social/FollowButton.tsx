@@ -85,7 +85,7 @@ export function FollowButton({
       {/* The server's refusal, where it happened. Never a toast on another
           screen, and never silence. */}
       {!compact && follow.error ? (
-        <T size={11} c={color.red} testID={`follow-error-${userId}`}>{follow.error}</T>
+        <T variant="meta" c={color.red} testID={`follow-error-${userId}`}>{follow.error}</T>
       ) : null}
     </View>
   );

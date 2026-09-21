@@ -91,33 +91,33 @@ export default function BeltProfileScreen() {
         }}
       >
         <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/training' as never))} hitSlop={12}>
-          <T size={22} c={color.muted}>‹</T>
+          <T variant="sectionTitle" c={color.muted}>‹</T>
         </Pressable>
-        <T size={16} weight="bold" align="center" style={{ flex: 1 }}>Your belt</T>
+        <T variant="body" weight="bold" align="center" style={{ flex: 1 }}>Your belt</T>
         <View style={{ width: 22 }} />
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}>
         {state === 'unavailable' ? (
           <ObjectCard r={radius.xl} style={{ padding: 16, gap: 10 }} testID="belt-unavailable">
-            <T size={13} weight="bold">I cannot read your belt right now</T>
-            <T size={12.5} lh={19} c={color.muted}>
+            <T variant="meta" weight="bold">I cannot read your belt right now</T>
+            <T variant="meta" lh={19} c={color.muted}>
               Belts, XP and what the next one asks for are all worked out on the server, and I could
               not reach it. I am not going to draw a ladder I have not checked.
             </T>
             <Button label="Try again" kind="outline" onPress={() => { setState('loading'); void load(); }} />
           </ObjectCard>
         ) : state === 'loading' ? (
-          <T size={12.5} c={color.muted}>Reading your record…</T>
+          <T variant="meta" c={color.muted}>Reading your record…</T>
         ) : data ? (
           <>
             {/* ── the belt itself ─────────────────────────────────────────── */}
             <View style={{ gap: 6 }}>
-              <Eyebrow c={color.muted}>YOUR BELT</Eyebrow>
-              <T size={30} weight="bold" ls={-0.6} c={beltInk(belt)} testID="belt-current">
+              <Eyebrow c={color.muted}>Your belt</Eyebrow>
+              <T variant="screenTitle" weight="bold" ls={-0.6} c={beltInk(belt)} testID="belt-current">
                 {`${BELT_LABEL[belt].toUpperCase()} BELT`}
               </T>
-              <T size={14} c={color.muted}>{BELT_STAGE[belt] ?? ''}</T>
+              <T variant="body" c={color.muted}>{BELT_STAGE[belt] ?? ''}</T>
             </View>
 
             <ObjectCard
@@ -135,7 +135,7 @@ export default function BeltProfileScreen() {
               </View>
 
               {data.belt_source === 'legacy_points' && belt !== 'white' ? (
-                <T size={11.5} lh={17} c={color.dim} testID="belt-legacy-note">
+                <T variant="meta" lh={17} c={color.dim} testID="belt-legacy-note">
                   You earned this belt on points, before the test existed. It is yours and it stays
                   yours. Your next belt needs its test, like everybody else&rsquo;s
                   {data.may_convert_legacy ? ' — and you can sit this one voluntarily if you want it on the record.' : '.'}
@@ -147,8 +147,8 @@ export default function BeltProfileScreen() {
             {next ? (
               <View style={{ gap: 10 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
-                  <T size={17} weight="bold" style={{ flex: 1 }}>{`Next: ${next.label} Belt`}</T>
-                  <Num size={12} c={color.dim}>
+                  <T variant="cardTitle" weight="bold" style={{ flex: 1 }}>{`Next: ${next.label} Belt`}</T>
+                  <Num variant="meta" c={color.dim}>
                     {ring === null ? '' : `${Math.round(ring * 100)}%`}
                   </Num>
                 </View>
@@ -182,15 +182,15 @@ export default function BeltProfileScreen() {
                         {c.met ? <Check size={11} color={color.bg} /> : null}
                       </View>
                       <View style={{ flex: 1 }}>
-                        <T size={13} c={c.met ? color.text : color.muted}>{c.label}</T>
+                        <T variant="meta" c={c.met ? color.text : color.muted}>{c.label}</T>
                         {/* WHAT IS SHORT, AND BY HOW MUCH. A locked door with no
                             sign on it is a bug — the same argument the day gates
                             make in `gates.ts`. */}
                         {!c.met && c.need !== null ? (
-                          <T size={11} c={color.dim}>{`You have ${c.have ?? 0} of ${c.need}`}</T>
+                          <T variant="meta" c={color.dim}>{`You have ${c.have ?? 0} of ${c.need}`}</T>
                         ) : null}
                         {!c.met && c.kind === 'competency' ? (
-                          <T size={11} c={color.dim}>{competencyNote(c.taught_by)}</T>
+                          <T variant="meta" c={color.dim}>{competencyNote(c.taught_by)}</T>
                         ) : null}
                       </View>
                     </View>
@@ -209,16 +209,16 @@ export default function BeltProfileScreen() {
                   <ObjectCard r={radius.xl} style={{ padding: 13, gap: 7 }} testID="belt-exam-shut">
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Lock size={13} color={color.dim} />
-                      <T size={12.5} weight="bold" c={color.muted}>
+                      <T variant="meta" weight="bold" c={color.muted}>
                         {`The ${next.label} Belt test is not open yet`}
                       </T>
                     </View>
-                    <T size={12} lh={18} c={color.muted}>{shutReason(next)}</T>
+                    <T variant="meta" lh={18} c={color.muted}>{shutReason(next)}</T>
                   </ObjectCard>
                 )}
 
                 {next.proposed ? (
-                  <T size={11} lh={16} c={color.dim}>
+                  <T variant="meta" lh={16} c={color.dim}>
                     The numbers on this rung are a proposal and may change before it opens. Blue is
                     the rung that has been argued and built.
                   </T>
@@ -226,8 +226,8 @@ export default function BeltProfileScreen() {
               </View>
             ) : (
               <ObjectCard r={radius.xl} style={{ padding: 14, gap: 6 }}>
-                <T size={13} weight="bold">There is no rung above this one</T>
-                <T size={12.5} lh={19} c={color.muted}>
+                <T variant="meta" weight="bold">There is no rung above this one</T>
+                <T variant="meta" lh={19} c={color.muted}>
                   Black is the top of the ladder. It is not a licence and it is not a claim that any
                   trade is safe.
                 </T>
@@ -236,9 +236,9 @@ export default function BeltProfileScreen() {
 
             {/* ── the rules, printed verbatim ─────────────────────────────── */}
             <View style={{ gap: 8 }} testID="belt-explainer">
-              <Eyebrow c={color.muted}>HOW THIS IS SCORED</Eyebrow>
+              <Eyebrow c={color.muted}>How this is scored</Eyebrow>
               {data.explainer.lines.map((line) => (
-                <T key={line} size={12} lh={18} c={color.muted}>{line}</T>
+                <T key={line} variant="meta" lh={18} c={color.muted}>{line}</T>
               ))}
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 4 }}>
                 {data.explainer.belts.map((b) => (
@@ -254,8 +254,8 @@ export default function BeltProfileScreen() {
                       borderColor: b.key === belt ? beltEdge(belt) : alpha.ivory16,
                     }}
                   >
-                    <T size={10} c={isBelt(b.key) ? beltInk(b.key) : color.muted}>{b.label}</T>
-                    <Num size={10} c={color.dim}>{String(b.min_points)}</Num>
+                    <T variant="meta" c={isBelt(b.key) ? beltInk(b.key) : color.muted}>{b.label}</T>
+                    <Num variant="meta" c={color.dim}>{String(b.min_points)}</Num>
                   </View>
                 ))}
               </View>
@@ -271,9 +271,9 @@ export default function BeltProfileScreen() {
 function Pillar({ label, value, caption }: { label: string; value: string; caption: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-      <T size={12} c={color.muted} style={{ width: 74 }}>{label}</T>
-      <Num size={13} weight="bold">{value}</Num>
-      <T size={10.5} c={color.dim} style={{ flex: 1 }}>{caption}</T>
+      <T variant="meta" c={color.muted} style={{ width: 74 }}>{label}</T>
+      <Num variant="meta" weight="bold">{value}</Num>
+      <T variant="meta" c={color.dim} style={{ flex: 1 }}>{caption}</T>
     </View>
   );
 }
@@ -305,8 +305,8 @@ function EligibilityRing({ value }: { value: number | null }) {
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
       </Svg>
-      <Num size={20} weight="bold">{value === null ? '—' : `${Math.round(filled * 100)}%`}</Num>
-      <T size={9} c={color.dim} ls={0.6}>TO ELIGIBLE</T>
+      <Num variant="sectionTitle" weight="bold">{value === null ? '—' : `${Math.round(filled * 100)}%`}</Num>
+      <T variant="meta" c={color.dim}>To eligible</T>
     </View>
   );
 }

@@ -107,13 +107,13 @@ export function RiskSetup({ balance, value, onChange, onDone, ctaLabel = 'Contin
               <ObjectCard tone={on ? 'volt' : 'default'} r={radius.xl} style={{ paddingVertical: 14, paddingHorizontal: 16 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                    <T size={15} weight="bold">{title}</T>
+                    <T variant="body" weight="bold">{title}</T>
                     {tag ? <Tag label={tag} c={color.gold} border={alpha.gold50} /> : null}
                   </View>
                   {on ? <Check size={16} color={color.volt} strokeWidth={2.6} /> : null}
                 </View>
-                <T size={12} c={color.muted} style={{ marginTop: 3 }}>
-                  On {account}, a bad day costs about <T size={12} weight="bold" c={color.text}>{usd(cap)}</T>.
+                <T variant="meta" c={color.muted} style={{ marginTop: 3 }}>
+                  On {account}, a bad day costs about <T variant="meta" weight="bold" c={color.text}>{usd(cap)}</T>.
                 </T>
               </ObjectCard>
             </Pressable>
@@ -131,19 +131,19 @@ export function RiskSetup({ balance, value, onChange, onDone, ctaLabel = 'Contin
         }}
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <T size={13} c={color.muted}>Daily loss cap</T>
-          <Num size={13} weight="semibold" c={color.gold} testID="risk-cap">{usd(capFor(risk, balance))}</Num>
+          <T variant="meta" c={color.muted}>Daily loss cap</T>
+          <Num variant="meta" weight="semibold" c={color.gold} testID="risk-cap">{usd(capFor(risk, balance))}</Num>
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <T size={13} c={color.muted}>Practice mode</T>
+          <T variant="meta" c={color.muted}>Practice mode</T>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color.cyan }} />
-            <T size={13} c={color.cyan}>Paper trading on</T>
+            <T variant="meta" c={color.cyan}>Paper trading on</T>
           </View>
         </View>
       </View>
 
-      {error ? <T size={12} c={color.red} align="center" style={{ marginTop: 12 }}>{error}</T> : null}
+      {error ? <T variant="meta" c={color.red} align="center" style={{ marginTop: 12 }}>{error}</T> : null}
 
       <View style={{ flex: 1 }} />
 

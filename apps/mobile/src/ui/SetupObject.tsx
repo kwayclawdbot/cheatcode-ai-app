@@ -23,8 +23,8 @@ const STATE: Record<SetupState, { label: string; c: string }> = {
 function Level({ label, value, c, bg, border }: { label: string; value: string; c: string; bg: string; border: string }) {
   return (
     <View style={{ flex: 1, paddingVertical: 9, paddingHorizontal: 4, borderRadius: radius.lg, backgroundColor: bg, borderWidth: 0.5, borderColor: border, alignItems: 'center' }}>
-      <T size={10} c={color.muted}>{label}</T>
-      <Num size={13} weight="semibold" c={c} style={{ marginTop: 2 }}>{value}</Num>
+      <T variant="meta" c={color.muted}>{label}</T>
+      <Num variant="meta" weight="semibold" c={c} style={{ marginTop: 2 }}>{value}</Num>
     </View>
   );
 }
@@ -54,9 +54,9 @@ export function SetupObject({
       style={{ padding: 14, gap: 11 }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <T size={18} weight="bold">{setup.symbol}</T>
+        <T variant="cardTitle" weight="bold">{setup.symbol}</T>
         <View style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: 7, backgroundColor: alpha.violet14, borderWidth: 0.5, borderColor: alpha.violet50 }}>
-          <T size={12} weight="bold" c={color.violet}>{setup.grade_display}</T>
+          <T variant="meta" weight="bold" c={color.violet}>{setup.grade_display}</T>
         </View>
         {/* Non-negotiable: no price on screen without its freshness. It sits in
             the header so the artboard's single-line risk row is preserved. */}
@@ -64,7 +64,7 @@ export function SetupObject({
           <FreshnessMark freshness={fresh} delayReason={setup.quote?.delay_reason} at={setup.quote?.source_ts} testID={`freshness-${setup.symbol}`} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: st.c }} />
-            <T size={11} c={st.c}>{setup.state_label ?? st.label}</T>
+            <T variant="meta" c={st.c}>{setup.state_label ?? st.label}</T>
           </View>
         </View>
       </View>
@@ -77,7 +77,7 @@ export function SetupObject({
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
         <Clock size={12} color={color.gold} />
-        <T size={12} c={color.gold} style={{ flexShrink: 1 }}>{setup.risk_line ?? 'Risk not computed yet'}</T>
+        <T variant="meta" c={color.gold} style={{ flexShrink: 1 }}>{setup.risk_line ?? 'Risk not computed yet'}</T>
       </View>
 
       {compact ? null : (

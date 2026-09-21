@@ -77,7 +77,7 @@ export default function PlanDetail() {
         <StackHeader title="Your plan" />
         <View style={{ paddingHorizontal: 16, gap: 12 }}>
           <ObjectCard r={radius.xl} style={{ padding: 18 }}>
-            <T size={13} c={color.muted} lh={19}>
+            <T variant="meta" c={color.muted} lh={19}>
               {notAvailable ? "Plans aren't live on this build yet." : error ?? 'I could not find that plan.'}
             </T>
           </ObjectCard>

@@ -249,7 +249,7 @@ export default function ThreadScreen() {
     <View style={{ flex: 1, backgroundColor: color.bg }} testID="screen-thread">
       <Wash variant="corner" />
 
-      <StackHeader title="Comments" subtitle={<T size={10} c={color.muted}>{subtitle}</T>} onBack={() => router.back()} />
+      <StackHeader title="Comments" subtitle={<T variant="meta" c={color.muted}>{subtitle}</T>} onBack={() => router.back()} />
 
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -258,7 +258,7 @@ export default function ThreadScreen() {
       ) : unreachable || !parent ? (
         <View style={{ flex: 1, padding: 16 }}>
           <ObjectCard tone="gold" r={radius.lg} style={{ padding: 14 }} testID="thread-unreachable">
-            <T size={12.5} lh={18} c={color.gold}>
+            <T variant="meta" lh={18} c={color.gold}>
               This conversation could not be loaded. Nothing was lost — go back and try again.
             </T>
           </ObjectCard>
@@ -285,14 +285,14 @@ export default function ThreadScreen() {
           <View style={{ height: 0.5, backgroundColor: alpha.ivory12, marginVertical: 2 }} />
 
           {replies.length === 0 ? (
-            <T size={12.5} lh={18} c={color.muted} testID="thread-empty">{emptyCopy}</T>
+            <T variant="meta" lh={18} c={color.muted} testID="thread-empty">{emptyCopy}</T>
           ) : (
             top.map((m) => renderReply(m, false))
           )}
 
           {error ? (
             <ObjectCard tone="gold" r={radius.lg} style={{ padding: 12 }}>
-              <T size={12} c={color.gold}>{error}</T>
+              <T variant="meta" c={color.gold}>{error}</T>
             </ObjectCard>
           ) : null}
         </ScrollView>
@@ -316,7 +316,7 @@ export default function ThreadScreen() {
           ) : null}
           {media.notice ? (
             <View style={{ paddingBottom: 8 }}>
-              <T size={11} c={color.gold}>{media.notice}</T>
+              <T variant="meta" c={color.gold}>{media.notice}</T>
             </View>
           ) : null}
           <RoomComposer

@@ -52,13 +52,13 @@ export default function TrainingLesson() {
         }}
       >
         <Pressable onPress={() => (router.canGoBack() ? router.back() : backToPath())} hitSlop={12}>
-          <T size={22} c={color.muted}>‹</T>
+          <T variant="sectionTitle" c={color.muted}>‹</T>
         </Pressable>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Eyebrow c={color.volt}>{day ? `DAY ${day.index} OF 7` : 'TRAINING'}</Eyebrow>
-          <T size={13.5} weight="bold" numberOfLines={1}>{node?.title ?? 'Lesson'}</T>
+          <T variant="meta" weight="bold" numberOfLines={1}>{node?.title ?? 'Lesson'}</T>
         </View>
-        {node ? <Num size={11} c={color.muted}>{`${node.minutes} min`}</Num> : null}
+        {node ? <Num variant="meta" c={color.muted}>{`${node.minutes} min`}</Num> : null}
       </View>
     </>
   );
@@ -69,8 +69,8 @@ export default function TrainingLesson() {
         {header}
         <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
           <ObjectCard r={radius.xl} style={{ padding: 16, gap: 9 }}>
-            <T size={13} weight="bold">No such lesson</T>
-            <T size={12.5} lh={19} c={color.muted}>
+            <T variant="meta" weight="bold">No such lesson</T>
+            <T variant="meta" lh={19} c={color.muted}>
               Nothing in the programme has the id “{String(lessonId)}”.
             </T>
           </ObjectCard>
@@ -86,12 +86,12 @@ export default function TrainingLesson() {
         {header}
         <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
           <ObjectCard r={radius.xl} style={{ padding: 16, gap: 9 }}>
-            <T size={11} weight="bold" c={color.gold} ls={0.8}>NOT WRITTEN YET</T>
-            <T size={15} weight="bold">{node.title}</T>
-            <T size={12.5} lh={19} c={color.muted}>
+            <T variant="meta" weight="bold" c={color.gold}>Not written yet</T>
+            <T variant="body" weight="bold">{node.title}</T>
+            <T variant="meta" lh={19} c={color.muted}>
               {node.subtitle}
             </T>
-            <T size={12.5} lh={19} c={color.muted}>
+            <T variant="meta" lh={19} c={color.muted}>
               This lesson is planned — {node.minutes} minutes inside{' '}
               {day ? `Day ${day.index}, ${day.title}` : 'the programme'} — but its content has not
               been authored, so there is nothing here to teach you yet.
@@ -119,7 +119,7 @@ export default function TrainingLesson() {
       <Screen variant="corner" testID="screen-training-lesson">
         {header}
         <ScrollView contentContainerStyle={{ padding: 16 }}>
-          <T size={12.5} c={color.muted}>Finding where you left off…</T>
+          <T variant="meta" c={color.muted}>Finding where you left off…</T>
         </ScrollView>
       </Screen>
     );

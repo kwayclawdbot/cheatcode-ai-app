@@ -92,7 +92,7 @@ export function TabBar({ state, navigation, badges, locked, mode = DEFAULT_MODE 
                 </View>
               ) : null}
             </View>
-            <T size={10} weight={active ? 'semibold' : 'regular'} c={c}>{label}</T>
+            <T variant="meta" weight={active ? 'semibold' : 'regular'} c={c}>{label}</T>
           </Pressable>
         );
       })}

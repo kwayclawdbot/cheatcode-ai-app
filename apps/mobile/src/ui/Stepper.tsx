@@ -55,7 +55,7 @@ export function Stepper({ steps, testID }: { steps: StepperStep[]; testID?: stri
             }}
           >
             <Mark state={s.state} />
-            <T size={10.5} weight="medium" c={skin.c}>{s.label}</T>
+            <T variant="meta" weight="medium" c={skin.c}>{s.label}</T>
           </View>
         );
       })}
@@ -73,8 +73,8 @@ export function ChecklistRow({ item }: { item: Confirmation }) {
         <View style={{ width: 13, height: 13, borderRadius: 6.5, borderWidth: 1.2, borderColor: color.gold, marginTop: 2 }} />
       )}
       <View style={{ flex: 1 }}>
-        <T size={13} lh={19} c={item.ok ? color.text : color.muted}>{item.label}</T>
-        {item.detail ? <T size={11} c={color.dim} style={{ marginTop: 2 }}>{item.detail}</T> : null}
+        <T variant="meta" lh={19} c={item.ok ? color.text : color.muted}>{item.label}</T>
+        {item.detail ? <T variant="meta" c={color.dim} style={{ marginTop: 2 }}>{item.detail}</T> : null}
       </View>
     </View>
   );

@@ -72,16 +72,16 @@ export function SetupObjectCard({
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-        <T size={13} weight="bold">{symbol}</T>
+        <T variant="meta" weight="bold">{symbol}</T>
         <GradeChip grade={grade} />
-        {state ? <T size={10.5} c={color.green}>{state}</T> : null}
+        {state ? <T variant="meta" c={color.green}>{state}</T> : null}
       </View>
       <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
-        {entry ? <Num size={10.5} weight="regular" c={color.cyan}>{`Entry ${entry}`}</Num> : null}
-        {stop ? <Num size={10.5} weight="regular" c={color.red}>{`Stop ${stop}`}</Num> : null}
-        {target ? <Num size={10.5} weight="regular" c={color.green}>{`Target ${target}`}</Num> : null}
+        {entry ? <Num variant="meta" weight="regular" c={color.cyan}>{`Entry ${entry}`}</Num> : null}
+        {stop ? <Num variant="meta" weight="regular" c={color.red}>{`Stop ${stop}`}</Num> : null}
+        {target ? <Num variant="meta" weight="regular" c={color.green}>{`Target ${target}`}</Num> : null}
       </View>
-      <T size={11.5} weight="bold" c={color.volt}>Open setup</T>
+      <T variant="meta" weight="bold" c={color.volt}>Open setup</T>
     </Pressable>
   );
 }
@@ -219,7 +219,7 @@ export function ClubMessage({
               <KaiObjectView object={message.kai_object} />
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 <Check size={11} color={color.green} strokeWidth={3} />
-                <T size={11} c={color.green}>Kai verified · live market data</T>
+                <T variant="meta" c={color.green}>Kai verified · live market data</T>
               </View>
             </View>
           ) : null}
@@ -243,7 +243,7 @@ export function ClubMessage({
           ) : null}
           {/* The server's sentence when a reaction did NOT land. Never ours. */}
           {reactionNotice ? (
-            <T size={10.5} c={color.gold} style={{ marginTop: 3 }}>{reactionNotice}</T>
+            <T variant="meta" c={color.gold} style={{ marginTop: 3 }}>{reactionNotice}</T>
           ) : null}
         </>
       )}

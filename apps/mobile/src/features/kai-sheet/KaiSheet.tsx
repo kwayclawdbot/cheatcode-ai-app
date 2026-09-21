@@ -217,7 +217,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
               }}
             >
               <KaiOrb size={26} />
-              <T size={14} weight="bold" c={color.violetLight} testID="kai-sheet-title">{title}</T>
+              <T variant="body" weight="bold" c={color.violetLight} testID="kai-sheet-title">{title}</T>
               <Pressable
                 testID="kai-sheet-close"
                 accessibilityRole="button"
@@ -226,7 +226,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
                 hitSlop={12}
                 style={{ marginLeft: 'auto' }}
               >
-                <T size={12} c={color.muted}>Close</T>
+                <T variant="meta" c={color.muted}>Close</T>
               </Pressable>
             </View>
 
@@ -239,7 +239,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
               showsVerticalScrollIndicator={false}
             >
               {items.length === 0 ? (
-                <T size={13} lh={19} c={color.muted}>
+                <T variant="meta" lh={19} c={color.muted}>
                   {context.symbol
                     ? `Ask me anything about ${context.symbol} — I can see the chart, the levels and what changed.`
                     : 'Ask me anything — I can see what you were looking at.'}
@@ -259,7 +259,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
                   return (
                     <View key={it.id} style={{ gap: 8 }}>
                       {it.action.summary_plain ? (
-                        <T size={12} lh={17} c={color.muted}>{it.action.summary_plain}</T>
+                        <T variant="meta" lh={17} c={color.muted}>{it.action.summary_plain}</T>
                       ) : null}
                       <View style={{ flexDirection: 'row' }}>
                         <Pressable
@@ -273,7 +273,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
                             opacity: pressed ? 0.82 : 1,
                           })}
                         >
-                          <T size={13} weight="bold" c={color.bg}>{it.action.label}</T>
+                          <T variant="meta" weight="bold" c={color.bg}>{it.action.label}</T>
                         </Pressable>
                       </View>
                     </View>
@@ -283,7 +283,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
                   return (
                     <View key={it.id} style={{ flexDirection: 'row' }}>
                       <View style={{ paddingVertical: 7, paddingHorizontal: 12, borderRadius: radius.lg, borderWidth: 0.5, borderColor: alpha.volt40, backgroundColor: alpha.volt08 }}>
-                        <T size={12} c={color.volt}>{it.text}</T>
+                        <T variant="meta" c={color.volt}>{it.text}</T>
                       </View>
                     </View>
                   );
@@ -312,7 +312,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
               */}
               {failed ? (
                 <View style={{ gap: 6, paddingBottom: 10 }} testID="kai-sheet-failure">
-                  <T size={11} lh={16} c={color.muted} align="center">{failed.plain}</T>
+                  <T variant="meta" lh={16} c={color.muted} align="center">{failed.plain}</T>
                   <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
                     <Pressable
                       testID="kai-sheet-retry"
@@ -325,7 +325,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
                         opacity: pressed ? 0.7 : 1,
                       })}
                     >
-                      <T size={12} weight="bold" c={color.volt}>Send that again</T>
+                      <T variant="meta" weight="bold" c={color.volt}>Send that again</T>
                     </Pressable>
                     <Pressable
                       testID="kai-sheet-failure-dismiss"
@@ -334,7 +334,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
                       onPress={clearFailure}
                       style={({ pressed }) => ({ paddingVertical: 7, paddingHorizontal: 10, opacity: pressed ? 0.6 : 1 })}
                     >
-                      <T size={12} c={color.dim}>Dismiss</T>
+                      <T variant="meta" c={color.dim}>Dismiss</T>
                     </Pressable>
                   </View>
                 </View>
@@ -363,7 +363,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
                         opacity: pressed ? 0.6 : 1,
                       })}
                     >
-                      <T size={11.5} c={color.violetLight}>{q}</T>
+                      <T variant="meta" c={color.violetLight}>{q}</T>
                     </Pressable>
                   ))}
                 </View>
@@ -398,7 +398,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
                 Wording is a DRAFT pending the owner's legal review; see
                 `features/legal/disclaimers.ts`.
               */}
-              <T size={9.5} lh={14} c={color.dim} align="center" style={{ marginTop: 8 }} testID="kai-not-advice">
+              <T variant="meta" lh={14} c={color.dim} align="center" style={{ marginTop: 8 }} testID="kai-not-advice">
                 {NOT_ADVICE_SHORT}
               </T>
             </View>

@@ -152,17 +152,17 @@ export function VoiceOverlay({
           ))}
         </View>
         <View style={{ flex: 1 }}>
-          <T size={13} c={color.text}>Listening</T>
-          <T size={10.5} c={color.dim}>Pause when you're done</T>
+          <T variant="meta" c={color.text}>Listening</T>
+          <T variant="meta" c={color.dim}>Pause when you're done</T>
         </View>
-        <Num size={12} weight="regular" c={color.muted} testID="kai-voice-clock">{clock(elapsedMs)}</Num>
+        <Num variant="meta" weight="regular" c={color.muted} testID="kai-voice-clock">{clock(elapsedMs)}</Num>
       </View>
     );
   }
   if (phase === 'starting' || phase === 'transcribing') {
     return (
       <View testID="kai-voice-working" accessibilityLiveRegion="polite" style={{ flex: 1, justifyContent: 'center' }}>
-        <T size={13} c={color.muted}>{phase === 'starting' ? 'Opening the microphone…' : 'Writing down what you said…'}</T>
+        <T variant="meta" c={color.muted}>{phase === 'starting' ? 'Opening the microphone…' : 'Writing down what you said…'}</T>
       </View>
     );
   }
@@ -170,7 +170,7 @@ export function VoiceOverlay({
     return (
       <View testID="kai-voice-message" accessibilityLiveRegion="polite" style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Pressable accessibilityRole="button" accessibilityLabel={`${message.text} Dismiss.`} onPress={onDismiss} style={{ flex: 1 }}>
-          <T size={12} lh={16} c={color.muted} numberOfLines={2}>{message.text}</T>
+          <T variant="meta" lh={16} c={color.muted} numberOfLines={2}>{message.text}</T>
         </Pressable>
         {message.settings ? (
           <Pressable
@@ -180,7 +180,7 @@ export function VoiceOverlay({
             onPress={onOpenSettings}
             style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 0.5, borderColor: alpha.ivory20 }}
           >
-            <T size={12} c={color.text}>Settings</T>
+            <T variant="meta" c={color.text}>Settings</T>
           </Pressable>
         ) : null}
       </View>

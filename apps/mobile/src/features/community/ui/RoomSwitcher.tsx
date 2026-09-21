@@ -113,7 +113,7 @@ export function RoomTitleButton({
       style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, flexShrink: 1 })}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-        <T size={20} weight="bold" numberOfLines={1} style={{ flexShrink: 1 }}>{name}</T>
+        <T variant="sectionTitle" weight="bold" numberOfLines={1} style={{ flexShrink: 1 }}>{name}</T>
         {/* Down, not right: it opens a list in place rather than pushing a
             screen. The two chevrons mean different things and this app is
             consistent about which is which. */}
@@ -154,7 +154,7 @@ export function RoomSwitcherSheet({
         {rooms.length === 0 ? (
           // Nothing was loaded. Say that; the alternative is a sheet listing
           // three rooms that may not be the three this database has.
-          <T size={12.5} lh={18} c={color.muted} testID="room-switcher-empty">
+          <T variant="meta" lh={18} c={color.muted} testID="room-switcher-empty">
             The rooms could not be loaded, so none are listed. Close this and try again.
           </T>
         ) : null}
@@ -182,11 +182,11 @@ export function RoomSwitcherSheet({
             >
               <GlyphFor slug={r.slug} active={active} />
               <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                <T size={15} weight="bold" c={active ? color.volt : color.text} numberOfLines={1}>
+                <T variant="body" weight="bold" c={active ? color.volt : color.text} numberOfLines={1}>
                   {r.name}
                 </T>
                 {r.description ? (
-                  <T size={12} lh={16} c={color.muted} numberOfLines={2}>{r.description}</T>
+                  <T variant="meta" lh={16} c={color.muted} numberOfLines={2}>{r.description}</T>
                 ) : null}
               </View>
               {/* The count the server sent, or nothing. Never a dot that means
@@ -198,7 +198,7 @@ export function RoomSwitcherSheet({
                     alignItems: 'center', justifyContent: 'center', backgroundColor: color.volt,
                   }}
                 >
-                  <T size={9.5} weight="bold" c={color.bg}>{r.unread > 99 ? '99+' : String(r.unread)}</T>
+                  <T variant="meta" weight="bold" c={color.bg}>{r.unread > 99 ? '99+' : String(r.unread)}</T>
                 </View>
               ) : null}
               {active ? <Check size={15} color={color.volt} strokeWidth={2.6} /> : (
@@ -215,7 +215,7 @@ export function RoomSwitcherSheet({
       {circles.length ? (
         <View style={{ gap: 8, paddingTop: 4 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <T size={13} weight="bold" style={{ flex: 1 }}>Circles</T>
+            <T variant="meta" weight="bold" style={{ flex: 1 }}>Circles</T>
             {/*
               "See all" goes back to the Community feed, where the same strip
               sits at the top and scrolls. There is no circles INDEX screen in
@@ -231,7 +231,7 @@ export function RoomSwitcherSheet({
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, opacity: pressed ? 0.65 : 1 })}
             >
-              <T size={11.5} weight="semibold" c={color.muted}>See all</T>
+              <T variant="meta" weight="semibold" c={color.muted}>See all</T>
               <ChevronRight size={9} color={color.muted} />
             </Pressable>
           </View>
@@ -251,8 +251,8 @@ export function RoomSwitcherSheet({
                 style={({ pressed }) => ({ width: 60, alignItems: 'center', gap: 5, opacity: pressed ? 0.75 : 1 })}
               >
                 <RoomAvatar symbol={c.symbol} name={c.name} imageUrl={c.image_url ?? null} size={44} />
-                <T size={10.5} weight="semibold" align="center" numberOfLines={1}>{c.symbol}</T>
-                <T size={9} c={color.dim} align="center" style={{ marginTop: -3 }}>{c.time_left_plain}</T>
+                <T variant="meta" weight="semibold" align="center" numberOfLines={1}>{c.symbol}</T>
+                <T variant="meta" c={color.dim} align="center" style={{ marginTop: -3 }}>{c.time_left_plain}</T>
               </Pressable>
             ))}
           </ScrollView>
@@ -270,7 +270,7 @@ export function RoomSwitcherSheet({
               <Path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" />
             </Svg>
           </View>
-          <T size={11.5} lh={16} c={color.dim} style={{ flex: 1 }} testID="room-switcher-footnote">
+          <T variant="meta" lh={16} c={color.dim} style={{ flex: 1 }} testID="room-switcher-footnote">
             Reading a room keeps your trading preferences. Nothing here changes what Kai looks for,
             what your second tab shows, or what Home says.
           </T>
@@ -296,8 +296,8 @@ export function RoomSwitcherSheet({
           })}
         >
           <View style={{ flex: 1, minWidth: 0 }}>
-            <T size={12.5} weight="semibold">Trading goal · {goalLabel}</T>
-            <T size={11} lh={15} c={color.dim}>What Kai looks for everywhere else. Changed here, on purpose.</T>
+            <T variant="meta" weight="semibold">Trading goal · {goalLabel}</T>
+            <T variant="meta" lh={15} c={color.dim}>What Kai looks for everywhere else. Changed here, on purpose.</T>
           </View>
           <ChevronRight size={10} color={color.muted} />
         </Pressable>

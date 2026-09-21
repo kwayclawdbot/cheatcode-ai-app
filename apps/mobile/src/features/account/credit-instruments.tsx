@@ -100,7 +100,7 @@ export function CreditMeter({ credits, testID }: { credits: Credits; testID?: st
         <Num size={44} weight="bold" c={left > 0 ? color.volt : color.muted} style={{ lineHeight: 46 }}>
           {left}
         </Num>
-        <T size={14} c={color.muted} style={{ paddingBottom: space.x8 }}>
+        <T variant="body" c={color.muted} style={{ paddingBottom: space.x8 }}>
           of {total} left today
         </T>
       </View>
@@ -163,7 +163,7 @@ export function StopNote({ credits, testID }: { credits: Credits; testID?: strin
       <Eyebrow c={monthly ? color.red : color.gold}>
         {monthly ? "This month's cost limit" : "Today's credits are spent"}
       </Eyebrow>
-      <T size={14} lh={21} c={color.violetLight} style={{ marginTop: space.x6 }}>
+      <T variant="body" lh={21} c={color.violetLight} style={{ marginTop: space.x6 }}>
         {credits.blocked_plain}
       </T>
     </View>
@@ -223,8 +223,8 @@ export function CreditStrip({ credits, onPress, testID }: {
       })}
     >
       <View style={{ width: 4, height: 4, backgroundColor: tone }} />
-      <T size={11} lh={16} c={tone} style={{ flex: 1 }}>{line}</T>
-      {onPress ? <T size={11} weight="semibold" c={color.volt}>Credits ›</T> : null}
+      <T variant="meta" lh={16} c={tone} style={{ flex: 1 }}>{line}</T>
+      {onPress ? <T variant="meta" weight="semibold" c={color.volt}>Credits ›</T> : null}
     </Pressable>
   );
 }

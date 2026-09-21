@@ -38,8 +38,8 @@ export default function Risk() {
 
   return (
     <Screen variant="corner" layout="stack" testID="screen-risk">
-      <T size={27} weight="bold" ls={-0.4} lh={32}>{RISK_BEFORE_ORDER_TITLE}</T>
-      <T size={14} c={color.muted} style={{ marginTop: 8, marginBottom: 22 }}>{RISK_BEFORE_ORDER_SUB}</T>
+      <T variant="screenTitle" weight="bold" ls={-0.4} lh={32}>{RISK_BEFORE_ORDER_TITLE}</T>
+      <T variant="body" c={color.muted} style={{ marginTop: 8, marginBottom: 22 }}>{RISK_BEFORE_ORDER_SUB}</T>
 
       <RiskSetup
         balance={draft.starting_balance}

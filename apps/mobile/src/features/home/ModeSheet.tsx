@@ -66,7 +66,7 @@ export function ComingSoonPill({ label, testID }: { label: string; testID?: stri
         borderRadius: radius.pill, borderWidth: 0.5, borderColor: alpha.ivory14,
       }}
     >
-      <T size={9} weight="bold" c={color.dim} ls={0.6}>{label}</T>
+      <T variant="meta" weight="bold" c={color.dim} ls={0.6}>{label}</T>
     </View>
   );
 }
@@ -98,7 +98,7 @@ export function ModeChip({ mode, onPress, testID = 'mode-chip' }: { mode: GoalMo
         }}
       >
         <Bolt size={12} color={color.volt} />
-        <T size={12} weight="semibold" c={color.volt}>{MODE_LABEL[mode]}</T>
+        <T variant="meta" weight="semibold" c={color.volt}>{MODE_LABEL[mode]}</T>
         <ChevronDown size={9} color={color.volt} />
       </LinearGradient>
     </Pressable>
@@ -136,7 +136,7 @@ export function ModeSheet({
 
   return (
     <Sheet visible={visible} onClose={onClose} title="How should Kai read the market?" testID="sheet-mode">
-      <T size={12} lh={18} c={color.muted}>
+      <T variant="meta" lh={18} c={color.muted}>
         This changes your briefing, what your second tab shows, which opportunities Kai surfaces,
         your default room, the chart timeframe and how risk is described.
       </T>
@@ -165,26 +165,26 @@ export function ModeSheet({
               })}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <T size={15} weight="bold" c={active ? color.volt : modeIsLive(m) ? color.text : color.muted}>{MODE_LABEL[m]}</T>
+                <T variant="body" weight="bold" c={active ? color.volt : modeIsLive(m) ? color.text : color.muted}>{MODE_LABEL[m]}</T>
                 {modeBadge(m) ? <ComingSoonPill label={modeBadge(m) as string} testID={`mode-soon-${m}`} /> : null}
                 {active ? <Check size={14} color={color.volt} strokeWidth={2.6} /> : null}
               </View>
-              <T size={12} lh={17} c={color.muted}>{MODE_EFFECT[m]}</T>
+              <T variant="meta" lh={17} c={color.muted}>{MODE_EFFECT[m]}</T>
             </Pressable>
           );
         })}
       </View>
 
-      {error ? <T size={11} c={color.red}>{error}</T> : null}
+      {error ? <T variant="meta" c={color.red}>{error}</T> : null}
       {!modeIsLive('day_trade') ? (
-        <T size={11} lh={16} c={color.dim} testID="mode-sheet-day-trade-note">
+        <T variant="meta" lh={16} c={color.dim} testID="mode-sheet-day-trade-note">
           Day Trade is still here and so is everything it has ever sent — the same-day picker is
           being reworked, so Kai is not calling intraday trades while that is in hand. Picking it
           shows you that, and nothing else changes.
         </T>
       ) : null}
       {mode === 'invest' ? (
-        <T size={11} lh={16} c={color.dim}>
+        <T variant="meta" lh={16} c={color.dim}>
           Your second tab becomes the research desk — every name the desk argued for, and why.
           Kai placing trades for you arrives in a later release; grading, alerts and paper practice work today.
         </T>
@@ -271,7 +271,7 @@ export function ModeSegmented({ mode, onChanged, testID = 'mode-segmented' }: {
             })}
           >
             <T
-              size={10.5}
+              variant="meta"
               weight={active ? 'bold' : 'regular'}
               c={active ? color.volt : modeIsLive(m) ? color.muted : color.dim}
             >

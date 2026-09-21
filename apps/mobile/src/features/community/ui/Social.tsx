@@ -200,7 +200,7 @@ function ReactionPicker({
                 transform: [{ scale: pressed ? 0.9 : 1 }],
               })}
             >
-              <T size={21}>{r.emoji}</T>
+              <T variant="sectionTitle">{r.emoji}</T>
             </Pressable>
           );
         })}
@@ -310,9 +310,9 @@ export function ReactionBar({
               opacity: disabled ? 0.5 : pressed ? 0.75 : 1,
             })}
           >
-            <T size={13}>{r.emoji}</T>
+            <T variant="meta">{r.emoji}</T>
             {count > 0 ? (
-              <T size={12} weight={on ? 'semibold' : 'medium'} c={on ? tint : color.muted}>
+              <T variant="meta" weight={on ? 'semibold' : 'medium'} c={on ? tint : color.muted}>
                 {String(count)}
               </T>
             ) : null}
@@ -352,7 +352,7 @@ export function ReactionBar({
         */}
         {/* Always the word. What you gave is already lit in the pills in
             front of this, so repeating your emoji here would say it twice. */}
-        <T size={12} weight="medium" c={color.muted}>Like</T>
+        <T variant="meta" weight="medium" c={color.muted}>Like</T>
       </Pressable>
 
       {onReply ? (
@@ -371,7 +371,7 @@ export function ReactionBar({
             opacity: disabled ? 0.5 : pressed ? 0.6 : 1,
           })}
         >
-          <T size={12} weight="medium" c={color.muted}>Reply</T>
+          <T variant="meta" weight="medium" c={color.muted}>Reply</T>
         </Pressable>
       ) : null}
 
@@ -543,7 +543,7 @@ function Frame({
           paddingHorizontal: 10,
         }}
       >
-        <T size={11} c={color.dim} style={{ textAlign: 'center' }}>
+        <T variant="meta" c={color.dim} style={{ textAlign: 'center' }}>
           This picture is no longer available.
         </T>
       </View>
@@ -630,7 +630,7 @@ export function ThreadLine({
       })}
     >
       <View style={{ width: 14, height: 0.5, backgroundColor: alpha.ivory24 }} />
-      <T size={12} weight="semibold" c={color.text}>{label}</T>
+      <T variant="meta" weight="semibold" c={color.text}>{label}</T>
     </Pressable>
   );
 }

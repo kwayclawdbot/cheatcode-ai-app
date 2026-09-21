@@ -109,7 +109,7 @@ export function GradeBadge({
         testID="grade-ungraded-ring"
         style={[s.grade, { borderColor: alpha.ivory20, borderStyle: "dashed" }]}
       >
-        <T c={color.dim} size={13} testID="grade-none">
+        <T c={color.dim} variant="meta" testID="grade-none">
           No grade
         </T>
       </View>
@@ -139,7 +139,7 @@ function MemberAvatar({ message }: { message: ConversationMessage }) {
           onError={() => setFailed(message.avatarUrl!)}
         />
       ) : (
-        <T size={16} c={color.muted}>
+        <T variant="body" c={color.muted}>
           {message.name.charAt(0)}
         </T>
       )}
@@ -207,10 +207,10 @@ export function KaiAnnotation({
     >
       <KaiOrb size={24} glow={false} />
       <View style={s.flex}>
-        <T size={12} c={color.violetLight}>
+        <T variant="meta" c={color.violetLight}>
           Kai · {LEVEL_LABEL[note.level]}
         </T>
-        <T size={16} lh={23} c={color.violetLight} style={{ marginTop: 6 }}>
+        <T variant="body" lh={23} c={color.violetLight} style={{ marginTop: 6 }}>
           {note.text}
         </T>
         {onAsk && (
@@ -221,7 +221,7 @@ export function KaiAnnotation({
             ringInset={2}
             ringRadius={6}
           >
-            <T size={14} c={color.violetLight}>
+            <T variant="body" c={color.violetLight}>
               Ask about this level ↗
             </T>
           </Focusable>
@@ -649,11 +649,11 @@ export function TradeStatusStrip({
             <View style={[s.pillDotCore, { backgroundColor: tone }]} />
           )}
         </View>
-        <T size={14} weight="semibold" c={tone}>
+        <T variant="body" weight="semibold" c={tone}>
           {word}
         </T>
         {hint ? (
-          <T size={14} c={color.muted} style={s.flex}>
+          <T variant="body" c={color.muted} style={s.flex}>
             · {hint}
           </T>
         ) : (
@@ -661,7 +661,7 @@ export function TradeStatusStrip({
         )}
         {trailing}
         {onPress && (
-          <T size={16} c={color.muted}>
+          <T variant="body" c={color.muted}>
             ›
           </T>
         )}
@@ -725,7 +725,7 @@ export function TradeStatusStrip({
             ]}
           />
           <T
-            size={12}
+            variant="meta"
             align="center"
             c={i === index ? color.volt : color.muted}
           >
@@ -966,7 +966,7 @@ export function SetupPreview({
         {idea.title}
       </T>
       {showSummary && idea.summary ? (
-        <T c={color.muted} size={15} lh={22} style={{ marginTop: 8 }}>
+        <T c={color.muted} variant="body" lh={22} style={{ marginTop: 8 }}>
           {idea.summary}
         </T>
       ) : null}
@@ -1006,13 +1006,13 @@ export function SetupPreview({
           ]}
           ringRadius={12}
         >
-          <T c={actionFilled ? color.bg : color.text} weight="semibold" size={16}>
+          <T c={actionFilled ? color.bg : color.text} weight="semibold" variant="body">
             {actionLabel ?? "Explore this idea →"}
           </T>
         </Focusable>
       )}
       {showSource ? (
-        <T size={12} c={color.muted} style={{ marginTop: 14 }}>
+        <T variant="meta" c={color.muted} style={{ marginTop: 14 }}>
           {idea.dataLabel}
         </T>
       ) : null}
@@ -1056,7 +1056,7 @@ export function PinnedTradePreview({
         />
         <GradeBadge grade={idea.grade} word={false} />
         <View style={{ alignItems: "flex-end", gap: 4 }}>
-          <T size={12} c={color.muted}>
+          <T variant="meta" c={color.muted}>
             {STATUS_LABEL[idea.status]}
           </T>
           {meta}
@@ -1066,10 +1066,10 @@ export function PinnedTradePreview({
       <View style={s.pinLevels}>
         {(["entry", "stop", "target"] as const).map((k) => (
           <View key={k}>
-            <T size={12} c={ink[k]}>
+            <T variant="meta" c={ink[k]}>
               {LEVEL_LABEL[k]}
             </T>
-            <Num size={15} c={ink[k]} style={{ marginTop: 5 }}>
+            <Num variant="body" c={ink[k]} style={{ marginTop: 5 }}>
               {price(idea[k], idea.pricePrecision)}
             </Num>
           </View>
@@ -1110,10 +1110,10 @@ export function ConversationQuoteBlock({
 }) {
   const body = (
     <>
-      <T size={11.5} c={color.muted} numberOfLines={1}>
+      <T variant="meta" c={color.muted} numberOfLines={1}>
         {quote.authorName}
       </T>
-      <T size={12.5} lh={18} c={quote.deleted ? color.dim : color.muted} numberOfLines={3}>
+      <T variant="meta" lh={18} c={quote.deleted ? color.dim : color.muted} numberOfLines={3}>
         {quotedText(quote)}
       </T>
     </>
@@ -1220,22 +1220,22 @@ export function ConversationRow({
   const header = (
     <View style={s.messageHeader}>
       {name ?? (
-        <T weight="semibold" size={13.5} c={nameInk(message, belt, color.violetLight)}>
+        <T weight="semibold" variant="meta" c={nameInk(message, belt, color.violetLight)}>
           {message.name}
         </T>
       )}
       {kai
         ? aiTag === undefined
-          ? <T size={11} c={color.violetLight}>AI</T>
+          ? <T variant="meta" c={color.violetLight}>AI</T>
           : aiTag
         : null}
       {message.handle ? (
-        <T size={11.5} c={color.dim}>
+        <T variant="meta" c={color.dim}>
           @{message.handle}
         </T>
       ) : null}
       {chips}
-      <T size={10} c={color.muted} style={{ marginLeft: "auto" }}>
+      <T variant="meta" c={color.muted} style={{ marginLeft: "auto" }}>
         {message.timeLabel}
       </T>
       {aside}
@@ -1246,12 +1246,12 @@ export function ConversationRow({
     <View style={[s.flex, contentStyle]}>
       {header}
       {message.replyToName && !removed ? (
-        <T size={12} c={color.muted} style={s.reply}>
+        <T variant="meta" c={color.muted} style={s.reply}>
           Replying to {message.replyToName}
         </T>
       ) : null}
       {removed ? (
-        <T size={13} c={color.dim} testID={testID ? `${testID}-removed` : undefined}>
+        <T variant="meta" c={color.dim} testID={testID ? `${testID}-removed` : undefined}>
           {bodyText}
         </T>
       ) : (
@@ -1264,7 +1264,7 @@ export function ConversationRow({
               />
             ) : null)}
           {body ?? (
-            <T size={16} lh={24} c={kai ? color.violetLight : color.text}>
+            <T variant="body" lh={24} c={kai ? color.violetLight : color.text}>
               {bodyText}
             </T>
           )}

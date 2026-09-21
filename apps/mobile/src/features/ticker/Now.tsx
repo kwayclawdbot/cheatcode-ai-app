@@ -92,7 +92,7 @@ export function SessionStrip({ session, testID }: { session: SessionBar; testID?
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14 }}>
         <View style={{ gap: 2 }}>
           <T {...type.nano} c={color.dim}>OPEN</T>
-          <Num size={13} c={color.text}>{money(open)}</Num>
+          <Num variant="meta" c={color.text}>{money(open)}</Num>
         </View>
 
         <View style={{ flex: 1, gap: 6, paddingBottom: 2 }}>
@@ -111,8 +111,8 @@ export function SessionStrip({ session, testID }: { session: SessionBar; testID?
             ) : null}
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Num size={10.5} weight="regular" c={color.dim}>{money(low)}</Num>
-            <Num size={10.5} weight="regular" c={color.dim}>{money(high)}</Num>
+            <Num variant="meta" weight="regular" c={color.dim}>{money(low)}</Num>
+            <Num variant="meta" weight="regular" c={color.dim}>{money(high)}</Num>
           </View>
         </View>
 
@@ -120,7 +120,7 @@ export function SessionStrip({ session, testID }: { session: SessionBar; testID?
         {volume != null ? (
           <View style={{ gap: 2, alignItems: 'flex-end' }}>
             <T {...type.nano} c={color.dim}>VOLUME</T>
-            <Num size={13} c={color.text}>{volumePlain(volume)}</Num>
+            <Num variant="meta" c={color.text}>{volumePlain(volume)}</Num>
           </View>
         ) : null}
       </View>
@@ -164,13 +164,13 @@ function ContractLine({ c, testID }: { c: AlertOptionContract; testID?: string }
     >
       {c.label ? <T {...type.nano} c={color.violetLight}>{c.label.toUpperCase()}</T> : null}
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
-        <Num size={13} weight="bold">{c.strike}</Num>
-        <T size={12} weight="semibold" c={put ? color.red : color.green}>{put ? 'Put' : 'Call'}</T>
+        <Num variant="meta" weight="bold">{c.strike}</Num>
+        <T variant="meta" weight="semibold" c={put ? color.red : color.green}>{put ? 'Put' : 'Call'}</T>
       </View>
-      <T size={11.5} c={color.muted}>{c.expiry}{c.dte != null ? ` · ${c.dte}d` : ''}</T>
-      {c.cost ? <Num size={12} c={color.text}>{c.cost}</Num> : null}
+      <T variant="meta" c={color.muted}>{c.expiry}{c.dte != null ? ` · ${c.dte}d` : ''}</T>
+      {c.cost ? <Num variant="meta" c={color.text}>{c.cost}</Num> : null}
       {/* "thin" is a warning and is worth saying; "good" is the default and is not. */}
-      {c.liquidity === 'thin' ? <T size={10.5} c={color.gold}>thin</T> : null}
+      {c.liquidity === 'thin' ? <T variant="meta" c={color.gold}>thin</T> : null}
     </View>
   );
 }
@@ -189,8 +189,8 @@ function PeakLine({ card, testID }: { card: AlertCard; testID?: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 7 }} testID={testID}>
       <T {...type.nano} c={color.dim}>{(card.outcome?.peak_label ?? 'Peak').toUpperCase()}</T>
-      <Num size={13} weight="bold" c={color.green}>{peak}</Num>
-      {card.outcome?.basis ? <T size={11} c={color.muted} style={{ flex: 1 }}>{card.outcome.basis}</T> : null}
+      <Num variant="meta" weight="bold" c={color.green}>{peak}</Num>
+      {card.outcome?.basis ? <T variant="meta" c={color.muted} style={{ flex: 1 }}>{card.outcome.basis}</T> : null}
     </View>
   );
 }
@@ -232,7 +232,7 @@ export function NowBlock({
               backgroundColor: alpha.violet14, borderWidth: 0.5, borderColor: alpha.violet50,
             }}
           >
-            <T size={11.5} weight="bold" c={color.violetLight}>{read.grade_display}</T>
+            <T variant="meta" weight="bold" c={color.violetLight}>{read.grade_display}</T>
           </View>
         ) : null
       }
@@ -255,7 +255,7 @@ export function NowBlock({
           headline is the most important sentence on the page and it stays.
         */}
         {read.gradeable || read.takeable ? (
-          <T size={15} lh={21} weight="semibold" testID="ticker-headline">{read.headline}</T>
+          <T variant="body" lh={21} weight="semibold" testID="ticker-headline">{read.headline}</T>
         ) : null}
 
         {/*
@@ -291,7 +291,7 @@ export function NowBlock({
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 10 }}>
                 {extraLevels.map((lvl) => (
                   <View key={lvl.key} testID={`ticker-level-${lvl.key}`} style={{ gap: 3 }}>
-                    <Num size={14} weight="bold" c={LEVEL_INK[lvl.key] ?? color.text}>
+                    <Num variant="body" weight="bold" c={LEVEL_INK[lvl.key] ?? color.text}>
                       {lvl.price2 ? `${money(lvl.price)}–${money(lvl.price2)}` : money(lvl.price)}
                     </Num>
                     <T {...type.nano} c={color.dim}>{lvl.label.split(' ')[0].toUpperCase()}</T>
@@ -311,7 +311,7 @@ export function NowBlock({
 
         {/* The sentence that ends the trade. Red, and it gets its own line. */}
         {read.wrong_if ? (
-          <T size={12.5} c={color.red} lh={18} testID="ticker-wrong-if">{read.wrong_if}</T>
+          <T variant="meta" c={color.red} lh={18} testID="ticker-wrong-if">{read.wrong_if}</T>
         ) : null}
 
         {contract ? <ContractLine c={contract} testID="ticker-contract" /> : null}
@@ -339,10 +339,10 @@ export function NowBlock({
           sentence is the most useful thing on the block, so it stays for that.
         */}
         {read.blocked_plain && read.gradeable ? (
-          <T size={12.5} c={color.muted} lh={19} testID="ticker-blocked">{read.blocked_plain}</T>
+          <T variant="meta" c={color.muted} lh={19} testID="ticker-blocked">{read.blocked_plain}</T>
         ) : null}
         {read.offer_plain ? (
-          <T size={12.5} c={color.muted} lh={19} testID="ticker-offer">{read.offer_plain}</T>
+          <T variant="meta" c={color.muted} lh={19} testID="ticker-offer">{read.offer_plain}</T>
         ) : null}
 
         {read.takeable ? (
@@ -353,7 +353,7 @@ export function NowBlock({
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.7 : 1 })}
           >
-            <T size={12} weight="semibold" c={color.volt}>Take it in Trade ›</T>
+            <T variant="meta" weight="semibold" c={color.volt}>Take it in Trade ›</T>
           </Pressable>
         ) : null}
       </View>
@@ -382,7 +382,7 @@ export function LockedNow({
   return (
     <Block eyebrow="On the desk now" testID={testID}>
       <View style={{ gap: 9 }}>
-        <T size={13.5} lh={20} c={color.muted} testID="ticker-locked">
+        <T variant="meta" lh={20} c={color.muted} testID="ticker-locked">
           {plain ?? 'The desk’s read on a symbol — the graded setup, its levels and the line that would prove it wrong — comes with a plan.'}
         </T>
         <Pressable
@@ -392,7 +392,7 @@ export function LockedNow({
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.7 : 1 })}
         >
-          <T size={12} weight="semibold" c={color.volt}>See what a plan includes ›</T>
+          <T variant="meta" weight="semibold" c={color.volt}>See what a plan includes ›</T>
         </Pressable>
       </View>
     </Block>
@@ -427,9 +427,9 @@ export function YourLines({ lines, testID }: { lines: UserLine[]; testID?: strin
             }}
           >
             <View style={{ width: 2, height: 14, borderRadius: 1, backgroundColor: color.volt }} />
-            <T size={12.5} style={{ flex: 1 }} numberOfLines={1}>{l.label}</T>
-            <Num size={12.5} c={color.muted}>{money(l.price)}</Num>
-            <T size={11.5} c={color.volt} style={{ width: 74, textAlign: 'right' }}>
+            <T variant="meta" style={{ flex: 1 }} numberOfLines={1}>{l.label}</T>
+            <Num variant="meta" c={color.muted}>{money(l.price)}</Num>
+            <T variant="meta" c={color.volt} style={{ width: 74, textAlign: 'right' }}>
               {distancePlain(l.distance_pct)}
             </T>
           </View>

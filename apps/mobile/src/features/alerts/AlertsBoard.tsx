@@ -107,14 +107,14 @@ function StateTabs({ value, onChange, counts }: {
               borderBottomWidth: 2, borderBottomColor: on ? color.volt : 'transparent',
             }}
           >
-            <T size={13.5} weight="bold" c={on ? color.text : color.muted}>{t.label}</T>
+            <T variant="meta" weight="bold" c={on ? color.text : color.muted}>{t.label}</T>
             {t.key === 'active' && counts.active ? (
               <View style={{ minWidth: 17, height: 17, borderRadius: 9, backgroundColor: color.volt, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
-                <T size={9.5} weight="bold" c={color.bg}>{counts.active}</T>
+                <T variant="meta" weight="bold" c={color.bg}>{counts.active}</T>
               </View>
             ) : null}
             {t.key !== 'active' && counts[t.key] ? (
-              <T size={12} c={color.muted}>{counts[t.key]}</T>
+              <T variant="meta" c={color.muted}>{counts[t.key]}</T>
             ) : null}
           </Pressable>
         );
@@ -165,7 +165,7 @@ function BoardCallRow({ call }: { call: CommunityCall }) {
         />
         <BeltChip belt={call.author.belt} />
         <View style={{ flex: 1 }} />
-        <T size={10.5} c={color.dim}>{call.time_label}</T>
+        <T variant="meta" c={color.dim}>{call.time_label}</T>
       </Pressable>
       <CommunityCallCard call={call} compact />
     </View>
@@ -330,7 +330,7 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
     <Screen variant="corner" layout="tab" testID="screen-alerts">
       <View style={{ paddingTop: 8, paddingHorizontal: 16, paddingBottom: 6, gap: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <T size={28} weight="bold">{second.title}</T>
+          <T variant="screenTitle" weight="bold">{second.title}</T>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             {/*
               Where the natural-language bar went. `/alert/new` is the same
@@ -351,12 +351,12 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
                 opacity: pressed ? 0.7 : 1,
               })}
             >
-              <T size={16} weight="regular" c={color.muted}>+</T>
+              <T variant="body" weight="regular" c={color.muted}>+</T>
             </Pressable>
             <ModeControl mode={mode} testID="alerts-mode-chip" />
           </View>
         </View>
-        <T size={11} lh={16} c={color.dim} testID="alerts-mode-note">{second.note}</T>
+        <T variant="meta" lh={16} c={color.dim} testID="alerts-mode-note">{second.note}</T>
         <StateTabs value={tab} onChange={setTab} counts={counts} />
       </View>
 
@@ -454,9 +454,9 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
           </>
         )}
 
-        {actions.error ? <T size={11} c={color.red} align="center">{actions.error}</T> : null}
-        {isFixture ? <T size={11} c={color.dim} align="center">Sample alerts — the alerts service is not connected here.</T> : null}
-        <T size={11} lh={16} c={color.dim} align="center" style={{ marginTop: 6 }} testID="alerts-not-advice">
+        {actions.error ? <T variant="meta" c={color.red} align="center">{actions.error}</T> : null}
+        {isFixture ? <T variant="meta" c={color.dim} align="center">Sample alerts — the alerts service is not connected here.</T> : null}
+        <T variant="meta" lh={16} c={color.dim} align="center" style={{ marginTop: 6 }} testID="alerts-not-advice">
           {NOT_ADVICE_ALERTS}
         </T>
       </ScrollView>
@@ -495,7 +495,7 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
         title="Not on your plan"
         testID="sheet-entitlement"
       >
-        <T size={13} lh={20} c={color.muted}>{actions.upgradeNeeded}</T>
+        <T variant="meta" lh={20} c={color.muted}>{actions.upgradeNeeded}</T>
         <Button label="Got it" kind="volt" height={48} onPress={actions.dismissUpgrade} />
       </Sheet>
     </Screen>

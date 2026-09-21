@@ -16,7 +16,7 @@ export function AlsoWatching({ rows, testID = 'also-watching' }: { rows: AlsoWat
 
   return (
     <View testID={testID}>
-      <Eyebrow c={color.dim} style={{ paddingBottom: 9 }}>ALSO WATCHING</Eyebrow>
+      <Eyebrow c={color.dim} style={{ paddingBottom: 9 }}>Also watching</Eyebrow>
       {rows.map((r) => {
         const body = (
           <View
@@ -26,9 +26,9 @@ export function AlsoWatching({ rows, testID = 'also-watching' }: { rows: AlsoWat
               borderTopWidth: 0.5, borderTopColor: alpha.ivory08,
             }}
           >
-            <T size={13} weight="bold" style={{ width: 52 }}>{r.symbol}</T>
-            <T size={12} lh={17} c={r.tone === 'attention' ? color.gold : color.muted} style={{ flex: 1 }}>{r.text}</T>
-            {r.action ? <T size={12} weight="semibold" c={color.volt}>{r.action.label}</T> : null}
+            <T variant="meta" weight="bold" style={{ width: 52 }}>{r.symbol}</T>
+            <T variant="meta" lh={17} c={r.tone === 'attention' ? color.gold : color.muted} style={{ flex: 1 }}>{r.text}</T>
+            {r.action ? <T variant="meta" weight="semibold" c={color.volt}>{r.action.label}</T> : null}
           </View>
         );
 

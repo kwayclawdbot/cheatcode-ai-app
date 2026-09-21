@@ -55,8 +55,8 @@ import type { ContributorProfile } from '../../features/community/types';
 function StatCell({ label, value }: { label: string; value: string }) {
   return (
     <View style={{ width: '48%' }}>
-      <Num size={18} weight="semibold">{value}</Num>
-      <T size={11} c={color.muted} style={{ marginTop: 2 }}>{label}</T>
+      <Num variant="cardTitle" weight="semibold">{value}</Num>
+      <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>{label}</T>
     </View>
   );
 }
@@ -68,11 +68,11 @@ function FeedbackBar({ label, score, outOf }: { label: string; score: number; ou
       accessibilityLabel={`${label}: ${score} out of ${outOf}`}
       style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
     >
-      <T size={12} c={color.muted} style={{ width: 76 }}>{label}</T>
+      <T variant="meta" c={color.muted} style={{ width: 76 }}>{label}</T>
       <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: alpha.ivory08 }}>
         <View style={{ width: `${pct}%`, height: '100%', borderRadius: 3, backgroundColor: alpha.ivory25 }} />
       </View>
-      <Num size={11} weight="medium">{score.toFixed(1)}</Num>
+      <Num variant="meta" weight="medium">{score.toFixed(1)}</Num>
     </View>
   );
 }
@@ -152,7 +152,7 @@ export default function Contributor() {
         >
           {exampleData ? (
             <ObjectCard tone="gold" r={radius.lg} style={{ padding: 12 }} testID="example-data">
-              <T size={12} lh={17} c={color.gold}>
+              <T variant="meta" lh={17} c={color.gold}>
                 Example profile. The contributor service isn't connected yet.
               </T>
             </ObjectCard>
@@ -184,24 +184,24 @@ export default function Contributor() {
                 testID="contributor-name"
               />
               {secondaryHandle(profile.display_name, handle) ? (
-                <T size={12.5} c={color.muted} testID="contributor-handle">
+                <T variant="meta" c={color.muted} testID="contributor-handle">
                   {secondaryHandle(profile.display_name, handle)}
                 </T>
               ) : handle ? null : (
-                <T size={12.5} c={color.dim} testID="contributor-handle">No username</T>
+                <T variant="meta" c={color.dim} testID="contributor-handle">No username</T>
               )}
               <View style={{ flexDirection: 'row', gap: 5, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 {author ? <BeltChip belt={author.belt} testID="contributor-belt" /> : null}
                 {followers != null ? (
-                  <T size={11} c={color.muted} testID="contributor-followers">
-                    <Num size={11} weight="semibold">{String(followers)}</Num>
+                  <T variant="meta" c={color.muted} testID="contributor-followers">
+                    <Num variant="meta" weight="semibold">{String(followers)}</Num>
                     {followers === 1 ? ' follower' : ' followers'}
                   </T>
                 ) : null}
                 {profile.verified_identity ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 0.5, borderColor: alpha.green40 }}>
                     <Check size={9} color={color.green} />
-                    <T size={10} c={color.green}>Verified identity</T>
+                    <T variant="meta" c={color.green}>Verified identity</T>
                   </View>
                 ) : null}
                 {profile.role_labels
@@ -221,37 +221,37 @@ export default function Contributor() {
           {/* THE RECORD. Outcomes, and the ladder they add up to. */}
           {record ? (
             <>
-              <Eyebrow c={color.volt}>RECORD</Eyebrow>
+              <Eyebrow c={color.volt}>Record</Eyebrow>
               <ObjectCard r={radius.xl} style={{ padding: 15, gap: 14 }} testID="contributor-record">
                 <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 16 }}>
                   <View style={{ flex: 1 }}>
                     {record.accuracy != null ? (
-                      <Num size={28} weight="bold" testID="record-accuracy">{`${record.accuracy}%`}</Num>
+                      <Num variant="keyPrice" weight="bold" testID="record-accuracy">{`${record.accuracy}%`}</Num>
                     ) : (
-                      <T size={22} c={color.dim} testID="record-accuracy">—</T>
+                      <T variant="sectionTitle" c={color.dim} testID="record-accuracy">—</T>
                     )}
-                    <T size={11} c={color.muted} style={{ marginTop: 2 }}>
+                    <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>
                       {record.accuracy != null ? 'of resolved calls hit the target' : 'nothing has resolved yet'}
                     </T>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Num size={18} weight="semibold" c={color.volt}>{String(record.points)}</Num>
-                    <T size={11} c={color.muted}>points</T>
+                    <Num variant="cardTitle" weight="semibold" c={color.volt}>{String(record.points)}</Num>
+                    <T variant="meta" c={color.muted}>points</T>
                   </View>
                 </View>
 
                 <View style={{ flexDirection: 'row', gap: 18 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
-                    <Num size={13} weight="semibold" c={color.green}>{String(record.wins)}</Num>
-                    <T size={11} c={color.muted}>hit target</T>
+                    <Num variant="meta" weight="semibold" c={color.green}>{String(record.wins)}</Num>
+                    <T variant="meta" c={color.muted}>hit target</T>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
-                    <Num size={13} weight="semibold" c={color.red}>{String(record.losses)}</Num>
-                    <T size={11} c={color.muted}>stopped</T>
+                    <Num variant="meta" weight="semibold" c={color.red}>{String(record.losses)}</Num>
+                    <T variant="meta" c={color.muted}>stopped</T>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
-                    <Num size={13} weight="semibold">{String(record.resolved)}</Num>
-                    <T size={11} c={color.muted}>resolved</T>
+                    <Num variant="meta" weight="semibold">{String(record.resolved)}</Num>
+                    <T variant="meta" c={color.muted}>resolved</T>
                   </View>
                 </View>
 
@@ -264,7 +264,7 @@ export default function Contributor() {
                     it is a lie of arithmetic. The server flags it; the screen
                     prints the flag. */}
                 {record.in_warmup ? (
-                  <T size={11} lh={16} c={color.gold} testID="record-warmup">
+                  <T variant="meta" lh={16} c={color.gold} testID="record-warmup">
                     Early days — too few resolved calls for this to mean much yet.
                   </T>
                 ) : null}
@@ -284,15 +284,15 @@ export default function Contributor() {
               there is nothing honest to say about how many calls exist. */}
           {social.data?.calls.length ? (
             <>
-              <Eyebrow c={color.volt}>PUBLISHED CALLS</Eyebrow>
+              <Eyebrow c={color.volt}>Published calls</Eyebrow>
               <View style={{ gap: 10 }} testID="contributor-calls">
                 {social.data.calls.map((c) => <CommunityCallCard key={c.id} call={c} />)}
               </View>
             </>
           ) : isMe && social.data ? (
             <>
-              <Eyebrow c={color.volt}>PUBLISHED CALLS</Eyebrow>
-              <T size={12.5} lh={18.5} c={color.muted} testID="contributor-calls-empty">
+              <Eyebrow c={color.volt}>Published calls</Eyebrow>
+              <T variant="meta" lh={18.5} c={color.muted} testID="contributor-calls-empty">
                 You have not published a call yet. When you do it lands here, and in the feed of
                 everybody who follows you.
               </T>
@@ -303,37 +303,37 @@ export default function Contributor() {
               anywhere in the type, so there is none to leak here. */}
           {social.data?.trades.length ? (
             <>
-              <Eyebrow>TRADES</Eyebrow>
+              <Eyebrow>Trades</Eyebrow>
               <View style={{ gap: 8 }} testID="contributor-trades">
                 {social.data.trades.map((t) => <SharedTradeRow key={t.id} trade={t} />)}
               </View>
-              <T size={10} c={color.dim} style={{ marginTop: -4 }}>
+              <T variant="meta" c={color.dim} style={{ marginTop: -4 }}>
                 Trades they chose to show. Direction and levels only — never size, and never dollars.
               </T>
             </>
           ) : null}
 
-          <Eyebrow>CONTRIBUTION HISTORY</Eyebrow>
+          <Eyebrow>Contribution history</Eyebrow>
           <ObjectCard r={radius.xl} style={{ padding: 14, flexDirection: 'row', flexWrap: 'wrap', rowGap: 12, columnGap: 12 }}>
             {profile.history.map((h) => <StatCell key={h.label} label={h.label} value={h.value} />)}
           </ObjectCard>
-          <T size={10} c={color.muted} style={{ marginTop: -6 }}>
+          <T variant="meta" c={color.muted} style={{ marginTop: -6 }}>
             What they posted and disclosed. Outcomes only — never profit, and never account size.
           </T>
 
           {profile.feedback.length ? (
             <ObjectCard r={radius.xl} style={{ padding: 14, gap: 10 }}>
-              <Eyebrow>COMMUNITY FEEDBACK</Eyebrow>
+              <Eyebrow>Community feedback</Eyebrow>
               {profile.feedback.map((f) => (
                 <FeedbackBar key={f.label} label={f.label} score={f.score} outOf={f.out_of} />
               ))}
-              <T size={10} c={color.muted}>{profile.feedback_note}</T>
+              <T variant="meta" c={color.muted}>{profile.feedback_note}</T>
             </ObjectCard>
           ) : null}
 
           {profile.recent.length ? (
             <>
-              <Eyebrow>RECENT POSTS · WITH DISCLOSURES</Eyebrow>
+              <Eyebrow>Recent posts · with disclosures</Eyebrow>
               <ObjectCard r={radius.xl} style={{ paddingHorizontal: 14, paddingVertical: 4 }}>
                 {profile.recent.map((m, i) => (
                   <View
@@ -346,10 +346,10 @@ export default function Contributor() {
                     }}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <T size={11} c={color.muted}>#{m.room_name} · {m.time_label}</T>
+                      <T variant="meta" c={color.muted}>#{m.room_name} · {m.time_label}</T>
                       {m.disclosure ? <DisclosureChip label={m.disclosure.label} holds={m.disclosure.holds} /> : null}
                     </View>
-                    <T size={13} lh={19}>{m.body}</T>
+                    <T variant="meta" lh={19}>{m.body}</T>
                   </View>
                 ))}
               </ObjectCard>
@@ -358,7 +358,7 @@ export default function Contributor() {
 
           {notice ? (
             <ObjectCard r={radius.lg} style={{ padding: 12 }}>
-              <T size={12} c={color.muted}>{notice}</T>
+              <T variant="meta" c={color.muted}>{notice}</T>
             </ObjectCard>
           ) : null}
 
@@ -396,7 +396,7 @@ export default function Contributor() {
             </View>
           )}
 
-          <T size={10} lh={15} c={color.dim} testID="contributor-footer">
+          <T variant="meta" lh={15} c={color.dim} testID="contributor-footer">
             Outcomes only. A call counts when it had an entry and a level to be wrong at — nothing here is
             profit, and no number on this screen is money.
           </T>

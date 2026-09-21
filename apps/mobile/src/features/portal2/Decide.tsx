@@ -40,7 +40,7 @@ export function Verdict({ read, testID = 'decide-verdict' }: { read: TradeRead; 
         <GradeMedallion grade={read.grade_display} score={read.score} size={82} />
         <View style={{ flex: 1, gap: 5 }}>
           {read.descriptor ? <Eyebrow c={color.muted}>{read.descriptor.toUpperCase()}</Eyebrow> : null}
-          <T size={16} weight="bold" lh={22} testID="decide-headline">{read.headline}</T>
+          <T variant="body" weight="bold" lh={22} testID="decide-headline">{read.headline}</T>
         </View>
       </View>
     </View>
@@ -62,7 +62,7 @@ export function Because({
   if (!levels.length) return null;
   return (
     <View testID={testID} style={{ gap: 2 }}>
-      <Eyebrow c={color.muted}>THE LEVELS THAT SAY SO</Eyebrow>
+      <Eyebrow c={color.muted}>The levels that say so</Eyebrow>
       <View style={{ paddingTop: 6 }}>
         {levels.map((l, i) => (
           <View key={l.key}>
@@ -76,8 +76,8 @@ export function Because({
             >
               <View style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: LEVEL_TINT[l.key] }} />
               <View style={{ flex: 1, gap: 3 }}>
-                <Num size={14} weight="bold" c={LEVEL_TINT[l.key]}>{l.label}</Num>
-                <T size={12.5} lh={18} c={color.muted}>{l.plain}</T>
+                <Num variant="body" weight="bold" c={LEVEL_TINT[l.key]}>{l.label}</Num>
+                <T variant="meta" lh={18} c={color.muted}>{l.plain}</T>
               </View>
             </Pressable>
           </View>
@@ -98,8 +98,8 @@ export function WrongIf({ text, testID = 'decide-wrong-if' }: { text: string; te
       }}
     >
       <View style={{ flex: 1, gap: 3 }}>
-        <Eyebrow c={color.red}>WHAT WOULD PROVE IT WRONG</Eyebrow>
-        <T size={13} lh={19}>{text}</T>
+        <Eyebrow c={color.red}>What would prove it wrong</Eyebrow>
+        <T variant="meta" lh={19}>{text}</T>
       </View>
     </View>
   );
@@ -122,21 +122,21 @@ export function KaiRead({
 }) {
   return (
     <ObjectCard tone="kai" r={radius.xl} testID={testID} style={{ padding: 14, gap: 8 }}>
-      <Eyebrow c={color.violetLight}>KAI’S READ</Eyebrow>
+      <Eyebrow c={color.violetLight}>Kai’s read</Eyebrow>
       {state === 'loading' ? (
-        <T size={13} lh={19} c={color.muted} testID="decide-kai-loading">Reading {symbol}…</T>
+        <T variant="meta" lh={19} c={color.muted} testID="decide-kai-loading">Reading {symbol}…</T>
       ) : state === 'failed' ? (
         <View style={{ gap: 10 }}>
-          <T size={13} lh={19} testID="decide-kai-failed">
+          <T variant="meta" lh={19} testID="decide-kai-failed">
             I could not load my read on {symbol} just now. The grade and the levels above came off saved rows and are
             still good — it is my write-up that did not arrive.
           </T>
           <Button label="Try again" kind="outline" height={38} full={false} onPress={onRetry} testID="decide-kai-retry" />
         </View>
       ) : (
-        <T size={13} lh={20} testID="decide-kai-text">{text}</T>
+        <T variant="meta" lh={20} testID="decide-kai-text">{text}</T>
       )}
-      <T size={11} lh={16} c={color.dim}>Kai’s assessment, not a guarantee.</T>
+      <T variant="meta" lh={16} c={color.dim}>Kai’s assessment, not a guarantee.</T>
     </ObjectCard>
   );
 }
@@ -159,12 +159,12 @@ export function NoGradedSetup({
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <GradeMedallion grade={null} score={null} size={82} />
         <View style={{ flex: 1, gap: 5 }}>
-          <Eyebrow c={color.muted}>NOT GRADED</Eyebrow>
-          <T size={16} weight="bold" lh={22} testID="decide-headline">{read.headline}</T>
+          <Eyebrow c={color.muted}>Not graded</Eyebrow>
+          <T variant="body" weight="bold" lh={22} testID="decide-headline">{read.headline}</T>
         </View>
       </View>
 
-      <T size={13} lh={20} c={color.muted} testID="decide-offer">{read.offer_plain}</T>
+      <T variant="meta" lh={20} c={color.muted} testID="decide-offer">{read.offer_plain}</T>
 
       <View style={{ flexDirection: 'row', gap: 9 }}>
         <Button
@@ -185,7 +185,7 @@ export function NoGradedSetup({
         onPress={() => onAsk(`What would have to happen for ${read.symbol} to become a setup worth taking?`)}
         style={{ paddingVertical: 4 }}
       >
-        <T size={13} weight="semibold" c={color.violetLight}>
+        <T variant="meta" weight="semibold" c={color.violetLight}>
           What would make {read.symbol} worth taking? →
         </T>
       </Pressable>
@@ -248,8 +248,8 @@ export function DecideBeat({
             onPress={() => setEvidence((v) => !v)}
             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 26 }}
           >
-            <Eyebrow c={color.muted}>WHY THIS GRADE</Eyebrow>
-            <T size={12} weight="semibold" c={color.violetLight}>{evidence ? 'Hide' : 'Show the five'}</T>
+            <Eyebrow c={color.muted}>Why this grade</Eyebrow>
+            <T variant="meta" weight="semibold" c={color.violetLight}>{evidence ? 'Hide' : 'Show the five'}</T>
           </Pressable>
           {evidence ? <Scorecard components={components} testID="decide-scorecard" /> : null}
         </View>
@@ -257,8 +257,8 @@ export function DecideBeat({
 
       {portal.community?.summary ? (
         <View style={{ gap: 4 }} testID="decide-community">
-          <Eyebrow c={color.muted}>MEMBERS, NOT KAI</Eyebrow>
-          <T size={12.5} lh={18} c={color.muted}>{portal.community.summary}</T>
+          <Eyebrow c={color.muted}>Members, not Kai</Eyebrow>
+          <T variant="meta" lh={18} c={color.muted}>{portal.community.summary}</T>
         </View>
       ) : null}
     </View>

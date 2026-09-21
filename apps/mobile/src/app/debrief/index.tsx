@@ -75,7 +75,7 @@ export default function DebriefList() {
         >
           {exampleData ? (
             <ObjectCard tone="gold" r={radius.lg} style={{ padding: 12 }} testID="example-data">
-              <T size={12} lh={17} c={color.gold}>
+              <T variant="meta" lh={17} c={color.gold}>
                 Example debriefs. Your own write-ups appear here once a paper trade closes.
               </T>
             </ObjectCard>
@@ -83,15 +83,15 @@ export default function DebriefList() {
 
           {pending.length ? (
             <>
-              <Eyebrow c={color.gold}>READY FOR A DEBRIEF</Eyebrow>
+              <Eyebrow c={color.gold}>Ready for a debrief</Eyebrow>
               {pending.map((p) => (
                 <ObjectCard key={p.id} tone="gold" r={radius.xl} style={{ padding: 14, gap: 11 }} testID={`pending-${p.symbol}`}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <T size={16} weight="bold">{p.symbol}</T>
+                    <T variant="body" weight="bold">{p.symbol}</T>
                     {p.simulated ? <SimulatedTag /> : null}
-                    <Num size={15} weight="semibold" c={pnlColor(p.pnl)} style={{ marginLeft: 'auto' }}>{p.pnl_label}</Num>
+                    <Num variant="body" weight="semibold" c={pnlColor(p.pnl)} style={{ marginLeft: 'auto' }}>{p.pnl_label}</Num>
                   </View>
-                  <T size={12} c={color.muted}>{p.closed_label}{p.held ? ` · held ${p.held}` : ''}</T>
+                  <T variant="meta" c={color.muted}>{p.closed_label}{p.held ? ` · held ${p.held}` : ''}</T>
                   <Button
                     testID={`get-debrief-${p.symbol}`}
                     label={working === p.id ? 'Kai is writing it…' : "Get Kai's debrief"}
@@ -105,11 +105,11 @@ export default function DebriefList() {
             </>
           ) : null}
 
-          <Eyebrow>YOUR DEBRIEFS</Eyebrow>
+          <Eyebrow>Your debriefs</Eyebrow>
           {debriefs.length === 0 ? (
             <ObjectCard r={radius.xl} style={{ padding: 18, gap: 6 }}>
-              <T size={14} weight="semibold">No debriefs yet.</T>
-              <T size={13} lh={19} c={color.muted}>
+              <T variant="body" weight="semibold">No debriefs yet.</T>
+              <T variant="meta" lh={19} c={color.muted}>
                 When a trade closes, Kai writes up what the plan said, what you actually did, and the one thing worth
                 keeping. Nothing here is a score.
               </T>
@@ -126,16 +126,16 @@ export default function DebriefList() {
               >
                 <ObjectCard r={radius.xl} style={{ padding: 14, gap: 8 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <T size={16} weight="bold">{d.outcome.symbol}</T>
+                    <T variant="body" weight="bold">{d.outcome.symbol}</T>
                     {d.simulated ? <SimulatedTag /> : null}
-                    <Num size={16} weight="semibold" c={pnlColor(d.outcome.pnl)} style={{ marginLeft: 'auto' }}>
+                    <Num variant="body" weight="semibold" c={pnlColor(d.outcome.pnl)} style={{ marginLeft: 'auto' }}>
                       {d.outcome.pnl_label}
                     </Num>
                   </View>
-                  <T size={12} c={color.muted}>
+                  <T variant="meta" c={color.muted}>
                     {d.outcome.exit_reason}{d.outcome.held ? ` · held ${d.outcome.held}` : ''}
                   </T>
-                  <T size={13} lh={19} numberOfLines={2}>{d.lesson_plain}</T>
+                  <T variant="meta" lh={19} numberOfLines={2}>{d.lesson_plain}</T>
                   <View style={{ flexDirection: 'row', gap: 5, marginTop: 2 }}>
                     {d.process_receipt.map((r) => (
                       <View
@@ -146,7 +146,7 @@ export default function DebriefList() {
                         }}
                       />
                     ))}
-                    <T size={10} c={color.muted} style={{ marginLeft: 4 }}>
+                    <T variant="meta" c={color.muted} style={{ marginLeft: 4 }}>
                       {d.process_receipt.filter((r) => r.status === 'ok').length} of {d.process_receipt.length} steps kept
                     </T>
                   </View>
@@ -157,11 +157,11 @@ export default function DebriefList() {
 
           {error ? (
             <ObjectCard tone="gold" r={radius.lg} style={{ padding: 12 }}>
-              <T size={12} c={color.gold}>{error}</T>
+              <T variant="meta" c={color.gold}>{error}</T>
             </ObjectCard>
           ) : null}
 
-          <T size={10} lh={15} c={color.dim} style={{ marginTop: 4 }}>
+          <T variant="meta" lh={15} c={color.dim} style={{ marginTop: 4 }}>
             Paper trades only for now. A debrief describes what happened — it is not advice and not a prediction.
           </T>
         </ScrollView>

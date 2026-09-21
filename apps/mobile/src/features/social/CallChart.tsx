@@ -155,7 +155,7 @@ export function CallChart({ call, compact = false, testID }: {
         testID={testID ? `${testID}-loading` : undefined}
         style={{ height, alignItems: 'center', justifyContent: 'center' }}
       >
-        <T size={11.5} c={color.dim}>Drawing {call.symbol}…</T>
+        <T variant="meta" c={color.dim}>Drawing {call.symbol}…</T>
       </View>
     );
   }

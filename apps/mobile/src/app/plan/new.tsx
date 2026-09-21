@@ -117,7 +117,7 @@ export default function NewPlan() {
         <StackHeader title="Build a plan" />
         <View style={{ paddingHorizontal: 16, gap: 12 }}>
           <ObjectCard r={radius.xl} style={{ padding: 18 }}>
-            <T size={13} c={color.muted} lh={19}>{error ?? 'I could not start a plan for that symbol.'}</T>
+            <T variant="meta" c={color.muted} lh={19}>{error ?? 'I could not start a plan for that symbol.'}</T>
           </ObjectCard>
           <Button label="Back" kind="outline" onPress={cancel} />
         </View>

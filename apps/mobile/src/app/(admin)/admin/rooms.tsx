@@ -183,12 +183,12 @@ export default function AdminRooms() {
                 }
                 label={room.name}
                 sub={
-                  <T size={11} c={drawn === 'initial' ? color.muted : color.dim} numberOfLines={1}>
+                  <T variant="meta" c={drawn === 'initial' ? color.muted : color.dim} numberOfLines={1}>
                     {`${room.slug ? `#${room.slug}` : room.type} · ${CASE_WORD[drawn]}`}
                   </T>
                 }
                 valueNode={
-                  <T size={11} c={drawn === 'picture' ? color.volt : color.dim}>
+                  <T variant="meta" c={drawn === 'picture' ? color.volt : color.dim}>
                     {drawn === 'picture' ? 'chosen' : 'none chosen'}
                   </T>
                 }
@@ -200,13 +200,13 @@ export default function AdminRooms() {
           })}
         </Section>
       ) : (
-        <T size={13} c={color.muted} lh={20} testID="rooms-empty">
+        <T variant="meta" c={color.muted} lh={20} testID="rooms-empty">
           {data?.plain ?? 'No rooms match that.'}
         </T>
       )}
 
       {!canWrite ? (
-        <T size={12.5} c={color.muted} lh={19}>
+        <T variant="meta" c={color.muted} lh={19}>
           Choosing a room’s picture is an admin act. You can see every room and what each one is showing today.
         </T>
       ) : null}
@@ -239,10 +239,10 @@ export default function AdminRooms() {
               />
               <View style={{ flex: 1, gap: 3 }}>
                 <Eyebrow c={color.dim}>{open.type.toUpperCase()}</Eyebrow>
-                <T size={12.5} c={color.muted} lh={19} testID="sheet-room-case">
+                <T variant="meta" c={color.muted} lh={19} testID="sheet-room-case">
                   {`Right now this room is ${CASE_WORD[drawnCase(open)]}.`}
                 </T>
-                {open.slug ? <Num size={11} weight="medium" c={color.dim}>{`#${open.slug}`}</Num> : null}
+                {open.slug ? <Num variant="meta" weight="medium" c={color.dim}>{`#${open.slug}`}</Num> : null}
               </View>
             </View>
 
@@ -257,7 +257,7 @@ export default function AdminRooms() {
 
             {open.image_url ? (
               <>
-                <T size={12} c={color.muted} lh={18}>
+                <T variant="meta" c={color.muted} lh={18}>
                   Clearing the picture leaves no gap. The room goes back to its company logo, or to its first
                   letter when it is not about a company.
                 </T>
@@ -273,10 +273,10 @@ export default function AdminRooms() {
             ) : null}
 
             {pickError ? (
-              <T size={12} c={color.muted} lh={18} testID="room-picture-error">{pickError}</T>
+              <T variant="meta" c={color.muted} lh={18} testID="room-picture-error">{pickError}</T>
             ) : null}
             {actionError ? (
-              <T size={12} c={color.muted} lh={18} testID="room-save-error">{actionError}</T>
+              <T variant="meta" c={color.muted} lh={18} testID="room-save-error">{actionError}</T>
             ) : null}
 
             <Button label="Done" kind="ghost" height={44} onPress={closeSheet} />

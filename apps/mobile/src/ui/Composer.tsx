@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, TextInput, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { alpha, color, gradient, gradientAngle, radius } from './tokens';
+import { alpha, color, gradient, gradientAngle, radius, typeScale } from './tokens';
 import { family } from './fonts';
 import { ArrowUp } from './Icons';
 import { AttachmentTray, type Attachment } from './AttachmentTray';
@@ -158,7 +158,7 @@ export function Composer({
         style={{
           flex: 1,
           fontFamily: family.regular,
-          fontSize: 14,
+          fontSize: typeScale.body.size,
           color: color.text,
           // RN-web puts a focus ring on inputs; the pill is the affordance
           ...(({ outlineStyle: 'none' } as unknown) as object),

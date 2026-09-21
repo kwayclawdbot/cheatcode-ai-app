@@ -167,7 +167,7 @@ export function SurfaceStrip({
             })}
           >
             <Glyph kind={s.kind} ink={ink} />
-            <T mono size={11} weight="semibold" ls={0.6} c={ink}>
+            <T mono variant="meta" weight="semibold" ls={0.6} c={ink}>
               {LABEL[s.kind].toUpperCase()}{s.symbol ? ` ${s.symbol}` : ''}
             </T>
           </Pressable>
@@ -182,7 +182,7 @@ export function SurfaceStrip({
           hitSlop={{ top: 8, bottom: 8 }}
           style={({ pressed }) => ({ paddingHorizontal: 8, paddingVertical: 5, opacity: pressed ? 0.6 : 1 })}
         >
-          <T mono size={11} weight="semibold" ls={0.6} c={color.muted}>CLOSE ALL</T>
+          <T variant="meta" weight="semibold" c={color.muted}>Close all</T>
         </Pressable>
       ) : null}
     </ScrollView>
@@ -388,7 +388,7 @@ export function WorkspaceHost(props: WorkspaceHostProps) {
               backgroundColor: alpha.bg82,
             }}
           >
-            <T size={13} lh={18} c={color.text} numberOfLines={2}>{props.caption}</T>
+            <T variant="meta" lh={18} c={color.text} numberOfLines={2}>{props.caption}</T>
           </View>
         ) : null}
         <Animated.View

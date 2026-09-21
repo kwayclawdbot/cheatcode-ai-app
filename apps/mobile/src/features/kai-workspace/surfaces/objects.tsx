@@ -66,7 +66,7 @@ function useLoad<T>(run: () => Promise<T>, deps: unknown[], missingPlain: string
 function Status({ text }: { text: string }) {
   return (
     <View style={{ padding: 18 }}>
-      <T size={14} c={color.dim}>{text}</T>
+      <T variant="body" c={color.dim}>{text}</T>
     </View>
   );
 }
@@ -74,8 +74,8 @@ function Status({ text }: { text: string }) {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 5 }}>
-      <T size={13} c={color.dim}>{label}</T>
-      <T size={13} weight="semibold" mono>{value}</T>
+      <T variant="meta" c={color.dim}>{label}</T>
+      <T variant="meta" weight="semibold" mono>{value}</T>
     </View>
   );
 }
@@ -111,19 +111,19 @@ export function SetupSurface({ setupId, onRoute }: { setupId: string; onRoute?: 
   return (
     <ScrollView contentContainerStyle={{ padding: 14, gap: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <T size={20} weight="bold">{d.symbol}</T>
+        <T variant="sectionTitle" weight="bold">{d.symbol}</T>
         <View style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: 7, backgroundColor: alpha.violet14, borderWidth: 0.5, borderColor: alpha.violet50 }}>
-          <T size={12} weight="bold" c={color.violet}>{d.grade_display}</T>
+          <T variant="meta" weight="bold" c={color.violet}>{d.grade_display}</T>
         </View>
-        <T size={12} c={color.dim}>{d.state_label}</T>
+        <T variant="meta" c={color.dim}>{d.state_label}</T>
       </View>
       {/* A price with no freshness on it is a mistake anywhere in this product. */}
       {d.quote ? (
-        <T size={13} c={color.dim}>
+        <T variant="meta" c={color.dim}>
           {money(d.quote.price)} · {d.quote.freshness ?? 'freshness unknown'}
         </T>
       ) : (
-        <T size={13} c={color.dim}>No price on this one right now.</T>
+        <T variant="meta" c={color.dim}>No price on this one right now.</T>
       )}
       <ObjectCard r={radius.xl} style={{ padding: 12 }}>
         <Eyebrow>The plan</Eyebrow>
@@ -134,7 +134,7 @@ export function SetupSurface({ setupId, onRoute }: { setupId: string; onRoute?: 
         ))}
         {d.plan.risk_reward ? <Row label="Reward : risk" value={d.plan.risk_reward} /> : null}
       </ObjectCard>
-      {d.live.technical ? <T size={13} c={color.dim}>{d.live.technical}</T> : null}
+      {d.live.technical ? <T variant="meta" c={color.dim}>{d.live.technical}</T> : null}
       <Button label="Open the full setup" onPress={go} />
     </ScrollView>
   );
@@ -167,9 +167,9 @@ export function AlertSurface({ alertId, onRoute }: { alertId: string; onRoute?: 
 
   return (
     <ScrollView contentContainerStyle={{ padding: 14, gap: 12 }}>
-      <T size={20} weight="bold">{d.symbol}</T>
-      <T size={15}>{d.natural_language || d.summary_plain}</T>
-      {d.monitoring_plain ? <T size={13} c={color.dim}>{d.monitoring_plain}</T> : null}
+      <T variant="sectionTitle" weight="bold">{d.symbol}</T>
+      <T variant="body">{d.natural_language || d.summary_plain}</T>
+      {d.monitoring_plain ? <T variant="meta" c={color.dim}>{d.monitoring_plain}</T> : null}
       {d.structured.length ? (
         <ObjectCard r={radius.xl} style={{ padding: 12 }}>
           <Eyebrow>The condition</Eyebrow>
@@ -218,8 +218,8 @@ export function NewsSurface({ symbol, mode, onRoute }: { symbol: string; mode: G
           style={({ pressed }) => ({ opacity: pressed && n.url ? 0.6 : 1 })}
         >
           <ObjectCard r={radius.xl} style={{ padding: 12, gap: 6 }}>
-            <T size={14} weight="semibold">{n.title}</T>
-            <T size={12} c={color.dim}>
+            <T variant="body" weight="semibold">{n.title}</T>
+            <T variant="meta" c={color.dim}>
               {[n.source, n.published_utc ? n.published_utc.slice(0, 10) : null].filter(Boolean).join(' · ') || 'Source not named'}
             </T>
           </ObjectCard>
@@ -266,8 +266,8 @@ export function CommunitySurface({ roomId, onRoute }: { roomId: string | null; o
       <Eyebrow>{m.value.roomName ?? 'The room'}</Eyebrow>
       {m.value.messages.map((msg) => (
         <View key={msg.id} style={{ gap: 3 }}>
-          <T size={12} c={color.dim}>{msg.author?.handle ?? msg.author?.display_name ?? 'a member'}</T>
-          <T size={14}>{msg.body || '(this message was removed)'}</T>
+          <T variant="meta" c={color.dim}>{msg.author?.handle ?? msg.author?.display_name ?? 'a member'}</T>
+          <T variant="body">{msg.body || '(this message was removed)'}</T>
         </View>
       ))}
       <Button
@@ -300,8 +300,8 @@ export function WebSurface({ url, title }: { url: string; title: string | null }
   return (
     <View style={{ padding: 18, gap: 12 }}>
       <Eyebrow>The page Kai read</Eyebrow>
-      <T size={16} weight="semibold">{title ?? host}</T>
-      <T size={13} c={color.dim}>{host}</T>
+      <T variant="body" weight="semibold">{title ?? host}</T>
+      <T variant="meta" c={color.dim}>{host}</T>
       <Button label="Open it in your browser" onPress={() => { void Linking.openURL(url); }} />
     </View>
   );

@@ -67,7 +67,7 @@ export function GradeMark({ grade, size = 15, label = false, testID }: {
       }}
     >
       {label ? (
-        <T size={12} c={strong ? color.violetLight : color.muted}>Idea grade</T>
+        <T variant="meta" c={strong ? color.violetLight : color.muted}>Idea grade</T>
       ) : null}
       <Num size={size} weight="bold" c={strong ? color.violetLight : color.muted}>
         {grade}
@@ -121,10 +121,10 @@ export function GradeLegs() {
             borderTopColor: alpha.ivory10,
           }}
         >
-          <Num size={11} weight="bold" c={color.violetLight} style={{ width: 12 }}>
+          <Num variant="meta" weight="bold" c={color.violetLight} style={{ width: 12 }}>
             {i + 1}
           </Num>
-          <T size={13} lh={19} c={color.muted} style={{ flex: 1 }}>{leg}</T>
+          <T variant="meta" lh={19} c={color.muted} style={{ flex: 1 }}>{leg}</T>
         </View>
       ))}
       <View style={{
@@ -132,7 +132,7 @@ export function GradeLegs() {
         borderTopColor: alpha.ivory10,
         paddingTop: space.x8,
       }}>
-        <T size={12} lh={17} c={color.dim}>
+        <T variant="meta" lh={17} c={color.dim}>
           A+ is all five. Most are B or C. The grade is on the idea, not the
           company — a great business whose future is already in the price is a
           B. It is not a forecast for this quarter.
@@ -178,8 +178,8 @@ export function StateChip({ state, onExplain, testID }: {
   const inner = (
     <>
       <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: tone }} />
-      <T size={12} weight="semibold" c={tone} style={{ flexShrink: 1 }}>{WATCH_STATE_COPY[state]}</T>
-      {onExplain ? <T size={12} c={color.dim}>?</T> : null}
+      <T variant="meta" weight="semibold" c={tone} style={{ flexShrink: 1 }}>{WATCH_STATE_COPY[state]}</T>
+      {onExplain ? <T variant="meta" c={color.dim}>?</T> : null}
     </>
   );
   const style = {
@@ -232,14 +232,14 @@ export function WatchStateHelp({ highlight }: { highlight?: WatchState }) {
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x8 }}>
             <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: STATE_TONE[s] }} />
-            <T size={14} weight="semibold" c={color.text}>{WATCH_STATE_COPY[s]}</T>
+            <T variant="body" weight="semibold" c={color.text}>{WATCH_STATE_COPY[s]}</T>
           </View>
-          <T size={13} lh={19} c={color.muted} style={{ marginTop: space.x4 }}>
+          <T variant="meta" lh={19} c={color.muted} style={{ marginTop: space.x4 }}>
             {WATCH_STATE_PLAIN[s]}
           </T>
         </View>
       ))}
-      <T size={13} lh={19} c={color.dim} style={{ marginTop: space.x12 }} testID="desk-state-caveat">
+      <T variant="meta" lh={19} c={color.dim} style={{ marginTop: space.x12 }} testID="desk-state-caveat">
         {WATCH_STATE_CAVEAT}
       </T>
     </View>
@@ -264,7 +264,7 @@ export function Falsifier({ label, text, tone = color.red }: {
       borderLeftColor: tone,
     }}>
       <Eyebrow c={color.dim}>{label}</Eyebrow>
-      <T size={14} lh={20} c={color.text} style={{ marginTop: space.x4 }}>{text}</T>
+      <T variant="body" lh={20} c={color.text} style={{ marginTop: space.x4 }}>{text}</T>
     </View>
   );
 }
@@ -283,7 +283,7 @@ export function UnfinishedNote({ style }: { style?: StyleProp<ViewStyle> }) {
       borderLeftWidth: 3, borderLeftColor: color.gold,
     }, style]}>
       <Eyebrow c={color.gold}>Never reached a verdict</Eyebrow>
-      <T size={13} lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
+      <T variant="meta" lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
         This write-up stopped before stating a call — the argument ran out of
         room, not out of substance. It is stored, not decided, and it is not a
         rejection. It owes you a re-run.
@@ -329,7 +329,7 @@ export function Prose({ text }: { text: string }) {
       flush(`p${i}`);
       out.push(
         <View key={`li${i}`} style={{ flexDirection: 'row', gap: space.x8, marginTop: space.x8 }}>
-          <T size={14} c={color.violetLight}>—</T>
+          <T variant="body" c={color.violetLight}>—</T>
           <Inline text={line.replace(/^([-*]\s|\d+\.\s)/, '')} style={{ flex: 1 }} />
         </View>,
       );
@@ -346,12 +346,12 @@ export function Prose({ text }: { text: string }) {
 function Inline({ text, style }: { text: string; style?: StyleProp<ViewStyle> }) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
   return (
-    <T size={14} lh={21} c={color.muted} style={style}>
+    <T variant="body" lh={21} c={color.muted} style={style}>
       {parts.map((p, i) =>
         p.startsWith('**') && p.endsWith('**') ? (
-          <T key={i} size={14} lh={21} weight="semibold" c={color.text}>{p.slice(2, -2)}</T>
+          <T key={i} variant="body" lh={21} weight="semibold" c={color.text}>{p.slice(2, -2)}</T>
         ) : (
-          <T key={i} size={14} lh={21} c={color.muted}>{p}</T>
+          <T key={i} variant="body" lh={21} c={color.muted}>{p}</T>
         ),
       )}
     </T>

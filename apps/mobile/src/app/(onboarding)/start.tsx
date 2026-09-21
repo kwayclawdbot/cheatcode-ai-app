@@ -127,12 +127,12 @@ export default function Start() {
   return (
     <Screen variant="corner" layout="stack" testID="screen-start">
       <ProgressBars total={STEP_TOTAL} done={stepNumber('start')} />
-      <T size={27} weight="bold" ls={-0.4} lh={32}>Where are you right now?</T>
-      <T size={14} c={color.muted} style={{ marginTop: 8 }}>
+      <T variant="screenTitle" weight="bold" ls={-0.4} lh={32}>Where are you right now?</T>
+      <T variant="body" c={color.muted} style={{ marginTop: 8 }}>
         So the app meets you where you are. This changes as you learn — it is not a label you are stuck with.
       </T>
       {suggested ? (
-        <T size={12.5} c={color.violetLight} style={{ marginTop: 10 }} testID="start-intent-credit">
+        <T variant="meta" c={color.violetLight} style={{ marginTop: 10 }} testID="start-intent-credit">
           {INTENT_CREDIT}
         </T>
       ) : null}
@@ -157,12 +157,12 @@ export default function Start() {
               >
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <T size={17} weight="bold">{title}</T>
+                    <T variant="cardTitle" weight="bold">{title}</T>
                     {hinted ? (
                       <Tag label="From the website" c={color.violetLight} border={alpha.ivory20} />
                     ) : null}
                   </View>
-                  <T size={13} c={color.muted} style={{ marginTop: 2 }}>{sub}</T>
+                  <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>{sub}</T>
                 </View>
                 {on ? <Check size={18} color={color.volt} strokeWidth={2.6} /> : null}
               </ObjectCard>

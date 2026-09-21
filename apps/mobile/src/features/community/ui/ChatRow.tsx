@@ -145,7 +145,7 @@ export function ChatRow({
         </View>
       )}
       {deleted ? (
-        <T size={13.5} c={color.dim} testID={testID ? `${testID}-removed` : undefined}>{deletedText}</T>
+        <T variant="meta" c={color.dim} testID={testID ? `${testID}-removed` : undefined}>{deletedText}</T>
       ) : (
         <>
           {body}

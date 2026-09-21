@@ -49,10 +49,10 @@ export function DailyRiskBudget({ budget, testID = 'daily-risk-budget' }: {
     return (
       <View testID={testID} style={{ gap: 4, paddingHorizontal: 2, paddingVertical: 6 }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-          <T size={12} c={color.muted} style={{ flex: 1 }}>Daily risk budget</T>
-          <Num size={12} c={color.muted} testID={`${testID}-headline`}>{budget.headline}</Num>
+          <T variant="meta" c={color.muted} style={{ flex: 1 }}>Daily risk budget</T>
+          <Num variant="meta" c={color.muted} testID={`${testID}-headline`}>{budget.headline}</Num>
         </View>
-        <T size={11} lh={16} c={color.dim} testID={`${testID}-absent`}>{budget.plain}</T>
+        <T variant="meta" lh={16} c={color.dim} testID={`${testID}-absent`}>{budget.plain}</T>
       </View>
     );
   }
@@ -61,8 +61,8 @@ export function DailyRiskBudget({ budget, testID = 'daily-risk-budget' }: {
   return (
     <View testID={testID} style={{ gap: 7, paddingHorizontal: 2, paddingVertical: 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-        <T size={12} c={color.muted} style={{ flex: 1 }}>Daily risk budget</T>
-        <Num size={12} weight="semibold" c={budget.over ? color.red : color.text} testID={`${testID}-headline`}>
+        <T variant="meta" c={color.muted} style={{ flex: 1 }}>Daily risk budget</T>
+        <Num variant="meta" weight="semibold" c={budget.over ? color.red : color.text} testID={`${testID}-headline`}>
           {budget.headline}
         </Num>
       </View>
@@ -81,14 +81,14 @@ export function DailyRiskBudget({ budget, testID = 'daily-risk-budget' }: {
             style={{ width: `${Math.max(0, budget.fraction - budget.usedFraction) * 100}%`, height: '100%', backgroundColor: tint }}
           />
         </View>
-        <Num size={12} c={budget.over ? color.red : color.muted} testID={`${testID}-percent`}>{budget.percent}</Num>
+        <Num variant="meta" c={budget.over ? color.red : color.muted} testID={`${testID}-percent`}>{budget.percent}</Num>
       </View>
       {budget.over ? (
-        <T size={11} lh={16} c={color.red} testID={`${testID}-over`}>
+        <T variant="meta" lh={16} c={color.red} testID={`${testID}-over`}>
           This order would take today past the cap you set.
         </T>
       ) : budget.used > 0 ? (
-        <T size={11} lh={16} c={color.dim}>
+        <T variant="meta" lh={16} c={color.dim}>
           {`${budget.percent} of today's budget once this order is placed — the darker part is already committed.`}
         </T>
       ) : null}
@@ -144,10 +144,10 @@ export function OrderProgress({ steps, testID = 'order-progress' }: {
               {i === 0 ? <View style={{ flex: 1, height: 1, backgroundColor: alpha.ivory12 }} /> : null}
             </View>
             <View style={{ gap: 3 }}>
-              <T size={13.5} weight="semibold" c={step.current || step.done ? color.text : color.muted}>
+              <T variant="meta" weight="semibold" c={step.current || step.done ? color.text : color.muted}>
                 {step.label}
               </T>
-              <T size={11.5} lh={16} c={color.muted} testID={`${testID}-${step.key}-detail`}>
+              <T variant="meta" lh={16} c={color.muted} testID={`${testID}-${step.key}-detail`}>
                 {step.detail ?? '—'}
               </T>
             </View>
@@ -204,17 +204,17 @@ export function ObjectStateStrip({ state, meta, plain, testID = 'state-strip' }:
         }}
       >
         <StatusDot c={tint} size={9} />
-        <T size={14} weight="semibold" c={tint} style={{ flex: 1 }} testID={`${testID}-label`}>
+        <T variant="body" weight="semibold" c={tint} style={{ flex: 1 }} testID={`${testID}-label`}>
           {copy.label}
         </T>
         {meta ? (
           <>
             <View style={{ width: 0.5, height: 16, backgroundColor: alpha.ivory12 }} />
-            <Num size={13} c={color.muted} testID={`${testID}-meta`}>{meta}</Num>
+            <Num variant="meta" c={color.muted} testID={`${testID}-meta`}>{meta}</Num>
           </>
         ) : null}
       </View>
-      <T size={11.5} lh={17} c={color.muted} testID={`${testID}-plain`}>
+      <T variant="meta" lh={17} c={color.muted} testID={`${testID}-plain`}>
         {plain ?? copy.plain}
         {copy.next ? ` Next: ${ACTION_LABEL[copy.next]}.` : ''}
       </T>

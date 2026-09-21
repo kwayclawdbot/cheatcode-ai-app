@@ -149,13 +149,13 @@ export function UsernameForm({
       {/* The rules, always on screen. Not a placeholder that vanishes the
           moment somebody types, and not a message that only appears once they
           have got it wrong. */}
-      <T size={12} lh={18} c={color.muted} testID="username-rules">
+      <T variant="meta" lh={18} c={color.muted} testID="username-rules">
         3 to 20 characters. Letters, numbers and underscores, starting with a letter.
       </T>
 
       {/* The status line, which never claims more than it knows. Blank while
           the name is refused — the refusal is already under the box. */}
-      <T size={12} lh={18} c={color.volt} testID="username-status">
+      <T variant="meta" lh={18} c={color.volt} testID="username-status">
         {checking
           ? 'Checking\u2026'
           : good
@@ -167,7 +167,7 @@ export function UsernameForm({
 
       {suggestions.length ? (
         <View style={{ gap: 9 }}>
-          <T size={12} c={color.muted}>These are free:</T>
+          <T variant="meta" c={color.muted}>These are free:</T>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {suggestions.map((s) => (
               <Chip key={s} label={s} testID={`username-suggestion-${s}`} onPress={() => setValue(s)} />
@@ -178,7 +178,7 @@ export function UsernameForm({
 
       <Rule />
 
-      <T size={12} lh={18} c={color.dim}>
+      <T variant="meta" lh={18} c={color.dim}>
         Your username is what your posts are signed with, and what other members can mention
         you by. You can change it later. A few names are held back for the Cheat Code team and
         for the app itself.

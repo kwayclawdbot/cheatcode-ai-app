@@ -174,8 +174,8 @@ function StrikeRail({ c, tone, symbol }: { c: AlertOptionContract; tone: string;
       {/* The strike, above its own mark. */}
       <View style={{ height: 33 }}>
         <Pin at={strikeX}>
-          <Num size={20} weight="bold" c={color.text}>{c.strike}</Num>
-          <T size={8.5} weight="bold" c={color.dim} ls={0.7} style={{ marginTop: 1 }}>STRIKE</T>
+          <Num variant="sectionTitle" weight="bold" c={color.text}>{c.strike}</Num>
+          <T variant="meta" weight="bold" c={color.dim} style={{ marginTop: 1 }}>Strike</T>
         </Pin>
       </View>
 
@@ -208,13 +208,13 @@ function StrikeRail({ c, tone, symbol }: { c: AlertOptionContract; tone: string;
       <View style={{ height: 15 }}>
         <Pin at={spotX}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-            <T size={9.5} c={color.dim}>now</T>
-            <Num size={11.5} c={color.muted}>{dec2(spot)}</Num>
+            <T variant="meta" c={color.dim}>now</T>
+            <Num variant="meta" c={color.muted}>{dec2(spot)}</Num>
           </View>
         </Pin>
       </View>
 
-      <T size={11.5} c={color.muted} lh={16}>{sentence}</T>
+      <T variant="meta" c={color.muted} lh={16}>{sentence}</T>
     </View>
   );
 }
@@ -252,10 +252,10 @@ function BandCell({ caption, value, tone, sub, meter, flex = 1, testID, accessib
       accessibilityLabel={accessibilityLabel ?? `${caption}, ${value}${sub ? `, ${sub}` : ''}`}
       style={{ flex, minWidth: 0, gap: 3 }}
     >
-      <T size={8} weight="bold" c={color.dim} ls={0.7} numberOfLines={1}>{caption.toUpperCase()}</T>
-      <Num size={15} weight="bold" c={tone ?? color.text} style={{ marginTop: -1 }}>{value}</Num>
+      <T variant="meta" weight="bold" c={color.dim} ls={0.7} numberOfLines={1}>{caption.toUpperCase()}</T>
+      <Num variant="body" weight="bold" c={tone ?? color.text} style={{ marginTop: -1 }}>{value}</Num>
       {meter ?? null}
-      {sub ? <T size={9.5} c={color.dim} numberOfLines={1}>{sub}</T> : null}
+      {sub ? <T variant="meta" c={color.dim} numberOfLines={1}>{sub}</T> : null}
     </View>
   );
 }
@@ -289,7 +289,7 @@ function Runway({ dte, tone }: { dte: number; tone: string }) {
       {Array.from({ length: RUNWAY_SLOTS }).map((_, i) => (
         <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < lit ? tone : alpha.ivory08 }} />
       ))}
-      {dte > RUNWAY_SLOTS ? <T size={8} c={color.dim}>+</T> : null}
+      {dte > RUNWAY_SLOTS ? <T variant="meta" c={color.dim}>+</T> : null}
     </View>
   );
 }
@@ -508,10 +508,10 @@ function VerdictStrip({ c, symbol }: { c: AlertOptionContract; symbol: string })
         paddingTop: 9, borderTopWidth: 0.5, borderTopColor: alpha.ivory08,
       }}
     >
-      <T size={9.5} weight="bold" c={color.dim} ls={0.7}>TRADABILITY</T>
-      <T size={11.5} weight="semibold" c={tone} style={{ flex: 1 }}>{word}</T>
+      <T variant="meta" weight="bold" c={color.dim}>Tradability</T>
+      <T variant="meta" weight="semibold" c={tone} style={{ flex: 1 }}>{word}</T>
       {tally ? (
-        <T size={10.5} c={missed ? color.gold : color.dim}>{tally}</T>
+        <T variant="meta" c={missed ? color.gold : color.dim}>{tally}</T>
       ) : null}
     </View>
   );
@@ -538,14 +538,14 @@ function CheckCell({ check, symbol, i }: { check: AlertContractFloorCheck; symbo
       style={{ width: '47%', flexGrow: 1, gap: 1 }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-        <T size={8} weight="bold" c={color.dim} ls={0.7} numberOfLines={1} style={{ flex: 1 }}>
+        <T variant="meta" weight="bold" c={color.dim} ls={0.7} numberOfLines={1} style={{ flex: 1 }}>
           {check.label.toUpperCase()}
         </T>
         {/* The word, always. Colour never carries a verdict on its own. */}
-        <T size={9.5} weight="semibold" c={tone}>{check.passes ? 'clears' : 'misses'}</T>
+        <T variant="meta" weight="semibold" c={tone}>{check.passes ? 'clears' : 'misses'}</T>
       </View>
-      <Num size={11.5} c={color.text}>{check.value}</Num>
-      {check.requirement ? <T size={9.5} c={color.dim}>{`needs ${check.requirement}`}</T> : null}
+      <Num variant="meta" c={color.text}>{check.value}</Num>
+      {check.requirement ? <T variant="meta" c={color.dim}>{`needs ${check.requirement}`}</T> : null}
     </View>
   );
 }
@@ -575,31 +575,31 @@ function Evidence({ c, symbol }: { c: AlertOptionContract; symbol: string }) {
   return (
     <View style={{ gap: 10, paddingTop: 9, borderTopWidth: 0.5, borderTopColor: alpha.ivory08 }}>
       {rank != null ? (
-        <T size={11} c={rank >= 80 ? color.gold : color.dim} lh={16}>
+        <T variant="meta" c={rank >= 80 ? color.gold : color.dim} lh={16}>
           {rankSentence(rank)}
         </T>
       ) : null}
 
       {hasPrint ? (
         <View testID={`contract-print-${symbol}`} style={{ gap: 5 }}>
-          <T size={9.5} weight="bold" c={color.dim} ls={0.7}>PRINT STRENGTH</T>
-          {facts ? <T size={11} c={color.muted} lh={16}>{facts}</T> : null}
+          <T variant="meta" weight="bold" c={color.dim}>Print strength</T>
+          {facts ? <T variant="meta" c={color.muted} lh={16}>{facts}</T> : null}
           {uncredited ? (
-            <T size={11} c={color.dim} lh={16} testID={`contract-uncredited-${symbol}`}>
+            <T variant="meta" c={color.dim} lh={16} testID={`contract-uncredited-${symbol}`}>
               {c.spike_evidence
                 ?? (c.volume_oi_multiple != null
                   ? `Volume was ${times(c.volume_oi_multiple)} open interest, which the engine did not credit.`
                   : 'The volume-to-open-interest multiple was not credited.')}
             </T>
           ) : c.spike_evidence ? (
-            <T size={11} c={color.dim} lh={16}>{c.spike_evidence}</T>
+            <T variant="meta" c={color.dim} lh={16}>{c.spike_evidence}</T>
           ) : null}
         </View>
       ) : null}
 
       {checks.length ? (
         <View testID={`contract-floor-${symbol}`} style={{ gap: 5 }}>
-          <T size={9.5} weight="bold" c={color.dim} ls={0.7}>THE LIQUIDITY FLOOR</T>
+          <T variant="meta" weight="bold" c={color.dim}>The liquidity floor</T>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 11, rowGap: 8 }}>
             {checks.map((k, i) => <CheckCell key={`${k.label}-${i}`} check={k} symbol={symbol} i={i} />)}
           </View>
@@ -609,7 +609,7 @@ function Evidence({ c, symbol }: { c: AlertOptionContract; symbol: string }) {
       {c.liquidity_failures?.length ? (
         <View testID={`contract-failures-${symbol}`} style={{ gap: 4 }}>
           {c.liquidity_failures.map((f, i) => (
-            <T key={i} size={11} c={color.gold} lh={16}>{f}</T>
+            <T key={i} variant="meta" c={color.gold} lh={16}>{f}</T>
           ))}
         </View>
       ) : null}
@@ -619,7 +619,7 @@ function Evidence({ c, symbol }: { c: AlertOptionContract; symbol: string }) {
         measurements of a print and of a contract; neither of them knows
         anything about how the trade goes.
       */}
-      <T size={10} c={color.dim} lh={14} testID={`contract-scope-${symbol}`}>
+      <T variant="meta" c={color.dim} lh={14} testID={`contract-scope-${symbol}`}>
         Print strength measures the print. Tradability measures the contract. Neither one is a
         forecast of how the trade works out.
       </T>
@@ -671,7 +671,7 @@ export function ContractGraphic({ c, symbol, compact, testID }: ContractGraphicP
           label that repeats the heading is not a label.
         */}
         {c.label && !sameAsEyebrow(c.label) ? (
-          <T size={8.5} weight="bold" c={color.dim} ls={0.7} numberOfLines={1} style={{ flex: 1 }}>
+          <T variant="meta" weight="bold" c={color.dim} ls={0.7} numberOfLines={1} style={{ flex: 1 }}>
             {c.label.toUpperCase()}
           </T>
         ) : <View style={{ flex: 1 }} />}
@@ -680,12 +680,12 @@ export function ContractGraphic({ c, symbol, compact, testID }: ContractGraphicP
              here — the same fact, as text, because there was no stock price to
              draw it against. */
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
-            <Num size={15} weight="bold" c={color.text}>{c.strike}</Num>
-            <T size={9.5} c={color.dim}>strike</T>
+            <Num variant="body" weight="bold" c={color.text}>{c.strike}</Num>
+            <T variant="meta" c={color.dim}>strike</T>
           </View>
         ) : null}
         <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.sm, backgroundColor: tint, borderWidth: 0.5, borderColor: tone }}>
-          <T size={10} weight="semibold" c={tone}>{put ? 'Put' : 'Call'}</T>
+          <T variant="meta" weight="semibold" c={tone}>{put ? 'Put' : 'Call'}</T>
         </View>
       </View>
 
@@ -734,10 +734,10 @@ function AlternativeStrip({ contracts, symbol }: { contracts: AlertOptionContrac
               backgroundColor: alpha.ivory04, borderWidth: 0.5, borderColor: alpha.ivory10,
             }}
           >
-            <Num size={11.5} weight="semibold" c={color.text}>{c.strike}</Num>
-            <T size={10} weight="semibold" c={put ? color.red : color.green}>{put ? 'Put' : 'Call'}</T>
-            <T size={10} c={color.dim}>{c.expiry}</T>
-            {price ? <Num size={10.5} c={color.muted}>{price}</Num> : null}
+            <Num variant="meta" weight="semibold" c={color.text}>{c.strike}</Num>
+            <T variant="meta" weight="semibold" c={put ? color.red : color.green}>{put ? 'Put' : 'Call'}</T>
+            <T variant="meta" c={color.dim}>{c.expiry}</T>
+            {price ? <Num variant="meta" c={color.muted}>{price}</Num> : null}
           </View>
         );
       })}
@@ -762,7 +762,7 @@ export function ContractSection({ contracts, symbol, compact }: {
       />
       {rest.length ? (
         <>
-          <T size={9.5} weight="bold" c={color.dim} ls={0.7}>OTHER WAYS TO PLAY IT</T>
+          <T variant="meta" weight="bold" c={color.dim}>Other ways to play it</T>
           <AlternativeStrip contracts={rest} symbol={symbol} />
         </>
       ) : null}
@@ -791,7 +791,7 @@ export function ContractLine({ c, symbol, showLiquidity = false }: {
 }) {
   const put = c.type === 'put';
   const paid = c.cost ? (c.cost.startsWith('$') ? c.cost : `$${c.cost}`) : null;
-  const dot = <T size={11} c={color.dim}>·</T>;
+  const dot = <T variant="meta" c={color.dim}>·</T>;
   return (
     <View
       testID={`contract-${symbol}`}
@@ -804,13 +804,13 @@ export function ContractLine({ c, symbol, showLiquidity = false }: {
       ].filter(Boolean).join(', ')}
       style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}
     >
-      <Num size={12.5} weight="semibold">{c.strike}</Num>
-      <T size={11} weight="semibold" c={put ? color.red : color.green}>{put ? 'Put' : 'Call'}</T>
+      <Num variant="meta" weight="semibold">{c.strike}</Num>
+      <T variant="meta" weight="semibold" c={put ? color.red : color.green}>{put ? 'Put' : 'Call'}</T>
       {dot}
-      <T size={11} c={color.muted}>{c.expiry}</T>
-      {c.dte != null ? (<>{dot}<Num size={11} c={color.muted}>{`${c.dte}d`}</Num></>) : null}
-      {c.iv != null ? (<>{dot}<T size={11} c={color.muted}>IV</T><Num size={11} c={color.muted}>{pctOf(c.iv)}</Num></>) : null}
-      {paid ? (<>{dot}<T size={11} c={color.muted}>paid</T><Num size={12} c={color.text}>{paid}</Num></>) : null}
+      <T variant="meta" c={color.muted}>{c.expiry}</T>
+      {c.dte != null ? (<>{dot}<Num variant="meta" c={color.muted}>{`${c.dte}d`}</Num></>) : null}
+      {c.iv != null ? (<>{dot}<T variant="meta" c={color.muted}>IV</T><Num variant="meta" c={color.muted}>{pctOf(c.iv)}</Num></>) : null}
+      {paid ? (<>{dot}<T variant="meta" c={color.muted}>paid</T><Num variant="meta" c={color.text}>{paid}</Num></>) : null}
       {showLiquidity && c.liquidity ? (
         <View
           testID={`contract-liquidity-${symbol}`}
@@ -819,7 +819,7 @@ export function ContractLine({ c, symbol, showLiquidity = false }: {
             borderColor: c.liquidity === 'good' ? alpha.green40 : alpha.gold40,
           }}
         >
-          <T size={9.5} weight="semibold" c={c.liquidity === 'good' ? color.green : color.gold}>
+          <T variant="meta" weight="semibold" c={c.liquidity === 'good' ? color.green : color.gold}>
             {c.liquidity === 'good' ? 'Liquid' : 'Thin'}
           </T>
         </View>

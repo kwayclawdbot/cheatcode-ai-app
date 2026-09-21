@@ -65,12 +65,12 @@ export function Scorecard({
               onPress={() => setOpen(isOpen ? null : c.key)}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 26 }}
             >
-              <T size={11.5} c={color.muted} style={{ width: 96 }}>{c.label}</T>
+              <T variant="meta" c={color.muted} style={{ width: 96 }}>{c.label}</T>
               <Segments strength={c.strength} c={tone} />
-              <T size={11.5} weight="semibold" c={tone} style={{ flex: 1 }}>{c.status}</T>
+              <T variant="meta" weight="semibold" c={tone} style={{ flex: 1 }}>{c.status}</T>
             </Pressable>
             {isOpen && c.explanation ? (
-              <T size={11.5} lh={17} c={color.muted} style={{ paddingLeft: 106, paddingTop: 3 }}>{c.explanation}</T>
+              <T variant="meta" lh={17} c={color.muted} style={{ paddingLeft: 106, paddingTop: 3 }}>{c.explanation}</T>
             ) : null}
           </View>
         );

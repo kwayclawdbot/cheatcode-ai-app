@@ -43,7 +43,7 @@ export function BuySellBar({ w, testID = 'buy-sell' }: { w: SymbolWorkspace; tes
         opacity: pressed ? 0.75 : 1,
       })}
     >
-      <T size={13} weight="semibold" c={c}>{label}</T>
+      <T variant="meta" weight="semibold" c={c}>{label}</T>
     </Pressable>
   );
 
@@ -52,7 +52,7 @@ export function BuySellBar({ w, testID = 'buy-sell' }: { w: SymbolWorkspace; tes
       {pill(w.actions.sell_label, color.red, alpha.red40, 'cta-sell', w.actions.sell_side)}
       {pill(w.actions.buy_label, color.volt, alpha.volt50, 'cta-buy', w.actions.buy_side)}
       {w.actions.note ? (
-        <T size={10} lh={14} c={color.dim} align="right" style={{ flex: 1 }}>{w.actions.note}</T>
+        <T variant="meta" lh={14} c={color.dim} align="right" style={{ flex: 1 }}>{w.actions.note}</T>
       ) : null}
     </View>
   );

@@ -89,7 +89,7 @@ function BackRow({ title, onBack }: { title: string; onBack: () => void }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 10 }}>
       <BackButton onPress={onBack} />
-      <T size={17} weight="bold">{title}</T>
+      <T variant="cardTitle" weight="bold">{title}</T>
     </View>
   );
 }
@@ -104,16 +104,16 @@ function AccountStrip({ preview }: { preview: OrderPreview }) {
           borderWidth: 0.5, borderColor: alpha.cyan40, alignItems: 'center', justifyContent: 'center',
         }}
       >
-        <T size={12} weight="bold" c={color.cyan}>P</T>
+        <T variant="meta" weight="bold" c={color.cyan}>P</T>
       </View>
       <View style={{ flex: 1 }}>
-        <T size={10} c={color.muted}>Account</T>
-        <T size={13} weight="semibold" numberOfLines={1}>{preview.account_label}</T>
+        <T variant="meta" c={color.muted}>Account</T>
+        <T variant="meta" weight="semibold" numberOfLines={1}>{preview.account_label}</T>
       </View>
       <PaperChip />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
         <StatusDot c={preview.connected ? color.green : color.muted} size={5} />
-        <T size={10} c={preview.connected ? color.green : color.muted}>{preview.connected ? 'Connected' : 'Offline'}</T>
+        <T variant="meta" c={preview.connected ? color.green : color.muted}>{preview.connected ? 'Connected' : 'Offline'}</T>
       </View>
     </ObjectCard>
   );
@@ -221,17 +221,17 @@ export default function ReviewOrder() {
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               {filled ? <Check size={16} color={color.volt} /> : <StatusDot c={rejected ? color.red : color.gold} />}
-              <T size={16} weight="bold" c={filled ? color.volt : rejected ? color.red : color.gold} testID="order-status-label">
+              <T variant="body" weight="bold" c={filled ? color.volt : rejected ? color.red : color.gold} testID="order-status-label">
                 {order.status_label}
               </T>
             </View>
-            <T size={13} lh={19}>
+            <T variant="meta" lh={19}>
               {`${order.side_label} ${order.symbol} · ${shareLabel(order.qty)}${order.limit_price != null ? ` · limit ${money(order.limit_price)}` : ''}`}
             </T>
-            {order.status_detail ? <T size={12} c={color.muted} lh={17}>{order.status_detail}</T> : null}
+            {order.status_detail ? <T variant="meta" c={color.muted} lh={17}>{order.status_detail}</T> : null}
             {/* The server usually says this itself; only add it when it did not. */}
             {!filled && !rejected && !/not filled/i.test(`${order.status_label} ${order.status_detail ?? ''}`) ? (
-              <T size={12} c={color.muted} lh={17}>
+              <T variant="meta" c={color.muted} lh={17}>
                 Accepted is not filled. The order exists and is waiting for a price.
               </T>
             ) : null}
@@ -265,7 +265,7 @@ export default function ReviewOrder() {
             testID="ask-kai"
             onPress={() => openKaiSheet({ context: { kind: 'order', id: order.id, symbol: order.symbol } })}
           />
-          <T size={11} c={color.dim} align="center" lh={16}>
+          <T variant="meta" c={color.dim} align="center" lh={16}>
             Paper fills use delayed prices, so a real fill would not be identical.
           </T>
         </ScrollView>
@@ -290,7 +290,7 @@ export default function ReviewOrder() {
         <BackRow title="Review paper order" onBack={back} />
         <View style={{ paddingHorizontal: 16, gap: 12 }}>
           <ObjectCard r={radius.xl} style={{ padding: 18 }}>
-            <T size={13} c={color.muted} lh={19}>{error ?? 'I could not price that order just now.'}</T>
+            <T variant="meta" c={color.muted} lh={19}>{error ?? 'I could not price that order just now.'}</T>
           </ObjectCard>
           <Button label="Try again" kind="outline" onPress={repreview} testID="cta-retry" />
         </View>
@@ -343,10 +343,10 @@ export default function ReviewOrder() {
           <TradeMap idea={idea} selectedLevel="entry" />
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16, paddingTop: 4 }}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Num size={26} weight="semibold" c={color.red} testID="planned-risk">
+              <Num variant="keyPrice" weight="semibold" c={color.red} testID="planned-risk">
                 {preview.max_loss != null ? money(preview.max_loss) : '—'}
               </Num>
-              <T size={11} lh={16} c={color.muted} style={{ marginTop: 2 }}>
+              <T variant="meta" lh={16} c={color.muted} style={{ marginTop: 2 }}>
                 {preview.max_loss != null
                   ? 'Planned risk if the stop executes'
                   : 'No stop on this order, so there is no planned risk to show'}
@@ -361,7 +361,7 @@ export default function ReviewOrder() {
         <Panel style={{ paddingHorizontal: 16, paddingVertical: 4 }} testID="order-panel">
           <View style={{ paddingVertical: 9, borderBottomWidth: 0.5, borderBottomColor: alpha.ivory08, gap: 2 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <T size={18} weight="bold" testID="order-headline">{`${preview.side_label} ${preview.symbol}`}</T>
+              <T variant="cardTitle" weight="bold" testID="order-headline">{`${preview.side_label} ${preview.symbol}`}</T>
               <View
                 style={{
                   paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5,
@@ -369,7 +369,7 @@ export default function ReviewOrder() {
                   borderWidth: 0.5, borderColor: isBuySide(preview.side) ? alpha.volt40 : alpha.red40,
                 }}
               >
-                <T size={11} weight="bold" ls={0.88} c={isBuySide(preview.side) ? color.volt : color.red}>
+                <T variant="meta" weight="bold" ls={0.88} c={isBuySide(preview.side) ? color.volt : color.red}>
                   {SIDE_LABEL[preview.side].toUpperCase()}
                 </T>
               </View>
@@ -378,13 +378,13 @@ export default function ReviewOrder() {
               {/* The header already says the ticker — repeating it here when the
                   server has no company name is noise, not identity. */}
               {preview.name || preview.exchange ? (
-                <T size={11} c={color.muted}>{[preview.name, preview.exchange].filter(Boolean).join(' · ')}</T>
+                <T variant="meta" c={color.muted}>{[preview.name, preview.exchange].filter(Boolean).join(' · ')}</T>
               ) : null}
               {q?.price != null ? (
                 <>
-                  <Num size={11} weight="regular">{q.price.toFixed(2)}</Num>
+                  <Num variant="meta" weight="regular">{q.price.toFixed(2)}</Num>
                   {q.change_pct != null ? (
-                    <Num size={11} weight="regular" c={changeUp ? color.green : color.red}>{signedPct(q.change_pct)}</Num>
+                    <Num variant="meta" weight="regular" c={changeUp ? color.green : color.red}>{signedPct(q.change_pct)}</Num>
                   ) : null}
                   <FreshnessMark freshness={q.freshness ?? 'unknown'} delayReason={q.delay_reason} at={q.source_ts} size={10} />
                 </>
@@ -439,10 +439,10 @@ export default function ReviewOrder() {
           })}
           style={{ alignSelf: 'center', paddingVertical: 6, minHeight: 44, justifyContent: 'center' }}
         >
-          <T size={12} weight="semibold" c={color.violetLight}>Ask Kai to check this</T>
+          <T variant="meta" weight="semibold" c={color.violetLight}>Ask Kai to check this</T>
         </Pressable>
 
-        {submitError ? <T size={12} c={color.red} lh={17} testID="submit-error">{submitError}</T> : null}
+        {submitError ? <T variant="meta" c={color.red} lh={17} testID="submit-error">{submitError}</T> : null}
       </ScrollView>
 
       {/* Footer — the artboard's own three lines. */}
@@ -456,7 +456,7 @@ export default function ReviewOrder() {
         <DailyRiskBudget budget={budget} />
 
         {preview.hard_stop_plain || preview.max_loss != null ? (
-          <T size={11} c={color.gold} align="center" testID="max-loss-line">
+          <T variant="meta" c={color.gold} align="center" testID="max-loss-line">
             {preview.hard_stop_plain
               ?? `You can lose up to ${money(preview.max_loss)} on this order if the stop executes.`}
           </T>
@@ -464,7 +464,7 @@ export default function ReviewOrder() {
 
         {expired ? (
           <>
-            <T size={11} c={color.gold} align="center">
+            <T variant="meta" c={color.gold} align="center">
               These numbers are older than the market. Take a fresh look before anything is sent.
             </T>
             <Button label="Get fresh numbers" onPress={repreview} height={52} size={16} testID="cta-repreview" />
@@ -494,13 +494,13 @@ export default function ReviewOrder() {
         )}
 
         {askRisk && !blocked ? (
-          <T size={12} c={color.muted} align="center" lh={17} testID="risk-gate-line">
+          <T variant="meta" c={color.muted} align="center" lh={17} testID="risk-gate-line">
             {RISK_BEFORE_ORDER_SUB}
           </T>
         ) : null}
 
         {blocked ? (
-          <T size={11} c={color.red} align="center" testID="blocked-line">
+          <T variant="meta" c={color.red} align="center" testID="blocked-line">
             {preview.risk.blockers[0]?.message ?? 'A rule you set blocks this order.'}
           </T>
         ) : null}
@@ -509,7 +509,7 @@ export default function ReviewOrder() {
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
           <Lock size={11} color={color.muted} />
-          <T size={11} c={color.muted} numberOfLines={1} testID="confirm-footer">
+          <T variant="meta" c={color.muted} numberOfLines={1} testID="confirm-footer">
             {/*
               The freshness word is dropped here because the mark below says it.
               A ticket with NO quote clock says nothing about when — an em-dash
@@ -526,7 +526,7 @@ export default function ReviewOrder() {
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
           <FreshnessMark freshness={q?.freshness ?? 'unknown'} delayReason={q?.delay_reason} at={q?.source_ts} size={10} />
           {secondsLeft != null && !expired ? (
-            <T size={10} c={color.dim} testID="expiry-countdown">{`· these numbers hold for ${secondsLeft}s`}</T>
+            <T variant="meta" c={color.dim} testID="expiry-countdown">{`· these numbers hold for ${secondsLeft}s`}</T>
           ) : null}
         </View>
       </View>

@@ -50,8 +50,8 @@ function Honest({ title, plain, testID, children }: {
 }) {
   return (
     <View testID={testID} style={{ gap: 7, paddingVertical: 2 }}>
-      <T size={14} weight="semibold">{title}</T>
-      <T size={12.5} lh={19} c={color.muted}>{plain}</T>
+      <T variant="body" weight="semibold">{title}</T>
+      <T variant="meta" lh={19} c={color.muted}>{plain}</T>
       {children}
     </View>
   );
@@ -68,7 +68,7 @@ export function DeliveryPanel({ push }: { push: Push }) {
 
   const body = () => {
     if (loading) {
-      return <T size={12.5} c={color.muted}>Checking how notifications reach you…</T>;
+      return <T variant="meta" c={color.muted}>Checking how notifications reach you…</T>;
     }
 
     // The API on this stack has no push routes. Say that, rather than draw a
@@ -121,7 +121,7 @@ export function DeliveryPanel({ push }: { push: Push }) {
     if (!registered) {
       return (
         <View style={{ gap: 10 }}>
-          <T size={12.5} lh={19} c={color.muted}>
+          <T variant="meta" lh={19} c={color.muted}>
             Right now everything waits for you here. Kai can also send it to this{' '}
             {Platform.OS === 'web' ? 'browser' : 'phone'} the moment it happens, in the same words.
           </T>
@@ -142,8 +142,8 @@ export function DeliveryPanel({ push }: { push: Push }) {
         <RowList testID="push-devices">
           <Row>
             <View style={{ flex: 1 }}>
-              <T size={13}>Send to my devices</T>
-              <T size={11} c={color.muted} style={{ marginTop: 2 }}>
+              <T variant="meta">Send to my devices</T>
+              <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>
                 Off means silent everywhere. The inbox is unchanged.
               </T>
             </View>
@@ -159,10 +159,10 @@ export function DeliveryPanel({ push }: { push: Push }) {
             return (
               <Row key={d.id} last={i === active.length - 1}>
                 <View style={{ flex: 1 }}>
-                  <T size={13}>{d.plain}</T>
+                  <T variant="meta">{d.plain}</T>
                   <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 2 }}>
-                    {d.id === thisDeviceId ? <T size={11} c={color.volt}>This device</T> : null}
-                    {last ? <Num size={10.5} weight="regular" c={color.dim}>{`last sent ${last}`}</Num> : null}
+                    {d.id === thisDeviceId ? <T variant="meta" c={color.volt}>This device</T> : null}
+                    {last ? <Num variant="meta" weight="regular" c={color.dim}>{`last sent ${last}`}</Num> : null}
                   </View>
                 </View>
                 <Pressable
@@ -172,7 +172,7 @@ export function DeliveryPanel({ push }: { push: Push }) {
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   onPress={() => { void push.forget(d.id); }}
                 >
-                  <T size={12} c={color.muted}>Turn off</T>
+                  <T variant="meta" c={color.muted}>Turn off</T>
                 </Pressable>
               </Row>
             );
@@ -190,7 +190,7 @@ export function DeliveryPanel({ push }: { push: Push }) {
             onPress={() => { void push.sendTest(); }}
           />
           {test ? (
-            <T testID="push-test-result" size={12} lh={18} c={test.sent > 0 ? color.volt : color.gold} style={{ flex: 1 }}>
+            <T testID="push-test-result" variant="meta" lh={18} c={test.sent > 0 ? color.volt : color.gold} style={{ flex: 1 }}>
               {test.plain}
             </T>
           ) : null}
@@ -201,7 +201,7 @@ export function DeliveryPanel({ push }: { push: Push }) {
         {test?.suppressed.length ? (
           <View testID="push-test-suppressed" style={{ gap: 4 }}>
             {test.suppressed.map((s, i) => (
-              <T key={`${s.reason}${i}`} size={11.5} lh={17} c={color.muted}>{s.plain}</T>
+              <T key={`${s.reason}${i}`} variant="meta" lh={17} c={color.muted}>{s.plain}</T>
             ))}
           </View>
         ) : null}
@@ -211,8 +211,8 @@ export function DeliveryPanel({ push }: { push: Push }) {
           {CATEGORY_ORDER.map((c, i) => (
             <Row key={c.key} last={i === CATEGORY_ORDER.length - 1}>
               <View style={{ flex: 1 }}>
-                <T size={13}>{c.label}</T>
-                <T size={11} c={color.muted} style={{ marginTop: 2 }}>{c.sub}</T>
+                <T variant="meta">{c.label}</T>
+                <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>{c.sub}</T>
               </View>
               <Toggle
                 testID={`push-category-${c.key}`}
@@ -224,7 +224,7 @@ export function DeliveryPanel({ push }: { push: Push }) {
             </Row>
           ))}
         </RowList>
-        <T size={10.5} lh={16} c={color.dim}>
+        <T variant="meta" lh={16} c={color.dim}>
           Quiet hours hold everything, including an alert you set. Nothing is replayed afterwards — it waits in your
           inbox instead. You set the window in How Kai talks to you.
         </T>
@@ -236,7 +236,7 @@ export function DeliveryPanel({ push }: { push: Push }) {
     <View testID="push-delivery" style={{ gap: 10 }}>
       <SectionRule label="HOW THIS REACHES YOU" />
       {body()}
-      {message ? <T testID="push-message" size={12} lh={18} c={color.muted}>{message}</T> : null}
+      {message ? <T testID="push-message" variant="meta" lh={18} c={color.muted}>{message}</T> : null}
     </View>
   );
 }

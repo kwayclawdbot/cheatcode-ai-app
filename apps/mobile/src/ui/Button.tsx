@@ -119,7 +119,7 @@ export function Chip({
           : { borderWidth: 0.5, borderColor: alpha.ivory24 },
       ]}
     >
-      <T size={13} weight={selected ? 'bold' : 'semibold'} c={selected ? color.bg : muted ? color.muted : color.text}>
+      <T variant="meta" weight={selected ? 'bold' : 'semibold'} c={selected ? color.bg : muted ? color.muted : color.text}>
         {label}
       </T>
     </Pressable>
@@ -130,7 +130,7 @@ export function Chip({
 export function Tag({ label, c = color.gold, border }: { label: string; c?: string; border?: string }) {
   return (
     <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: border ?? `${c}80` }}>
-      <T size={9} c={c}>{label}</T>
+      <T variant="meta" c={c}>{label}</T>
     </View>
   );
 }

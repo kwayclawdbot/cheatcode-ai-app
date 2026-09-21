@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, TextInput, TextInputProps } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { alpha, color, gradient, gradientAngle, radius } from './tokens';
+import { alpha, color, gradient, gradientAngle, radius, typeScale } from './tokens';
 import { family, fontStack } from './fonts';
 import { T } from './Text';
 
@@ -12,7 +12,7 @@ export function Field({
   const [focused, setFocused] = useState(false);
   return (
     <View style={{ gap: 7 }}>
-      <T size={13} c={color.muted}>{label}</T>
+      <T variant="meta" c={color.muted}>{label}</T>
       <LinearGradient
         colors={gradient.composer as unknown as readonly [string, string, ...string[]]}
         start={gradientAngle.start}
@@ -35,7 +35,7 @@ export function Field({
           {...input}
           style={{
             fontFamily: fontStack(family.regular),
-            fontSize: 16,
+            fontSize: typeScale.body.size,
             color: color.text,
             paddingVertical: 0,
             ...(({ outlineStyle: 'none' } as unknown) as object),
@@ -45,7 +45,7 @@ export function Field({
       {error ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
           <View style={{ width: 6, height: 6, backgroundColor: color.red }} />
-          <T size={12} c={color.red} style={{ flex: 1 }}>{error}</T>
+          <T variant="meta" c={color.red} style={{ flex: 1 }}>{error}</T>
         </View>
       ) : null}
     </View>

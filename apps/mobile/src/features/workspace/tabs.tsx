@@ -52,10 +52,10 @@ export function WorkspaceTabs({
               opacity: pressed && !active ? 0.75 : 1,
             })}
           >
-            <T size={12} weight={active ? 'bold' : 'regular'} c={active ? color.volt : color.muted}>{t.label}</T>
+            <T variant="meta" weight={active ? 'bold' : 'regular'} c={active ? color.volt : color.muted}>{t.label}</T>
             {n ? (
               <View style={{ minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, backgroundColor: alpha.violet22, alignItems: 'center', justifyContent: 'center' }}>
-                <T size={9} weight="bold" c={color.violetLight}>{String(n)}</T>
+                <T variant="meta" weight="bold" c={color.violetLight}>{String(n)}</T>
               </View>
             ) : null}
           </Pressable>
@@ -76,8 +76,8 @@ export function CommunityLine({ w, testID = 'community-line' }: { w: SymbolWorks
 
   return (
     <View testID={testID} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 2, paddingTop: 2 }}>
-      <T size={12} lh={17} c={color.muted} style={{ flex: 1 }}>
-        <T size={12} weight="semibold" c={color.violetLight}>Community</T>
+      <T variant="meta" lh={17} c={color.muted} style={{ flex: 1 }}>
+        <T variant="meta" weight="semibold" c={color.violetLight}>Community</T>
         {bits.length ? ` · ${bits.join(' · ')}` : ' · no discussion yet'}
       </T>
       {w.community.room_id ? (
@@ -88,7 +88,7 @@ export function CommunityLine({ w, testID = 'community-line' }: { w: SymbolWorks
           onPress={() => router.push(`/room/${encodeURIComponent(w.community.room_id as string)}`)}
           hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
         >
-          <T size={12} weight="semibold" c={color.volt}>Join discussion</T>
+          <T variant="meta" weight="semibold" c={color.volt}>Join discussion</T>
         </Pressable>
       ) : null}
     </View>
@@ -102,15 +102,15 @@ export function SeeWhyPanel({ detail, whatChanged, testID = 'see-why' }: {
   const lines = whatChanged.length ? whatChanged : detail?.live.narration.map((n) => n.text) ?? [];
   return (
     <ObjectCard testID={testID} r={radius.xl} style={{ padding: 14, gap: 10 }}>
-      <Eyebrow c={color.violetLight}>WHY KAI SEES IT THIS WAY</Eyebrow>
-      {detail?.learn.why_plain ? <T size={13} lh={19}>{detail.learn.why_plain}</T> : null}
+      <Eyebrow c={color.violetLight}>Why Kai sees it this way</Eyebrow>
+      {detail?.learn.why_plain ? <T variant="meta" lh={19}>{detail.learn.why_plain}</T> : null}
 
       {lines.length ? (
         <View style={{ gap: 6 }}>
           {lines.slice(0, 4).map((l, i) => (
             <View key={i} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
               <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: color.cyan, marginTop: 7 }} />
-              <T size={12.5} lh={18} c={color.muted} style={{ flex: 1 }}>{l}</T>
+              <T variant="meta" lh={18} c={color.muted} style={{ flex: 1 }}>{l}</T>
             </View>
           ))}
         </View>
@@ -123,14 +123,14 @@ export function SeeWhyPanel({ detail, whatChanged, testID = 'see-why' }: {
               {e.ok
                 ? <Check size={12} color={color.green} strokeWidth={2.6} />
                 : <View style={{ width: 10, height: 2, borderRadius: 1, backgroundColor: color.muted }} />}
-              <T size={12} lh={17} c={e.ok ? color.text : color.muted} style={{ flex: 1 }}>{e.label}</T>
+              <T variant="meta" lh={17} c={e.ok ? color.text : color.muted} style={{ flex: 1 }}>{e.label}</T>
             </View>
           ))}
         </View>
       ) : null}
 
       {!detail?.learn.why_plain && !lines.length ? (
-        <T size={12.5} lh={18} c={color.muted}>Kai has not written this one up yet.</T>
+        <T variant="meta" lh={18} c={color.muted}>Kai has not written this one up yet.</T>
       ) : null}
     </ObjectCard>
   );
@@ -146,9 +146,9 @@ function ScenarioTiles({ scenarios, testID = 'scenarios' }: { scenarios: Scenari
         const bd = s.tone === 'good' ? alpha.green40 : s.tone === 'bad' ? alpha.red40 : alpha.ivory12;
         return (
           <View key={i} style={{ flex: 1, borderRadius: radius.lg, backgroundColor: bg, borderWidth: 0.5, borderColor: bd, padding: 11, gap: 3 }}>
-            <T size={10} c={color.muted}>{s.label}</T>
-            {s.amount ? <Num size={16} weight="semibold" c={c}>{s.amount}</Num> : null}
-            <T size={11} lh={16} c={color.muted}>{s.plain}</T>
+            <T variant="meta" c={color.muted}>{s.label}</T>
+            {s.amount ? <Num variant="body" weight="semibold" c={c}>{s.amount}</Num> : null}
+            <T variant="meta" lh={16} c={color.muted}>{s.plain}</T>
           </View>
         );
       })}
@@ -163,15 +163,15 @@ export function KaiTab({ w, testID = 'tab-body-kai' }: { w: SymbolWorkspace; tes
       <ObjectCard tone="kai" r={radius.xxl} style={{ padding: 15, gap: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <KaiOrb size={20} />
-          <T size={12} weight="bold" c={color.violetLight}>{`Kai on ${w.symbol}`}</T>
+          <T variant="meta" weight="bold" c={color.violetLight}>{`Kai on ${w.symbol}`}</T>
           {w.kai.grade ? (
             <View style={{ paddingHorizontal: 7, paddingVertical: 1, borderRadius: radius.sm, backgroundColor: alpha.violet14, borderWidth: 0.5, borderColor: alpha.violet50 }}>
-              <T size={11} weight="bold" c={color.violet}>{w.kai.grade}</T>
+              <T variant="meta" weight="bold" c={color.violet}>{w.kai.grade}</T>
             </View>
           ) : null}
-          {w.kai.last_updated ? <T size={10} c={color.muted} style={{ marginLeft: 'auto' }}>{ago(w.kai.last_updated)}</T> : null}
+          {w.kai.last_updated ? <T variant="meta" c={color.muted} style={{ marginLeft: 'auto' }}>{ago(w.kai.last_updated)}</T> : null}
         </View>
-        <T size={13.5} lh={20} testID="kai-interpretation">
+        <T variant="meta" lh={20} testID="kai-interpretation">
           {w.kai.interpretation ?? `Kai has not written a read on ${w.symbol} yet.`}
         </T>
       </ObjectCard>
@@ -180,7 +180,7 @@ export function KaiTab({ w, testID = 'tab-body-kai' }: { w: SymbolWorkspace; tes
 
       {w.kai.research_refs.length ? (
         <>
-          <Eyebrow c={color.cyan}>WHAT KAI READ</Eyebrow>
+          <Eyebrow c={color.cyan}>What Kai read</Eyebrow>
           <ObjectCard r={radius.xl} style={{ paddingHorizontal: 15, paddingVertical: 4 }}>
             {w.kai.research_refs.map((n, i) => (
               <View
@@ -191,9 +191,9 @@ export function KaiTab({ w, testID = 'tab-body-kai' }: { w: SymbolWorkspace; tes
                   borderBottomColor: alpha.ivory08,
                 }}
               >
-                <T size={13} lh={18} numberOfLines={2}>{n.title}</T>
+                <T variant="meta" lh={18} numberOfLines={2}>{n.title}</T>
                 {n.source || n.published_utc ? (
-                  <T size={10} c={color.muted} style={{ marginTop: 3 }}>
+                  <T variant="meta" c={color.muted} style={{ marginTop: 3 }}>
                     {[n.source, ago(n.published_utc)].filter(Boolean).join(' · ')}
                   </T>
                 ) : null}
@@ -229,8 +229,8 @@ export function PlanTab({ w, testID = 'tab-body-plan' }: { w: SymbolWorkspace; t
     return (
       <View testID={testID} style={{ gap: 11 }}>
         <ObjectCard r={radius.xxl} style={{ padding: 16, gap: 6 }}>
-          <T size={15} weight="bold">No plan yet</T>
-          <T size={13} lh={19} c={color.muted}>
+          <T variant="body" weight="bold">No plan yet</T>
+          <T variant="meta" lh={19} c={color.muted}>
             {`Kai has no entry, stop or target for ${w.symbol} at the moment. Build one and he will attach the stop for you.`}
           </T>
         </ObjectCard>
@@ -251,16 +251,16 @@ export function PlanTab({ w, testID = 'tab-body-plan' }: { w: SymbolWorkspace; t
     <View testID={testID} style={{ gap: 11 }}>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <View style={{ flex: 1, paddingVertical: 11, borderRadius: radius.lg, backgroundColor: color.cyanTint, borderWidth: 0.5, borderColor: alpha.cyan40, alignItems: 'center' }}>
-          <T size={10} c={color.muted}>Entry</T>
-          <Num size={16} weight="semibold" c={color.cyan}>{p.entry != null ? String(p.entry) : '—'}</Num>
+          <T variant="meta" c={color.muted}>Entry</T>
+          <Num variant="body" weight="semibold" c={color.cyan}>{p.entry != null ? String(p.entry) : '—'}</Num>
         </View>
         <View style={{ flex: 1, paddingVertical: 11, borderRadius: radius.lg, backgroundColor: color.greenTint, borderWidth: 0.5, borderColor: alpha.green40, alignItems: 'center' }}>
-          <T size={10} c={color.muted}>Target</T>
-          <Num size={16} weight="semibold" c={color.green}>{p.targets[0] != null ? String(p.targets[0]) : '—'}</Num>
+          <T variant="meta" c={color.muted}>Target</T>
+          <Num variant="body" weight="semibold" c={color.green}>{p.targets[0] != null ? String(p.targets[0]) : '—'}</Num>
         </View>
         <View style={{ flex: 1, paddingVertical: 11, borderRadius: radius.lg, backgroundColor: color.redTint, borderWidth: 0.5, borderColor: alpha.red40, alignItems: 'center' }}>
-          <T size={10} c={color.muted}>Stop</T>
-          <Num size={16} weight="semibold" c={color.red}>{p.stop != null ? String(p.stop) : '—'}</Num>
+          <T variant="meta" c={color.muted}>Stop</T>
+          <Num variant="body" weight="semibold" c={color.red}>{p.stop != null ? String(p.stop) : '—'}</Num>
         </View>
       </View>
 
@@ -270,14 +270,14 @@ export function PlanTab({ w, testID = 'tab-body-plan' }: { w: SymbolWorkspace; t
           It is refused now (`features/orders/plan-read.ts`) and the reason
           goes here, where the price used to be. */}
       {p.no_plan_plain ? (
-        <T size={12.5} lh={18} c={color.gold} testID="no-plan-reason">{p.no_plan_plain}</T>
+        <T variant="meta" lh={18} c={color.gold} testID="no-plan-reason">{p.no_plan_plain}</T>
       ) : null}
 
       {/* Size and reward-to-risk are two separate facts, and the server may
           already send either as a full sentence — never bolt a suffix onto one. */}
-      {p.size ? <T size={12.5} lh={18} c={color.muted} testID="plan-size">{p.size}</T> : null}
+      {p.size ? <T variant="meta" lh={18} c={color.muted} testID="plan-size">{p.size}</T> : null}
       {p.rr ? (
-        <T size={12.5} lh={18} c={color.muted} testID="plan-rr">
+        <T variant="meta" lh={18} c={color.muted} testID="plan-rr">
           {/^[\d.]+\s*:\s*1$/.test(p.rr) ? `${p.rr} reward to risk` : p.rr}
         </T>
       ) : null}
@@ -287,8 +287,8 @@ export function PlanTab({ w, testID = 'tab-body-plan' }: { w: SymbolWorkspace; t
       {risk ? (
         <View style={{ gap: 5 }} testID="daily-cap">
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <T size={11} c={color.muted}>Daily risk used</T>
-            <Num size={11} weight="regular" c={color.muted}>{`$${risk.used.toFixed(0)} of $${risk.cap.toFixed(0)}`}</Num>
+            <T variant="meta" c={color.muted}>Daily risk used</T>
+            <Num variant="meta" weight="regular" c={color.muted}>{`$${risk.used.toFixed(0)} of $${risk.cap.toFixed(0)}`}</Num>
           </View>
           <View style={{ height: 6, borderRadius: 3, backgroundColor: alpha.ivory08, overflow: 'hidden' }}>
             <View style={{ width: `${Math.round(pct * 100)}%`, height: '100%', backgroundColor: pct > 0.8 ? color.red : color.volt }} />
@@ -296,7 +296,7 @@ export function PlanTab({ w, testID = 'tab-body-plan' }: { w: SymbolWorkspace; t
         </View>
       ) : null}
 
-      <T size={11} lh={16} c={color.dim}>
+      <T variant="meta" lh={16} c={color.dim}>
         The stop attaches automatically when the order goes in. Paper orders only — fills use delayed prices.
       </T>
 
@@ -334,14 +334,14 @@ export function CommunityTab({ w, testID = 'tab-body-community' }: { w: SymbolWo
   return (
     <View testID={testID} style={{ gap: 11 }}>
       <ObjectCard r={radius.xxl} style={{ padding: 15, gap: 10 }}>
-        <T size={13.5} lh={20} testID="thread-summary">
+        <T variant="meta" lh={20} testID="thread-summary">
           {w.community.thread_summary ?? `No one has posted about ${w.symbol} yet.`}
         </T>
         {s ? (
           <View style={{ gap: 5 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <T size={11} c={color.muted}>{s.label}</T>
-              <T size={11} c={color.dim}>{`${s.sample} members`}</T>
+              <T variant="meta" c={color.muted}>{s.label}</T>
+              <T variant="meta" c={color.dim}>{`${s.sample} members`}</T>
             </View>
             <View style={{ height: 6, borderRadius: 3, backgroundColor: alpha.red14, overflow: 'hidden' }}>
               <View style={{ width: `${Math.max(0, Math.min(100, s.split))}%`, height: '100%', backgroundColor: color.green }} />
@@ -352,7 +352,7 @@ export function CommunityTab({ w, testID = 'tab-body-community' }: { w: SymbolWo
 
       {w.community.verified_claims.length ? (
         <>
-          <Eyebrow c={color.green}>VERIFIED BY KAI</Eyebrow>
+          <Eyebrow c={color.green}>Verified by Kai</Eyebrow>
           <ObjectCard r={radius.xl} style={{ paddingHorizontal: 15, paddingVertical: 4 }}>
             {w.community.verified_claims.map((c, i) => (
               <View
@@ -364,7 +364,7 @@ export function CommunityTab({ w, testID = 'tab-body-community' }: { w: SymbolWo
                 }}
               >
                 <Check size={13} color={color.green} strokeWidth={2.6} />
-                <T size={12.5} lh={18} style={{ flex: 1 }}>{c}</T>
+                <T variant="meta" lh={18} style={{ flex: 1 }}>{c}</T>
               </View>
             ))}
           </ObjectCard>
@@ -381,7 +381,7 @@ export function CommunityTab({ w, testID = 'tab-body-community' }: { w: SymbolWo
           onPress={() => router.push(`/room/${encodeURIComponent(w.community.room_id as string)}`)}
         />
       ) : (
-        <T size={12} lh={18} c={color.muted}>
+        <T variant="meta" lh={18} c={color.muted}>
           No room covers this symbol. The Cheat Code team opens circles; the app does not open
           one because an alert published.
         </T>
@@ -407,12 +407,12 @@ export function HistoryRail({ w, testID = 'workspace-history' }: { w: SymbolWork
   if (!w.history.length) return null;
   return (
     <View testID={testID}>
-      <Eyebrow c={color.dim} style={{ paddingBottom: 8 }}>HOW YOU GOT HERE</Eyebrow>
+      <Eyebrow c={color.dim} style={{ paddingBottom: 8 }}>How you got here</Eyebrow>
       {w.history.map((h) => {
         const row = (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 2, borderTopWidth: 0.5, borderTopColor: alpha.ivory08 }}>
-            <T size={12.5} lh={18} c={color.muted} style={{ flex: 1 }}>{h.label}</T>
-            {h.at ? <T size={10} c={color.dim}>{ago(h.at)}</T> : null}
+            <T variant="meta" lh={18} c={color.muted} style={{ flex: 1 }}>{h.label}</T>
+            {h.at ? <T variant="meta" c={color.dim}>{ago(h.at)}</T> : null}
           </View>
         );
         return h.route ? (

@@ -89,11 +89,11 @@ export function AttachmentTray({
                 borderColor: alpha.ivory24,
               }}
             >
-              <T size={10} weight="bold" c={color.muted}>×</T>
+              <T variant="meta" weight="bold" c={color.muted}>×</T>
             </Pressable>
           </View>
           {a.note ? (
-            <T size={8.5} lh={11} c={a.state === 'failed' ? color.gold : color.dim} numberOfLines={3}>
+            <T variant="meta" lh={11} c={a.state === 'failed' ? color.gold : color.dim} numberOfLines={3}>
               {a.note}
             </T>
           ) : null}

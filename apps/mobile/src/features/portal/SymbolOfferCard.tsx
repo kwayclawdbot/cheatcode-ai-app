@@ -59,8 +59,8 @@ export function SymbolOfferCard({
     >
       <TickerMark symbol={symbol} size={32} />
       <View style={{ flex: 1, gap: 1 }}>
-        <T size={14} weight="bold">{symbol}</T>
-        <T size={11.5} c={color.muted} numberOfLines={1}>
+        <T variant="body" weight="bold">{symbol}</T>
+        <T variant="meta" c={color.muted} numberOfLines={1}>
           {hook || 'The one you asked about'}
         </T>
       </View>
@@ -82,7 +82,7 @@ export function SymbolOfferCard({
           transform: [{ scale: pressed ? 0.96 : 1 }],
         })}
       >
-        <T size={12} weight="semibold" c={color.volt}>View chart</T>
+        <T variant="meta" weight="semibold" c={color.volt}>View chart</T>
       </Pressable>
       {onDismiss ? (
         <Pressable
@@ -92,7 +92,7 @@ export function SymbolOfferCard({
           onPress={onDismiss}
           hitSlop={10}
         >
-          <T size={13} c={color.dim}>✕</T>
+          <T variant="meta" c={color.dim}>✕</T>
         </Pressable>
       ) : null}
     </View>

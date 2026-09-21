@@ -8,7 +8,7 @@ import { KaiOrb } from '../../../ui/KaiOrb';
 import { Ticker } from '../../../ui/Ticker';
 import { Check, Lock } from '../../../ui/Icons';
 import { family } from '../../../ui/fonts';
-import { alpha, color, radius } from '../../../ui/tokens';
+import { alpha, color, radius, typeScale } from '../../../ui/tokens';
 import type {
   AuctionScreen,
   CompetencySignal,
@@ -99,7 +99,7 @@ function Body({ lines }: { lines: string[] }) {
   return (
     <View style={{ gap: 10 }}>
       {lines.map((line, i) => (
-        <T key={i} size={14} lh={22} c={color.muted}>{line}</T>
+        <T key={i} variant="body" lh={22} c={color.muted}>{line}</T>
       ))}
     </View>
   );
@@ -116,7 +116,7 @@ function KeyLine({ children }: { children: string }) {
         paddingVertical: 2,
       }}
     >
-      <T size={14.5} weight="semibold" lh={22}>{children}</T>
+      <T variant="body" weight="semibold" lh={22}>{children}</T>
     </View>
   );
 }
@@ -127,9 +127,9 @@ function KaiNote({ children }: { children: string }) {
     <ObjectCard tone="kai" r={radius.xl} style={{ padding: 13, gap: 9 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <KaiOrb size={16} glow={false} />
-        <Eyebrow c={color.violetLight}>KAI</Eyebrow>
+        <Eyebrow c={color.violetLight}>Kai</Eyebrow>
       </View>
-      <T size={13} lh={20} c={color.text}>{children}</T>
+      <T variant="meta" lh={20} c={color.text}>{children}</T>
     </ObjectCard>
   );
 }
@@ -163,7 +163,7 @@ function ShareGrid({ v }: { v: Extract<ConceptVisual, { kind: 'share_grid' }> })
         })}
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <T size={11} c={color.dim} style={{ flex: 1 }}>{v.totalLabel}</T>
+        <T variant="meta" c={color.dim} style={{ flex: 1 }}>{v.totalLabel}</T>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <View
             style={{
@@ -175,7 +175,7 @@ function ShareGrid({ v }: { v: Extract<ConceptVisual, { kind: 'share_grid' }> })
               backgroundColor: alpha.volt20,
             }}
           />
-          <T size={11} weight="semibold" c={color.volt}>{v.highlightLabel}</T>
+          <T variant="meta" weight="semibold" c={color.volt}>{v.highlightLabel}</T>
         </View>
       </View>
     </View>
@@ -200,11 +200,11 @@ function FlowVisual({ v }: { v: Extract<ConceptVisual, { kind: 'flow' }> }) {
               backgroundColor: alpha.ivory04,
             }}
           >
-            <Num size={11} weight="bold" c={color.dim}>{`0${i + 1}`}</Num>
+            <Num variant="meta" weight="bold" c={color.dim}>{`0${i + 1}`}</Num>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <T size={12.5} weight="bold" ls={0.5}>{s.label}</T>
+              <T variant="meta" weight="bold" ls={0.5}>{s.label}</T>
               {s.detail ? (
-                <T size={11.5} c={color.muted} style={{ marginTop: 2 }}>{s.detail}</T>
+                <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>{s.detail}</T>
               ) : null}
             </View>
           </View>
@@ -215,7 +215,7 @@ function FlowVisual({ v }: { v: Extract<ConceptVisual, { kind: 'flow' }> }) {
           ) : null}
         </View>
       ))}
-      {v.note ? <T size={11.5} lh={18} c={color.dim}>{v.note}</T> : null}
+      {v.note ? <T variant="meta" lh={18} c={color.dim}>{v.note}</T> : null}
     </View>
   );
 }
@@ -225,8 +225,8 @@ function CardsVisual({ v }: { v: Extract<ConceptVisual, { kind: 'cards' }> }) {
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
       {v.cards.map((c) => (
         <ObjectCard key={c.label} r={radius.lg} style={{ flexGrow: 1, flexBasis: '45%', padding: 12, gap: 6 }}>
-          <T size={12} weight="bold">{c.label}</T>
-          <T size={11.5} lh={17} c={color.muted}>{c.text}</T>
+          <T variant="meta" weight="bold">{c.label}</T>
+          <T variant="meta" lh={17} c={color.muted}>{c.text}</T>
         </ObjectCard>
       ))}
     </View>
@@ -239,12 +239,12 @@ function SplitVisual({ v }: { v: Extract<ConceptVisual, { kind: 'split' }> }) {
       {[v.left, v.right].map((side) => (
         <ObjectCard key={side.title} r={radius.lg} style={{ flex: 1, padding: 12, gap: 8 }}>
           <View style={{ gap: 2 }}>
-            <T size={12} weight="bold" ls={0.6}>{side.title}</T>
-            <T size={10.5} c={color.dim}>{side.caption}</T>
+            <T variant="meta" weight="bold" ls={0.6}>{side.title}</T>
+            <T variant="meta" c={color.dim}>{side.caption}</T>
           </View>
           <View style={{ gap: 7 }}>
             {side.lines.map((line) => (
-              <T key={line} size={11.5} lh={16} c={color.muted}>{line}</T>
+              <T key={line} variant="meta" lh={16} c={color.muted}>{line}</T>
             ))}
           </View>
         </ObjectCard>
@@ -256,11 +256,11 @@ function SplitVisual({ v }: { v: Extract<ConceptVisual, { kind: 'split' }> }) {
 function FormulaVisual({ v }: { v: Extract<ConceptVisual, { kind: 'formula' }> }) {
   return (
     <ObjectCard r={radius.xl} style={{ padding: 14, gap: 10 }}>
-      <T size={11} weight="bold" c={color.muted} ls={0.8}>{v.lhs.toUpperCase()}</T>
+      <T variant="meta" weight="bold" c={color.muted} ls={0.8}>{v.lhs.toUpperCase()}</T>
       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         {v.terms.map((term, i) => (
           <React.Fragment key={term}>
-            {i > 0 ? <Num size={14} weight="bold" c={color.dim}>×</Num> : null}
+            {i > 0 ? <Num variant="body" weight="bold" c={color.dim}>×</Num> : null}
             <View
               style={{
                 paddingHorizontal: 10,
@@ -271,14 +271,14 @@ function FormulaVisual({ v }: { v: Extract<ConceptVisual, { kind: 'formula' }> }
                 borderColor: alpha.cyan14,
               }}
             >
-              <T size={12} weight="semibold" c={color.cyan}>{term}</T>
+              <T variant="meta" weight="semibold" c={color.cyan}>{term}</T>
             </View>
           </React.Fragment>
         ))}
-        <Num size={14} weight="bold" c={color.dim}>=</Num>
-        <T size={12} weight="semibold" style={{ flexShrink: 1 }}>{v.result}</T>
+        <Num variant="body" weight="bold" c={color.dim}>=</Num>
+        <T variant="meta" weight="semibold" style={{ flexShrink: 1 }}>{v.result}</T>
       </View>
-      {v.note ? <T size={11.5} lh={17} c={color.dim}>{v.note}</T> : null}
+      {v.note ? <T variant="meta" lh={17} c={color.dim}>{v.note}</T> : null}
     </ObjectCard>
   );
 }
@@ -299,7 +299,7 @@ export function OpeningView({ screen, onAdvance }: ScreenProps<OpeningScreen>) {
   return (
     <Frame type="opening">
       <Eyebrow c={color.volt}>{screen.eyebrow}</Eyebrow>
-      <T size={28} weight="bold" lh={33} ls={-0.4}>{screen.title}</T>
+      <T variant="screenTitle" weight="bold" lh={33} ls={-0.4}>{screen.title}</T>
       {screen.image ? (
         <Image
           source={screen.image}
@@ -319,7 +319,7 @@ export function ConceptView({ screen, onAdvance }: ScreenProps<ConceptScreen>) {
   return (
     <Frame type="concept">
       <Eyebrow c={color.volt}>{screen.eyebrow}</Eyebrow>
-      <T size={23} weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
+      <T variant="sectionTitle" weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
       <Body lines={screen.body} />
       {screen.visual ? <Visual v={screen.visual} /> : null}
       {screen.keyLine ? <KeyLine>{screen.keyLine}</KeyLine> : null}
@@ -374,7 +374,7 @@ function Option({
         opacity: pressed && !disabled ? 0.82 : 1,
       })}
     >
-      <T size={13.5} lh={19} weight={state === 'idle' ? 'regular' : 'semibold'} c={skin.fg}>
+      <T variant="meta" lh={19} weight={state === 'idle' ? 'regular' : 'semibold'} c={skin.fg}>
         {option.label}
       </T>
     </Pressable>
@@ -423,12 +423,12 @@ export function QuizView({ screen, onAdvance }: ScreenProps<QuizScreen>) {
   return (
     <Frame type="quiz">
       <Eyebrow c={color.volt}>{screen.eyebrow}</Eyebrow>
-      {screen.title ? <T size={23} weight="bold" lh={28} ls={-0.3}>{screen.title}</T> : null}
+      {screen.title ? <T variant="sectionTitle" weight="bold" lh={28} ls={-0.3}>{screen.title}</T> : null}
       {screen.body ? <Body lines={screen.body} /> : null}
       {screen.visual ? <Visual v={screen.visual} /> : null}
       {screen.keyLine ? <KeyLine>{screen.keyLine}</KeyLine> : null}
 
-      <T size={15} weight="semibold" lh={22}>{screen.prompt}</T>
+      <T variant="body" weight="semibold" lh={22}>{screen.prompt}</T>
 
       <View style={{ gap: 9 }}>
         {screen.options.map((o) => {
@@ -458,10 +458,10 @@ export function QuizView({ screen, onAdvance }: ScreenProps<QuizScreen>) {
           r={radius.xl}
           style={{ padding: 13, gap: 7 }}
         >
-          <T size={11} weight="bold" c={correct ? color.green : color.gold} ls={0.8}>
+          <T variant="meta" weight="bold" c={correct ? color.green : color.gold} ls={0.8}>
             {correct ? 'CORRECT' : 'NOT QUITE'}
           </T>
-          <T size={13} lh={20} c={color.text}>
+          <T variant="meta" lh={20} c={color.text}>
             {correct ? screen.whenCorrect : screen.whenWrong}
           </T>
         </ObjectCard>
@@ -557,37 +557,37 @@ function CuratedSegmentCard({ video }: { video: CuratedVideo }) {
             backgroundColor: approved ? alpha.gold12 : 'transparent',
           }}
         >
-          <T size={9.5} weight="bold" c={approved ? color.gold : color.dim} ls={0.8}>
+          <T variant="meta" weight="bold" c={approved ? color.gold : color.dim} ls={0.8}>
             {approved ? 'ASSIGNED SEGMENT' : 'AWAITING REVIEW'}
           </T>
         </View>
-        <T size={10.5} c={color.dim} style={{ flex: 1 }} numberOfLines={1}>
+        <T variant="meta" c={color.dim} style={{ flex: 1 }} numberOfLines={1}>
           {video.channel}
         </T>
       </View>
 
-      <T size={14} weight="semibold" lh={20}>{video.title}</T>
+      <T variant="body" weight="semibold" lh={20}>{video.title}</T>
 
       {/* The segment, as a number the member can hold on to. */}
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-        <Num size={19} weight="bold" c={color.volt}>
+        <Num variant="sectionTitle" weight="bold" c={color.volt}>
           {`${video.segment_start}–${video.segment_end}`}
         </Num>
-        <T size={11} c={color.dim}>{`of ${video.full_length}`}</T>
+        <T variant="meta" c={color.dim}>{`of ${video.full_length}`}</T>
       </View>
 
       {unverified ? (
         <View style={{ flexDirection: 'row', gap: 7, alignItems: 'flex-start' }}>
-          <T size={11} weight="bold" c={color.gold} ls={0.6}>NEEDS REVIEW</T>
-          <T size={11.5} lh={17} c={color.muted} style={{ flex: 1 }}>
+          <T variant="meta" weight="bold" c={color.gold}>Needs review</T>
+          <T variant="meta" lh={17} c={color.muted} style={{ flex: 1 }}>
             These timestamps have not been checked against the video yet.
           </T>
         </View>
       ) : null}
 
       <View style={{ gap: 3 }}>
-        <T size={11} weight="bold" c={color.muted} ls={0.8}>WHAT TO WATCH FOR</T>
-        <T size={12.5} lh={19} c={color.text}>{video.focus_note}</T>
+        <T variant="meta" weight="bold" c={color.muted}>What to watch for</T>
+        <T variant="meta" lh={19} c={color.text}>{video.focus_note}</T>
       </View>
 
       {approved ? (
@@ -599,18 +599,18 @@ function CuratedSegmentCard({ video }: { video: CuratedVideo }) {
           <View style={{ flexDirection: 'row', gap: 14 }}>
             {video.backup_url ? (
               <Pressable onPress={() => open(video.backup_url!)}>
-                <T size={11.5} weight="semibold" c={color.muted}>Mirror</T>
+                <T variant="meta" weight="semibold" c={color.muted}>Mirror</T>
               </Pressable>
             ) : null}
             {video.deeper_url ? (
               <Pressable onPress={() => open(video.deeper_url!)}>
-                <T size={11.5} weight="semibold" c={color.muted}>Go deeper (optional)</T>
+                <T variant="meta" weight="semibold" c={color.muted}>Go deeper (optional)</T>
               </Pressable>
             ) : null}
           </View>
         </View>
       ) : (
-        <T size={11.5} lh={17} c={color.dim}>
+        <T variant="meta" lh={17} c={color.dim}>
           This pick is waiting on sign-off, so it does not open yet. The lesson
           below teaches the concept without it.
         </T>
@@ -628,8 +628,8 @@ export function VideoView({ screen, onAdvance }: ScreenProps<VideoScreen>) {
   return (
     <Frame type="video">
       <Eyebrow c={color.gold}>{screen.eyebrow} · {screen.duration}</Eyebrow>
-      <T size={23} weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
-      <T size={12.5} c={color.muted}>With {screen.presenter}</T>
+      <T variant="sectionTitle" weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
+      <T variant="meta" c={color.muted}>With {screen.presenter}</T>
 
       {curated ? <CuratedSegmentCard video={curated} /> : null}
 
@@ -678,30 +678,30 @@ export function VideoView({ screen, onAdvance }: ScreenProps<VideoScreen>) {
               }}
             >
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color.gold }} />
-              <T size={10} weight="bold" c={color.gold} ls={0.8}>IN PRODUCTION</T>
+              <T variant="meta" weight="bold" c={color.gold}>In production</T>
             </View>
-            <T size={12.5} lh={18} align="center" c={color.muted}>{screen.statusNote}</T>
+            <T variant="meta" lh={18} align="center" c={color.muted}>{screen.statusNote}</T>
           </View>
         ) : null}
       </View>
       ) : null}
 
       <ObjectCard r={radius.xl} style={{ padding: 14, gap: 9 }}>
-        <T size={11} weight="bold" c={color.muted} ls={0.8}>WHAT IT COVERS</T>
+        <T variant="meta" weight="bold" c={color.muted}>What it covers</T>
         {screen.outline.map((line, i) => (
           <View key={line} style={{ flexDirection: 'row', gap: 10 }}>
-            <Num size={11} weight="bold" c={color.dim}>{`0${i + 1}`}</Num>
-            <T size={12.5} lh={19} c={color.muted} style={{ flex: 1 }}>{line}</T>
+            <Num variant="meta" weight="bold" c={color.dim}>{`0${i + 1}`}</Num>
+            <T variant="meta" lh={19} c={color.muted} style={{ flex: 1 }}>{line}</T>
           </View>
         ))}
       </ObjectCard>
 
       <ObjectCard tone="voltCard" r={radius.xl} style={{ padding: 14, gap: 10 }}>
-        <T size={12.5} weight="bold">{screen.afterCard.title}</T>
+        <T variant="meta" weight="bold">{screen.afterCard.title}</T>
         {screen.afterCard.rows.map((r) => (
           <View key={r.label} style={{ gap: 2 }}>
-            <T size={12} weight="semibold" c={color.volt}>{r.label}</T>
-            <T size={12.5} lh={19} c={color.muted}>{r.text}</T>
+            <T variant="meta" weight="semibold" c={color.volt}>{r.label}</T>
+            <T variant="meta" lh={19} c={color.muted}>{r.text}</T>
           </View>
         ))}
       </ObjectCard>
@@ -743,11 +743,11 @@ function LadderRow({
           : alpha.red10,
       }}
     >
-      <T size={10} weight="bold" c={tint} ls={0.7} style={{ width: 26 }}>
+      <T variant="meta" weight="bold" c={tint} ls={0.7} style={{ width: 26 }}>
         {side === 'bid' ? 'BID' : 'ASK'}
       </T>
-      <Num size={14} weight="bold" c={tint} style={{ flex: 1 }}>{`$${price.toFixed(2)}`}</Num>
-      <Num size={11.5} weight="regular" c={color.dim}>{size.toLocaleString('en-US')}</Num>
+      <Num variant="body" weight="bold" c={tint} style={{ flex: 1 }}>{`$${price.toFixed(2)}`}</Num>
+      <Num variant="meta" weight="regular" c={color.dim}>{size.toLocaleString('en-US')}</Num>
     </View>
   );
 }
@@ -763,7 +763,7 @@ export function AuctionView({ screen, onAdvance }: ScreenProps<AuctionScreen>) {
   return (
     <Frame type="auction">
       <Eyebrow c={color.volt}>{screen.eyebrow}</Eyebrow>
-      <T size={23} weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
+      <T variant="sectionTitle" weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
       <Body lines={screen.body} />
 
       <ObjectCard r={radius.xl} style={{ padding: 14, gap: 10 }}>
@@ -791,11 +791,11 @@ export function AuctionView({ screen, onAdvance }: ScreenProps<AuctionScreen>) {
               backgroundColor: alpha.cyan10,
             }}
           >
-            <T size={10} weight="bold" c={color.cyan} ls={0.7} style={{ width: 26 }}>LAST</T>
-            <Num size={17} weight="bold" c={color.cyan} style={{ flex: 1 }}>
+            <T variant="meta" weight="bold" c={color.cyan} style={{ width: 26 }}>Last</T>
+            <Num variant="cardTitle" weight="bold" c={color.cyan} style={{ flex: 1 }}>
               {`$${(lifted ? screen.lift.price : screen.last).toFixed(2)}`}
             </Num>
-            {lifted ? <T size={10} weight="bold" c={color.green} ls={0.7}>LIFTED</T> : null}
+            {lifted ? <T variant="meta" weight="bold" c={color.green}>Lifted</T> : null}
           </View>
 
           {bids.map((b) => (
@@ -803,7 +803,7 @@ export function AuctionView({ screen, onAdvance }: ScreenProps<AuctionScreen>) {
           ))}
         </View>
 
-        <T size={11.5} lh={17} c={color.dim}>{screen.caption}</T>
+        <T variant="meta" lh={17} c={color.dim}>{screen.caption}</T>
 
         {/* The demonstration, not the primary action — the screen keeps one
             filled button, and it is Continue. */}
@@ -822,15 +822,15 @@ export function AuctionView({ screen, onAdvance }: ScreenProps<AuctionScreen>) {
               backgroundColor: pressed ? alpha.green12 : 'transparent',
             })}
           >
-            <T size={12.5} weight="semibold" c={color.green}>{screen.lift.label} →</T>
+            <T variant="meta" weight="semibold" c={color.green}>{screen.lift.label} →</T>
           </Pressable>
         ) : null}
       </ObjectCard>
 
       {lifted ? (
         <ObjectCard tone="volt" r={radius.xl} style={{ padding: 13, gap: 7 }}>
-          <T size={11} weight="bold" c={color.green} ls={0.8}>{screen.lift.label.toUpperCase()}</T>
-          <T size={13} lh={20}>{screen.lift.explain}</T>
+          <T variant="meta" weight="bold" c={color.green} ls={0.8}>{screen.lift.label.toUpperCase()}</T>
+          <T variant="meta" lh={20}>{screen.lift.explain}</T>
         </ObjectCard>
       ) : null}
 
@@ -874,8 +874,8 @@ export function SortingView({ screen, onAdvance }: ScreenProps<SortingScreen>) {
   return (
     <Frame type="sorting">
       <Eyebrow c={color.volt}>{screen.eyebrow}</Eyebrow>
-      <T size={23} weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
-      <T size={13.5} lh={20} c={color.muted}>{screen.prompt}</T>
+      <T variant="sectionTitle" weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
+      <T variant="meta" lh={20} c={color.muted}>{screen.prompt}</T>
 
       <View style={{ gap: 9 }}>
         {remaining.map((c) => {
@@ -898,12 +898,12 @@ export function SortingView({ screen, onAdvance }: ScreenProps<SortingScreen>) {
                 opacity: pressed ? 0.82 : 1,
               })}
             >
-              <T size={13.5} lh={19} c={on ? color.volt : color.text}>{c.label}</T>
+              <T variant="meta" lh={19} c={on ? color.volt : color.text}>{c.label}</T>
             </Pressable>
           );
         })}
         {remaining.length > 0 && misses > 0 ? (
-          <T size={11.5} c={color.gold}>
+          <T variant="meta" c={color.gold}>
             That card belongs in the other bucket — read it once more and try again.
           </T>
         ) : null}
@@ -933,8 +933,8 @@ export function SortingView({ screen, onAdvance }: ScreenProps<SortingScreen>) {
               })}
             >
               <View style={{ gap: 2 }}>
-                <T size={12} weight="bold" ls={0.6}>{b.label}</T>
-                <T size={10.5} c={color.dim}>{b.caption}</T>
+                <T variant="meta" weight="bold" ls={0.6}>{b.label}</T>
+                <T variant="meta" c={color.dim}>{b.caption}</T>
               </View>
               {inside.map((c) => (
                 <View
@@ -950,9 +950,9 @@ export function SortingView({ screen, onAdvance }: ScreenProps<SortingScreen>) {
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Check size={11} color={color.green} />
-                    <T size={10.5} lh={14} c={color.green} style={{ flex: 1 }}>{c.label}</T>
+                    <T variant="meta" lh={14} c={color.green} style={{ flex: 1 }}>{c.label}</T>
                   </View>
-                  <T size={10} lh={14} c={color.muted}>{c.why}</T>
+                  <T variant="meta" lh={14} c={color.muted}>{c.why}</T>
                 </View>
               ))}
             </Pressable>
@@ -1014,8 +1014,8 @@ export function KaiCheckView({
   return (
     <Frame type="kai_check">
       <Eyebrow c={color.violetLight}>{screen.eyebrow}</Eyebrow>
-      <T size={23} weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
-      <T size={13.5} lh={20} c={color.muted}>{screen.prompt}</T>
+      <T variant="sectionTitle" weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
+      <T variant="meta" lh={20} c={color.muted}>{screen.prompt}</T>
 
       <View
         style={{
@@ -1042,7 +1042,7 @@ export function KaiCheckView({
             flex: 1,
             minHeight: 100,
             fontFamily: family.regular,
-            fontSize: 15,
+            fontSize: typeScale.body.size,
             lineHeight: 22,
             color: color.text,
             textAlignVertical: 'top',
@@ -1055,12 +1055,12 @@ export function KaiCheckView({
         <ObjectCard tone="kai" r={radius.xl} style={{ padding: 14, gap: 9 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <KaiOrb size={16} glow={false} />
-            <Eyebrow c={color.violetLight}>KAI</Eyebrow>
+            <Eyebrow c={color.violetLight}>Kai</Eyebrow>
           </View>
           {outcome.status === 'ok' ? (
-            <T testID="training-kai-reply" size={13.5} lh={21}>{outcome.text}</T>
+            <T testID="training-kai-reply" variant="meta" lh={21}>{outcome.text}</T>
           ) : (
-            <T testID="training-kai-unavailable" size={13.5} lh={21} c={color.muted}>
+            <T testID="training-kai-unavailable" variant="meta" lh={21} c={color.muted}>
               {outcome.text}
             </T>
           )}
@@ -1100,7 +1100,7 @@ export function KaiCheckView({
           >
             {selfAssessed ? <Check size={13} color={color.bg} /> : null}
           </View>
-          <T size={13.5} c={selfAssessed ? color.volt : color.text} style={{ flex: 1 }}>
+          <T variant="meta" c={selfAssessed ? color.volt : color.text} style={{ flex: 1 }}>
             {screen.selfAssessLabel}
           </T>
         </Pressable>
@@ -1134,47 +1134,47 @@ export function MarketApplicationView({ screen, onAdvance }: ScreenProps<MarketA
   return (
     <Frame type="market_application">
       <Eyebrow c={color.cyan}>{screen.eyebrow}</Eyebrow>
-      <T size={23} weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
+      <T variant="sectionTitle" weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
 
       <ObjectCard r={radius.xl} style={{ padding: 14, gap: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <Ticker symbol={screen.symbol} size={38} sub={screen.companyName} />
           <View style={{ alignItems: 'flex-end' }}>
-            <Num size={19} weight="bold" c={color.cyan}>{`$${screen.quote.price.toFixed(2)}`}</Num>
-            <T size={10.5} c={color.dim}>Market cap {screen.quote.marketCapLabel}</T>
+            <Num variant="sectionTitle" weight="bold" c={color.cyan}>{`$${screen.quote.price.toFixed(2)}`}</Num>
+            <T variant="meta" c={color.dim}>Market cap {screen.quote.marketCapLabel}</T>
           </View>
         </View>
-        <T size={10.5} c={color.dim}>{screen.quote.asOf}</T>
+        <T variant="meta" c={color.dim}>{screen.quote.asOf}</T>
 
         <View style={{ height: 0.5, backgroundColor: alpha.ivory12 }} />
 
         <View style={{ gap: 9 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <T size={12.5} c={color.muted} style={{ flex: 1 }}>You buy</T>
-            <Num size={13.5} weight="bold">{`${screen.scenario.shares} shares`}</Num>
+            <T variant="meta" c={color.muted} style={{ flex: 1 }}>You buy</T>
+            <Num variant="meta" weight="bold">{`${screen.scenario.shares} shares`}</Num>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <T size={12.5} c={color.muted} style={{ flex: 1 }}>That costs</T>
-            <Num size={13.5} weight="bold">{screen.scenario.costLabel}</Num>
+            <T variant="meta" c={color.muted} style={{ flex: 1 }}>That costs</T>
+            <Num variant="meta" weight="bold">{screen.scenario.costLabel}</Num>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <T size={12.5} c={color.muted} style={{ flex: 1 }}>Price moves to</T>
-            <Num size={13.5} weight="bold" c={color.green}>
+            <T variant="meta" c={color.muted} style={{ flex: 1 }}>Price moves to</T>
+            <Num variant="meta" weight="bold" c={color.green}>
               {`$${screen.scenario.movedPrice.toFixed(2)}`}
             </Num>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <T size={12.5} c={color.muted} style={{ flex: 1 }}>Your shares are worth</T>
-            <Num size={13.5} weight="bold" c={color.green}>{screen.scenario.movedValueLabel}</Num>
+            <T variant="meta" c={color.muted} style={{ flex: 1 }}>Your shares are worth</T>
+            <Num variant="meta" weight="bold" c={color.green}>{screen.scenario.movedValueLabel}</Num>
           </View>
         </View>
       </ObjectCard>
 
-      <T size={15} weight="semibold" lh={22}>{screen.scenario.question}</T>
+      <T variant="body" weight="semibold" lh={22}>{screen.scenario.question}</T>
 
       {revealed ? (
         <ObjectCard tone="volt" r={radius.xl} style={{ padding: 13 }}>
-          <T size={13} lh={20}>{screen.scenario.answer}</T>
+          <T variant="meta" lh={20}>{screen.scenario.answer}</T>
         </ObjectCard>
       ) : (
         <Pressable
@@ -1192,7 +1192,7 @@ export function MarketApplicationView({ screen, onAdvance }: ScreenProps<MarketA
             backgroundColor: pressed ? alpha.ivory06 : 'transparent',
           })}
         >
-          <T size={13} weight="semibold" c={color.muted}>Tap to see the answer</T>
+          <T variant="meta" weight="semibold" c={color.muted}>Tap to see the answer</T>
         </Pressable>
       )}
 
@@ -1200,7 +1200,7 @@ export function MarketApplicationView({ screen, onAdvance }: ScreenProps<MarketA
         {screen.takeaways.map((line) => (
           <View key={line} style={{ flexDirection: 'row', gap: 9 }}>
             <Check size={12} color={color.volt} />
-            <T size={12.5} lh={19} c={color.muted} style={{ flex: 1 }}>{line}</T>
+            <T variant="meta" lh={19} c={color.muted} style={{ flex: 1 }}>{line}</T>
           </View>
         ))}
       </ObjectCard>
@@ -1255,8 +1255,8 @@ export function MasteryChallengeView({ screen, onAdvance }: ScreenProps<MasteryC
   return (
     <Frame type="mastery_challenge">
       <Eyebrow c={color.volt}>{screen.eyebrow}</Eyebrow>
-      <T size={23} weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
-      {index === 0 ? <T size={13} lh={20} c={color.muted}>{screen.intro}</T> : null}
+      <T variant="sectionTitle" weight="bold" lh={28} ls={-0.3}>{screen.title}</T>
+      {index === 0 ? <T variant="meta" lh={20} c={color.muted}>{screen.intro}</T> : null}
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         {screen.questions.map((_, i) => (
@@ -1270,10 +1270,10 @@ export function MasteryChallengeView({ screen, onAdvance }: ScreenProps<MasteryC
             }}
           />
         ))}
-        <Num size={11} c={color.muted}>{`${index + 1}/${total}`}</Num>
+        <Num variant="meta" c={color.muted}>{`${index + 1}/${total}`}</Num>
       </View>
 
-      <T size={16} weight="semibold" lh={23}>{q.prompt}</T>
+      <T variant="body" weight="semibold" lh={23}>{q.prompt}</T>
 
       <View style={{ gap: 9 }}>
         {q.options.map((o) => (
@@ -1363,10 +1363,10 @@ export function CompletionView({
     <View testID="training-complete" style={{ gap: 14 }}>
       <View testID="training-screen-completion" style={{ gap: 14 }}>
         <View style={{ gap: 9, paddingTop: 6 }}>
-          <Eyebrow c={color.muted}>LESSON COMPLETE</Eyebrow>
-          <T size={27} weight="bold" lh={32} ls={-0.5}>{screen.title}</T>
+          <Eyebrow c={color.muted}>Lesson complete</Eyebrow>
+          <T variant="screenTitle" weight="bold" lh={32} ls={-0.5}>{screen.title}</T>
           {screen.restate ? (
-            <T size={13.5} lh={20} c={color.muted}>{screen.restate}</T>
+            <T variant="meta" lh={20} c={color.muted}>{screen.restate}</T>
           ) : null}
         </View>
 
@@ -1388,16 +1388,16 @@ export function CompletionView({
             >
               <Check size={15} color={color.bg} />
             </View>
-            <T size={13.5} weight="bold" style={{ flex: 1 }}>{screen.knowNow[0] ?? screen.restate}</T>
+            <T variant="meta" weight="bold" style={{ flex: 1 }}>{screen.knowNow[0] ?? screen.restate}</T>
           </View>
         ) : null}
 
         <ObjectCard tone="kai" r={radius.xl} style={{ padding: 14, gap: 9 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <KaiOrb size={16} glow={false} />
-            <Eyebrow c={color.violetLight}>KAI</Eyebrow>
+            <Eyebrow c={color.violetLight}>Kai</Eyebrow>
           </View>
-          <T size={13.5} lh={21}>{screen.kaiMessage}</T>
+          <T variant="meta" lh={21}>{screen.kaiMessage}</T>
         </ObjectCard>
 
         <Button testID="training-next" label={screen.nextLabel} arrow onPress={onFinish} />
@@ -1412,7 +1412,7 @@ export function CompletionView({
             size={12}
             color={outcome?.saved ? color.green : storage === 'guest' ? color.dim : color.gold}
           />
-          <T size={11.5} c={color.muted}>{savedLine}</T>
+          <T variant="meta" c={color.muted}>{savedLine}</T>
         </View>
 
         {/* The detail, under the decision, where it does not compete with it —
@@ -1420,9 +1420,9 @@ export function CompletionView({
             metrics to one line. */}
         <ObjectCard r={radius.xl} style={{ padding: 14, gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <T size={12} weight="bold" style={{ flex: 1 }}>What you now know</T>
+            <T variant="meta" weight="bold" style={{ flex: 1 }}>What you now know</T>
             {scorePct === null ? null : (
-              <Num testID="training-mastery-pct" size={12} weight="bold" c={color.volt}>
+              <Num testID="training-mastery-pct" variant="meta" weight="bold" c={color.volt}>
                 {`${scorePct}%`}
               </Num>
             )}
@@ -1430,10 +1430,10 @@ export function CompletionView({
           {screen.knowNow.map((line) => (
             <View key={line} style={{ flexDirection: 'row', gap: 9 }}>
               <Check size={12} color={color.volt} />
-              <T size={12.5} lh={19} c={color.muted} style={{ flex: 1 }}>{line}</T>
+              <T variant="meta" lh={19} c={color.muted} style={{ flex: 1 }}>{line}</T>
             </View>
           ))}
-          <T size={11} c={color.dim}>
+          <T variant="meta" c={color.dim}>
             {`${skillLabel} mastery is now ${masteryPct}%`}
           </T>
         </ObjectCard>
@@ -1462,10 +1462,10 @@ export function UnbuiltScreenView({
       <ObjectCard r={radius.xl} style={{ padding: 16, gap: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
           <Lock size={15} color={color.gold} />
-          <T size={13} weight="bold" c={color.gold}>This screen type is not built yet</T>
+          <T variant="meta" weight="bold" c={color.gold}>This screen type is not built yet</T>
         </View>
-        <T size={12.5} lh={19} c={color.muted}>
-          The lesson asks for a <T size={12.5} weight="bold" c={color.text}>{type}</T> screen. Its
+        <T variant="meta" lh={19} c={color.muted}>
+          The lesson asks for a <T variant="meta" weight="bold" c={color.text}>{type}</T> screen. Its
           content shape is defined, but the engine has no renderer for it, so there is nothing
           honest to show you here.
         </T>

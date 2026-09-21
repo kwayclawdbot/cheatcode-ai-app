@@ -22,12 +22,12 @@ export function VoiceRepliesRow() {
   if (!prefs.available) return null;
   return (
     <>
-      <Eyebrow c={color.violetLight}>VOICE</Eyebrow>
+      <Eyebrow c={color.violetLight}>Voice</Eyebrow>
       <RowList testID="settings-voice">
         <Row last>
           <View style={{ flex: 1, paddingRight: 12 }}>
-            <T size={14}>Kai reads his replies out loud</T>
-            <T size={12} c={color.muted} style={{ marginTop: 2 }}>
+            <T variant="body">Kai reads his replies out loud</T>
+            <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>
               {prefs.error
                 ?? 'Tap the mic in any Kai chat to ask out loud. With this on, he answers out loud too. Tap the mic while he talks to stop him.'}
             </T>

@@ -37,7 +37,7 @@ export default function SetupRedirect() {
     <Screen variant="corner" layout="tab" testID="screen-setup-redirect">
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
         <ActivityIndicator color={color.violet} />
-        <T size={12.5} c={color.muted}>Opening the workspace…</T>
+        <T variant="meta" c={color.muted}>Opening the workspace…</T>
       </View>
     </Screen>
   );

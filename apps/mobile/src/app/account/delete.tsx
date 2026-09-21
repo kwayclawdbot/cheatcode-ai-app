@@ -104,7 +104,7 @@ function Line({ text, first }: { text: string; first: boolean }) {
       borderTopWidth: first ? 0 : StyleSheet.hairlineWidth,
       borderTopColor: alpha.ivory10,
     }}>
-      <T size={13.5} lh={20} c={color.muted}>{text}</T>
+      <T variant="meta" lh={20} c={color.muted}>{text}</T>
     </View>
   );
 }
@@ -170,8 +170,8 @@ export default function DeleteAccount() {
       <Screen variant="corner" layout="stack" testID="screen-account-deleted">
         <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: space.x40 }}>
           <Eyebrow c={color.muted}>Done</Eyebrow>
-          <T size={26} weight="bold" style={{ marginTop: space.x10 }}>Your account is gone</T>
-          <T size={14} lh={22} c={color.muted} style={{ marginTop: space.x14 }}>{done}</T>
+          <T variant="screenTitle" weight="bold" style={{ marginTop: space.x10 }}>Your account is gone</T>
+          <T variant="body" lh={22} c={color.muted} style={{ marginTop: space.x14 }}>{done}</T>
           <View style={{ flex: 1 }} />
           <Button
             testID="cta-deleted-close"
@@ -196,10 +196,10 @@ export default function DeleteAccount() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <T size={22} weight="bold" lh={28}>
+        <T variant="sectionTitle" weight="bold" lh={28}>
           This cannot be undone
         </T>
-        <T size={14} lh={21} c={color.muted} style={{ marginTop: space.x10 }}>
+        <T variant="body" lh={21} c={color.muted} style={{ marginTop: space.x10 }}>
           There is no way to get any of it back — not by us, not by support, not
           by signing up again with the same email. Here is exactly what happens.
         </T>
@@ -225,8 +225,8 @@ export default function DeleteAccount() {
             backgroundColor: alpha.ivory06,
           }}
         >
-          <T size={13} weight="semibold" c={color.gold}>This does not cancel a subscription</T>
-          <T size={13} lh={20} c={color.muted} style={{ marginTop: space.x6 }}>
+          <T variant="meta" weight="semibold" c={color.gold}>This does not cancel a subscription</T>
+          <T variant="meta" lh={20} c={color.muted} style={{ marginTop: space.x6 }}>
             If you pay for a plan, that is billed separately and deleting your
             account here will not stop it. Cancel it where you set it up, and do
             that first — once this account is gone you cannot manage it from

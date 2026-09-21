@@ -49,7 +49,7 @@ export function PaperChip({ label = 'Paper', testID }: { label?: string; testID?
         borderWidth: 0.5, borderColor: alpha.cyan40, backgroundColor: alpha.cyan07,
       }}
     >
-      <T size={10} weight="semibold" c={color.cyan}>{label}</T>
+      <T variant="meta" weight="semibold" c={color.cyan}>{label}</T>
     </View>
   );
 }
@@ -108,7 +108,7 @@ export function FilterPill({
         opacity: pressed ? 0.8 : 1,
       })}
     >
-      <T size={12} weight="semibold" c={selected ? color.volt : color.muted}>{label}</T>
+      <T variant="meta" weight="semibold" c={selected ? color.volt : color.muted}>{label}</T>
     </Pressable>
   );
 }
@@ -118,7 +118,7 @@ export function KaiLine({ text, testID }: { text: string; testID?: string }) {
   return (
     <View testID={testID} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 7 }}>
       <KaiOrb size={16} glow={false} />
-      <T size={12} c={color.violetLight} lh={17} style={{ flex: 1 }}>{text}</T>
+      <T variant="meta" c={color.violetLight} lh={17} style={{ flex: 1 }}>{text}</T>
     </View>
   );
 }
@@ -145,12 +145,12 @@ export function DetailRow({
         borderBottomWidth: last ? 0 : 0.5, borderBottomColor: alpha.ivory08,
       }}
     >
-      <T size={13} c={color.muted}>{label}</T>
+      <T variant="meta" c={color.muted}>{label}</T>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         {mono
-          ? <Num size={13} weight="semibold" c={valueColor}>{value}</Num>
-          : <T size={13} weight="semibold" c={valueColor}>{value}</T>}
-        {onPress ? <T size={11} c={color.dim}>Edit</T> : null}
+          ? <Num variant="meta" weight="semibold" c={valueColor}>{value}</Num>
+          : <T variant="meta" weight="semibold" c={valueColor}>{value}</T>}
+        {onPress ? <T variant="meta" c={color.dim}>Edit</T> : null}
       </View>
     </View>
   );
@@ -179,8 +179,8 @@ export function LevelTile({
         backgroundColor: spec.bg, borderWidth: 0.5, borderColor: spec.bd, alignItems: 'center',
       }}
     >
-      <T size={10} c={color.muted}>{label}</T>
-      <Num size={15} weight="semibold" c={spec.c} style={{ marginTop: 2 }}>{value}</Num>
+      <T variant="meta" c={color.muted}>{label}</T>
+      <Num variant="body" weight="semibold" c={spec.c} style={{ marginTop: 2 }}>{value}</Num>
     </View>
   );
 }
@@ -203,8 +203,8 @@ export function ScenarioTile({
       }}
     >
       <View testID={testID}>
-        <T size={10} c={color.muted}>{label}</T>
-        <Num size={16} weight="semibold" c={up ? color.green : color.red} style={{ marginTop: 2 }}>{value}</Num>
+        <T variant="meta" c={color.muted}>{label}</T>
+        <Num variant="body" weight="semibold" c={up ? color.green : color.red} style={{ marginTop: 2 }}>{value}</Num>
       </View>
     </LinearGradient>
   );
@@ -222,7 +222,7 @@ export function StopNowTargetBar({
   if (stop == null || now == null || target == null || target === stop) {
     return (
       <View testID={testID}>
-        <T size={10} c={color.dim}>No stop and target on this one yet.</T>
+        <T variant="meta" c={color.dim}>No stop and target on this one yet.</T>
       </View>
     );
   }
@@ -251,9 +251,9 @@ export function StopNowTargetBar({
         />
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Num size={10} weight="regular" c={color.red}>{`Stop ${stop}`}</Num>
-        <Num size={10} weight="regular" c={color.muted}>{`now ${now}`}</Num>
-        <Num size={10} weight="regular" c={color.green}>{`Target ${target}`}</Num>
+        <Num variant="meta" weight="regular" c={color.red}>{`Stop ${stop}`}</Num>
+        <Num variant="meta" weight="regular" c={color.muted}>{`now ${now}`}</Num>
+        <Num variant="meta" weight="regular" c={color.green}>{`Target ${target}`}</Num>
       </View>
     </View>
   );
@@ -272,11 +272,11 @@ export function RiskBar({
   const c = ratio >= 1 ? color.red : ratio >= 0.9 ? color.gold : color.volt;
   return (
     <View testID={testID} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 2 }}>
-      <T size={12} c={color.muted}>{label}</T>
+      <T variant="meta" c={color.muted}>{label}</T>
       <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: alpha.ivory08 }}>
         <View style={{ width: `${ratio * 100}%`, height: '100%', borderRadius: 3, backgroundColor: c }} />
       </View>
-      <Num size={12} weight="regular" c={ratio >= 0.9 ? c : color.muted}>{`${money(u, 0)} / ${money(cap, 0)}`}</Num>
+      <Num variant="meta" weight="regular" c={ratio >= 0.9 ? c : color.muted}>{`${money(u, 0)} / ${money(cap, 0)}`}</Num>
     </View>
   );
 }
@@ -314,28 +314,28 @@ export function KaiRiskCheck({
       <View testID={testID} style={{ gap: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <KaiOrb size={20} glow={false} />
-          <T size={12} weight="bold" c={color.violetLight}>Kai risk check</T>
+          <T variant="meta" weight="bold" c={color.violetLight}>Kai risk check</T>
           <View
             testID={`risk-verdict-${risk.verdict}`}
             style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 5 }}
           >
             <StatusDot c={v.c} size={5} />
-            <T size={10} weight="semibold" c={v.c}>{v.label}</T>
+            <T variant="meta" weight="semibold" c={v.c}>{v.label}</T>
           </View>
         </View>
 
-        <T size={13} lh={19}>{risk.headline}</T>
+        <T variant="meta" lh={19}>{risk.headline}</T>
 
         {risk.blockers.map((b) => (
           <View key={b.code} style={{ flexDirection: 'row', gap: 7, alignItems: 'flex-start' }}>
             <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color.red, marginTop: 6 }} />
-            <T size={12} c={color.red} lh={17} style={{ flex: 1 }}>{b.message}</T>
+            <T variant="meta" c={color.red} lh={17} style={{ flex: 1 }}>{b.message}</T>
           </View>
         ))}
         {risk.advisories.map((a) => (
           <View key={a.code} style={{ flexDirection: 'row', gap: 7, alignItems: 'flex-start' }}>
             <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color.gold, marginTop: 6 }} />
-            <T size={12} c={color.gold} lh={17} style={{ flex: 1 }}>{a.message}</T>
+            <T variant="meta" c={color.gold} lh={17} style={{ flex: 1 }}>{a.message}</T>
           </View>
         ))}
 
@@ -345,7 +345,7 @@ export function KaiRiskCheck({
           </View>
         ) : null}
 
-        <T size={10} c={color.dim}>Kai&apos;s assessment — not a guarantee.</T>
+        <T variant="meta" c={color.dim}>Kai&apos;s assessment — not a guarantee.</T>
       </View>
     </LinearGradient>
   );
@@ -355,8 +355,8 @@ export function KaiRiskCheck({
 export function RiskLine({ label, value, c }: { label: string; value: string; c?: string }) {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-      <T size={12} c={color.muted}>{label}</T>
-      <Num size={12} weight="semibold" c={c}>{value}</Num>
+      <T variant="meta" c={color.muted}>{label}</T>
+      <Num variant="meta" weight="semibold" c={c}>{value}</Num>
     </View>
   );
 }
@@ -370,9 +370,9 @@ export function QuoteLine({
       testID={testID}
       style={[{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }, style]}
     >
-      {quote?.price != null ? <Num size={11} weight="regular" c={color.cyan}>{`Quote ${quote.price.toFixed(2)}`}</Num> : null}
+      {quote?.price != null ? <Num variant="meta" weight="regular" c={color.cyan}>{`Quote ${quote.price.toFixed(2)}`}</Num> : null}
       <FreshnessMark freshness={quote?.freshness ?? 'unknown'} delayReason={quote?.delay_reason} at={quote?.source_ts} size={11} />
-      {note ? <T size={11} c={color.muted}>{note}</T> : null}
+      {note ? <T variant="meta" c={color.muted}>{note}</T> : null}
     </View>
   );
 }

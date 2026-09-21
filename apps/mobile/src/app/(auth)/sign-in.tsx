@@ -44,16 +44,16 @@ export default function SignIn() {
   return (
     <Screen variant="dome" layout="stack" testID="screen-sign-in">
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
-        <T size={27} weight="bold" ls={-0.4} lh={32}>Welcome back</T>
-        <T size={14} c={color.muted} style={{ marginTop: 8 }}>Kai has been watching while you were gone.</T>
+        <T variant="screenTitle" weight="bold" ls={-0.4} lh={32}>Welcome back</T>
+        <T variant="body" c={color.muted} style={{ marginTop: 8 }}>Kai has been watching while you were gone.</T>
 
         {linkSent ? (
           <ObjectCard style={{ marginTop: 26, padding: 16, gap: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Check size={18} color={color.green} />
-              <T size={17} weight="bold">Check your email</T>
+              <T variant="cardTitle" weight="bold">Check your email</T>
             </View>
-            <T size={14} lh={20} c={color.muted}>We sent a sign-in link to {email}. It works once and expires in an hour.</T>
+            <T variant="body" lh={20} c={color.muted}>We sent a sign-in link to {email}. It works once and expires in an hour.</T>
           </ObjectCard>
         ) : (
           <>
@@ -74,7 +74,7 @@ export default function SignIn() {
               <Button testID="cta-sign-in" label="Sign in" height={52} arrow loading={busy} onPress={submit} />
               <Button testID="cta-magic-link" label="Email me a link instead" kind="outline" height={44} onPress={magic} />
               <Pressable onPress={() => router.replace('/sign-up')} hitSlop={12} style={{ alignItems: 'center', minHeight: 44, justifyContent: 'center' }}>
-                <T size={13} c={color.muted}>New here? <T size={13} weight="semibold" c={color.text}>Create an account</T></T>
+                <T variant="meta" c={color.muted}>New here? <T variant="meta" weight="semibold" c={color.text}>Create an account</T></T>
               </Pressable>
             </View>
           </>

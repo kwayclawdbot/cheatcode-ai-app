@@ -86,8 +86,8 @@ export function Board({
           ) : (
             <>
               {children}
-              {empty ? <T size={12.5} c={color.muted} lh={19}>{empty}</T> : null}
-              {error ? <T size={11.5} c={color.muted} align="center">{error}</T> : null}
+              {empty ? <T variant="meta" c={color.muted} lh={19}>{empty}</T> : null}
+              {error ? <T variant="meta" c={color.muted} align="center">{error}</T> : null}
             </>
           )}
         </ScrollView>
@@ -101,7 +101,7 @@ export function Section({ label, note, children }: { label: string; note?: strin
   return (
     <View style={{ gap: 4 }}>
       <Eyebrow>{label}</Eyebrow>
-      {note ? <T size={11.5} c={color.dim} lh={17} style={{ marginBottom: 2 }}>{note}</T> : null}
+      {note ? <T variant="meta" c={color.dim} lh={17} style={{ marginBottom: 2 }}>{note}</T> : null}
       <View>{children}</View>
     </View>
   );
@@ -132,10 +132,10 @@ export function FunnelRow({
       borderBottomWidth: last ? 0 : 0.5, borderBottomColor: alpha.ivory08,
     }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-        <T size={13} weight={t.weight === 'bold' ? 'bold' : 'regular'} c={t.c} style={{ flex: 1 }}>
+        <T variant="meta" weight={t.weight === 'bold' ? 'bold' : 'regular'} c={t.c} style={{ flex: 1 }}>
           {statusLabel(status)}
         </T>
-        <Num size={14} weight="semibold" c={t.c}>{people.toLocaleString('en-US')}</Num>
+        <Num variant="body" weight="semibold" c={t.c}>{people.toLocaleString('en-US')}</Num>
       </View>
       <ShareBar share={share} tone={status === 'paying' ? alpha.ivory25 : alpha.ivory12} />
     </View>
@@ -182,11 +182,11 @@ export function DailyBars({ rows }: { rows: { day: string; signups: number; lead
         })}
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Num size={10} weight="regular" c={color.dim}>{series[0]?.day ?? ''}</Num>
-        <T size={10} c={color.dim}>
+        <Num variant="meta" weight="regular" c={color.dim}>{series[0]?.day ?? ''}</Num>
+        <T variant="meta" c={color.dim}>
           {`${series.reduce((n, r) => n + r.signups, 0)} signed up · ${series.reduce((n, r) => n + r.leads, 0)} leads · peak ${peak} in a day`}
         </T>
-        <Num size={10} weight="regular" c={color.dim}>{series[series.length - 1]?.day ?? ''}</Num>
+        <Num variant="meta" weight="regular" c={color.dim}>{series[series.length - 1]?.day ?? ''}</Num>
       </View>
     </View>
   );

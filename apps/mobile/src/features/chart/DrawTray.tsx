@@ -178,7 +178,7 @@ export function DrawTray({
             backgroundColor: alpha.bg82,
           }}
         >
-          <T size={10.5} c={color.muted}>
+          <T variant="meta" c={color.muted}>
             {tool === 'level'
               ? 'Tap the chart to place a line'
               : tool === 'trendline'

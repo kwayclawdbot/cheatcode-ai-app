@@ -44,8 +44,8 @@ export default function AdminLayout() {
       <Screen variant="corner" layout="tab" testID="screen-admin-denied">
         <StackHeader title="Not found" onBack={() => router.replace('/home')} />
         <View style={{ paddingHorizontal: 16, paddingTop: 8, gap: 12 }}>
-          <T size={15} weight="bold">That is not something this app does.</T>
-          <T size={13} c={color.muted} lh={20}>
+          <T variant="body" weight="bold">That is not something this app does.</T>
+          <T variant="meta" c={color.muted} lh={20}>
             Nothing is missing from your account. If you were sent here by a link, it was not meant for you.
           </T>
           <Button testID="cta-admin-home" label="Back to home" kind="outline" height={48} onPress={() => router.replace('/home')} />

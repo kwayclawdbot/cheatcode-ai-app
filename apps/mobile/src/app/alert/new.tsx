@@ -10,7 +10,7 @@ import { Button } from '../../ui/Button';
 import { Sheet } from '../../ui/Sheet';
 import { KaiOrb } from '../../ui/KaiOrb';
 import { family } from '../../ui/fonts';
-import { alpha, color, gradient, gradientAngle, radius } from '../../ui/tokens';
+import { alpha, color, gradient, gradientAngle, radius, typeScale } from '../../ui/tokens';
 import { useAlertActions, useAlertBuilder } from '../../features/alerts/useAlerts';
 import { PushPrimingBlock, usePrimingGate } from '../../features/notifications';
 import { NOT_ADVICE_ALERTS } from '../../features/legal/disclaimers';
@@ -78,7 +78,7 @@ export default function NewAlert() {
       >
         <ObjectCard tone="kai" r={radius.xl} style={{ padding: 14, flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
           <KaiOrb size={24} />
-          <T size={14} lh={21} style={{ flex: 1 }}>
+          <T variant="body" lh={21} style={{ flex: 1 }}>
             Write it the way you&apos;d say it. I&apos;ll show you exactly what I understood before I start watching.
           </T>
         </ObjectCard>
@@ -100,7 +100,7 @@ export default function NewAlert() {
             numberOfLines={3}
             style={{
               fontFamily: family.regular,
-              fontSize: 16,
+              fontSize: typeScale.body.size,
               lineHeight: 23,
               color: color.text,
               minHeight: 66,
@@ -112,7 +112,7 @@ export default function NewAlert() {
 
         {!preview ? (
           <>
-            <Eyebrow>OR START FROM ONE OF THESE</Eyebrow>
+            <Eyebrow>Or start from one of these</Eyebrow>
             <View style={{ gap: 8 }}>
               {EXAMPLES.map((e) => (
                 <Pressable
@@ -127,7 +127,7 @@ export default function NewAlert() {
                     opacity: pressed ? 0.8 : 1,
                   })}
                 >
-                  <T size={13} c={color.muted}>{e}</T>
+                  <T variant="meta" c={color.muted}>{e}</T>
                 </Pressable>
               ))}
             </View>
@@ -136,32 +136,32 @@ export default function NewAlert() {
 
         {preview ? (
           <>
-            <Eyebrow c={color.violetLight}>WHAT KAI UNDERSTOOD</Eyebrow>
+            <Eyebrow c={color.violetLight}>What Kai understood</Eyebrow>
             <ObjectCard r={radius.xl} style={{ padding: 14, gap: 10 }} testID="alert-preview">
-              <T size={14} lh={21}>{preview.summary_plain}</T>
+              <T variant="body" lh={21}>{preview.summary_plain}</T>
               {preview.structured.length ? (
                 <RowList style={{ marginTop: 2 }}>
                   {preview.structured.map((p, i) => (
                     <Row key={`${p.label}${i}`} last={i === preview.structured.length - 1}>
-                      <T size={13} c={color.muted} style={{ flex: 1 }}>{p.label}</T>
-                      <Num size={12.5}>{p.value}</Num>
+                      <T variant="meta" c={color.muted} style={{ flex: 1 }}>{p.label}</T>
+                      <Num variant="meta">{p.value}</Num>
                     </Row>
                   ))}
                 </RowList>
               ) : (
-                <T size={12} c={color.gold}>
+                <T variant="meta" c={color.gold}>
                   I couldn&apos;t find a symbol and a level in that. Name the ticker and the price you care about.
                 </T>
               )}
             </ObjectCard>
-            <T size={11} c={color.muted} lh={17}>
+            <T variant="meta" c={color.muted} lh={17}>
               Once it&apos;s active Kai arms the condition. Live evaluation starts when market data goes live.
             </T>
           </>
         ) : null}
 
-        {error ? <T size={12} c={color.red}>{error}</T> : null}
-        {actions.error ? <T size={12} c={color.red}>{actions.error}</T> : null}
+        {error ? <T variant="meta" c={color.red}>{error}</T> : null}
+        {actions.error ? <T variant="meta" c={color.red}>{actions.error}</T> : null}
 
         {preview && preview.structured.length ? (
           <Button testID="cta-activate" label="Activate this alert" kind="volt" height={52} loading={actions.busyId !== null} onPress={activate} />
@@ -186,13 +186,13 @@ export default function NewAlert() {
           they are read. Wording is a DRAFT pending the owner's legal review;
           see `features/legal/disclaimers.ts`.
         */}
-        <T size={10} lh={15} c={color.dim} style={{ marginTop: 4 }} testID="alert-new-not-advice">
+        <T variant="meta" lh={15} c={color.dim} style={{ marginTop: 4 }} testID="alert-new-not-advice">
           {NOT_ADVICE_ALERTS}
         </T>
       </ScrollView>
 
       <Sheet visible={done} onClose={() => { setDone(false); router.replace('/alerts'); }} title="Kai is watching it" testID="sheet-activated">
-        <T size={13} lh={20} c={color.muted}>{preview?.summary_plain}</T>
+        <T variant="meta" lh={20} c={color.muted}>{preview?.summary_plain}</T>
         {priming.due ? (
           <PushPrimingBlock
             summaryPlain={preview?.summary_plain}
@@ -215,7 +215,7 @@ export default function NewAlert() {
         title="Not on your plan"
         testID="sheet-entitlement"
       >
-        <T size={13} lh={20} c={color.muted}>{actions.upgradeNeeded}</T>
+        <T variant="meta" lh={20} c={color.muted}>{actions.upgradeNeeded}</T>
         <Button label="Got it" kind="volt" height={48} onPress={actions.dismissUpgrade} />
       </Sheet>
     </Screen>

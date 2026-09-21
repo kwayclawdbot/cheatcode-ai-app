@@ -68,7 +68,7 @@ export function PriceRow({
           {quote?.price != null ? `$${quote.price.toFixed(2)}` : '—'}
         </Num>
         {quote?.change != null || quote?.change_pct != null ? (
-          <Num size={13} weight="regular" c={up ? color.green : color.red}>
+          <Num variant="meta" weight="regular" c={up ? color.green : color.red}>
             {`${up ? '+' : '−'}${Math.abs(quote.change ?? 0).toFixed(2)} (${up ? '+' : '−'}${Math.abs(quote.change_pct ?? 0).toFixed(2)}%)`}
           </Num>
         ) : null}

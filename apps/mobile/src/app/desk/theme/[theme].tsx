@@ -46,9 +46,9 @@ export default function DeskThemeDetail() {
   if (res.error || !res.data) {
     return (
       <Screen variant="dome" layout="stack">
-        <T size={15} c={color.text}>{res.error ?? 'That theme is not being tracked.'}</T>
+        <T variant="body" c={color.text}>{res.error ?? 'That theme is not being tracked.'}</T>
         <Pressable onPress={() => router.back()} style={{ marginTop: space.x16 }}>
-          <T size={14} c={color.volt}>Back</T>
+          <T variant="body" c={color.volt}>Back</T>
         </Pressable>
       </Screen>
     );
@@ -61,12 +61,12 @@ export default function DeskThemeDetail() {
     <Screen variant="dome" layout="stack" testID="desk-theme-screen">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 70 }}>
         <Eyebrow c={color.violetLight}>Theme</Eyebrow>
-        <T size={24} weight="bold" c={color.text} style={{ marginTop: space.x6 }}>
+        <T variant="screenTitle" weight="bold" c={color.text} style={{ marginTop: space.x6 }}>
           {t.theme.replace(/-/g, ' ')}
         </T>
 
         {t.reason ? (
-          <T size={16} lh={24} c={color.text} style={{ marginTop: space.x12 }}>{t.reason}</T>
+          <T variant="body" lh={24} c={color.text} style={{ marginTop: space.x12 }}>{t.reason}</T>
         ) : null}
 
         {/* The judgement, drawn. One ruled strip, not a row of cards. */}
@@ -80,7 +80,7 @@ export default function DeskThemeDetail() {
               outOfFavour={t.outOfFavour}
               judgedOn={t.judgedOn}
             />
-            <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x14 }}>
+            <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x14 }}>
               Size and how sure are scored separately and never averaged. A big
               theme the desk is not yet sure about is still a big theme, and
               nothing is marked down for landing years out.
@@ -94,7 +94,7 @@ export default function DeskThemeDetail() {
             borderWidth: 0.5, borderColor: alpha.ivory16, backgroundColor: alpha.ivory06,
           }}>
             <Eyebrow c={color.gold}>Out of favour</Eyebrow>
-            <T size={13} lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
+            <T variant="meta" lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
               Attention has moved on. The desk keeps mining it — a big theme
               cooling off is often the entry, because the thesis survives news
               cycles the attention does not.
@@ -111,7 +111,7 @@ export default function DeskThemeDetail() {
                 of them has reached its horizon, so the list says so once,
                 at the top, rather than showing a column of blanks. */}
             {writtenUp.every((w) => w.outcome == null) ? (
-              <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
+              <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
                 None of these has been settled yet. The desk only marks a call
                 right or wrong once its horizon has actually run out, and the
                 oldest write-up here is still months short of that.
@@ -134,12 +134,12 @@ export default function DeskThemeDetail() {
                   <TickerMark symbol={w.ticker} size={28} />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x8 }}>
-                      <Num size={15} weight="bold" c={color.text}>{w.ticker}</Num>
+                      <Num variant="body" weight="bold" c={color.text}>{w.ticker}</Num>
                       {w.themeRank === 1 && (
-                        <T size={10} weight="bold" c={color.violetLight}>BEST FIT</T>
+                        <T variant="meta" weight="bold" c={color.violetLight}>BEST FIT</T>
                       )}
                     </View>
-                    <T size={12} c={color.dim} numberOfLines={1}>{w.company ?? '—'}</T>
+                    <T variant="meta" c={color.dim} numberOfLines={1}>{w.company ?? '—'}</T>
                   </View>
                   {/* The result, only when the desk settled it. Green and red
                       are the desk being right and wrong; a pass that was
@@ -147,7 +147,7 @@ export default function DeskThemeDetail() {
                   {w.outcome ? (
                     <View style={{ alignItems: 'flex-end' }}>
                       <T
-                        size={11}
+                        variant="meta"
                         weight="bold"
                         c={w.outcome === 'hit' ? color.green : w.outcome === 'miss' ? color.red : color.muted}
                       >
@@ -155,7 +155,7 @@ export default function DeskThemeDetail() {
                       </T>
                       {typeof w.excessPct === 'number' ? (
                         <Num
-                          size={12}
+                          variant="meta"
                           weight="bold"
                           c={w.excessPct > 0 ? color.green : color.red}
                         >
@@ -175,7 +175,7 @@ export default function DeskThemeDetail() {
         {leads.length > 0 && (
           <View style={{ marginTop: space.x30 }}>
             <Eyebrow c={color.muted}>Named as fitting better</Eyebrow>
-            <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
+            <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
               Companies a write-up put forward after reading the evidence and
               finding the fit wanting. They are leads, not picks — naming one
               does not promote it.
@@ -194,13 +194,13 @@ export default function DeskThemeDetail() {
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x8 }}>
-                    <Num size={14} weight="bold" c={color.cyan}>{l.ticker}</Num>
+                    <Num variant="body" weight="bold" c={color.cyan}>{l.ticker}</Num>
                     {l.nominatedBy && (
-                      <T size={11} c={color.dim}>from the {l.nominatedBy} write-up</T>
+                      <T variant="meta" c={color.dim}>from the {l.nominatedBy} write-up</T>
                     )}
                   </View>
                   {l.reason && (
-                    <T size={13} lh={19} c={color.muted} style={{ marginTop: space.x4 }}>
+                    <T variant="meta" lh={19} c={color.muted} style={{ marginTop: space.x4 }}>
                       {l.reason}
                     </T>
                   )}
@@ -217,7 +217,7 @@ export default function DeskThemeDetail() {
             borderTopWidth: 1, borderTopColor: alpha.ivory12,
           }}>
             <Eyebrow c={color.violetLight}>The running argument</Eyebrow>
-            <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
+            <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
               Dated entries the desk has kept as the story developed. Newest
               material is at the bottom, the way it was written.
             </T>

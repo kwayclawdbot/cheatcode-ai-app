@@ -48,7 +48,7 @@ function BackRow({ title, onBack }: { title: string; onBack: () => void }) {
       }}
     >
       <BackButton onPress={onBack} />
-      <T size={16} weight="bold" align="center" style={{ flex: 1 }}>{title}</T>
+      <T variant="body" weight="bold" align="center" style={{ flex: 1 }}>{title}</T>
       <PaperChip />
     </View>
   );
@@ -154,10 +154,10 @@ export function PlanView({
           onPress={() => openEdit('size')}
           style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, minHeight: 44 }}
         >
-          <Num size={32} weight="semibold" testID="plan-size">
+          <Num variant="keyPrice" weight="semibold" testID="plan-size">
             {sized && plan.size_notional != null ? money(plan.size_notional, 0) : '—'}
           </Num>
-          <T size={12} c={color.muted} lh={17}>
+          <T variant="meta" c={color.muted} lh={17}>
             {`${plan.entry != null ? `limit ${plan.entry.toFixed(2)}` : 'no entry yet'}\n${plan.size_shares != null && plan.size_shares % 1 !== 0 ? 'fractional' : 'shares'}`}
           </T>
         </Pressable>
@@ -167,7 +167,7 @@ export function PlanView({
             as the reason under the tiles, and two gold blocks in a row saying
             one thing reads as an error rather than as an explanation. */}
         {!sized && standing.hasPlan ? (
-          <T size={12} c={color.gold} lh={17} align="center" testID="needs-size">
+          <T variant="meta" c={color.gold} lh={17} align="center" testID="needs-size">
             {plan.size_plain
               ? `${plan.size_plain} Tap the amount to decide it yourself.`
               : 'Tap the amount to say how much of this you want.'}
@@ -189,7 +189,7 @@ export function PlanView({
 
         {/* Why there is nothing to review — said, not implied by three dashes. */}
         {standing.blockedPlain ? (
-          <T size={12} c={color.gold} lh={18} testID="no-plan-reason">
+          <T variant="meta" c={color.gold} lh={18} testID="no-plan-reason">
             {standing.blockedPlain}
           </T>
         ) : null}
@@ -214,7 +214,7 @@ export function PlanView({
           <RiskBar label="Daily cap" used={plan.daily_cap.used} cap={plan.daily_cap.cap} testID="daily-cap" />
         ) : null}
         {capExceeded ? (
-          <T size={11} c={color.gold} lh={16} testID="cap-warning">
+          <T variant="meta" c={color.gold} lh={16} testID="cap-warning">
             This one would take you past today&apos;s cap. That is the point of the cap.
           </T>
         ) : null}
@@ -241,11 +241,11 @@ export function PlanView({
 
         {plan.order_state ? (
           <>
-            <Eyebrow>WHERE THIS STANDS</Eyebrow>
-            <T size={12} c={color.muted} lh={17}>{plan.order_state}</T>
+            <Eyebrow>Where this stands</Eyebrow>
+            <T variant="meta" c={color.muted} lh={17}>{plan.order_state}</T>
           </>
         ) : null}
-        {notice ? <T size={12} c={color.gold} lh={17} testID="plan-notice">{notice}</T> : null}
+        {notice ? <T variant="meta" c={color.gold} lh={17} testID="plan-notice">{notice}</T> : null}
       </ScrollView>
 
       <View style={{ paddingHorizontal: 16, paddingBottom: 28, gap: 8 }}>
@@ -266,7 +266,7 @@ export function PlanView({
           onPress={() => openKaiSheet({ context: { kind: 'symbol', id: plan.id ?? undefined, symbol: plan.symbol } })}
           style={{ alignSelf: 'center', minHeight: 44, justifyContent: 'center' }}
         >
-          <T size={12} weight="semibold" c={color.violetLight}>Ask Kai about this plan</T>
+          <T variant="meta" weight="semibold" c={color.violetLight}>Ask Kai about this plan</T>
         </Pressable>
         <Pressable
           testID="cta-cancel"
@@ -275,12 +275,12 @@ export function PlanView({
           onPress={onCancel}
           style={{ alignSelf: 'center', minHeight: 44, justifyContent: 'center' }}
         >
-          <T size={12} c={color.muted}>Cancel</T>
+          <T variant="meta" c={color.muted}>Cancel</T>
         </Pressable>
       </View>
 
       <Sheet visible={edit != null} onClose={() => setEdit(null)} title={edit ? EDIT_COPY[edit].title : ''} testID="plan-edit-sheet">
-        {edit ? <T size={13} c={color.muted} lh={19}>{EDIT_COPY[edit].help}</T> : null}
+        {edit ? <T variant="meta" c={color.muted} lh={19}>{EDIT_COPY[edit].help}</T> : null}
         <Field
           label={edit ? EDIT_COPY[edit].label : ''}
           testID="plan-edit-input"

@@ -54,16 +54,16 @@ function Line({ question, note, absent, testID }: {
         borderTopColor: alpha.ivory12,
       }}
     >
-      <T size={14} weight="semibold" c={color.text}>{question}</T>
+      <T variant="body" weight="semibold" c={color.text}>{question}</T>
       {note ? (
         <>
-          <T size={15} lh={22} c={color.muted} style={{ marginTop: space.x6 }}>{note.text}</T>
-          <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x6 }}>
+          <T variant="body" lh={22} c={color.muted} style={{ marginTop: space.x6 }}>{note.text}</T>
+          <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x6 }}>
             {`From ${note.source}.`}
           </T>
         </>
       ) : (
-        <T size={13} lh={19} c={color.dim} style={{ marginTop: space.x6 }} testID={`${testID}-absent`}>
+        <T variant="meta" lh={19} c={color.dim} style={{ marginTop: space.x6 }} testID={`${testID}-absent`}>
           {absent}
         </T>
       )}
@@ -106,7 +106,7 @@ export function UnderstandBusiness({ pick }: { pick: DeskPick }) {
   return (
     <View style={{ marginTop: space.x20 }} testID="desk-understand">
       <Eyebrow c={color.violetLight}>Understand the business</Eyebrow>
-      <T size={22} weight="bold" c={color.text} lh={28} style={{ marginTop: space.x6 }}>
+      <T variant="sectionTitle" weight="bold" c={color.text} lh={28} style={{ marginTop: space.x6 }}>
         {name}
       </T>
 
@@ -139,10 +139,10 @@ export function UnderstandBusiness({ pick }: { pick: DeskPick }) {
           borderRadius: radius.lg, borderWidth: 0.5, borderColor: alpha.ivory12,
         }}
       >
-        <T size={14} weight="semibold" c={plain.horizon.known ? color.text : color.muted}>
+        <T variant="body" weight="semibold" c={plain.horizon.known ? color.text : color.muted}>
           {plain.horizon.text}
         </T>
-        <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
+        <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x4 }}>
           The desk is arguing about where this company gets to, not about this
           week's price.
         </T>
@@ -157,8 +157,8 @@ export function UnderstandBusiness({ pick }: { pick: DeskPick }) {
           backgroundColor: alpha.violet08,
         }}
       >
-        <Num size={16} weight="bold" c={color.violetLight}>{plain.gradeLine}</Num>
-        <T size={12} lh={17} c={color.muted} style={{ marginTop: space.x4 }}>{IDEA_GRADE_MEANS}</T>
+        <Num variant="body" weight="bold" c={color.violetLight}>{plain.gradeLine}</Num>
+        <T variant="meta" lh={17} c={color.muted} style={{ marginTop: space.x4 }}>{IDEA_GRADE_MEANS}</T>
       </View>
 
       {/* ── the two offers, and nothing that places an order ── */}
@@ -178,7 +178,7 @@ export function UnderstandBusiness({ pick }: { pick: DeskPick }) {
           })}
         >
           {watching === 'sending' ? <ActivityIndicator size="small" color={color.bg} /> : null}
-          <T size={14} weight="bold" c={watching === 'on' ? color.muted : color.bg}>
+          <T variant="body" weight="bold" c={watching === 'on' ? color.muted : color.bg}>
             {watching === 'on' ? 'On your watchlist' : 'Watch company'}
           </T>
         </Pressable>
@@ -199,13 +199,13 @@ export function UnderstandBusiness({ pick }: { pick: DeskPick }) {
           })}
         >
           <KaiOrb size={16} glow={false} />
-          <T size={14} weight="semibold" c={color.violetLight}>Ask Kai</T>
+          <T variant="body" weight="semibold" c={color.violetLight}>Ask Kai</T>
         </Pressable>
       </View>
 
       {watchNote ? (
         <T
-          size={13}
+          variant="meta"
           lh={19}
           c={watching === 'failed' ? color.red : color.green}
           style={{ marginTop: space.x8 }}
@@ -215,7 +215,7 @@ export function UnderstandBusiness({ pick }: { pick: DeskPick }) {
         </T>
       ) : null}
 
-      <T size={12} lh={17} c={color.dim} style={{ marginTop: space.x8 }} testID="desk-watch-caveat">
+      <T variant="meta" lh={17} c={color.dim} style={{ marginTop: space.x8 }} testID="desk-watch-caveat">
         Watching a company puts it on this list and nothing else. It is not an
         order, it is not a trade plan, and the desk names no entry, no stop and
         no position size.

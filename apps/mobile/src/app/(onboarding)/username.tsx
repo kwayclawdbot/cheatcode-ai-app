@@ -44,8 +44,8 @@ export default function OnboardingUsername() {
 
   return (
     <Screen variant="dome" layout="stack" testID="screen-username">
-      <T size={26} weight="bold" ls={-0.4} lh={31}>What should we call you?</T>
-      <T size={14} c={color.muted} style={{ marginTop: 8 }}>
+      <T variant="screenTitle" weight="bold" ls={-0.4} lh={31}>What should we call you?</T>
+      <T variant="body" c={color.muted} style={{ marginTop: 8 }}>
         This is the name your posts are signed with in the community.
       </T>
 
@@ -67,7 +67,7 @@ export default function OnboardingUsername() {
 
         <View style={{ gap: 6 }}>
           <T
-            size={13}
+            variant="meta"
             weight="semibold"
             c={color.muted}
             onPress={back}
@@ -76,7 +76,7 @@ export default function OnboardingUsername() {
           >
             Not now
           </T>
-          <T size={11.5} lh={17} c={color.dim}>
+          <T variant="meta" lh={17} c={color.dim}>
             You can read every room without one. Posting will ask for it, and so will Account.
           </T>
         </View>

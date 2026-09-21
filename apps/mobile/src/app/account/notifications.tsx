@@ -98,7 +98,7 @@ export default function Notifications() {
             onPress={markAll}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <T size={12} c={color.volt}>Mark all read</T>
+            <T variant="meta" c={color.volt}>Mark all read</T>
           </Pressable>
         ) : undefined}
       />
@@ -119,8 +119,8 @@ export default function Notifications() {
         {!rows.length ? (
           <ObjectCard r={radius.xxl} style={{ padding: 20, gap: 10, alignItems: 'center', marginTop: 20 }}>
             <Bell size={22} color={color.muted} />
-            <T size={15} weight="bold" align="center">Nothing here right now.</T>
-            <T size={13} c={color.muted} align="center" lh={19}>
+            <T variant="body" weight="bold" align="center">Nothing here right now.</T>
+            <T variant="meta" c={color.muted} align="center" lh={19}>
               Kai only pings you when something changes that you decided mattered.
             </T>
           </ObjectCard>
@@ -154,9 +154,9 @@ export default function Notifications() {
                           : <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: meta.c }} />}
                       </View>
                       <View style={{ flex: 1 }}>
-                        <T size={14} weight="semibold">{n.title}</T>
-                        {n.body ? <T size={12} c={color.muted} lh={18} style={{ marginTop: 3 }}>{n.body}</T> : null}
-                        {n.created_at ? <T size={10} c={color.dim} style={{ marginTop: 5 }}>{when(n.created_at)}</T> : null}
+                        <T variant="body" weight="semibold">{n.title}</T>
+                        {n.body ? <T variant="meta" c={color.muted} lh={18} style={{ marginTop: 3 }}>{n.body}</T> : null}
+                        {n.created_at ? <T variant="meta" c={color.dim} style={{ marginTop: 5 }}>{when(n.created_at)}</T> : null}
                       </View>
                       {n.route ? <View style={{ paddingTop: 3 }}><ArrowRight size={12} color={color.muted} /></View> : null}
                     </ObjectCard>
@@ -167,8 +167,8 @@ export default function Notifications() {
           );
         })}
 
-        {notAvailable ? <NotConnected what="Notifications" /> : error ? <T size={11} c={color.muted} align="center">{error}</T> : null}
-        {isFixture ? <T size={10} c={color.dim} align="center">Sample notifications — the service is not connected here.</T> : null}
+        {notAvailable ? <NotConnected what="Notifications" /> : error ? <T variant="meta" c={color.muted} align="center">{error}</T> : null}
+        {isFixture ? <T variant="meta" c={color.dim} align="center">Sample notifications — the service is not connected here.</T> : null}
       </ScrollView>
     </Screen>
   );

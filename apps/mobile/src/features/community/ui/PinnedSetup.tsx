@@ -69,14 +69,14 @@ export function PinnedSetup({
     <View style={{ alignItems: 'flex-end', gap: 3 }}>
       {setup.price || setup.change_pct ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          {setup.price ? <Num size={13} weight="semibold">{setup.price}</Num> : null}
-          {setup.change_pct ? <Num size={11} weight="regular" c={color.muted}>{setup.change_pct}</Num> : null}
+          {setup.price ? <Num variant="meta" weight="semibold">{setup.price}</Num> : null}
+          {setup.change_pct ? <Num variant="meta" weight="regular" c={color.muted}>{setup.change_pct}</Num> : null}
         </View>
       ) : null}
       {watching != null ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
           <Eye size={11} />
-          <T size={10} c={color.muted}>{watching} watching</T>
+          <T variant="meta" c={color.muted}>{watching} watching</T>
         </View>
       ) : null}
     </View>
@@ -113,7 +113,7 @@ export function PinnedSetup({
         this migration exists to remove. The band keeps the only thing it can
         say that the row cannot — where the last price sits between the levels.
       */}
-      <T size={10} c={color.muted} style={{ marginTop: 8 }}>
+      <T variant="meta" c={color.muted} style={{ marginTop: 8 }}>
         Levels from Kai's plan · the marker is the last price we have, not a live chart
       </T>
       </PinnedTradePreview>
@@ -126,12 +126,12 @@ export function CasePair({ bull, bear }: { bull: string; bear: string }) {
   return (
     <View style={{ flexDirection: 'row', gap: 8 }}>
       <View style={{ flex: 1, borderRadius: radius.xl, padding: 13, backgroundColor: color.greenTint, borderWidth: 0.5, borderColor: alpha.green40 }}>
-        <T size={10} weight="bold" ls={0.8} c={color.green}>BULL CASE</T>
-        <T size={13} lh={18} style={{ marginTop: 6 }}>{bull}</T>
+        <T variant="meta" weight="bold" c={color.green}>Bull case</T>
+        <T variant="meta" lh={18} style={{ marginTop: 6 }}>{bull}</T>
       </View>
       <View style={{ flex: 1, borderRadius: radius.xl, padding: 13, backgroundColor: color.redTint, borderWidth: 0.5, borderColor: alpha.red40 }}>
-        <T size={10} weight="bold" ls={0.8} c={color.red}>BEAR CASE</T>
-        <T size={13} lh={18} style={{ marginTop: 6 }}>{bear}</T>
+        <T variant="meta" weight="bold" c={color.red}>Bear case</T>
+        <T variant="meta" lh={18} style={{ marginTop: 6 }}>{bear}</T>
       </View>
     </View>
   );

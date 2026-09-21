@@ -142,9 +142,9 @@ export function AnnotationRail({
               transform: [{ scale: pressed && !reduced ? 0.96 : 1 }],
             })}
           >
-            <Num size={9.5} weight="medium" c={dead ? color.dim : c}>{label}</Num>
+            <Num variant="meta" weight="medium" c={dead ? color.dim : c}>{label}</Num>
             {value ? (
-              <Num size={9.5} weight="medium" c={dead ? color.dim : color.text}>{value}</Num>
+              <Num variant="meta" weight="medium" c={dead ? color.dim : color.text}>{value}</Num>
             ) : null}
             {a.provenance === 'kai' ? (
               <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: color.violet }} />

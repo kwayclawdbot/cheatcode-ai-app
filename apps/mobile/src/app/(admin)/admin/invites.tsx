@@ -88,8 +88,8 @@ export default function AdminInvites() {
             <React.Fragment key={l}>
               {i ? <VRule /> : null}
               <View style={{ flex: 1, gap: 3 }}>
-                <Num size={18} weight="bold">{n}</Num>
-                <T size={10} weight="bold" ls={0.8} c={color.dim} numberOfLines={1}>{l.toUpperCase()}</T>
+                <Num variant="cardTitle" weight="bold">{n}</Num>
+                <T variant="meta" weight="bold" ls={0.8} c={color.dim} numberOfLines={1}>{l.toUpperCase()}</T>
               </View>
             </React.Fragment>
           ))}
@@ -138,16 +138,16 @@ export default function AdminInvites() {
         </View>
       </Section>
       ) : (
-        <T size={12.5} c={color.muted} lh={19}>
+        <T variant="meta" c={color.muted} lh={19}>
           Making and switching off codes is an admin act. You can see every code and who used it.
         </T>
       )}
 
       {made ? (
         <View style={{ gap: 8, paddingVertical: space.x12 }} testID="invite-made">
-          <Eyebrow c={color.volt}>NEW CODE</Eyebrow>
-          <Num size={26} weight="bold" testID="invite-made-code">{made.code}</Num>
-          <T size={12.5} c={color.muted} lh={19}>{made.plain}</T>
+          <Eyebrow c={color.volt}>New code</Eyebrow>
+          <Num variant="keyPrice" weight="bold" testID="invite-made-code">{made.code}</Num>
+          <T variant="meta" c={color.muted} lh={19}>{made.plain}</T>
           <Pressable
             testID="invite-copy"
             accessibilityRole="button"
@@ -155,8 +155,8 @@ export default function AdminInvites() {
             onPress={async () => setCopied(await copy(made.link) ? made.link : made.link)}
             style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, flexDirection: 'row', alignItems: 'center', gap: 8 })}
           >
-            <Num size={12} weight="medium" c={color.volt} testID="invite-made-link">{made.link}</Num>
-            <T size={11} c={color.dim}>{copied === made.link ? 'copied' : 'tap to copy'}</T>
+            <Num variant="meta" weight="medium" c={color.volt} testID="invite-made-link">{made.link}</Num>
+            <T variant="meta" c={color.dim}>{copied === made.link ? 'copied' : 'tap to copy'}</T>
           </Pressable>
           <Rule />
         </View>
@@ -167,7 +167,7 @@ export default function AdminInvites() {
           <DataRow
             key={i.id}
             testID={`invite-${i.code}`}
-            label={<Num size={14} weight="bold">{i.code}</Num>}
+            label={<Num variant="body" weight="bold">{i.code}</Num>}
             sub={i.label ?? undefined}
             meta={`${i.tier} · ${i.redeemed_count}${i.max_redemptions ? ` of ${i.max_redemptions}` : ''} redeemed · ${STATE_WORD[i.state]}${i.expires_at ? ` · until ${stamp(i.expires_at)}` : ''}`}
             valueNode={
@@ -179,16 +179,16 @@ export default function AdminInvites() {
                   onPress={() => revoke(i.id)}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <T size={11.5} c={color.muted}>Switch off</T>
+                  <T variant="meta" c={color.muted}>Switch off</T>
                 </Pressable>
               ) : (
-                <T size={11} c={color.dim}>{when(i.created_at)}</T>
+                <T variant="meta" c={color.dim}>{when(i.created_at)}</T>
               )
             }
             dim={i.state !== 'open'}
             last={n === invites.length - 1}
           />
-        )) : <T size={12.5} c={color.muted}>No codes yet.</T>}
+        )) : <T variant="meta" c={color.muted}>No codes yet.</T>}
       </Section>
     </Board>
   );

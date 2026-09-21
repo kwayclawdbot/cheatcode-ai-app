@@ -133,8 +133,8 @@ export default function TickerPageScreen() {
         {loading ? <ScreenLoading label={`Pulling ${symbol}…`} /> : (
           <View style={{ padding: 20, gap: 8 }}>
             <Back onPress={() => router.back()} />
-            <T size={15} weight="bold">{symbol}</T>
-            <T size={13} c={color.muted} lh={19}>{error ?? "I couldn't load this symbol just now."}</T>
+            <T variant="body" weight="bold">{symbol}</T>
+            <T variant="meta" c={color.muted} lh={19}>{error ?? "I couldn't load this symbol just now."}</T>
           </View>
         )}
       </Screen>
@@ -162,20 +162,20 @@ export default function TickerPageScreen() {
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 7 }}>
             <T {...type.tickerSm} testID="ticker-symbol">{data.symbol}</T>
-            <T size={11} c={color.muted} numberOfLines={1} style={{ flex: 1 }}>{data.company}</T>
+            <T variant="meta" c={color.muted} numberOfLines={1} style={{ flex: 1 }}>{data.company}</T>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 1 }}>
-            <Num size={26} weight="bold" testID="ticker-price">
+            <Num variant="keyPrice" weight="bold" testID="ticker-price">
               {q?.price != null ? q.price.toFixed(2) : '—'}
             </Num>
             {q?.change_pct != null ? (
-              <Num size={13} weight="semibold" c={up ? color.green : color.red}>
+              <Num variant="meta" weight="semibold" c={up ? color.green : color.red}>
                 {`${up ? '+' : '−'}${Math.abs(q.change_pct).toFixed(2)}%`}
               </Num>
             ) : null}
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 3 }}>
-            <T size={10} c={color.cyan}>{data.market_label}</T>
+            <T variant="meta" c={color.cyan}>{data.market_label}</T>
             {q ? <FreshnessMark freshness={q.freshness ?? 'unknown'} delayReason={q.delay_reason} at={q.source_ts} size={10} /> : null}
           </View>
         </View>
@@ -271,8 +271,8 @@ export default function TickerPageScreen() {
           }
         />
 
-        {error ? <T size={11} c={color.muted} align="center">{error}</T> : null}
-        {isFixture ? <T size={10} c={color.dim} align="center">Sample data — the service is not connected here.</T> : null}
+        {error ? <T variant="meta" c={color.muted} align="center">{error}</T> : null}
+        {isFixture ? <T variant="meta" c={color.dim} align="center">Sample data — the service is not connected here.</T> : null}
       </ScrollView>
 
       <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6 }}>
@@ -283,7 +283,7 @@ export default function TickerPageScreen() {
           testID="ticker-open-trade"
           style={{ flex: 1, height: 46, borderRadius: radius.pill, backgroundColor: color.volt, alignItems: 'center', justifyContent: 'center' }}
         >
-          <T size={14} weight="bold" c={color.bg}>Open in Trade</T>
+          <T variant="body" weight="bold" c={color.bg}>Open in Trade</T>
         </Pressable>
         <Pressable
           onPress={() => router.push(`/alert/new?symbol=${encodeURIComponent(data.symbol)}`)}
@@ -291,7 +291,7 @@ export default function TickerPageScreen() {
           testID="ticker-create-alert"
           style={{ height: 46, paddingHorizontal: 16, borderRadius: radius.pill, borderWidth: 0.5, borderColor: alpha.ivory24, alignItems: 'center', justifyContent: 'center' }}
         >
-          <T size={13} weight="semibold">Create alert</T>
+          <T variant="meta" weight="semibold">Create alert</T>
         </Pressable>
       </View>
     </Screen>

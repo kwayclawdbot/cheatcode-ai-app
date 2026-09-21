@@ -83,8 +83,8 @@ export default function Goal() {
   return (
     <Screen variant="corner" layout="stack" testID="screen-goal">
       <ProgressBars total={STEP_TOTAL} done={stepNumber('goal')} />
-      <T size={27} weight="bold" ls={-0.4} lh={32}>What do you want to do?</T>
-      <T size={14} c={color.muted} style={{ marginTop: 8 }}>
+      <T variant="screenTitle" weight="bold" ls={-0.4} lh={32}>What do you want to do?</T>
+      <T variant="body" c={color.muted} style={{ marginTop: 8 }}>
         Pick your main focus and how much Kai explains. Both change any time.
       </T>
 
@@ -107,12 +107,12 @@ export default function Goal() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <T size={17} weight="bold" c={modeIsLive(key) ? color.text : color.muted}>{title}</T>
+                      <T variant="cardTitle" weight="bold" c={modeIsLive(key) ? color.text : color.muted}>{title}</T>
                       {modeBadge(key) ? (
                         <ComingSoonPill label={modeBadge(key) as string} testID={`goal-soon-${key}`} />
                       ) : null}
                     </View>
-                    <T size={13} c={color.muted} style={{ marginTop: 2 }}>{sub}</T>
+                    <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>{sub}</T>
                   </View>
                   {on ? <Check size={18} color={color.volt} strokeWidth={2.6} /> : null}
                 </ObjectCard>
@@ -122,7 +122,7 @@ export default function Goal() {
         </View>
 
         <View>
-          <T size={12} weight="bold" ls={0.84} c={color.muted} style={{ marginBottom: 10 }}>HOW MUCH SHOULD KAI EXPLAIN?</T>
+          <T variant="meta" weight="bold" c={color.muted} style={{ marginBottom: 10 }}>How much should Kai explain?</T>
           <View style={{ gap: 8 }}>
             {GUIDANCE_ORDER.map((key) => {
               const on = guidance === key;
@@ -137,8 +137,8 @@ export default function Goal() {
                 >
                   <ObjectCard tone={on ? 'volt' : 'default'} r={15} style={{ paddingVertical: 12, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     <View style={{ flex: 1 }}>
-                      <T size={15} weight="bold">{GUIDANCE_LABEL[key]}</T>
-                      <T size={12.5} c={color.muted} style={{ marginTop: 2 }}>{EXPERIENCE_CONSEQUENCE[key]}</T>
+                      <T variant="body" weight="bold">{GUIDANCE_LABEL[key]}</T>
+                      <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>{EXPERIENCE_CONSEQUENCE[key]}</T>
                     </View>
                     {on ? <Check size={16} color={color.volt} strokeWidth={2.6} /> : null}
                   </ObjectCard>

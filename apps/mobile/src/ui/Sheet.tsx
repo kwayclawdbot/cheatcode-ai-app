@@ -91,7 +91,7 @@ export function Sheet({
             */}
             <KeyboardDock floor={22} style={{ gap: 12 }}>
               <View style={{ alignSelf: 'center', width: 38, height: 4, borderRadius: 2, backgroundColor: alpha.ivory16 }} />
-              {title ? <T size={17} weight="bold">{title}</T> : null}
+              {title ? <T variant="cardTitle" weight="bold">{title}</T> : null}
               {children}
             </KeyboardDock>
           </Pressable>

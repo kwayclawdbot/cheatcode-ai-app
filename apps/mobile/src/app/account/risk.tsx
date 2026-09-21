@@ -78,21 +78,21 @@ export default function AccountRisk() {
       <StackHeader title="Risk" onBack={() => router.back()} />
 
       <View style={{ marginTop: 4 }}>
-        <T size={27} weight="bold" ls={-0.4} lh={32}>
+        <T variant="screenTitle" weight="bold" ls={-0.4} lh={32}>
           {unchosen ? RISK_BEFORE_ORDER_TITLE : 'Your risk level'}
         </T>
-        <T size={15} c={color.muted} style={{ marginTop: 8 }}>
+        <T variant="body" c={color.muted} style={{ marginTop: 8 }}>
           {unchosen ? RISK_BEFORE_ORDER_SUB : 'Change it whenever you like.'}
         </T>
 
         {/* The fact, not a guess at which card produced it. */}
         {cap ? (
-          <T size={14} c={color.muted} style={{ marginTop: 10 }} testID="risk-current-cap">
+          <T variant="body" c={color.muted} style={{ marginTop: 10 }} testID="risk-current-cap">
             {`Today your daily cap is ${cap}. The server enforces it on every paper order.`}
           </T>
         ) : null}
         {unchosen ? (
-          <T size={14} c={color.gold} style={{ marginTop: 6 }} testID="risk-default-note">
+          <T variant="body" c={color.gold} style={{ marginTop: 6 }} testID="risk-default-note">
             {RISK_DEFAULT_NOTE}
           </T>
         ) : null}

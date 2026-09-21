@@ -76,7 +76,7 @@ export default function OrderConfirmed() {
     return (
       <Screen variant="dome" layout="tab" testID="screen-order-confirmed">
         <View style={{ padding: 16 }}>
-          <T size={13} c={color.muted}>No order was passed to this screen.</T>
+          <T variant="meta" c={color.muted}>No order was passed to this screen.</T>
         </View>
       </Screen>
     );
@@ -116,7 +116,7 @@ export default function OrderConfirmed() {
         </View>
 
         {/* "Paper" is in the sentence itself. A chip alone can be skimmed past. */}
-        <T size={24} weight="bold" align="center" style={{ marginTop: 20 }} testID="confirmed-headline">
+        <T variant="screenTitle" weight="bold" align="center" style={{ marginTop: 20 }} testID="confirmed-headline">
           {rejected
             ? (order?.status_label ?? 'Paper order not placed')
             : filled
@@ -124,7 +124,7 @@ export default function OrderConfirmed() {
               : 'Paper order submitted.'}
         </T>
 
-        <T size={14} c={color.muted} align="center" lh={21} style={{ marginTop: 8 }} testID="confirmed-recap">
+        <T variant="body" c={color.muted} align="center" lh={21} style={{ marginTop: 8 }} testID="confirmed-recap">
           {recap}
         </T>
         <View style={{ marginTop: 10 }}><PaperChip testID="confirmed-paper-chip" /></View>
@@ -156,8 +156,8 @@ export default function OrderConfirmed() {
                   borderBottomWidth: i === all.length - 1 ? 0 : 0.5, borderBottomColor: alpha.ivory08,
                 }}
               >
-                <T size={12.5} c={color.muted}>{row.label}</T>
-                <Num size={12.5} weight="semibold" testID={`confirmed-${row.label.toLowerCase().replace(/\s+/g, '-')}`}>
+                <T variant="meta" c={color.muted}>{row.label}</T>
+                <Num variant="meta" weight="semibold" testID={`confirmed-${row.label.toLowerCase().replace(/\s+/g, '-')}`}>
                   {row.value}
                 </Num>
               </View>
@@ -167,7 +167,7 @@ export default function OrderConfirmed() {
 
         <ObjectCard tone="kai" r={radius.xl} style={{ marginTop: 10, padding: 14, flexDirection: 'row', gap: 10, alignSelf: 'stretch' }}>
           <KaiOrb size={24} />
-          <T size={13} lh={20} style={{ flex: 1 }} testID="confirmed-kai-line">
+          <T variant="meta" lh={20} style={{ flex: 1 }} testID="confirmed-kai-line">
             {rejected
               ? (order?.status_detail ?? 'Nothing was placed. Nothing was charged — this is a practice account.')
               : filled
@@ -192,7 +192,7 @@ export default function OrderConfirmed() {
           </View>
         ) : null}
 
-        {error ? <T size={12} c={color.red} align="center" style={{ marginTop: 10 }}>{error}</T> : null}
+        {error ? <T variant="meta" c={color.red} align="center" style={{ marginTop: 10 }}>{error}</T> : null}
 
         <View style={{ alignSelf: 'stretch', marginTop: 18 }}>
           {filled && order?.position_id ? (
@@ -232,7 +232,7 @@ export default function OrderConfirmed() {
           />
         </View>
 
-        <T size={11} c={color.dim} align="center" lh={16} style={{ marginTop: 10 }}>
+        <T variant="meta" c={color.dim} align="center" lh={16} style={{ marginTop: 10 }}>
           Paper fills use delayed prices, so a real fill would not be identical.
         </T>
       </ScrollView>

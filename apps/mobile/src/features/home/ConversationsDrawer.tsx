@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Pressable, TextInput, ScrollView, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
-import { alpha, color, radius } from '../../ui/tokens';
+import { alpha, color, radius, typeScale } from '../../ui/tokens';
 import { T, Eyebrow } from '../../ui/Text';
 import { family } from '../../ui/fonts';
 import type { ConversationRow } from '../../lib/types';
@@ -51,7 +51,7 @@ function Row({ row, active, onOpen, onPin }: {
             : null),
         }}
       >
-        <T size={13} weight={active || row.pinned ? 'semibold' : 'regular'} c={active || row.pinned ? color.text : color.muted} numberOfLines={1}>
+        <T variant="meta" weight={active || row.pinned ? 'semibold' : 'regular'} c={active || row.pinned ? color.text : color.muted} numberOfLines={1}>
           {row.title}
         </T>
       </Pressable>
@@ -113,7 +113,7 @@ export function ConversationsDrawer({
             onChangeText={onQuery}
             placeholder="Search conversations"
             placeholderTextColor={color.muted}
-            style={{ flex: 1, fontFamily: family.regular, fontSize: 13, color: color.text, ...(({ outlineStyle: 'none' } as unknown) as object) }}
+            style={{ flex: 1, fontFamily: family.regular, fontSize: typeScale.body.size, color: color.text, ...(({ outlineStyle: 'none' } as unknown) as object) }}
           />
         </View>
 
@@ -128,13 +128,13 @@ export function ConversationsDrawer({
           }}
         >
           <PlusGlyph />
-          <T size={13} weight="bold" c={color.volt}>New conversation</T>
+          <T variant="meta" weight="bold" c={color.volt}>New conversation</T>
         </Pressable>
 
         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {pinned.length ? (
             <>
-              <Eyebrow c={color.muted} style={{ marginTop: 18, marginBottom: 7, marginLeft: 4 }}>PINNED</Eyebrow>
+              <Eyebrow c={color.muted} style={{ marginTop: 18, marginBottom: 7, marginLeft: 4 }}>Pinned</Eyebrow>
               <View testID="threads-pinned" style={{ gap: 2 }}>
                 {pinned.map((c) => (
                   <Row key={c.id} row={c} active={c.id === activeId} onOpen={() => onOpen(c)} onPin={() => onPin(c)} />
@@ -143,12 +143,12 @@ export function ConversationsDrawer({
             </>
           ) : null}
 
-          <Eyebrow c={color.muted} style={{ marginTop: 18, marginBottom: 7, marginLeft: 4 }}>RECENT</Eyebrow>
+          <Eyebrow c={color.muted} style={{ marginTop: 18, marginBottom: 7, marginLeft: 4 }}>Recent</Eyebrow>
           <View testID="threads-recent">
             {recent.length ? (
               recent.map((c) => <Row key={c.id} row={c} active={c.id === activeId} onOpen={() => onOpen(c)} onPin={() => onPin(c)} />)
             ) : (
-              <T size={12} c={color.dim} style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
+              <T variant="meta" c={color.dim} style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
                 {loading ? 'Loading…' : q ? 'No conversation matches that.' : 'Your conversations will appear here.'}
               </T>
             )}

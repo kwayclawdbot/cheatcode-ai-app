@@ -53,8 +53,8 @@ function Line({ label, value, tint, testID }: {
 }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12, paddingVertical: 6 }}>
-      <T size={12.5} c={color.muted} style={{ flex: 1 }}>{label}</T>
-      <Num size={14} weight="bold" c={tint ?? color.text} testID={testID}>{value}</Num>
+      <T variant="meta" c={color.muted} style={{ flex: 1 }}>{label}</T>
+      <Num variant="body" weight="bold" c={tint ?? color.text} testID={testID}>{value}</Num>
     </View>
   );
 }
@@ -98,13 +98,13 @@ export function ConfirmCard({
     <View style={{ gap: 14 }} testID="beat-take">
       <ObjectCard tone="volt" r={radius.xxl} testID="order-confirmation-card" style={{ padding: 16, gap: 2 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 6 }}>
-          <Eyebrow c={color.volt}>CONFIRM THIS ORDER</Eyebrow>
-          <T size={11} weight="bold" ls={0.8} c={color.muted} testID="confirm-venue">
+          <Eyebrow c={color.volt}>Confirm this order</Eyebrow>
+          <T variant="meta" weight="bold" ls={0.8} c={color.muted} testID="confirm-venue">
             {PAPER_VENUE.label.toUpperCase()}
           </T>
         </View>
 
-        <T size={17} weight="bold" testID="confirm-recap">
+        <T variant="cardTitle" weight="bold" testID="confirm-recap">
           {preview.side_label} {preview.symbol}
           {shares != null ? ` · ${shares} ${shares === 1 ? 'share' : 'shares'}` : ''}
         </T>
@@ -133,19 +133,19 @@ export function ConfirmCard({
         </View>
 
         <View style={{ paddingTop: 10, gap: 6 }}>
-          <T size={12.5} lh={18} c={color.muted} testID="confirm-size-plain">
+          <T variant="meta" lh={18} c={color.muted} testID="confirm-size-plain">
             {size.plain}
             {preview.est_cost != null ? ` It costs about ${money(preview.est_cost, 0)} of buying power.` : ''}
           </T>
           {preview.hard_stop_plain ? (
-            <T size={12.5} lh={18} c={color.text} testID="confirm-hard-stop">{preview.hard_stop_plain}</T>
+            <T variant="meta" lh={18} c={color.text} testID="confirm-hard-stop">{preview.hard_stop_plain}</T>
           ) : null}
-          <T size={12.5} lh={18} c={verdictTint} testID="confirm-risk-verdict">{preview.risk.headline}</T>
+          <T variant="meta" lh={18} c={verdictTint} testID="confirm-risk-verdict">{preview.risk.headline}</T>
           {preview.risk.blockers.map((b) => (
-            <T key={b.code} size={12.5} lh={18} c={color.red}>{b.message}</T>
+            <T key={b.code} variant="meta" lh={18} c={color.red}>{b.message}</T>
           ))}
           {preview.risk.advisories.map((a) => (
-            <T key={a.code} size={12.5} lh={18} c={color.gold}>{a.message}</T>
+            <T key={a.code} variant="meta" lh={18} c={color.gold}>{a.message}</T>
           ))}
         </View>
       </ObjectCard>
@@ -171,8 +171,8 @@ export function ConfirmCard({
         }}
       >
         <View style={{ flex: 1 }}>
-          <T size={13} weight="semibold" c={share ? color.volt : color.text}>Show this one to the club</T>
-          <T size={11.5} lh={16.5} c={color.muted} style={{ marginTop: 3 }}>
+          <T variant="meta" weight="semibold" c={share ? color.volt : color.text}>Show this one to the club</T>
+          <T variant="meta" lh={16.5} c={color.muted} style={{ marginTop: 3 }}>
             {share
               ? 'Direction and levels only. Your size and your dollars are never shown.'
               : 'Off. Nobody sees this trade.'}
@@ -188,7 +188,7 @@ export function ConfirmCard({
       </View>
 
       {error ? (
-        <T size={13} lh={19} c={color.red} testID="confirm-error">{error}</T>
+        <T variant="meta" lh={19} c={color.red} testID="confirm-error">{error}</T>
       ) : null}
 
       <View style={{ gap: 9 }}>
@@ -212,7 +212,7 @@ export function ConfirmCard({
         />
       </View>
 
-      <T size={11.5} lh={17} c={color.dim} testID="confirm-footer">
+      <T variant="meta" lh={17} c={color.dim} testID="confirm-footer">
         {preview.footer_plain ?? `Nothing is sent until you confirm.${preview.quote_clock ? ` Quote ${preview.quote_clock}.` : ''}`}
         {' '}{PAPER_VENUE.plain}
       </T>
@@ -247,7 +247,7 @@ export function Receipt({
         >
           <Check size={26} color={tint} />
         </View>
-        <T size={13.5} lh={20} align="center" testID="receipt-plain" style={{ paddingHorizontal: 8 }}>{plain}</T>
+        <T variant="meta" lh={20} align="center" testID="receipt-plain" style={{ paddingHorizontal: 8 }}>{plain}</T>
       </View>
 
       {/* Submitted ● ─── ○ Filled. The same tracker `/order/confirmed` draws. */}
@@ -290,7 +290,7 @@ export function Receipt({
         <Button label="Back to the chart" kind="ghost" height={42} onPress={onDone} testID="receipt-done" />
       </View>
 
-      <T size={11.5} lh={17} c={color.dim}>{PAPER_VENUE.plain}</T>
+      <T variant="meta" lh={17} c={color.dim}>{PAPER_VENUE.plain}</T>
     </View>
   );
 }

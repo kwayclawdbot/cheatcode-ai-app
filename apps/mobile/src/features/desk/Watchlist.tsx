@@ -108,7 +108,7 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={({ pressed }) => ({ marginBottom: space.x14, opacity: pressed ? 0.6 : 1 })}
           >
-            <T size={13} c={color.volt}>‹ Back</T>
+            <T variant="meta" c={color.volt}>‹ Back</T>
           </Pressable>
         )}
 
@@ -133,19 +133,19 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
           "Idea grade", and this line says what an idea grade IS rather than
           what it is not.
         */}
-        <T size={14} lh={20} c={color.muted} style={{ marginTop: space.x10, maxWidth: 460 }}>
+        <T variant="body" lh={20} c={color.muted} style={{ marginTop: space.x10, maxWidth: 460 }}>
           Every company the desk argued for, plus anything you added. Each one
-          has an <T size={14} lh={20} weight="semibold" c={color.text}>idea grade</T> — how
+          has an <T variant="body" lh={20} weight="semibold" c={color.text}>idea grade</T> — how
           good the argument for the company is over the next few quarters — and a
           line saying what its share price is doing. Tap either to have it
           explained.
         </T>
-        <T size={13} lh={19} c={color.dim} style={{ marginTop: space.x6, maxWidth: 460 }} testID="desk-grade-means">
+        <T variant="meta" lh={19} c={color.dim} style={{ marginTop: space.x6, maxWidth: 460 }} testID="desk-grade-means">
           {IDEA_GRADE_MEANS}
         </T>
 
         {onTab ? (
-          <T size={11} lh={16} c={color.dim} style={{ marginTop: space.x8 }} testID="desk-mode-note">
+          <T variant="meta" lh={16} c={color.dim} style={{ marginTop: space.x8 }} testID="desk-mode-note">
             {second.note}
           </T>
         ) : null}
@@ -166,7 +166,7 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
             style={{
               flex: 1, height: 44, paddingHorizontal: space.x14,
               borderRadius: radius.lg, borderWidth: 1, borderColor: alpha.ivory16,
-              backgroundColor: alpha.surface60, color: color.text, fontSize: 15,
+              backgroundColor: alpha.surface60, color: color.text, fontSize: typeScale.body.size,
             }}
           />
           <Pressable
@@ -183,13 +183,13 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
           >
             {adding
               ? <ActivityIndicator size="small" color={color.bg} />
-              : <T size={14} weight="bold" c={symbol.trim() ? color.bg : color.dim}>Watch</T>}
+              : <T variant="body" weight="bold" c={symbol.trim() ? color.bg : color.dim}>Watch</T>}
           </Pressable>
         </View>
         {addError ? (
-          <T size={13} c={color.red} style={{ marginTop: space.x8 }}>{addError}</T>
+          <T variant="meta" c={color.red} style={{ marginTop: space.x8 }}>{addError}</T>
         ) : added ? (
-          <T size={13} c={color.green} style={{ marginTop: space.x8 }}>
+          <T variant="meta" c={color.green} style={{ marginTop: space.x8 }}>
             {added} is on the list. The next refresh starts reading its chart.
           </T>
         ) : null}
@@ -248,10 +248,10 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
           {/* ObjectCard carries no padding of its own — every caller sets it. */}
           <ObjectCard tone="kai" style={{ padding: space.x16 }}>
             <Eyebrow c={color.violetLight}>Where the names come from</Eyebrow>
-            <T size={17} weight="bold" c={color.text} style={{ marginTop: space.x6 }}>
+            <T variant="cardTitle" weight="bold" c={color.text} style={{ marginTop: space.x6 }}>
               Every theme the desk is reading
             </T>
-            <T size={13} lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
+            <T variant="meta" lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
               Judged on how much moves if it is right, never on how much is
               being written about it. Size and timing are scored separately.
             </T>
@@ -259,7 +259,7 @@ export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack'
         </Pressable>
 
         {res.isFixture ? (
-          <T size={10} c={color.dim} style={{ marginTop: space.x16 }}>
+          <T variant="meta" c={color.dim} style={{ marginTop: space.x16 }}>
             Sample desk — the research service is not connected here.
           </T>
         ) : null}
@@ -314,13 +314,13 @@ function WatchRow({ row, onPick, onExplainState }: {
         <View style={{ flex: 1, minWidth: 0 }}>
           {/* The NAME first, at a size somebody reads, with the ticker under
               it — a person who chose investing knows "Apple", not "AAPL". */}
-          <T size={16} weight="bold" c={color.text} numberOfLines={2}>
+          <T variant="body" weight="bold" c={color.text} numberOfLines={2}>
             {row.company ?? row.ticker}
           </T>
-          <Num size={13} c={color.dim} style={{ marginTop: space.x2 }}>{row.ticker}</Num>
+          <Num variant="meta" c={color.dim} style={{ marginTop: space.x2 }}>{row.ticker}</Num>
         </View>
         <View style={{ alignItems: 'flex-end', gap: space.x4 }}>
-          <Num size={17} weight="semibold" c={color.cyan}>{px(row.price)}</Num>
+          <Num variant="cardTitle" weight="semibold" c={color.cyan}>{px(row.price)}</Num>
           {/* The desk used to paint this number in market cyan with nothing
               beside it, and it was whatever the brain last wrote — which could
               be an hour or a fortnight ago. The mark says which, and when. */}
@@ -348,7 +348,7 @@ function WatchRow({ row, onPick, onExplainState }: {
       {/* WHY IT IS ON THE DESK. The theme is the desk's own answer and it is
           printed as one, rather than as a caption under the ticker where it
           read like a category. A hand-added name says what it is instead. */}
-      <T size={13} lh={19} c={color.muted} testID={`desk-why-${row.ticker}`}>
+      <T variant="meta" lh={19} c={color.muted} testID={`desk-why-${row.ticker}`}>
         {row.source === 'manual'
           ? 'You added this one. There is no written argument behind it yet — the desk is only watching the chart.'
           : theme
@@ -356,7 +356,7 @@ function WatchRow({ row, onPick, onExplainState }: {
           : 'The desk wrote an argument for this one. Open it to read why.'}
       </T>
 
-      <T size={12} c={horizon.known ? color.muted : color.dim} testID={`desk-horizon-${row.ticker}`}>
+      <T variant="meta" c={horizon.known ? color.muted : color.dim} testID={`desk-horizon-${row.ticker}`}>
         {horizon.text}
       </T>
 
@@ -378,7 +378,7 @@ function WatchRow({ row, onPick, onExplainState }: {
           backgroundColor: alpha.volt10, opacity: pressed ? 0.7 : 1,
         })}
       >
-        <T size={13} weight="semibold" c={color.volt}>
+        <T variant="meta" weight="semibold" c={color.volt}>
           {`Understand ${row.ticker}`}
         </T>
       </Pressable>
@@ -405,7 +405,7 @@ function Group({ title, sub, rows, onPick, onExplainState }: {
   return (
     <View style={{ marginTop: space.x30 }}>
       <Eyebrow c={color.muted}>{title}</Eyebrow>
-      <T size={13} lh={19} c={color.dim} style={{ marginTop: space.x4 }}>{sub}</T>
+      <T variant="meta" lh={19} c={color.dim} style={{ marginTop: space.x4 }}>{sub}</T>
       <View style={{ marginTop: space.x8 }}>
         {rows.map((r, i) => (
           <View
@@ -438,8 +438,8 @@ function Empty({ onThemes, onKai }: { onThemes: () => void; onKai: () => void })
   return (
     <View style={{ marginTop: space.x30 }} testID="desk-empty">
       <ObjectCard style={{ padding: space.x16 }}>
-        <T size={15} weight="bold" c={color.text}>Nothing on the list yet</T>
-        <T size={13} lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
+        <T variant="body" weight="bold" c={color.text}>Nothing on the list yet</T>
+        <T variant="meta" lh={19} c={color.muted} style={{ marginTop: space.x6 }}>
           The desk puts a name here when it writes an argument for it. You can
           add one yourself above — it starts being read on the next refresh.
           The themes are already judged either way, and that is where the names
@@ -468,7 +468,7 @@ function Offer({ label, onPress, testID }: { label: string; onPress: () => void;
         opacity: pressed ? 0.7 : 1,
       })}
     >
-      <T size={12.5} weight="semibold" c={color.volt}>{label}</T>
+      <T variant="meta" weight="semibold" c={color.volt}>{label}</T>
     </Pressable>
   );
 }

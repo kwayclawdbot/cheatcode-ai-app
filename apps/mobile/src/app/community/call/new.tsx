@@ -10,7 +10,7 @@ import { Segmented } from '../../../ui/Segmented';
 import { T, Num, Eyebrow } from '../../../ui/Text';
 import { TickerMark } from '../../../ui/Ticker';
 import { family, fontStack } from '../../../ui/fonts';
-import { alpha, color, gradient, gradientAngle, radius } from '../../../ui/tokens';
+import { alpha, color, gradient, gradientAngle, radius, typeScale } from '../../../ui/tokens';
 import { useSession } from '../../../lib/session';
 import { CommunityCallCard, usePublishCall } from '../../../features/social';
 import { NOT_ADVICE_COMMUNITY_CALL } from '../../../features/legal/disclaimers';
@@ -74,7 +74,7 @@ function LevelField({
 }) {
   return (
     <View style={{ flex: 1, gap: 6 }}>
-      <T size={10.5} c={color.muted}>{label}</T>
+      <T variant="meta" c={color.muted}>{label}</T>
       <View
         style={{
           height: 44, borderRadius: radius.lg, paddingHorizontal: 11, justifyContent: 'center',
@@ -93,7 +93,7 @@ function LevelField({
           inputMode="decimal"
           style={{
             fontFamily: fontStack(family.mono, true),
-            fontSize: 15,
+            fontSize: typeScale.body.size,
             color: value ? tint : color.text,
             paddingVertical: 0,
             ...(({ outlineStyle: 'none' } as unknown) as object),
@@ -227,7 +227,7 @@ export default function NewCommunityCall() {
         {/* THE INSTRUMENT. The mark appears the moment there is a symbol to
             draw one for — a ticker is never plain text, including here. */}
         <View style={{ gap: 7 }}>
-          <T size={13} c={color.muted}>Ticker</T>
+          <T variant="meta" c={color.muted}>Ticker</T>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
             {cleanSymbol ? (
               <TickerMark symbol={cleanSymbol} size={44} testID="composer-ticker-mark" />
@@ -259,7 +259,7 @@ export default function NewCommunityCall() {
                 autoCorrect={false}
                 style={{
                   fontFamily: fontStack(family.bold),
-                  fontSize: 17,
+                  fontSize: typeScale.body.size,
                   letterSpacing: 0.4,
                   color: color.text,
                   paddingVertical: 0,
@@ -271,7 +271,7 @@ export default function NewCommunityCall() {
         </View>
 
         <View style={{ gap: 7 }}>
-          <T size={13} c={color.muted}>Direction</T>
+          <T variant="meta" c={color.muted}>Direction</T>
           <Segmented
             options={DIRECTIONS}
             value={direction}
@@ -283,8 +283,8 @@ export default function NewCommunityCall() {
         {/* THE LEVELS, AND THE ONE LINE THAT SAYS WHY THEY MATTER. */}
         <View style={{ gap: 9 }}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-            <T size={13} c={color.muted} style={{ flex: 1 }}>Levels</T>
-            <T size={11} c={color.dim}>optional</T>
+            <T variant="meta" c={color.muted} style={{ flex: 1 }}>Levels</T>
+            <T variant="meta" c={color.dim}>optional</T>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <LevelField label="Entry" value={entryText} onChange={setEntryText} tint={color.cyan} testID="composer-entry" />
@@ -313,7 +313,7 @@ export default function NewCommunityCall() {
                 backgroundColor: scoreable ? color.volt : color.dim,
               }}
             />
-            <T size={12} lh={17} c={scoreable ? color.volt : color.muted} style={{ flex: 1 }}>
+            <T variant="meta" lh={17} c={scoreable ? color.volt : color.muted} style={{ flex: 1 }}>
               {scoreable
                 ? 'This one counts. It can score, move your belt and reach the board.'
                 : 'An entry plus a stop or a target is what makes a call count. Without them it is a comment.'}
@@ -321,16 +321,16 @@ export default function NewCommunityCall() {
           </View>
 
           {problem ? (
-            <T size={12} lh={17} c={color.red} testID="composer-level-error">{problem}</T>
+            <T variant="meta" lh={17} c={color.red} testID="composer-level-error">{problem}</T>
           ) : null}
         </View>
 
         {/* THE THESIS. One line is the format — the box is short on purpose. */}
         <View style={{ gap: 7 }}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-            <T size={13} c={color.muted} style={{ flex: 1 }}>Why</T>
+            <T variant="meta" c={color.muted} style={{ flex: 1 }}>Why</T>
             <Num
-              size={11}
+              variant="meta"
               c={thesis.length > THESIS_MAX - 30 ? color.gold : color.dim}
               testID="composer-counter"
             >
@@ -357,7 +357,7 @@ export default function NewCommunityCall() {
               numberOfLines={3}
               style={{
                 fontFamily: fontStack(family.regular),
-                fontSize: 15,
+                fontSize: typeScale.body.size,
                 lineHeight: 22,
                 color: color.text,
                 minHeight: 62,
@@ -366,7 +366,7 @@ export default function NewCommunityCall() {
               }}
             />
           </LinearGradient>
-          <T size={11} c={color.dim}>
+          <T variant="meta" c={color.dim}>
             A $TICKER in your sentence becomes a link. {NOT_ADVICE_COMMUNITY_CALL}
           </T>
         </View>
@@ -374,13 +374,13 @@ export default function NewCommunityCall() {
         {/* WHAT PEOPLE WILL SEE. The card itself, not a picture of it — and
             not "what the room will see", because a call never goes to a
             room. */}
-        <Eyebrow c={color.volt}>WHAT PEOPLE WILL SEE</Eyebrow>
+        <Eyebrow c={color.volt}>What people will see</Eyebrow>
         <View pointerEvents="none" testID="composer-preview">
           <CommunityCallCard call={preview} testID="community-call-preview" />
         </View>
 
         {publisher.error ? (
-          <T size={12.5} lh={18} c={color.red} testID="composer-publish-error">{publisher.error}</T>
+          <T variant="meta" lh={18} c={color.red} testID="composer-publish-error">{publisher.error}</T>
         ) : null}
 
         <Button
@@ -401,7 +401,7 @@ export default function NewCommunityCall() {
           onPress={() => router.back()}
           style={({ pressed }) => ({ minHeight: 44, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
         >
-          <T size={13} c={color.muted}>Cancel</T>
+          <T variant="meta" c={color.muted}>Cancel</T>
         </Pressable>
       </ScrollView>
 
@@ -411,7 +411,7 @@ export default function NewCommunityCall() {
         title="Published"
         testID="sheet-call-published"
       >
-        <T size={13} lh={20} c={color.muted}>
+        <T variant="meta" lh={20} c={color.muted}>
           {done?.scoreable
             ? 'It is on your profile with your name on it, and in the feed of everybody who follows you. It counts — it resolves when price reaches your stop or your target.'
             : 'It is on your profile with your name on it, and in the feed of everybody who follows you. Without an entry and a stop or a target it will not score — you can publish another with levels any time.'}

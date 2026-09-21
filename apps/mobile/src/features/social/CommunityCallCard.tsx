@@ -114,7 +114,7 @@ function LevelCell({ label, value, c, bg, border, compact, testID }: {
         backgroundColor: bg, borderWidth: 0.5, borderColor: border, alignItems: 'center',
       }}
     >
-      <T size={8.5} c={color.muted}>{label}</T>
+      <T variant="meta" c={color.muted}>{label}</T>
       <Num size={compact ? 11 : 12} weight="semibold" c={c} style={{ marginTop: compact ? 1 : 2 }}>
         {value}
       </Num>
@@ -126,8 +126,8 @@ function LevelCell({ label, value, c, bg, border, compact, testID }: {
 function InlineLevel({ label, value, c, testID }: { label: string; value: string; c: string; testID?: string }) {
   return (
     <View testID={testID} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
-      <T size={12} c={color.muted}>{label}</T>
-      <Num size={12.5} weight="semibold" c={c}>{value}</Num>
+      <T variant="meta" c={color.muted}>{label}</T>
+      <Num variant="meta" weight="semibold" c={c}>{value}</Num>
     </View>
   );
 }
@@ -187,9 +187,9 @@ export function CommunityCallCard({
         borderWidth: 0.5, borderColor: `${tone}66`,
       }}
     >
-      <T size={10.5} weight="semibold" c={tone}>{call.outcome_label ?? call.status}</T>
+      <T variant="meta" weight="semibold" c={tone}>{call.outcome_label ?? call.status}</T>
       {call.result_pct != null ? (
-        <Num size={10.5} weight="semibold" c={tone}>
+        <Num variant="meta" weight="semibold" c={tone}>
           {`${call.result_pct > 0 ? '+' : ''}${call.result_pct.toFixed(1)}%`}
         </Num>
       ) : null}
@@ -254,7 +254,7 @@ export function CommunityCallCard({
       */}
       {compact ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Eyebrow c={color.volt}>COMMUNITY TRADE</Eyebrow>
+          <Eyebrow c={color.volt}>Community trade</Eyebrow>
           <View style={{ flex: 1 }} />
           {outcome}
         </View>
@@ -288,7 +288,7 @@ export function CommunityCallCard({
         </Pressable>
 
         <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-          <Eyebrow c={color.volt}>COMMUNITY TRADE</Eyebrow>
+          <Eyebrow c={color.volt}>Community trade</Eyebrow>
           {/*
             THE NAME IS THE DOOR, not just the avatar beside it. It was the
             avatar alone here, which is a rule nobody can learn: on the alerts
@@ -308,7 +308,7 @@ export function CommunityCallCard({
             suffix={
               <>
                 <BeltChip belt={call.author.belt} testID={`call-belt-${call.id}`} />
-                <T size={10} c={color.dim}>{call.time_label}</T>
+                <T variant="meta" c={color.dim}>{call.time_label}</T>
               </>
             }
           />
@@ -336,7 +336,7 @@ export function CommunityCallCard({
           testID={`call-ticker-${call.id}`}
         >
           <T size={compact ? 14 : 16} weight="bold">{call.symbol}</T>
-          <T size={10} c={color.muted}>
+          <T variant="meta" c={color.muted}>
             {DIRECTION_LABEL[call.direction]}
             {call.scoreable ? ' · counts toward their record' : ' · no levels, so it cannot score'}
           </T>
@@ -413,7 +413,7 @@ export function CommunityCallCard({
             opacity: pressed ? 0.7 : 1,
           })}
         >
-          <T size={11} weight="semibold" c={color.muted}>
+          <T variant="meta" weight="semibold" c={color.muted}>
             {open ? 'Hide chart' : 'Chart'}
           </T>
           {open
@@ -441,7 +441,7 @@ export function CommunityCallCard({
             borderWidth: 0.5, borderColor: alpha.ivory24, opacity: pressed ? 0.7 : 1,
           })}
         >
-          <T size={11.5} weight="semibold" c={color.muted}>Withdraw</T>
+          <T variant="meta" weight="semibold" c={color.muted}>Withdraw</T>
         </Pressable>
       ) : null}
 

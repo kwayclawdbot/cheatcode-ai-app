@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, TextInput, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { alpha, color, gradient, gradientAngle, radius } from '../../../ui/tokens';
+import { alpha, color, gradient, gradientAngle, radius, typeScale } from '../../../ui/tokens';
 import { family, fontStack } from '../../../ui/fonts';
 import { T } from '../../../ui/Text';
 import { Send } from './Icons';
@@ -140,13 +140,13 @@ export function RoomComposer({
   return (
     <View style={{ gap: 8 }} testID={testID ?? 'room-composer'}>
       {disabled && disabledReason ? (
-        <T size={11} c={color.gold} style={{ paddingHorizontal: 4 }}>{disabledReason}</T>
+        <T variant="meta" c={color.gold} style={{ paddingHorizontal: 4 }}>{disabledReason}</T>
       ) : null}
 
       {quote ? (
         <View testID="composer-quote" style={{ gap: 4 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <T size={11} weight="semibold" c={color.muted} numberOfLines={1} style={{ flex: 1 }}>
+            <T variant="meta" weight="semibold" c={color.muted} numberOfLines={1} style={{ flex: 1 }}>
               {quoteLabel ?? `Replying to ${quote.author_name}`}
             </T>
             {onClearQuote ? (
@@ -161,7 +161,7 @@ export function RoomComposer({
               >
                 {/* A word, not a glyph. "×" at this size is a smudge, and every
                     icon that means "cancel" also means "delete" to somebody. */}
-                <T size={11} weight="semibold" c={color.volt}>Cancel</T>
+                <T variant="meta" weight="semibold" c={color.volt}>Cancel</T>
               </Pressable>
             ) : null}
           </View>
@@ -201,7 +201,7 @@ export function RoomComposer({
               opacity: disabled ? 0.45 : pressed ? 0.8 : 1,
             })}
           >
-            <T size={11} weight="bold" c={color.violetLight}>@Kai</T>
+            <T variant="meta" weight="bold" c={color.violetLight}>@Kai</T>
           </Pressable>
 
           <TextInput
@@ -221,7 +221,7 @@ export function RoomComposer({
               flex: 1,
               minWidth: 0,
               fontFamily: fontStack(family.regular),
-              fontSize: 14,
+              fontSize: typeScale.body.size,
               color: color.text,
               ...(({ outlineStyle: 'none' } as unknown) as object),
             }}

@@ -65,28 +65,28 @@ export default function AdminAudit() {
           <DataRow
             key={e.id}
             testID={`audit-${e.action}`}
-            label={<T size={13} lh={19}>{e.plain || e.action.replace(/[._]/g, ' ')}</T>}
+            label={<T variant="meta" lh={19}>{e.plain || e.action.replace(/[._]/g, ' ')}</T>}
             sub={
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                <Num size={10} weight="medium" c={color.muted}>{e.action}</Num>
-                {e.target_kind ? <T size={10} c={color.dim}>{`on ${e.target_kind}`}</T> : null}
+                <Num variant="meta" weight="medium" c={color.muted}>{e.action}</Num>
+                {e.target_kind ? <T variant="meta" c={color.dim}>{`on ${e.target_kind}`}</T> : null}
                 {!e.actor_name && e.actor_user_id ? (
-                  <Num size={9.5} weight="regular" c={color.dim}>{e.actor_user_id.slice(0, 8)}</Num>
+                  <Num variant="meta" weight="regular" c={color.dim}>{e.actor_user_id.slice(0, 8)}</Num>
                 ) : null}
               </View>
             }
             meta={e.reason ? `“${e.reason}”` : undefined}
             valueNode={
               <View style={{ alignItems: 'flex-end', gap: 2 }}>
-                <Num size={10.5} weight="medium" c={color.muted}>{when(e.created_at)}</Num>
-                <Num size={9.5} weight="regular" c={color.dim}>{stamp(e.created_at)}</Num>
+                <Num variant="meta" weight="medium" c={color.muted}>{when(e.created_at)}</Num>
+                <Num variant="meta" weight="regular" c={color.dim}>{stamp(e.created_at)}</Num>
               </View>
             }
             onPress={e.target_kind === 'crm_person' && e.target_id ? () => router.push(`/admin/person/${e.target_id}` as never) : undefined}
             last={i === entries.length - 1}
           />
         )) : (
-          <T size={12.5} c={color.muted}>{data?.plain ?? 'Nothing logged yet that matches.'}</T>
+          <T variant="meta" c={color.muted}>{data?.plain ?? 'Nothing logged yet that matches.'}</T>
         )}
       </Section>
 
@@ -97,7 +97,7 @@ export default function AdminAudit() {
         </>
       ) : null}
 
-      <T size={10} c={color.dim} lh={15}>
+      <T variant="meta" c={color.dim} lh={15}>
         This log cannot be edited or deleted by anything in this app, including this screen. Reading it wrote a row.
       </T>
     </Board>

@@ -52,15 +52,15 @@ export default function AdminSources() {
         <Section key={s.source} label={(SOURCE_TITLE[s.source] ?? s.source).toUpperCase()}>
           <View style={{ gap: 6, paddingVertical: space.x10 }} testID={`source-${s.source}`}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Num size={11} weight="medium" c={s.configured ? color.text : color.dim}>{s.source}</Num>
-              <T size={11} c={color.dim}>·</T>
-              <T size={11.5} c={s.configured ? color.muted : color.dim} testID={`source-state-${s.source}`}>
+              <Num variant="meta" weight="medium" c={s.configured ? color.text : color.dim}>{s.source}</Num>
+              <T variant="meta" c={color.dim}>·</T>
+              <T variant="meta" c={s.configured ? color.muted : color.dim} testID={`source-state-${s.source}`}>
                 {s.configured ? 'switched on' : 'switched off'}
               </T>
             </View>
-            <T size={12.5} c={color.muted} lh={19}>{s.plain}</T>
+            <T variant="meta" c={color.muted} lh={19}>{s.plain}</T>
             {!s.configured && s.reason ? (
-              <T size={11.5} c={color.dim} lh={17} testID={`source-reason-${s.source}`}>{s.reason}</T>
+              <T variant="meta" c={color.dim} lh={17} testID={`source-reason-${s.source}`}>{s.reason}</T>
             ) : null}
           </View>
 
@@ -86,16 +86,16 @@ export default function AdminSources() {
                   ['refused', s.last_run.counts.conflicted],
                 ] as const).map(([l, n]) => (
                   <View key={l} style={{ gap: 3 }}>
-                    <Num size={15} weight="bold">{n}</Num>
-                    <T size={9.5} c={color.dim}>{l}</T>
+                    <Num variant="body" weight="bold">{n}</Num>
+                    <T variant="meta" c={color.dim}>{l}</T>
                   </View>
                 ))}
               </View>
-              {s.last_run.error ? <T size={11.5} c={color.muted} style={{ paddingTop: space.x8 }}>{s.last_run.error}</T> : null}
-              <T size={10} c={color.dim} style={{ paddingTop: space.x8 }}>{`Started ${stamp(s.last_run.started_at)}`}</T>
+              {s.last_run.error ? <T variant="meta" c={color.muted} style={{ paddingTop: space.x8 }}>{s.last_run.error}</T> : null}
+              <T variant="meta" c={color.dim} style={{ paddingTop: space.x8 }}>{`Started ${stamp(s.last_run.started_at)}`}</T>
             </>
           ) : (
-            <T size={12.5} c={color.muted} style={{ paddingVertical: space.x10 }}>This source has never run.</T>
+            <T variant="meta" c={color.muted} style={{ paddingVertical: space.x10 }}>This source has never run.</T>
           )}
 
           {s.configured && canWrite ? (
@@ -125,15 +125,15 @@ export default function AdminSources() {
       ))}
 
       <View style={{ gap: 4, marginTop: space.x8 }}>
-        <Eyebrow c={color.dim}>WHEN THE SMS SOURCE IS SWITCHED ON</Eyebrow>
-        <T size={11.5} c={color.dim} lh={17}>
+        <Eyebrow c={color.dim}>When the SMS source is switched on</Eyebrow>
+        <T variant="meta" c={color.dim} lh={17}>
           It copies counts and timestamps only. Nineteen thousand private messages do not get duplicated into a
           marketing tool.
         </T>
       </View>
 
       <Sheet visible={!!runner.result} onClose={runner.dismiss} title="The run" testID="sheet-sync">
-        <T size={13} lh={20} c={color.muted} testID="sync-result">{runner.result?.plain}</T>
+        <T variant="meta" lh={20} c={color.muted} testID="sync-result">{runner.result?.plain}</T>
         <Button label="Close" kind="outline" height={46} onPress={runner.dismiss} />
       </Sheet>
     </Board>

@@ -41,31 +41,31 @@ export function PortalDrawersSheet({
           >
             <ObjectCard r={radius.xl} style={{ paddingVertical: 14, paddingHorizontal: 15, gap: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                <T size={10} c={color.muted} style={{ flex: 1 }}>Account value</T>
+                <T variant="meta" c={color.muted} style={{ flex: 1 }}>Account value</T>
                 <PaperChip label={acct.label === 'PAPER' ? 'Paper' : acct.label} />
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
-                <Num size={24} weight="semibold" testID="drawer-account-value">{money(acct.value)}</Num>
+                <Num variant="keyPrice" weight="semibold" testID="drawer-account-value">{money(acct.value)}</Num>
                 {acct.day_change != null ? (
-                  <Num size={12} weight="regular" c={dayUp ? color.green : color.red} style={{ marginBottom: 3 }}>
+                  <Num variant="meta" weight="regular" c={dayUp ? color.green : color.red} style={{ marginBottom: 3 }}>
                     {`${signedMoney(acct.day_change)}${acct.day_change_pct != null ? ` (${signedPct(acct.day_change_pct)})` : ''} today`}
                   </Num>
                 ) : null}
               </View>
               {acct.buying_power != null ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                  <T size={11} c={color.muted}>Buying power</T>
-                  <Num size={12}>{money(acct.buying_power, 0)}</Num>
+                  <T variant="meta" c={color.muted}>Buying power</T>
+                  <Num variant="meta">{money(acct.buying_power, 0)}</Num>
                 </View>
               ) : null}
-              <T size={11} c={color.dim} lh={16}>{acct.plain ?? 'Practice money. Nothing here can be withdrawn.'}</T>
+              <T variant="meta" c={color.dim} lh={16}>{acct.plain ?? 'Practice money. Nothing here can be withdrawn.'}</T>
             </ObjectCard>
           </Pressable>
         ) : null}
 
         {drawers.positions.length ? (
           <>
-            <Eyebrow>POSITIONS</Eyebrow>
+            <Eyebrow>Positions</Eyebrow>
             <RowList style={{ paddingVertical: 2 }}>
               {drawers.positions.map((p, i) => (
                 <Row key={p.id} last={i === drawers.positions.length - 1} style={{ paddingVertical: 11 }}>
@@ -77,11 +77,11 @@ export function PortalDrawersSheet({
                     style={{ flex: 1, gap: 6, minHeight: 44 }}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <T size={14} weight="bold">{p.symbol}</T>
-                      <T size={10} c={color.muted} style={{ flex: 1 }}>
+                      <T variant="body" weight="bold">{p.symbol}</T>
+                      <T variant="meta" c={color.muted} style={{ flex: 1 }}>
                         {`${p.side === 'short' ? 'Short' : 'Long'} · ${shareLabel(p.qty)}`}
                       </T>
-                      <Num size={14} weight="semibold" c={pnlColor(p.unrealized_pnl ?? p.realized_pnl)}>
+                      <Num variant="body" weight="semibold" c={pnlColor(p.unrealized_pnl ?? p.realized_pnl)}>
                         {signedMoney(p.unrealized_pnl ?? p.realized_pnl)}
                       </Num>
                     </View>
@@ -95,7 +95,7 @@ export function PortalDrawersSheet({
 
         {drawers.open_orders.length ? (
           <>
-            <Eyebrow>OPEN ORDERS</Eyebrow>
+            <Eyebrow>Open orders</Eyebrow>
             <RowList style={{ paddingVertical: 2 }}>
               {drawers.open_orders.map((o, i) => (
                 <Row key={o.id} last={i === drawers.open_orders.length - 1} style={{ paddingVertical: 10 }}>
@@ -107,10 +107,10 @@ export function PortalDrawersSheet({
                     style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }}
                   >
                     <View style={{ flex: 1 }}>
-                      <T size={13.5} weight="semibold">{`${o.side_label} ${o.symbol} · ${shareLabel(o.qty)}`}</T>
-                      <T size={10} c={color.gold} style={{ marginTop: 2 }}>{o.status_label}</T>
+                      <T variant="meta" weight="semibold">{`${o.side_label} ${o.symbol} · ${shareLabel(o.qty)}`}</T>
+                      <T variant="meta" c={color.gold} style={{ marginTop: 2 }}>{o.status_label}</T>
                     </View>
-                    {o.limit_price != null ? <Num size={12} c={color.muted}>{money(o.limit_price)}</Num> : null}
+                    {o.limit_price != null ? <Num variant="meta" c={color.muted}>{money(o.limit_price)}</Num> : null}
                     <ArrowRight size={12} color={color.muted} />
                   </Pressable>
                 </Row>
@@ -119,7 +119,7 @@ export function PortalDrawersSheet({
           </>
         ) : null}
 
-        <Eyebrow>WATCHLIST</Eyebrow>
+        <Eyebrow>Watchlist</Eyebrow>
         {drawers.watchlist.length ? (
           <RowList style={{ paddingVertical: 2 }}>
             {drawers.watchlist.map((w, i) => (
@@ -132,8 +132,8 @@ export function PortalDrawersSheet({
                   style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11, minHeight: 44 }}
                 >
                   <View style={{ flex: 1 }}>
-                    <T size={14} weight="bold">{w.symbol}</T>
-                    {w.name ? <T size={10} c={color.muted} numberOfLines={1}>{w.name}</T> : null}
+                    <T variant="body" weight="bold">{w.symbol}</T>
+                    {w.name ? <T variant="meta" c={color.muted} numberOfLines={1}>{w.name}</T> : null}
                   </View>
                   <Price quote={w.quote} size={12} markSize={9} showChange />
                 </Pressable>
@@ -141,14 +141,14 @@ export function PortalDrawersSheet({
             ))}
           </RowList>
         ) : (
-          <T size={12.5} lh={18} c={color.muted}>
+          <T variant="meta" lh={18} c={color.muted}>
             Your watchlist is empty. Open a symbol and star it — Kai keeps an eye on what you keep here.
           </T>
         )}
 
         {drawers.recent.length ? (
           <>
-            <Eyebrow>RECENT</Eyebrow>
+            <Eyebrow>Recent</Eyebrow>
             <RowList style={{ paddingVertical: 2 }}>
               {drawers.recent.map((r, i) => (
                 <Row key={`r-${r.symbol}`} last={i === drawers.recent.length - 1} style={{ paddingVertical: 10 }}>
@@ -160,8 +160,8 @@ export function PortalDrawersSheet({
                     style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11, minHeight: 44 }}
                   >
                     <View style={{ flex: 1 }}>
-                      <T size={14} weight="bold">{r.symbol}</T>
-                      {r.name ? <T size={10} c={color.muted} numberOfLines={1}>{r.name}</T> : null}
+                      <T variant="body" weight="bold">{r.symbol}</T>
+                      {r.name ? <T variant="meta" c={color.muted} numberOfLines={1}>{r.name}</T> : null}
                     </View>
                     <Price quote={r.quote} size={12} markSize={9} showChange />
                   </Pressable>
@@ -172,7 +172,7 @@ export function PortalDrawersSheet({
         ) : null}
 
         <View style={{ height: 1, backgroundColor: alpha.ivory08, marginTop: 4 }} />
-        <T size={10.5} lh={15} c={color.dim}>
+        <T variant="meta" lh={15} c={color.dim}>
           Paper account. Nothing here is a real order, a real position or real money.
         </T>
       </ScrollView>

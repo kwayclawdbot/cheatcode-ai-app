@@ -113,7 +113,7 @@ function Rule() {
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <T size={10} weight="semibold" c={color.dim} style={{ letterSpacing: 1.4, textTransform: 'uppercase' }}>
+    <T variant="meta" weight="semibold" c={color.dim}>
       {children}
     </T>
   );
@@ -168,10 +168,10 @@ function Fundamentals({ payload }: { payload: Record<string, unknown> }) {
         <Row key={`${q.fiscal_year}${q.fiscal_period}`} index={i}>
           <View style={{ paddingVertical: 11 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-              <Num size={11} c={color.dim}>{`${q.fiscal_period} ${q.fiscal_year}`}</Num>
+              <Num variant="meta" c={color.dim}>{`${q.fiscal_period} ${q.fiscal_year}`}</Num>
               <View style={{ flex: 1 }} />
-              <Num size={19} weight="bold" c={color.text}>{big(q.revenue)}</Num>
-              <Num size={11} c={color.muted}>{`EPS ${q.eps_basic === null ? '—' : q.eps_basic.toFixed(2)}`}</Num>
+              <Num variant="sectionTitle" weight="bold" c={color.text}>{big(q.revenue)}</Num>
+              <Num variant="meta" c={color.muted}>{`EPS ${q.eps_basic === null ? '—' : q.eps_basic.toFixed(2)}`}</Num>
             </View>
             <Bar share={Math.abs(q.revenue ?? 0) / peak} delay={i * 55} />
           </View>
@@ -200,10 +200,10 @@ function News({ payload }: { payload: Record<string, unknown> }) {
               }}
             />
             <View style={{ flex: 1, gap: 4 }}>
-              <T size={13} c={color.text}>{h.title}</T>
+              <T variant="meta" c={color.text}>{h.title}</T>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <Num size={10} c={color.dim}>{h.published_utc.slice(0, 10)}</Num>
-                {h.publisher ? <T size={10} c={color.dim}>{h.publisher}</T> : null}
+                <Num variant="meta" c={color.dim}>{h.published_utc.slice(0, 10)}</Num>
+                {h.publisher ? <T variant="meta" c={color.dim}>{h.publisher}</T> : null}
               </View>
             </View>
           </View>
@@ -222,14 +222,14 @@ function Evidence({ payload }: { payload: Record<string, unknown> }) {
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
         <Label>Why this name qualified</Label>
         <View style={{ flex: 1 }} />
-        <Num size={11} c={color.muted}>{`${met} of ${conditions.length}`}</Num>
+        <Num variant="meta" c={color.muted}>{`${met} of ${conditions.length}`}</Num>
       </View>
       <View style={{ height: 10 }} />
       {conditions.map((c, i) => (
         <Row key={c.label} index={i}>
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'baseline', paddingVertical: 9 }}>
-            <T size={12} c={c.ok ? color.green : color.dim}>{c.ok ? '✓' : '·'}</T>
-            <T size={13} c={c.ok ? color.text : color.muted} style={{ flex: 1 }}>{c.label}</T>
+            <T variant="meta" c={c.ok ? color.green : color.dim}>{c.ok ? '✓' : '·'}</T>
+            <T variant="meta" c={c.ok ? color.text : color.muted} style={{ flex: 1 }}>{c.label}</T>
           </View>
           <Rule />
         </Row>
@@ -247,16 +247,16 @@ function Scorecard({ payload }: { payload: Record<string, unknown> }) {
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
         <T size={44} weight="bold" c={color.volt}>{String(payload.grade ?? '—')}</T>
         <View style={{ flex: 1, paddingBottom: 6 }}>
-          <T size={13} c={color.text}>{String(payload.headline ?? '')}</T>
-          {payload.state ? <T size={11} c={color.dim}>{String(payload.state)}</T> : null}
+          <T variant="meta" c={color.text}>{String(payload.headline ?? '')}</T>
+          {payload.state ? <T variant="meta" c={color.dim}>{String(payload.state)}</T> : null}
         </View>
       </View>
       <View style={{ height: 14 }} />
       {levels.map((l, i) => (
         <Row key={l.name} index={i}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', paddingVertical: 8 }}>
-            <T size={12} c={color.muted} style={{ flex: 1, textTransform: 'capitalize' }}>{l.name}</T>
-            <Num size={14} weight="semibold" c={color.cyan}>{l.price.toFixed(2)}</Num>
+            <T variant="meta" c={color.muted} style={{ flex: 1, textTransform: 'capitalize' }}>{l.name}</T>
+            <Num variant="body" weight="semibold" c={color.cyan}>{l.price.toFixed(2)}</Num>
           </View>
           <Rule />
         </Row>

@@ -24,7 +24,7 @@ import React, { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import { Sheet } from '../../../ui/Sheet';
 import { T } from '../../../ui/Text';
-import { alpha, color, radius } from '../../../ui/tokens';
+import { alpha, color, radius, typeScale } from '../../../ui/tokens';
 import { family, fontStack } from '../../../ui/fonts';
 
 export type MessageActionsTarget = {
@@ -84,8 +84,8 @@ function Row({
         borderTopColor: alpha.ivory07,
       }}
     >
-      <T size={14.5} weight="semibold" c={tone}>{label}</T>
-      <T size={11.5} lh={16} c={color.dim}>{note}</T>
+      <T variant="body" weight="semibold" c={tone}>{label}</T>
+      <T variant="meta" lh={16} c={color.dim}>{note}</T>
     </Pressable>
   );
 }
@@ -163,13 +163,13 @@ export function MessageActionsSheet({
       {/* What is being acted on. Always visible, so nobody moderates a row they
           scrolled past. */}
       <View style={{ borderLeftWidth: 2, borderLeftColor: alpha.ivory12, paddingLeft: 11, gap: 2 }}>
-        <T size={10.5} c={color.dim}>{target.mine ? 'You wrote' : `${target.authorName} wrote`}</T>
-        <T size={12.5} lh={18} c={color.muted} numberOfLines={4}>{target.excerpt || '(no text)'}</T>
+        <T variant="meta" c={color.dim}>{target.mine ? 'You wrote' : `${target.authorName} wrote`}</T>
+        <T variant="meta" lh={18} c={color.muted} numberOfLines={4}>{target.excerpt || '(no text)'}</T>
       </View>
 
       {result ? (
         <>
-          <T size={13} lh={19} testID="message-action-result">{result}</T>
+          <T variant="meta" lh={19} testID="message-action-result">{result}</T>
           <Pressable
             testID="message-action-done"
             accessibilityRole="button"
@@ -177,7 +177,7 @@ export function MessageActionsSheet({
             onPress={close}
             style={{ paddingVertical: 13, borderTopWidth: 1, borderTopColor: alpha.ivory07 }}
           >
-            <T size={14.5} weight="semibold" c={color.volt}>Done</T>
+            <T variant="body" weight="semibold" c={color.volt}>Done</T>
           </Pressable>
         </>
       ) : !action ? (
@@ -221,17 +221,17 @@ export function MessageActionsSheet({
           ) : null}
 
           {target.mine && !staff ? (
-            <T size={12.5} lh={18} c={color.dim} style={{ paddingTop: 12 }}>
+            <T variant="meta" lh={18} c={color.dim} style={{ paddingTop: 12 }}>
               This is your own post. There is nothing to report.
             </T>
           ) : null}
         </View>
       ) : (
         <View style={{ gap: 11 }}>
-          <T size={12.5} lh={18} c={color.muted}>{copy?.hint}</T>
+          <T variant="meta" lh={18} c={color.muted}>{copy?.hint}</T>
 
           <View style={{ gap: 7 }}>
-            <T size={11} c={color.muted}>Why</T>
+            <T variant="meta" c={color.muted}>Why</T>
             <TextInput
               testID="message-action-reason"
               accessibilityLabel="Why"
@@ -251,14 +251,14 @@ export function MessageActionsSheet({
                 borderColor: alpha.ivory20,
                 backgroundColor: alpha.ivory06,
                 fontFamily: fontStack(family.regular),
-                fontSize: 14,
+                fontSize: typeScale.body.size,
                 color: color.text,
                 textAlignVertical: 'top',
               }}
             />
           </View>
 
-          {error ? <T size={12} lh={17} c={color.red} testID="message-action-error">{error}</T> : null}
+          {error ? <T variant="meta" lh={17} c={color.red} testID="message-action-error">{error}</T> : null}
 
           <Pressable
             testID="message-action-confirm"
@@ -268,7 +268,7 @@ export function MessageActionsSheet({
             onPress={() => { void run(); }}
             style={{ paddingVertical: 13, borderTopWidth: 1, borderTopColor: alpha.ivory07, opacity: busy ? 0.5 : 1 }}
           >
-            <T size={14.5} weight="semibold" c={copy?.tone ?? color.volt}>
+            <T variant="body" weight="semibold" c={copy?.tone ?? color.volt}>
               {busy ? 'Working…' : (copy?.verb ?? 'Confirm')}
             </T>
           </Pressable>
@@ -278,7 +278,7 @@ export function MessageActionsSheet({
             accessibilityLabel="Back"
             onPress={() => { setAction(null); setError(null); }}
           >
-            <T size={12.5} c={color.dim}>Back</T>
+            <T variant="meta" c={color.dim}>Back</T>
           </Pressable>
         </View>
       )}

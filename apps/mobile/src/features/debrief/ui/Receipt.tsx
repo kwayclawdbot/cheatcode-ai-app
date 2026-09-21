@@ -37,7 +37,7 @@ export function ReceiptGrid({ items }: { items: ProcessReceipt[] }) {
             }}
           >
             <Icon size={16} color={s.c} />
-            <T size={10} c={r.status === 'ok' ? color.muted : s.c} align="center">{r.label}</T>
+            <T variant="meta" c={r.status === 'ok' ? color.muted : s.c} align="center">{r.label}</T>
           </View>
         );
       })}
@@ -55,7 +55,7 @@ export function ReceiptList({ items }: { items: ProcessReceipt[] }) {
         return (
           <View key={r.detail} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
             <View style={{ paddingTop: 2 }}><Icon size={15} color={s.c} /></View>
-            <T size={13} lh={19} style={{ flex: 1 }}>{r.detail}</T>
+            <T variant="meta" lh={19} style={{ flex: 1 }}>{r.detail}</T>
           </View>
         );
       })}
@@ -74,7 +74,7 @@ export function SimulatedTag({ testID }: { testID?: string }) {
         borderWidth: 0.5, borderColor: alpha.ivory25,
       }}
     >
-      <T size={9} weight="bold" ls={0.6} c={color.muted}>SIMULATED</T>
+      <T variant="meta" weight="bold" c={color.muted}>Simulated</T>
     </View>
   );
 }

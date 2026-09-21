@@ -59,7 +59,7 @@ export default function OrderDetail() {
         <StackHeader title="Order" />
         <View style={{ paddingHorizontal: 16 }}>
           <ObjectCard r={radius.xl} style={{ padding: 18 }}>
-            <T size={13} c={color.muted} lh={19}>
+            <T variant="meta" c={color.muted} lh={19}>
               {notAvailable ? "Orders aren't live on this build yet." : error ?? 'I could not find that order.'}
             </T>
           </ObjectCard>
@@ -87,9 +87,9 @@ export default function OrderDetail() {
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             {filled ? <Check size={15} color={color.volt} /> : <StatusDot c={pending ? color.gold : color.muted} />}
-            <T size={15} weight="bold" c={filled ? color.volt : pending ? color.gold : color.muted}>{data.status_label}</T>
+            <T variant="body" weight="bold" c={filled ? color.volt : pending ? color.gold : color.muted}>{data.status_label}</T>
           </View>
-          {data.status_detail ? <T size={12} c={color.muted} lh={17}>{data.status_detail}</T> : null}
+          {data.status_detail ? <T variant="meta" c={color.muted} lh={17}>{data.status_detail}</T> : null}
         </ObjectCard>
 
         <ObjectCard r={radius.xxl} style={{ paddingHorizontal: 15, paddingVertical: 4 }}>
@@ -117,7 +117,7 @@ export default function OrderDetail() {
           testID="ask-kai"
           onPress={() => openKaiSheet({ context: { kind: 'order', id: data.id, symbol: data.symbol } })}
         />
-        <T size={11} c={color.dim} align="center" lh={16}>
+        <T variant="meta" c={color.dim} align="center" lh={16}>
           Paper fills use delayed prices.
         </T>
       </ScrollView>

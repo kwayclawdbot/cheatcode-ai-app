@@ -76,7 +76,7 @@ function Row({ row, pinned = false }: { row: LeaderboardRow; pinned?: boolean })
       {/* Rank is a number you compare, so it is in the numeric face and
           right-aligned in a fixed column — otherwise 1 and 10 do not line up
           and the list stops reading as an order. */}
-      <Num size={13} weight="semibold" c={you ? color.volt : color.muted} style={{ width: 26, textAlign: 'right' }}>
+      <Num variant="meta" weight="semibold" c={you ? color.volt : color.muted} style={{ width: 26, textAlign: 'right' }}>
         {String(row.rank)}
       </Num>
       <Avatar initial={row.author.initial} url={row.author.avatar_url} size={30} />
@@ -96,7 +96,7 @@ function Row({ row, pinned = false }: { row: LeaderboardRow; pinned?: boolean })
             told your own belt on a list you are scanning for other people's.
           */}
           {you ? (
-            <T size={13} weight="semibold" numberOfLines={1} c={color.volt}>
+            <T variant="meta" weight="semibold" numberOfLines={1} c={color.volt}>
               {row.author.handle ? `@${row.author.handle}` : row.author.display_name}
             </T>
           ) : (
@@ -108,25 +108,25 @@ function Row({ row, pinned = false }: { row: LeaderboardRow; pinned?: boolean })
               testID={`board-row-name-${row.rank}`}
             />
           )}
-          {you ? <T size={10} c={color.dim}>you</T> : null}
+          {you ? <T variant="meta" c={color.dim}>you</T> : null}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <BeltChip belt={row.author.belt} />
-          <T size={10} c={color.dim}>{`${row.wins} of ${row.resolved} resolved`}</T>
+          <T variant="meta" c={color.dim}>{`${row.wins} of ${row.resolved} resolved`}</T>
         </View>
       </View>
 
       {/* THE POINT OF THE BOARD. Accuracy loud, points quiet beside it. */}
       <View style={{ alignItems: 'flex-end' }}>
         {row.accuracy != null ? (
-          <Num size={17} weight="bold" c={you ? color.volt : color.text} testID={`board-accuracy-${row.rank}`}>
+          <Num variant="cardTitle" weight="bold" c={you ? color.volt : color.text} testID={`board-accuracy-${row.rank}`}>
             {`${row.accuracy}%`}
           </Num>
         ) : (
           // Nothing has resolved. That is not "0% accurate" — a dash says so.
-          <T size={15} c={color.dim} testID={`board-accuracy-${row.rank}`}>—</T>
+          <T variant="body" c={color.dim} testID={`board-accuracy-${row.rank}`}>—</T>
         )}
-        <T size={10} c={color.dim}>{`${row.points} pts`}</T>
+        <T variant="meta" c={color.dim}>{`${row.points} pts`}</T>
       </View>
     </Pressable>
   );
@@ -158,14 +158,14 @@ export default function LeaderboardScreen() {
             <ActivityIndicator color={color.violet} />
           </View>
         ) : board.error ? (
-          <T size={13} lh={19} c={color.muted} testID="board-error">{board.error}</T>
+          <T variant="meta" lh={19} c={color.muted} testID="board-error">{board.error}</T>
         ) : data && data.rows.length ? (
           <>
             {/* The column header exists so "79%" is never an unlabelled
                 number. It is the only header the list gets. */}
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 2 }}>
-              <T size={10} c={color.dim} style={{ flex: 1 }}>MEMBER</T>
-              <T size={10} c={color.dim}>ACCURACY</T>
+              <T variant="meta" c={color.dim} style={{ flex: 1 }}>MEMBER</T>
+              <T variant="meta" c={color.dim}>ACCURACY</T>
             </View>
 
             <ObjectCard r={radius.xl} style={{ paddingHorizontal: 14, paddingVertical: 2 }} testID="board-rows">
@@ -174,15 +174,15 @@ export default function LeaderboardScreen() {
 
             {data.you ? (
               <View style={{ gap: 6 }} testID="board-you">
-                <T size={10.5} c={color.dim}>WHERE YOU ARE</T>
+                <T variant="meta" c={color.dim}>WHERE YOU ARE</T>
                 <Row row={data.you} pinned />
               </View>
             ) : null}
           </>
         ) : (
           <View style={{ paddingVertical: 30, gap: 6 }} testID="board-empty">
-            <T size={14} weight="semibold">Nobody is on the board yet.</T>
-            <T size={12.5} lh={18} c={color.muted}>
+            <T variant="body" weight="semibold">Nobody is on the board yet.</T>
+            <T variant="meta" lh={18} c={color.muted}>
               {data?.empty_plain
                 ?? 'A call reaches the board once it has an entry and a stop or a target, and price has resolved it one way or the other.'}
             </T>
@@ -200,7 +200,7 @@ export default function LeaderboardScreen() {
               onPress={() => setRulesOpen((v) => !v)}
               style={({ pressed }) => ({ minHeight: 40, justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}
             >
-              <T size={12} weight="semibold" c={color.muted}>
+              <T variant="meta" weight="semibold" c={color.muted}>
                 {rulesOpen ? 'Hide how points work' : 'How points work'}
               </T>
             </Pressable>
@@ -210,17 +210,17 @@ export default function LeaderboardScreen() {
                 {data.explainer.lines.map((l, i) => (
                   <View key={i} style={{ flexDirection: 'row', gap: 9 }}>
                     <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: alpha.volt55, marginTop: 7 }} />
-                    <T size={12.5} lh={18.5} c={color.muted} style={{ flex: 1 }}>{l}</T>
+                    <T variant="meta" lh={18.5} c={color.muted} style={{ flex: 1 }}>{l}</T>
                   </View>
                 ))}
 
                 {data.explainer.belts.length ? (
                   <View style={{ gap: 7, paddingTop: 4, borderTopWidth: 0.5, borderTopColor: alpha.ivory08 }}>
-                    <Eyebrow c={color.dim}>THE LADDER</Eyebrow>
+                    <Eyebrow c={color.dim}>The ladder</Eyebrow>
                     {data.explainer.belts.map((b) => (
                       <View key={b.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <BeltChip belt={b.key} label={b.label} />
-                        <Num size={11.5} c={color.muted}>{`${b.min_points} pts`}</Num>
+                        <Num variant="meta" c={color.muted}>{`${b.min_points} pts`}</Num>
                       </View>
                     ))}
                   </View>
@@ -231,13 +231,13 @@ export default function LeaderboardScreen() {
         ) : null}
 
         {/* The standing promise, said once at the foot of the board. */}
-        <T size={10} lh={15} c={color.dim} testID="board-footer">
+        <T variant="meta" lh={15} c={color.dim} testID="board-footer">
           Outcomes only. The board never shows profit, returns or account size — being right is what is
           measured here.
         </T>
 
         {board.isFixture ? (
-          <T size={10} c={color.dim} align="center">Example board — the service is not connected here.</T>
+          <T variant="meta" c={color.dim} align="center">Example board — the service is not connected here.</T>
         ) : null}
       </ScrollView>
     </Screen>

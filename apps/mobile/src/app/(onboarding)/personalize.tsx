@@ -51,8 +51,8 @@ export default function Personalize() {
 
   return (
     <Screen variant="dome" layout="stack" testID="screen-personalize">
-      <T size={26} weight="bold" ls={-0.4} lh={31}>What should Kai watch?</T>
-      <T size={14} c={color.muted} style={{ marginTop: 8 }}>
+      <T variant="screenTitle" weight="bold" ls={-0.4} lh={31}>What should Kai watch?</T>
+      <T variant="body" c={color.muted} style={{ marginTop: 8 }}>
         Optional. It changes what Kai looks at first, never what may be risked. Account edits it any time.
       </T>
 
@@ -75,12 +75,12 @@ export default function Personalize() {
                     backgroundColor: on ? alpha.volt10 : 'transparent',
                   }}
                 >
-                  <T size={13} c={on ? color.volt : color.muted}>{FOCUS_CHIP[k]}</T>
+                  <T variant="meta" c={on ? color.volt : color.muted}>{FOCUS_CHIP[k]}</T>
                 </Pressable>
               );
             })}
           </View>
-          <T size={11.5} c={color.muted} style={{ marginTop: 10 }} testID="focus-summary">{focusSummary(focus)}</T>
+          <T variant="meta" c={color.muted} style={{ marginTop: 10 }} testID="focus-summary">{focusSummary(focus)}</T>
         </View>
       </ScrollView>
 

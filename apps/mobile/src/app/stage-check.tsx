@@ -210,7 +210,7 @@ function ChoreographyStage() {
   if (!DEV && !env.FIXTURES) {
     return (
       <View style={{ flex: 1, backgroundColor: color.bg, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-        <T size={14} c={color.muted} testID="stage-check-disabled">
+        <T variant="body" c={color.muted} testID="stage-check-disabled">
           The stage harness draws invented candles, so it does not run outside development.
         </T>
       </View>
@@ -222,19 +222,19 @@ function ChoreographyStage() {
       {/* ---- the chart, dominant ---- */}
       <View style={{ flex: 1, padding: 24, gap: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12 }}>
-          <T size={22} weight="bold" c={color.text}>META</T>
-          <Num size={22} weight="bold" c={color.cyan}>508.40</Num>
-          <Num size={13} c={color.green}>+2.14%</Num>
+          <T variant="sectionTitle" weight="bold" c={color.text}>META</T>
+          <Num variant="sectionTitle" weight="bold" c={color.cyan}>508.40</Num>
+          <Num variant="meta" c={color.green}>+2.14%</Num>
           <View style={{ flex: 1 }} />
           {ready ? (
-            <Num size={11} c={color.dim} testID="stage-first-paint">
+            <Num variant="meta" c={color.dim} testID="stage-first-paint">
               {`first paint ${ready.firstPaintMs}ms · lwc ${ready.version}`}
             </Num>
           ) : null}
           {painted ? (
-            <Num size={11} c={color.dim} testID="stage-painted">{`${painted.bars} bars painted in ${painted.ms}ms`}</Num>
+            <Num variant="meta" c={color.dim} testID="stage-painted">{`${painted.bars} bars painted in ${painted.ms}ms`}</Num>
           ) : null}
-          {fps ? <Num size={11} c={color.dim} testID="stage-fps">{`${fps.fps} fps (worst ${fps.worst})`}</Num> : null}
+          {fps ? <Num variant="meta" c={color.dim} testID="stage-fps">{`${fps.fps} fps (worst ${fps.worst})`}</Num> : null}
         </View>
 
         <View style={{ flex: 1 }}>
@@ -264,7 +264,7 @@ function ChoreographyStage() {
           borderLeftWidth: 0.5, borderLeftColor: alpha.ivory08,
         }}
       >
-        <T size={11} weight="bold" c={color.dim} ls={1.1}>LIVE-1 CHOREOGRAPHY</T>
+        <T variant="meta" weight="bold" c={color.dim}>Live-1 choreography</T>
 
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pressable
@@ -276,7 +276,7 @@ function ChoreographyStage() {
               backgroundColor: color.volt, transform: [{ scale: pressed ? 0.97 : 1 }],
             })}
           >
-            <T size={12} weight="bold" c={color.bg}>{running ? 'Running…' : 'Run the six'}</T>
+            <T variant="meta" weight="bold" c={color.bg}>{running ? 'Running…' : 'Run the six'}</T>
           </Pressable>
           <Pressable
             testID="stage-reset"
@@ -287,7 +287,7 @@ function ChoreographyStage() {
               borderWidth: 0.5, borderColor: alpha.ivory20, transform: [{ scale: pressed ? 0.97 : 1 }],
             })}
           >
-            <T size={12} weight="semibold" c={color.muted}>Reset</T>
+            <T variant="meta" weight="semibold" c={color.muted}>Reset</T>
           </Pressable>
           <Pressable
             testID="stage-all-kinds"
@@ -298,7 +298,7 @@ function ChoreographyStage() {
               borderWidth: 0.5, borderColor: alpha.violet45, transform: [{ scale: pressed ? 0.97 : 1 }],
             })}
           >
-            <T size={12} weight="semibold" c={color.violetLight}>All six kinds</T>
+            <T variant="meta" weight="semibold" c={color.violetLight}>All six kinds</T>
           </Pressable>
         </View>
 
@@ -319,14 +319,14 @@ function ChoreographyStage() {
                   borderLeftColor: on ? color.violet : 'transparent',
                 }}
               >
-                <Num size={10} weight="medium" c={on ? color.violetLight : color.dim}>{s.label}</Num>
-                <T size={12.5} c={on ? color.text : color.muted} lh={18}>{s.narration}</T>
+                <Num variant="meta" weight="medium" c={on ? color.violetLight : color.dim}>{s.label}</Num>
+                <T variant="meta" c={on ? color.text : color.muted} lh={18}>{s.narration}</T>
               </View>
             );
           })}
         </ScrollView>
 
-        <T size={10.5} c={color.dim} lh={16}>
+        <T variant="meta" c={color.dim} lh={16}>
           Fixture candles. Every level here comes from the seeded META alert, so nothing on
           this stage is a price that was made up to look good.
         </T>
@@ -600,7 +600,7 @@ function LiveStage({
   if (!DEV && !env.FIXTURES) {
     return (
       <View style={{ flex: 1, backgroundColor: color.bg, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-        <T size={14} c={color.muted} testID="stage-check-disabled">
+        <T variant="body" c={color.muted} testID="stage-check-disabled">
           The stage harness does not run outside development.
         </T>
       </View>
@@ -611,15 +611,15 @@ function LiveStage({
     <View style={{ flex: 1, backgroundColor: color.bg, flexDirection: 'row' }} testID="screen-live-stage">
       <View style={{ flex: 1, padding: 24, gap: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12 }}>
-          <T size={22} weight="bold" c={color.text} testID="live-symbol">{symbol}</T>
-          {rail?.price ? <Num size={22} weight="bold" c={color.cyan}>{String(rail.price)}</Num> : null}
+          <T variant="sectionTitle" weight="bold" c={color.text} testID="live-symbol">{symbol}</T>
+          {rail?.price ? <Num variant="sectionTitle" weight="bold" c={color.cyan}>{String(rail.price)}</Num> : null}
           {typeof rail?.change_pct === 'number' ? (
-            <Num size={13} c={(rail.change_pct as number) >= 0 ? color.green : color.red}>
+            <Num variant="meta" c={(rail.change_pct as number) >= 0 ? color.green : color.red}>
               {`${(rail.change_pct as number) >= 0 ? '+' : ''}${rail.change_pct}%`}
             </Num>
           ) : null}
           <View style={{ flex: 1 }} />
-          <Num size={11} c={color.dim} testID="live-cursor">{`seq ${cursor} · ${tf} · ${candles.length} bars`}</Num>
+          <Num variant="meta" c={color.dim} testID="live-cursor">{`seq ${cursor} · ${tf} · ${candles.length} bars`}</Num>
         </View>
 
         <View style={{ flex: 1 }}>
@@ -649,12 +649,12 @@ function LiveStage({
             gap: 6,
           }}
         >
-          <Num size={10} weight="bold" c={color.dim}>
+          <Num variant="meta" weight="bold" c={color.dim}>
             {line ? (line.voice === 'kai' ? 'KAI' : 'HOST') : 'STANDING BY'}
           </Num>
-          <T size={15} c={color.text} lh={22} testID="live-line">{line?.text ?? '—'}</T>
+          <T variant="body" c={color.text} lh={22} testID="live-line">{line?.text ?? '—'}</T>
           {line?.glossary?.length ? (
-            <T size={11.5} c={color.violetLight} lh={17} testID="live-glossary">
+            <T variant="meta" c={color.violetLight} lh={17} testID="live-glossary">
               {line.glossary.map((g: { term: string; plain: string }) => g.plain).join('  ·  ')}
             </T>
           ) : null}
@@ -662,9 +662,9 @@ function LiveStage({
       </View>
 
       <View style={{ width: 340, padding: 24, gap: 14, borderLeftWidth: 0.5, borderLeftColor: alpha.ivory08 }}>
-        <T size={11} weight="bold" c={color.dim} ls={1.1}>KAI LIVE — REPLAY</T>
-        <T size={12} c={color.muted} lh={18} testID="live-headline">{headline || show}</T>
-        <Num size={10.5} c={color.dim}>
+        <T variant="meta" weight="bold" c={color.dim}>Kai live — replay</T>
+        <T variant="meta" c={color.muted} lh={18} testID="live-headline">{headline || show}</T>
+        <Num variant="meta" c={color.dim}>
           {`${status}${error ? ` · ${error}` : ''}${line?.audio_state === 'estimated' ? ' · captions only, no audio in this show' : ''}`}
         </Num>
 
@@ -678,15 +678,15 @@ function LiveStage({
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 8 }} showsVerticalScrollIndicator={false}>
           {transcript.slice(-14).map((s, i) => (
             <View key={`${s.seq}-${i}`} style={{ gap: 2 }}>
-              <Num size={9.5} weight="medium" c={s.voice === 'kai' ? color.violetLight : color.volt}>
+              <Num variant="meta" weight="medium" c={s.voice === 'kai' ? color.violetLight : color.volt}>
                 {s.voice === 'kai' ? 'KAI' : 'HOST'}
               </Num>
-              <T size={11.5} c={s.seq === line?.seq ? color.text : color.muted} lh={17}>{s.text}</T>
+              <T variant="meta" c={s.seq === line?.seq ? color.text : color.muted} lh={17}>{s.text}</T>
             </View>
           ))}
         </ScrollView>
 
-        <T size={10.5} c={color.dim} lh={16}>
+        <T variant="meta" c={color.dim} lh={16}>
           Every level on this chart is a stored annotation with a reason. Anything Kai
           could not trace to a real object was dropped before this show was written.
         </T>

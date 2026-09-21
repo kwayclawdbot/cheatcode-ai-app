@@ -38,9 +38,9 @@ export function ContinueTrainingObject({ testID = 'home-training' }: { testID?: 
   if (!enrolled) {
     return (
       <ObjectCard tone="kai" r={radius.xxxl} style={{ padding: 15, gap: 10 }} testID={testID}>
-        <Eyebrow c={color.violetLight}>TRAINING</Eyebrow>
-        <T size={17} weight="bold" lh={22}>Start with the essentials</T>
-        <T size={12.5} lh={19} c={color.muted}>
+        <Eyebrow c={color.violetLight}>Training</Eyebrow>
+        <T variant="cardTitle" weight="bold" lh={22}>Start with the essentials</T>
+        <T variant="meta" lh={19} c={color.muted}>
           Market basics first, then reading a chart, then building a plan. The first lesson takes
           about nine minutes and the rest are being written.
         </T>
@@ -64,11 +64,11 @@ export function ContinueTrainingObject({ testID = 'home-training' }: { testID?: 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Eyebrow c={color.violetLight}>{`STEP ${step.index} · ${step.title.toUpperCase()}`}</Eyebrow>
-          <T size={15.5} weight="bold" numberOfLines={1} style={{ marginTop: 3 }}>
+          <T variant="body" weight="bold" numberOfLines={1} style={{ marginTop: 3 }}>
             {next?.title ?? 'You are up to date'}
           </T>
         </View>
-        <Num size={13} weight="bold">{`${pct}%`}</Num>
+        <Num variant="meta" weight="bold">{`${pct}%`}</Num>
       </View>
 
       <TrainingProgress value={pct} testID="home-training-progress" />
@@ -77,7 +77,7 @@ export function ContinueTrainingObject({ testID = 'home-training' }: { testID?: 
           not of the seven-day plan — one lesson of thirty-one is written, and a
           bar reading 3% would be a true statement about the plan and a useless
           one about the person who just finished everything available. */}
-      <T size={11} c={color.dim}>
+      <T variant="meta" c={color.dim}>
         {`${written.done} of ${written.total} lesson${written.total === 1 ? '' : 's'} written so far`}
       </T>
 

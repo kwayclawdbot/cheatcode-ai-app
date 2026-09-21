@@ -265,7 +265,7 @@ export function GradeChip({ grade, score, testID }: { grade?: string | null; sco
       // text rather than lining up the block.
       style={{ alignItems: 'center', gap: 2.5, marginTop: 3 }}
     >
-      <T size={13} weight="bold" c={band.letter} lh={14} ls={-0.2}>
+      <T variant="meta" weight="bold" c={band.letter} lh={14} ls={-0.2}>
         {letter}
       </T>
       <View style={{ width, height: 2, borderRadius: 1, backgroundColor: alpha.ivory12, overflow: 'hidden' }}>

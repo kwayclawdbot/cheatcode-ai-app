@@ -342,7 +342,7 @@ export default function RoomScreen() {
         title={title}
         subtitle={
           <View style={{ alignItems: 'center', gap: 2 }}>
-            <T size={10} c={color.muted}>{subtitle || ' '}</T>
+            <T variant="meta" c={color.muted}>{subtitle || ' '}</T>
             <RoomStateNote slowModeS={room?.config.slow_mode_s} restricted={room?.config.posting_restricted} />
           </View>
         }
@@ -356,7 +356,7 @@ export default function RoomScreen() {
             testID="room-avatar"
           />
         ) : undefined}
-        right={room?.setup?.grade_display ? <T size={16} weight="bold" c={color.violet}>{room.setup.grade_display}</T> : undefined}
+        right={room?.setup?.grade_display ? <T variant="body" weight="bold" c={color.violet}>{room.setup.grade_display}</T> : undefined}
         onRight={() => setMoreSheet(true)}
         rightLabel="Room options"
       />
@@ -381,7 +381,7 @@ export default function RoomScreen() {
         >
           {exampleData ? (
             <ObjectCard tone="gold" r={radius.lg} style={{ padding: 12 }} testID="example-data">
-              <T size={12} lh={17} c={color.gold}>
+              <T variant="meta" lh={17} c={color.gold}>
                 Example conversation. The room service isn't connected yet, so nothing here was written by a member.
               </T>
             </ObjectCard>
@@ -390,8 +390,8 @@ export default function RoomScreen() {
           {/* Could not be reached. Say so, and offer the one thing that helps. */}
           {unreachable ? (
             <ObjectCard r={radius.lg} style={{ padding: 16, gap: 10 }} testID="room-unreachable">
-              <T size={13.5} weight="bold">We couldn't load this room</T>
-              <T size={12} lh={18} c={color.muted}>
+              <T variant="meta" weight="bold">We couldn't load this room</T>
+              <T variant="meta" lh={18} c={color.muted}>
                 Nothing was reached, so nothing is shown — what you would be looking at otherwise is
                 invented, and a room of invented posts is worse than an empty one. Your connection or
                 the service is the usual reason.
@@ -408,7 +408,7 @@ export default function RoomScreen() {
                   opacity: pressed ? 0.7 : 1,
                 })}
               >
-                <T size={12} weight="semibold" c={color.volt}>Try again</T>
+                <T variant="meta" weight="semibold" c={color.volt}>Try again</T>
               </Pressable>
             </ObjectCard>
           ) : null}
@@ -484,13 +484,13 @@ export default function RoomScreen() {
           {busy ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <ActivityIndicator size="small" color={color.violet} />
-              <T size={12} c={color.violetLight}>Kai is working on it…</T>
+              <T variant="meta" c={color.violetLight}>Kai is working on it…</T>
             </View>
           ) : null}
 
           {error ? (
             <ObjectCard tone="gold" r={radius.lg} style={{ padding: 12 }}>
-              <T size={12} c={color.gold}>{error}</T>
+              <T variant="meta" c={color.gold}>{error}</T>
             </ObjectCard>
           ) : null}
         </ScrollView>
@@ -503,14 +503,14 @@ export default function RoomScreen() {
         {selectedMessage ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 8 }}>
             <View style={{ width: 3, height: 22, borderRadius: 2, backgroundColor: color.violet }} />
-            <T size={11} c={color.violetLight} numberOfLines={1} style={{ flex: 1 }}>
+            <T variant="meta" c={color.violetLight} numberOfLines={1} style={{ flex: 1 }}>
               Selected: {selectedMessage.author.display_name} — {selectedMessage.body ?? 'a Kai object'}
             </T>
           </View>
         ) : null}
         {media.notice ? (
           <View style={{ paddingBottom: 8 }}>
-            <T size={11} c={color.gold}>{media.notice}</T>
+            <T variant="meta" c={color.gold}>{media.notice}</T>
           </View>
         ) : null}
         <RoomComposer

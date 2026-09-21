@@ -102,14 +102,14 @@ export default function Subscription() {
         >
           <View testID="plan-unknown">
             <Eyebrow c={color.muted}>Your plan</Eyebrow>
-            <T size={20} weight="bold" c={color.text} style={{ marginTop: space.x8, lineHeight: 27 }}>
+            <T variant="sectionTitle" weight="bold" c={color.text} style={{ marginTop: space.x8, lineHeight: 27 }}>
               We could not read your plan
             </T>
-            <T size={13.5} lh={20} c={color.muted} style={{ marginTop: space.x10 }}>
+            <T variant="meta" lh={20} c={color.muted} style={{ marginTop: space.x10 }}>
               {ENTITLEMENT_UNKNOWN_PLAIN}
             </T>
             {notAvailable ? <NotConnected what="Your plan" /> : error ? (
-              <T size={11.5} c={color.muted} style={{ marginTop: space.x10 }}>{error}</T>
+              <T variant="meta" c={color.muted} style={{ marginTop: space.x10 }}>{error}</T>
             ) : null}
             <Button
               testID="plan-retry"
@@ -124,7 +124,7 @@ export default function Subscription() {
             marginTop: space.x22, paddingTop: space.x12,
             borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: alpha.ivory10,
           }}>
-            <T size={11} lh={17} c={color.dim}>{NOT_ADVICE_LONG}</T>
+            <T variant="meta" lh={17} c={color.dim}>{NOT_ADVICE_LONG}</T>
           </View>
           <LegalLinks style={{ marginTop: space.x18 }} testID="plan-legal" />
         </ScrollView>
@@ -147,7 +147,7 @@ export default function Subscription() {
           <Eyebrow c={onFree ? color.muted : color.gold}>Your plan</Eyebrow>
           {/* READ, never defaulted. `planName` is null only when neither /me
               nor /credits answered, and that case never reaches this branch. */}
-          <T size={26} weight="bold" c={color.text} style={{ marginTop: space.x8 }} testID="plan-name">
+          <T variant="screenTitle" weight="bold" c={color.text} style={{ marginTop: space.x8 }} testID="plan-name">
             {plan.planName}
           </T>
           {/*
@@ -162,19 +162,19 @@ export default function Subscription() {
               testID="plan-to-credits"
               style={({ pressed }) => ({ marginTop: space.x10, opacity: pressed ? 0.6 : 1 })}
             >
-              <T size={14} lh={21} c={color.muted}>
-                <T size={14} weight="bold" c={color.volt}>{balance.available}</T>
+              <T variant="body" lh={21} c={color.muted}>
+                <T variant="body" weight="bold" c={color.volt}>{balance.available}</T>
                 {` of ${balance.granted} credits left today — about ${balance.typical_runs_per_day} questions a day on this plan. `}
-                <T size={14} weight="semibold" c={color.volt}>See credits ›</T>
+                <T variant="body" weight="semibold" c={color.volt}>See credits ›</T>
               </T>
             </Pressable>
           ) : (
-            <T size={13} lh={20} c={color.muted} style={{ marginTop: space.x10 }}>
+            <T variant="meta" lh={20} c={color.muted} style={{ marginTop: space.x10 }}>
               {plan.plain ?? 'Everything Kai explains is yours.'}
             </T>
           )}
           {plan.planBlurb ? (
-            <T size={13} lh={20} c={color.muted} style={{ marginTop: space.x10 }} testID="plan-blurb">
+            <T variant="meta" lh={20} c={color.muted} style={{ marginTop: space.x10 }} testID="plan-blurb">
               {plan.planBlurb}
             </T>
           ) : null}
@@ -195,8 +195,8 @@ export default function Subscription() {
                 <Bay key={f.key} first={i === 0} style={{ paddingVertical: space.x11 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x10 }}>
                     <Check size={13} color={color.green} strokeWidth={2.6} />
-                    <T size={13} style={{ flex: 1 }}>{f.label}</T>
-                    <T size={12.5} weight="medium" c={color.muted}>{f.value_plain}</T>
+                    <T variant="meta" style={{ flex: 1 }}>{f.label}</T>
+                    <T variant="meta" weight="medium" c={color.muted}>{f.value_plain}</T>
                   </View>
                 </Bay>
               ))}
@@ -222,8 +222,8 @@ export default function Subscription() {
                 <Bay key={f.key} first={i === 0} style={{ paddingVertical: space.x11 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.x10 }}>
                     <Lock size={13} color={color.gold} />
-                    <T size={13} style={{ flex: 1 }} c={color.muted}>{f.label}</T>
-                    <T size={12.5} weight="medium" c={color.dim}>{f.value_plain}</T>
+                    <T variant="meta" style={{ flex: 1 }} c={color.muted}>{f.label}</T>
+                    <T variant="meta" weight="medium" c={color.dim}>{f.value_plain}</T>
                   </View>
                 </Bay>
               ))}
@@ -246,13 +246,13 @@ export default function Subscription() {
           marginTop: space.x22, paddingTop: space.x12,
           borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: alpha.ivory10,
         }}>
-          <T size={11} lh={17} c={color.dim}>{NOT_ADVICE_LONG}</T>
+          <T variant="meta" lh={17} c={color.dim}>{NOT_ADVICE_LONG}</T>
         </View>
 
         <LegalLinks style={{ marginTop: space.x18 }} testID="plan-legal" />
 
         {isFixture ? (
-          <T size={10} c={color.dim} align="center" style={{ marginTop: space.x10 }}>
+          <T variant="meta" c={color.dim} align="center" style={{ marginTop: space.x10 }}>
             Sample plan — the account service is not connected here.
           </T>
         ) : null}

@@ -86,8 +86,8 @@ export function StandingCard({
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 11 }}>
         <View style={{ paddingTop: 2 }}><CapabilityMark state="quiet" size={20} /></View>
         <View style={{ flex: 1, gap: 5 }}>
-          <T size={15} lh={21} testID="standing-plain">{standing.plain}</T>
-          {stamp ? <T size={12} c={color.dim} testID="standing-checked-at">{stamp}</T> : null}
+          <T variant="body" lh={21} testID="standing-plain">{standing.plain}</T>
+          {stamp ? <T variant="meta" c={color.dim} testID="standing-checked-at">{stamp}</T> : null}
         </View>
       </View>
 
@@ -95,8 +95,8 @@ export function StandingCard({
           just a mood; with it, it is a report. */}
       {checkedPlain(standing) ? (
         <View style={{ gap: 6, paddingTop: 2, borderTopWidth: 0.5, borderTopColor: alpha.ivory08 }}>
-          <Eyebrow>WHAT I CHECKED</Eyebrow>
-          <T size={12} lh={18} c={color.muted} testID="standing-checked">{checkedPlain(standing)}</T>
+          <Eyebrow>What I checked</Eyebrow>
+          <T variant="meta" lh={18} c={color.muted} testID="standing-checked">{checkedPlain(standing)}</T>
         </View>
       ) : null}
 
@@ -120,7 +120,7 @@ export function ReviewWatchlist({ onPress, testID = 'standing-watchlist' }: { on
       onPress={onPress}
       style={({ pressed }) => ({ paddingVertical: 10, alignItems: 'center', opacity: pressed ? 0.6 : 1 })}
     >
-      <T size={13} weight="semibold" c={color.muted}>Review watchlist  →</T>
+      <T variant="meta" weight="semibold" c={color.muted}>Review watchlist  →</T>
     </Pressable>
   );
 }

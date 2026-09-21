@@ -92,7 +92,7 @@ export function DayNode({
             {complete ? (
               <Check size={18} color={color.volt} />
             ) : (
-              <Num size={17} weight="bold" c={locked ? color.dim : color.text}>
+              <Num variant="cardTitle" weight="bold" c={locked ? color.dim : color.text}>
                 {String(day.index)}
               </Num>
             )}
@@ -103,12 +103,12 @@ export function DayNode({
           <Eyebrow c={complete ? color.volt : locked ? color.dim : color.muted}>
             {`DAY ${day.index} OF 7`}
           </Eyebrow>
-          <T size={15} weight="bold" numberOfLines={1}>{day.title}</T>
-          <T size={11.5} lh={16} c={color.muted} numberOfLines={2}>{day.outcome}</T>
+          <T variant="body" weight="bold" numberOfLines={1}>{day.title}</T>
+          <T variant="meta" lh={16} c={color.muted} numberOfLines={2}>{day.outcome}</T>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
-            <Num size={10.5} c={color.dim}>{`${day.minutes} min`}</Num>
-            <T size={10.5} c={color.dim}>·</T>
-            <T size={10.5} c={complete ? color.volt : locked ? color.dim : color.muted}>
+            <Num variant="meta" c={color.dim}>{`${day.minutes} min`}</Num>
+            <T variant="meta" c={color.dim}>·</T>
+            <T variant="meta" c={complete ? color.volt : locked ? color.dim : color.muted}>
               {complete ? 'Complete' : locked ? 'Locked' : 'Available now'}
             </T>
           </View>
@@ -195,13 +195,13 @@ export function LessonNodeRow({
         {complete ? (
           <Check size={12} color={color.bg} />
         ) : (
-          <Num size={11} weight="bold" c={open ? color.text : color.dim}>{String(position)}</Num>
+          <Num variant="meta" weight="bold" c={open ? color.text : color.dim}>{String(position)}</Num>
         )}
       </View>
 
       <View style={{ flex: 1, minWidth: 0 }}>
-        <T size={13.5} weight={open ? 'bold' : 'semibold'} numberOfLines={1}>{node.title}</T>
-        <T size={10.5} c={color.muted} numberOfLines={1} style={{ marginTop: 2 }}>
+        <T variant="meta" weight={open ? 'bold' : 'semibold'} numberOfLines={1}>{node.title}</T>
+        <T variant="meta" c={color.muted} numberOfLines={1} style={{ marginTop: 2 }}>
           {node.minutes} min · {LESSON_KIND_LABEL[node.kind]}
         </T>
       </View>
@@ -216,7 +216,7 @@ export function LessonNodeRow({
             borderColor: alpha.gold40,
           }}
         >
-          <T size={9} c={color.gold}>SOON</T>
+          <T variant="meta" c={color.gold}>SOON</T>
         </View>
       ) : state === 'locked' ? (
         <Lock size={13} color={color.dim} />
@@ -229,8 +229,8 @@ export function SkillBar({ label, value }: { label: string; value: number }) {
   return (
     <View style={{ gap: 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <T size={11.5} c={color.muted} style={{ flex: 1 }}>{label}</T>
-        <Num size={11.5} weight="bold">{`${value}%`}</Num>
+        <T variant="meta" c={color.muted} style={{ flex: 1 }}>{label}</T>
+        <Num variant="meta" weight="bold">{`${value}%`}</Num>
       </View>
       <TrainingProgress value={value} />
     </View>

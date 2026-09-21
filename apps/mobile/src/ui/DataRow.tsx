@@ -74,19 +74,19 @@ export function DataRow({
       {lead}
       <View style={{ flex: 1, gap: 2 }}>
         {typeof label === 'string'
-          ? <T size={13.5} weight="semibold" numberOfLines={1}>{label}</T>
+          ? <T variant="meta" weight="semibold" numberOfLines={1}>{label}</T>
           : label}
         {typeof sub === 'string'
-          ? <T size={11} c={color.muted} numberOfLines={1}>{sub}</T>
+          ? <T variant="meta" c={color.muted} numberOfLines={1}>{sub}</T>
           : sub}
         {typeof meta === 'string'
-          ? <T size={11} c={color.dim} lh={16}>{meta}</T>
+          ? <T variant="meta" c={color.dim} lh={16}>{meta}</T>
           : meta}
       </View>
       {valueNode ?? (value != null
         ? (mono
-            ? <Num size={12.5} weight="semibold" c={valueTone ?? color.text}>{value}</Num>
-            : <T size={12.5} c={valueTone ?? color.muted}>{value}</T>)
+            ? <Num variant="meta" weight="semibold" c={valueTone ?? color.text}>{value}</Num>
+            : <T variant="meta" c={valueTone ?? color.muted}>{value}</T>)
         : null)}
       {chevron ? <ArrowRight size={12} color={color.muted} /> : null}
     </View>
@@ -145,11 +145,11 @@ export function Figure({
       }}
     >
       <View style={{ flex: 1, gap: 3 }}>
-        <T size={13} c={color.text}>{label}</T>
-        {note ? <T size={11} c={color.dim} lh={16}>{note}</T> : null}
+        <T variant="meta" c={color.text}>{label}</T>
+        {note ? <T variant="meta" c={color.dim} lh={16}>{note}</T> : null}
       </View>
       {value == null ? (
-        <T size={11.5} c={color.dim} testID={testID ? `${testID}-untracked` : undefined}>not tracked yet</T>
+        <T variant="meta" c={color.dim} testID={testID ? `${testID}-untracked` : undefined}>not tracked yet</T>
       ) : (
         <Num size={size} weight="bold" c={tone ?? color.text}>{value}</Num>
       )}

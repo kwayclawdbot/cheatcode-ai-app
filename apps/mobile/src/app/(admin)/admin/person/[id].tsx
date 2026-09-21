@@ -95,7 +95,7 @@ export default function AdminPerson() {
     >
       {data && p ? (
         <>
-          <T size={13} c={color.muted} lh={20} testID="person-plain">{data.plain}</T>
+          <T variant="meta" c={color.muted} lh={20} testID="person-plain">{data.plain}</T>
 
           {data.merge_conflicts.length ? (
             <View
@@ -105,11 +105,11 @@ export default function AdminPerson() {
                 borderLeftWidth: 2, borderLeftColor: alpha.ivory25, backgroundColor: alpha.ivory04,
               }}
             >
-              <Eyebrow>NEEDS A HUMAN</Eyebrow>
+              <Eyebrow>Needs a human</Eyebrow>
               {data.merge_conflicts.map((c) => (
-                <T key={c.id} size={12.5} lh={19} c={color.muted}>{c.plain}</T>
+                <T key={c.id} variant="meta" lh={19} c={color.muted}>{c.plain}</T>
               ))}
-              <T size={11} c={color.dim} lh={16}>
+              <T variant="meta" c={color.dim} lh={16}>
                 Two records each carry a different strong identity, so nothing was merged automatically.
               </T>
             </View>
@@ -122,10 +122,10 @@ export default function AdminPerson() {
                 testID={`identity-${i.kind}`}
                 label={IDENTITY_LABEL[i.kind] ?? i.kind}
                 sub={i.verified ? undefined : 'unverified'}
-                valueNode={<Num size={11.5} weight="medium" c={color.muted} >{i.value}</Num>}
+                valueNode={<Num variant="meta" weight="medium" c={color.muted} >{i.value}</Num>}
                 last={n === data.identities.length - 1}
               />
-            )) : <T size={12.5} c={color.muted}>No identities recorded yet.</T>}
+            )) : <T variant="meta" c={color.muted}>No identities recorded yet.</T>}
             <Rule />
             <DataRow label="First seen" value={stamp(p.first_seen_at)} />
             <DataRow label="Last active" value={stamp(p.last_active_at)} />
@@ -179,7 +179,7 @@ export default function AdminPerson() {
                 />
               </View>
             ) : (
-              <T size={11.5} c={color.dim} lh={17} style={{ marginTop: space.x8 }}>
+              <T variant="meta" c={color.dim} lh={17} style={{ marginTop: space.x8 }}>
                 {canWrite
                   ? 'There is no app account on this person yet, so there is nothing to grant. Send them a code instead.'
                   : 'Changing what somebody can reach is an admin act. You can read this file and write on it.'}
@@ -192,12 +192,12 @@ export default function AdminPerson() {
             <DataRow label="Messages" value={String(data.kai.messages)} />
             <DataRow label="Last message" value={stamp(data.kai.last_message_at)} last />
             {data.kai.plain ? (
-              <T size={12} c={color.muted} lh={18} style={{ marginTop: space.x8 }}>{data.kai.plain}</T>
+              <T variant="meta" c={color.muted} lh={18} style={{ marginTop: space.x8 }}>{data.kai.plain}</T>
             ) : null}
             {/* The standing rule, said on every person, not only on the ones who
                 happen to have written something: the privacy contract is a
                 property of this CRM, not a fact about this human. */}
-            <T size={11.5} c={color.dim} lh={17} style={{ marginTop: 6 }} testID="kai-privacy">
+            <T variant="meta" c={color.dim} lh={17} style={{ marginTop: 6 }} testID="kai-privacy">
               Counts and timestamps only. What they said to Kai is not copied into the CRM — reading their words is a
               separate act that asks you why and is logged under your name.
             </T>
@@ -213,7 +213,7 @@ export default function AdminPerson() {
                 <Figure label="Predicted lifetime value" value={money(data.scores.predicted_ltv_cents)} tone={color.gold} last />
               </>
             ) : (
-              <T size={12.5} c={color.muted} lh={19} testID="scores-untracked">
+              <T variant="meta" c={color.muted} lh={19} testID="scores-untracked">
                 {data.scores.plain || 'Nothing computes these yet. They are ported columns, empty until a source fills them — an empty column is honest, a fabricated score is not.'}
               </T>
             )}
@@ -234,7 +234,7 @@ export default function AdminPerson() {
                 >
                   <Chip label={`${t}  ×`} muted />
                 </Pressable>
-              )) : <T size={12.5} c={color.muted}>No tags.</T>}
+              )) : <T variant="meta" c={color.muted}>No tags.</T>}
             </View>
             <Field
               testID="tag-input"
@@ -256,12 +256,12 @@ export default function AdminPerson() {
             {data.notes.map((n, i) => (
               <DataRow
                 key={n.id}
-                label={<T size={13} lh={19}>{n.body}</T>}
+                label={<T variant="meta" lh={19}>{n.body}</T>}
                 sub={`${n.author_name ?? 'Someone'} · ${when(n.created_at)}`}
                 last={i === data.notes.length - 1}
               />
             ))}
-            {!data.notes.length ? <T size={12.5} c={color.muted}>Nothing written down yet.</T> : null}
+            {!data.notes.length ? <T variant="meta" c={color.muted}>Nothing written down yet.</T> : null}
             <View style={{ gap: space.x10, marginTop: space.x12 }}>
               <Field
                 testID="note-input"
@@ -297,7 +297,7 @@ export default function AdminPerson() {
                 last={i === data.redemptions.length - 1}
               />
             ))}
-            {!data.redemptions.length ? <T size={12.5} c={color.muted}>No codes redeemed.</T> : null}
+            {!data.redemptions.length ? <T variant="meta" c={color.muted}>No codes redeemed.</T> : null}
             {canWrite ? (
             <Button
               testID="cta-person-invite"
@@ -324,14 +324,14 @@ export default function AdminPerson() {
               <DataRow
                 key={t.id}
                 testID={`event-${t.type}`}
-                label={<T size={13} lh={19}>{t.plain || t.type.replace(/[._]/g, ' ')}</T>}
+                label={<T variant="meta" lh={19}>{t.plain || t.type.replace(/[._]/g, ' ')}</T>}
                 sub={`${sourceLabel(t.source)} · ${stamp(t.occurred_at)}`}
                 value={t.value_cents != null ? money(t.value_cents) : undefined}
                 valueTone={color.gold}
                 last={i === data.timeline.length - 1}
               />
             ))}
-            {!data.timeline.length ? <T size={12.5} c={color.muted}>Nothing has happened to this person yet.</T> : null}
+            {!data.timeline.length ? <T variant="meta" c={color.muted}>Nothing has happened to this person yet.</T> : null}
           </Section>
 
           {data.merged_from.length ? (
@@ -343,8 +343,8 @@ export default function AdminPerson() {
           ) : null}
 
           <View style={{ gap: 4, marginTop: space.x8 }}>
-            <Num size={10} weight="regular" c={color.dim}>{p.id}</Num>
-            <T size={10} c={color.dim} lh={15}>
+            <Num variant="meta" weight="regular" c={color.dim}>{p.id}</Num>
+            <T variant="meta" c={color.dim} lh={15}>
               Opening this page was written to the audit log under your name.
             </T>
           </View>
@@ -357,7 +357,7 @@ export default function AdminPerson() {
         title={grant === 'revoke' ? 'Remove access' : 'Grant premium'}
         testID="sheet-entitlement"
       >
-        <T size={12.5} lh={19} c={color.muted}>
+        <T variant="meta" lh={19} c={color.muted}>
           {grant === 'revoke'
             ? 'This drops them to free straight away, and they will see it in their own timeline.'
             : 'This turns premium on straight away, with no end date, and they will see it in their own timeline.'}
@@ -374,7 +374,7 @@ export default function AdminPerson() {
       </Sheet>
 
       <Sheet visible={!!said} onClose={() => setSaid(null)} title="Done" testID="sheet-said">
-        <T size={13} lh={20} c={color.muted} testID="said-body">{said}</T>
+        <T variant="meta" lh={20} c={color.muted} testID="said-body">{said}</T>
         <Button label="Close" kind="outline" height={46} onPress={() => setSaid(null)} />
       </Sheet>
     </Board>

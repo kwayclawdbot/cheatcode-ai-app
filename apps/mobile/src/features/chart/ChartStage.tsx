@@ -178,7 +178,7 @@ function LowerThird({
           marginBottom: 10,
         }}
       />
-      <T size={15.5} lh={22} c={color.text} numberOfLines={3}>
+      <T variant="body" lh={22} c={color.text} numberOfLines={3}>
         {text}
       </T>
     </Animated.View>
@@ -422,9 +422,9 @@ export function ChartStage(props: ChartStageProps) {
             transform: [{ translateY: chrome.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
           }}
         >
-          <T size={15} weight="semibold" c={color.text}>{props.symbol}</T>
+          <T variant="body" weight="semibold" c={color.text}>{props.symbol}</T>
           {props.lastPrice != null ? (
-            <Num size={13} c={color.cyan}>{props.lastPrice.toFixed(2)}</Num>
+            <Num variant="meta" c={color.cyan}>{props.lastPrice.toFixed(2)}</Num>
           ) : null}
           <View style={{ flex: 1 }} />
           {props.kaiSheet ? (
@@ -486,7 +486,7 @@ export function ChartStage(props: ChartStageProps) {
             }}
           >
             <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color.violet }} />
-            <T size={10.5} weight="semibold" c={color.violetLight} style={{ letterSpacing: 0.9 }}>KAI</T>
+            <T variant="meta" weight="semibold" c={color.violetLight} style={{ letterSpacing: 0.9 }}>KAI</T>
           </View>
         ) : null}
 

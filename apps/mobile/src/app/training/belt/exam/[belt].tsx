@@ -8,7 +8,7 @@ import { Button } from '../../../../ui/Button';
 import { ObjectCard } from '../../../../ui/Panel';
 import { Check, Lock } from '../../../../ui/Icons';
 import { RiskRewardRuler, TradeMap, type TradeIdea } from '../../../../ui/trade';
-import { alpha, color, radius } from '../../../../ui/tokens';
+import { alpha, color, radius, typeScale } from '../../../../ui/tokens';
 import { startExam, submitExam, trainingApiAvailable } from '../../../../features/training/remote';
 
 /**
@@ -121,14 +121,14 @@ export default function BeltExamScreen() {
         }}
       >
         <Pressable onPress={back} hitSlop={12}>
-          <T size={22} c={color.muted}>‹</T>
+          <T variant="sectionTitle" c={color.muted}>‹</T>
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Eyebrow c={color.muted}>BELT TEST</Eyebrow>
-          <T size={13.5} weight="bold">{`${beltKey.charAt(0).toUpperCase()}${beltKey.slice(1)} Belt`}</T>
+          <Eyebrow c={color.muted}>Belt test</Eyebrow>
+          <T variant="meta" weight="bold">{`${beltKey.charAt(0).toUpperCase()}${beltKey.slice(1)} Belt`}</T>
         </View>
         {phase === 'running' && items.length ? (
-          <Num size={11} c={color.dim}>{`${index + 1} / ${items.length}`}</Num>
+          <Num variant="meta" c={color.dim}>{`${index + 1} / ${items.length}`}</Num>
         ) : null}
       </View>
 
@@ -137,18 +137,18 @@ export default function BeltExamScreen() {
           <ObjectCard r={radius.xl} style={{ padding: 16, gap: 10 }} testID="exam-unavailable">
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
               <Lock size={15} color={color.gold} />
-              <T size={13} weight="bold">This test is not open</T>
+              <T variant="meta" weight="bold">This test is not open</T>
             </View>
-            <T size={12.5} lh={19} c={color.muted}>
+            <T variant="meta" lh={19} c={color.muted}>
               {refusal ?? 'The service could not be reached, so nothing has been started and no attempt has been used.'}
             </T>
             <Button label="Back to your belt" kind="outline" onPress={back} />
           </ObjectCard>
         ) : phase === 'loading' ? (
-          <T size={12.5} c={color.muted}>Preparing your paper…</T>
+          <T variant="meta" c={color.muted}>Preparing your paper…</T>
         ) : phase === 'intro' && paper ? (
           <>
-            <T size={26} weight="bold" ls={-0.5}>Before you start</T>
+            <T variant="screenTitle" weight="bold" ls={-0.5}>Before you start</T>
             <ObjectCard r={radius.xl} style={{ padding: 15, gap: 11 }}>
               <Row n="1" text={`${paper.knowledge.length} questions about what you have learned, and ${paper.applied.length} tasks on a chart.`} />
               <Row n="2" text={`The pass mark is ${paper.pass_pct}%, and EVERY chart task has to be right. The belt is a claim about what you can do on a chart, so that half is not optional.`} />
@@ -156,7 +156,7 @@ export default function BeltExamScreen() {
               <Row n="4" text="Fail and you can sit it again in two days. Every attempt is kept, passed or failed." />
             </ObjectCard>
             {resumed ? (
-              <T size={12} lh={18} c={color.volt} testID="exam-resumed">
+              <T variant="meta" lh={18} c={color.volt} testID="exam-resumed">
                 You had a paper open already, so this is the same one — reopening does not cost you
                 an attempt and does not re-draw the chart tasks.
               </T>
@@ -169,7 +169,7 @@ export default function BeltExamScreen() {
             {current.kind === 'knowledge' ? (
               <View style={{ gap: 12 }} testID={`exam-item-${current.item.id}`}>
                 <Eyebrow c={color.muted}>{`QUESTION ${index + 1}`}</Eyebrow>
-                <T size={19} weight="bold" lh={26}>{current.item.prompt}</T>
+                <T variant="sectionTitle" weight="bold" lh={26}>{current.item.prompt}</T>
                 {current.item.options.map((o) => (
                   <Choice
                     key={o.id}
@@ -189,7 +189,7 @@ export default function BeltExamScreen() {
               />
             )}
 
-            {refusal ? <T size={12} c={color.gold}>{refusal}</T> : null}
+            {refusal ? <T variant="meta" c={color.gold}>{refusal}</T> : null}
 
             <View style={{ flexDirection: 'row', gap: 10, paddingTop: 4 }}>
               {index > 0 ? (
@@ -218,7 +218,7 @@ export default function BeltExamScreen() {
             </View>
           </>
         ) : phase === 'submitting' ? (
-          <T size={12.5} c={color.muted}>Marking…</T>
+          <T variant="meta" c={color.muted}>Marking…</T>
         ) : phase === 'done' && result ? (
           <>
             <View style={{ alignItems: 'center', gap: 10, paddingTop: 8 }}>
@@ -233,21 +233,21 @@ export default function BeltExamScreen() {
                   justifyContent: 'center',
                 }}
               >
-                <Num size={28} weight="bold" c={result.passed ? color.green : color.text} testID="exam-score">
+                <Num variant="keyPrice" weight="bold" c={result.passed ? color.green : color.text} testID="exam-score">
                   {`${Math.round(result.score_pct)}%`}
                 </Num>
               </View>
-              <T size={22} weight="bold" testID="exam-verdict">
+              <T variant="sectionTitle" weight="bold" testID="exam-verdict">
                 {result.passed ? 'Passed' : 'Not this time'}
               </T>
-              <T size={13} lh={20} c={color.muted} align="center">{result.plain}</T>
-              <T size={11.5} c={color.dim}>
+              <T variant="meta" lh={20} c={color.muted} align="center">{result.plain}</T>
+              <T variant="meta" c={color.dim}>
                 {`Chart tasks: ${result.applied_correct} of ${result.applied_total} · pass mark ${Math.round(result.pass_pct)}%`}
               </T>
             </View>
 
             <View style={{ gap: 9 }}>
-              <Eyebrow c={color.muted}>WHY EACH ONE WAS RIGHT</Eyebrow>
+              <Eyebrow c={color.muted}>Why each one was right</Eyebrow>
               <ObjectCard r={radius.xl} style={{ paddingHorizontal: 15, paddingVertical: 4 }}>
                 {result.review.map((r, i) => (
                   <View
@@ -264,14 +264,14 @@ export default function BeltExamScreen() {
                       {r.correct ? (
                         <Check size={13} color={color.green} />
                       ) : (
-                        <T size={13} c={color.red}>✕</T>
+                        <T variant="meta" c={color.red}>✕</T>
                       )}
                     </View>
                     <View style={{ flex: 1, gap: 3 }}>
-                      <T size={10.5} c={color.dim} ls={0.6}>
+                      <T variant="meta" c={color.dim} ls={0.6}>
                         {r.kind === 'applied' ? 'CHART TASK' : 'QUESTION'}
                       </T>
-                      <T size={12.5} lh={19} c={color.muted}>{r.because}</T>
+                      <T variant="meta" lh={19} c={color.muted}>{r.because}</T>
                     </View>
                   </View>
                 ))}
@@ -289,8 +289,8 @@ export default function BeltExamScreen() {
 function Row({ n, text }: { n: string; text: string }) {
   return (
     <View style={{ flexDirection: 'row', gap: 10 }}>
-      <Num size={12} weight="bold" c={color.volt} style={{ width: 14 }}>{n}</Num>
-      <T size={12.5} lh={19} c={color.muted} style={{ flex: 1 }}>{text}</T>
+      <Num variant="meta" weight="bold" c={color.volt} style={{ width: 14 }}>{n}</Num>
+      <T variant="meta" lh={19} c={color.muted} style={{ flex: 1 }}>{text}</T>
     </View>
   );
 }
@@ -320,8 +320,8 @@ function Choice({
         gap: 4,
       }}
     >
-      <T size={13.5} lh={20} c={selected ? color.text : color.muted}>{label}</T>
-      {detail ? <T size={11.5} c={color.dim}>{detail}</T> : null}
+      <T variant="meta" lh={20} c={selected ? color.text : color.muted}>{label}</T>
+      {detail ? <T variant="meta" c={color.dim}>{detail}</T> : null}
     </Pressable>
   );
 }
@@ -381,8 +381,8 @@ function AppliedTask({
 
   return (
     <View style={{ gap: 12 }} testID={`exam-item-${task.id}`}>
-      <Eyebrow c={color.volt}>CHART TASK</Eyebrow>
-      <T size={17} weight="bold" lh={24}>{task.prompt}</T>
+      <Eyebrow c={color.volt}>Chart task</Eyebrow>
+      <T variant="cardTitle" weight="bold" lh={24}>{task.prompt}</T>
 
       {task.kind === 'position_size' ? (
         <ObjectCard r={radius.xl} style={{ padding: 14, gap: 9 }}>
@@ -390,7 +390,7 @@ function AppliedTask({
           <Fact label="Risk per trade" value={`${task.risk_pct ?? 0}%`} />
           <Fact label="Entry" value={`${task.entry ?? 0}`} />
           <Fact label="Stop" value={`${task.stop ?? 0}`} />
-          <T size={11.5} c={color.dim}>
+          <T variant="meta" c={color.dim}>
             Whole shares. If the maths lands between two numbers, the one that risks LESS than you
             said is the answer.
           </T>
@@ -408,7 +408,7 @@ function AppliedTask({
               paddingHorizontal: 13,
               paddingVertical: 12,
               color: color.text,
-              fontSize: 16,
+              fontSize: typeScale.body.size,
             }}
           />
         </ObjectCard>
@@ -416,7 +416,7 @@ function AppliedTask({
         <>
           <TradeMap idea={idea} />
           <RiskRewardRuler idea={idea} />
-          <T size={10.5} c={color.dim}>{seriesLabel}</T>
+          <T variant="meta" c={color.dim}>{seriesLabel}</T>
           {task.options.map((o) => (
             <Choice
               key={o.id}
@@ -426,7 +426,7 @@ function AppliedTask({
               onPress={() => onChange(o.id)}
             />
           ))}
-          <T size={11} lh={16} c={color.dim}>
+          <T variant="meta" lh={16} c={color.dim}>
             The chart above redraws with whatever you pick, so you can see what each one does to the
             risk before you commit to it.
           </T>
@@ -439,8 +439,8 @@ function AppliedTask({
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-      <T size={12} c={color.muted} style={{ flex: 1 }}>{label}</T>
-      <Num size={13} weight="bold">{value}</Num>
+      <T variant="meta" c={color.muted} style={{ flex: 1 }}>{label}</T>
+      <Num variant="meta" weight="bold">{value}</Num>
     </View>
   );
 }

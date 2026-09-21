@@ -232,15 +232,15 @@ export function StructuredBlock({ idea }: { idea: NonNullable<RoomMessage['struc
     >
       {rows.map(([label, value], i) => (
         <View key={label} style={{ paddingVertical: 8, borderBottomWidth: i === rows.length - 1 && !idea.evidence.length ? 0 : 0.5, borderBottomColor: alpha.ivory08 }}>
-          <T size={10} c={color.muted}>{label}</T>
-          <T size={13} lh={18} style={{ marginTop: 2 }}>{value}</T>
+          <T variant="meta" c={color.muted}>{label}</T>
+          <T variant="meta" lh={18} style={{ marginTop: 2 }}>{value}</T>
         </View>
       ))}
       {idea.evidence.length ? (
         <View style={{ paddingVertical: 8, flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
           {idea.evidence.map((e) => (
             <View key={e} style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7, borderWidth: 0.5, borderColor: alpha.cyan40, backgroundColor: alpha.cyan07 }}>
-              <T size={11} c={color.cyan}>{e}</T>
+              <T variant="meta" c={color.cyan}>{e}</T>
             </View>
           ))}
         </View>

@@ -89,9 +89,9 @@ export default function TrainingHome() {
         }}
       >
         <Pressable onPress={() => router.back()} hitSlop={12}>
-          <T size={22} c={color.muted}>‹</T>
+          <T variant="sectionTitle" c={color.muted}>‹</T>
         </Pressable>
-        <T size={16} weight="bold" align="center" style={{ flex: 1 }}>Training</T>
+        <T variant="body" weight="bold" align="center" style={{ flex: 1 }}>Training</T>
         <Pressable
           testID="training-open-progress"
           onPress={() => router.push('/training/progress' as never)}
@@ -118,8 +118,8 @@ export default function TrainingHome() {
         <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
           <KaiOrb size={38} />
           <View style={{ flex: 1 }}>
-            <Eyebrow c={color.violetLight}>KAI</Eyebrow>
-            <T size={13} lh={19} c={color.muted}>
+            <Eyebrow c={color.violetLight}>Kai</Eyebrow>
+            <T variant="meta" lh={19} c={color.muted}>
               Learning builds confidence. One skill at a time.
             </T>
           </View>
@@ -130,8 +130,8 @@ export default function TrainingHome() {
             so the app asks rather than deciding whose it is. */}
         {unclaimed ? (
           <ObjectCard r={radius.xl} style={{ padding: 14, gap: 10 }} testID="training-claim-offer">
-            <T size={13} weight="bold">Is this progress yours?</T>
-            <T size={12.5} lh={19} c={color.muted}>
+            <T variant="meta" weight="bold">Is this progress yours?</T>
+            <T variant="meta" lh={19} c={color.muted}>
               {`This device has ${unclaimed.lessonIds.length} completed lesson${unclaimed.lessonIds.length === 1 ? '' : 's'} from before training was tied to an account. It has no name on it, so I will not assume it is yours.`}
             </T>
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -160,9 +160,9 @@ export default function TrainingHome() {
         ) : null}
 
         <View style={{ gap: 5 }}>
-          <Eyebrow c={color.muted}>LEARN WITH KAI</Eyebrow>
-          <T size={27} weight="bold" ls={-0.5}>Your next skill.</T>
-          <T size={13} c={color.muted}>Start with the essentials.</T>
+          <Eyebrow c={color.muted}>Learn with Kai</Eyebrow>
+          <T variant="screenTitle" weight="bold" ls={-0.5}>Your next skill.</T>
+          <T variant="meta" c={color.muted}>Start with the essentials.</T>
         </View>
 
         {/* The lesson that actually exists. Nothing is offered that does not. */}
@@ -186,9 +186,9 @@ export default function TrainingHome() {
               <Eyebrow c={color.muted}>
                 {`${step.title.toUpperCase()} · ${LESSON_KIND_LABEL[next.kind].toUpperCase()}`}
               </Eyebrow>
-              <T size={17} weight="bold">{next.title}</T>
-              <T size={12.5} lh={19} c={color.muted}>{next.subtitle}</T>
-              <Num size={11} c={color.dim}>{`${next.minutes} min`}</Num>
+              <T variant="cardTitle" weight="bold">{next.title}</T>
+              <T variant="meta" lh={19} c={color.muted}>{next.subtitle}</T>
+              <Num variant="meta" c={color.dim}>{`${next.minutes} min`}</Num>
               <Button
                 testID="training-resume"
                 label={started ? `Continue · ${next.title}` : 'Start lesson'}
@@ -200,8 +200,8 @@ export default function TrainingHome() {
           </Pressable>
         ) : (
           <ObjectCard r={radius.xl} style={{ padding: 14, gap: 6 }} testID="training-up-to-date">
-            <T size={13} weight="bold">You are up to date</T>
-            <T size={12.5} lh={19} c={color.muted}>
+            <T variant="meta" weight="bold">You are up to date</T>
+            <T variant="meta" lh={19} c={color.muted}>
               Every lesson that has been written is finished. The next ones are being authored and
               will appear here the moment they land.
             </T>
@@ -211,9 +211,9 @@ export default function TrainingHome() {
         {/* ── YOUR PATH — three steps, two of them honestly marked ────────── */}
         <View style={{ gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Eyebrow c={color.muted}>YOUR PATH</Eyebrow>
+            <Eyebrow c={color.muted}>Your path</Eyebrow>
             <View style={{ flex: 1 }} />
-            <Num size={10.5} c={color.dim}>
+            <Num variant="meta" c={color.dim}>
               {`${written.done} of ${written.total} lesson${written.total === 1 ? '' : 's'} available`}
             </Num>
           </View>
@@ -246,16 +246,16 @@ export default function TrainingHome() {
                       {state === 'complete' ? (
                         <Check size={16} color={color.volt} />
                       ) : (
-                        <Num size={13} weight="bold" c={ink}>{s.index}</Num>
+                        <Num variant="meta" weight="bold" c={ink}>{s.index}</Num>
                       )}
                     </View>
-                    <T size={11.5} weight={active ? 'bold' : 'regular'} align="center" c={state === 'coming' ? color.dim : color.text}>
+                    <T variant="meta" weight={active ? 'bold' : 'regular'} align="center" c={state === 'coming' ? color.dim : color.text}>
                       {s.title}
                     </T>
                     {state === 'coming' ? (
-                      <T size={10} align="center" c={color.dim}>Coming next</T>
+                      <T variant="meta" align="center" c={color.dim}>Coming next</T>
                     ) : (
-                      <T size={10} align="center" c={color.muted}>
+                      <T variant="meta" align="center" c={color.muted}>
                         {state === 'complete' ? 'Complete' : 'In progress'}
                       </T>
                     )}
@@ -271,8 +271,8 @@ export default function TrainingHome() {
         {/* THE SENTENCE THE BOARD PUTS AT THE BOTTOM, and the one this screen
             exists to be able to say without embarrassment. */}
         <ObjectCard r={radius.xl} style={{ padding: 13, gap: 5 }} testID="training-in-development">
-          <T size={12.5} weight="bold">Foundations in development</T>
-          <T size={12} lh={18} c={color.muted}>
+          <T variant="meta" weight="bold">Foundations in development</T>
+          <T variant="meta" lh={18} c={color.muted}>
             One lesson is written and the rest of the programme is being authored. You will not be
             sent into a lesson that does not exist yet.
           </T>
@@ -282,7 +282,7 @@ export default function TrainingHome() {
         {ready ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 2 }}>
             <Check size={11} color={storage === 'account' ? color.green : color.dim} />
-            <T size={11} c={color.muted}>
+            <T variant="meta" c={color.muted}>
               {storage === 'account'
                 ? 'Your progress is saved to your account and follows you to any device.'
                 : storage === 'device'
@@ -298,8 +298,8 @@ export default function TrainingHome() {
         >
           <ObjectCard r={radius.xl} style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <View style={{ flex: 1 }}>
-              <T size={13} weight="bold">Your belt</T>
-              <T size={12} lh={18} c={color.muted}>
+              <T variant="meta" weight="bold">Your belt</T>
+              <T variant="meta" lh={18} c={color.muted}>
                 What lessons and calls have earned you, and what the next belt asks for.
               </T>
             </View>
@@ -313,14 +313,14 @@ export default function TrainingHome() {
           onPress={() => setShowProgramme((v) => !v)}
           style={{ paddingVertical: 6 }}
         >
-          <T size={12} weight="bold" c={color.muted}>
+          <T variant="meta" weight="bold" c={color.muted}>
             {showProgramme ? 'Hide the full seven-day programme' : 'See the full seven-day programme'}
           </T>
         </Pressable>
 
         {showProgramme ? (
           <View style={{ gap: 10 }}>
-            <T size={11.5} lh={17} c={color.dim}>
+            <T variant="meta" lh={17} c={color.dim}>
               This is the plan the lessons are being written against. Days marked with a lock are
               not open yet; lessons marked SOON have not been authored.
             </T>
@@ -363,7 +363,7 @@ export default function TrainingHome() {
             })}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Lock size={12} color={color.dim} />
-              <T size={11} c={color.dim} style={{ flex: 1 }}>
+              <T variant="meta" c={color.dim} style={{ flex: 1 }}>
                 A day opens when the one before it is finished, its score clears the gate, and its
                 assessment has been passed. Watching does not open a day.
               </T>

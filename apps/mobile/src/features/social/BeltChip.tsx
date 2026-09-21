@@ -37,7 +37,7 @@ export function BeltChip({ belt, label, testID }: { belt: Belt; label?: string |
       }}
     >
       <View style={{ width: 3, height: 9, borderRadius: 1.5, backgroundColor: BELT_INK[belt] }} />
-      <T size={9} weight="bold" ls={0.4} c={beltTextInk(belt)}>{word.toUpperCase()}</T>
+      <T variant="meta" weight="bold" ls={0.4} c={beltTextInk(belt)}>{word.toUpperCase()}</T>
     </View>
   );
 }
@@ -58,11 +58,11 @@ export function BeltProgress({ block, testID }: { block: BeltBlock; testID?: str
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <BeltChip belt={block.key} label={block.label} />
         {block.next_label && block.next_at != null ? (
-          <T size={11} c={color.muted} style={{ flex: 1 }}>
+          <T variant="meta" c={color.muted} style={{ flex: 1 }}>
             {`${block.next_at} points for ${block.next_label.toLowerCase()}`}
           </T>
         ) : (
-          <T size={11} c={color.muted} style={{ flex: 1 }}>The top of the ladder.</T>
+          <T variant="meta" c={color.muted} style={{ flex: 1 }}>The top of the ladder.</T>
         )}
       </View>
 

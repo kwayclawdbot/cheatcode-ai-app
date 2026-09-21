@@ -43,7 +43,7 @@ export function Segmented<T extends string>({
               opacity: pressed && !active ? 0.7 : 1,
             })}
           >
-            <T size={12.5} weight="semibold" c={active ? color.bg : color.muted}>{o.label}</T>
+            <T variant="meta" weight="semibold" c={active ? color.bg : color.muted}>{o.label}</T>
           </Pressable>
         );
       })}
@@ -95,7 +95,7 @@ export function ChipRail<T extends string>({
               opacity: pressed ? 0.8 : 1,
             })}
           >
-            <T size={11} weight={active ? 'bold' : 'regular'} c={active ? on : color.muted}>{o.label}</T>
+            <T variant="meta" weight={active ? 'bold' : 'regular'} c={active ? on : color.muted}>{o.label}</T>
           </Pressable>
         );
       })}

@@ -272,15 +272,15 @@ export default function Account() {
                 end={gradientAngle.end}
                 style={{ width: 54, height: 54, borderRadius: 27, borderWidth: 0.5, borderColor: alpha.ivory20, alignItems: 'center', justifyContent: 'center' }}
               >
-                <T size={22} weight="bold">{name.slice(0, 1).toUpperCase()}</T>
+                <T variant="sectionTitle" weight="bold">{name.slice(0, 1).toUpperCase()}</T>
               </LinearGradient>
             )}
           </Pressable>
           <View style={{ flex: 1 }}>
-            <T size={20} weight="bold" numberOfLines={1}>{name}</T>
+            <T variant="sectionTitle" weight="bold" numberOfLines={1}>{name}</T>
             {/* The username, under the name, exactly as a post is signed. A
                 blank says it is blank; it never borrows the display name. */}
-            <T size={12} c={handle ? color.muted : color.volt} numberOfLines={1} testID="account-handle">
+            <T variant="meta" c={handle ? color.muted : color.volt} numberOfLines={1} testID="account-handle">
               {handle ? `@${handle}` : 'No username yet'}
             </T>
             {/* Where they are on the ladder (0042), on their own profile and in
@@ -297,7 +297,7 @@ export default function Account() {
                     moves it, so it does — a stage nobody can see the exit from
                     is a label, which is the thing it is explicitly not. */}
                 {STAGE_NEXT[stage] ? (
-                  <T size={11} c={color.dim} style={{ marginTop: 2 }} testID="account-stage-next">
+                  <T variant="meta" c={color.dim} style={{ marginTop: 2 }} testID="account-stage-next">
                     {STAGE_NEXT[stage]}
                   </T>
                 ) : null}
@@ -315,11 +315,11 @@ export default function Account() {
                 hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
                 style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: alpha.volt50 }}
               >
-                <T size={10} c={color.volt}>{MODE_LABEL[mode]}</T>
+                <T variant="meta" c={color.volt}>{MODE_LABEL[mode]}</T>
               </Pressable>
               <PaperChip />
               <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: tier === 'premium' ? alpha.gold40 : alpha.ivory14 }}>
-                <T size={10} c={tier === 'premium' ? color.gold : color.muted}>{tier === 'premium' ? 'Premium' : 'Free'}</T>
+                <T variant="meta" c={tier === 'premium' ? color.gold : color.muted}>{tier === 'premium' ? 'Premium' : 'Free'}</T>
               </View>
             </View>
           </View>
@@ -329,7 +329,7 @@ export default function Account() {
             Who other members see. First because it is the only part of this
             screen anybody else ever looks at, and because a member without a
             username is stopped at the door of every room. */}
-        <Eyebrow>PROFILE</Eyebrow>
+        <Eyebrow>Profile</Eyebrow>
         <RowList testID="identity">
           <Pressable
             testID="identity-username"
@@ -339,14 +339,14 @@ export default function Account() {
           >
             <Row>
               <View style={{ flex: 1 }}>
-                <T size={14}>Username</T>
-                <T size={11.5} c={color.muted} style={{ marginTop: 2 }}>
+                <T variant="body">Username</T>
+                <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>
                   {needsHandle
                     ? 'Members are known by a name. Posting asks for one.'
                     : 'What your posts are signed with.'}
                 </T>
               </View>
-              <T size={13} weight="semibold" c={needsHandle ? color.volt : color.text}>
+              <T variant="meta" weight="semibold" c={needsHandle ? color.volt : color.text}>
                 {handle ? `@${handle}` : 'Pick one'}
               </T>
               <ArrowRight size={12} color={color.dim} />
@@ -368,8 +368,8 @@ export default function Account() {
               style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11, minHeight: 44 }}
             >
               <View style={{ flex: 1 }}>
-                <T size={14}>Profile picture</T>
-                <T size={11.5} c={avatar.busy ? color.volt : color.muted} style={{ marginTop: 2 }}>
+                <T variant="body">Profile picture</T>
+                <T variant="meta" c={avatar.busy ? color.volt : color.muted} style={{ marginTop: 2 }}>
                   {avatar.working
                     ?? (avatarUrl
                       ? 'Shown next to your posts.'
@@ -379,7 +379,7 @@ export default function Account() {
               {avatarUrl ? (
                 <Avatar initial={name.slice(0, 1).toUpperCase()} url={avatarUrl} size={28} />
               ) : (
-                <T size={13} weight="semibold" c={color.volt}>Add one</T>
+                <T variant="meta" weight="semibold" c={color.volt}>Add one</T>
               )}
               <ArrowRight size={12} color={color.dim} />
             </Pressable>
@@ -414,12 +414,12 @@ export default function Account() {
             onPress={avatar.remove}
             style={({ pressed }) => ({ minHeight: 32, justifyContent: 'center', marginTop: -6, opacity: pressed ? 0.6 : 1 })}
           >
-            <T size={11.5} c={color.muted}>Remove my picture</T>
+            <T variant="meta" c={color.muted}>Remove my picture</T>
           </Pressable>
         ) : null}
 
         {avatar.error ? (
-          <T size={11.5} lh={17} c={color.red} testID="identity-avatar-error" style={{ marginTop: -4 }}>
+          <T variant="meta" lh={17} c={color.red} testID="identity-avatar-error" style={{ marginTop: -4 }}>
             {avatar.error}
           </T>
         ) : null}
@@ -435,8 +435,8 @@ export default function Account() {
             screen, which nothing here can set. Belts are a community track
             record and are not drawn on this board at all. Four ideas that used
             to share three overlapping labels. */}
-        <Eyebrow>GUIDANCE</Eyebrow>
-        <T size={11.5} c={color.muted} lh={17} style={{ marginTop: -4 }}>
+        <Eyebrow>Guidance</Eyebrow>
+        <T variant="meta" c={color.muted} lh={17} style={{ marginTop: -4 }}>
           How Kai works with you. Change any of it whenever you like — none of it is a grade.
         </T>
         <RowList testID="kai-profile">
@@ -477,7 +477,7 @@ export default function Account() {
           style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start', paddingVertical: 11, paddingHorizontal: 13, borderRadius: 14, backgroundColor: alpha.violet10, borderLeftWidth: 2, borderLeftColor: color.violet }}
         >
           <KaiOrb size={18} glow={false} />
-          <T size={12} lh={17.5} c={color.muted} style={{ flex: 1 }}>{kai.voiceLine}</T>
+          <T variant="meta" lh={17.5} c={color.muted} style={{ flex: 1 }}>{kai.voiceLine}</T>
         </View>
 
         <RowList>
@@ -494,7 +494,7 @@ export default function Account() {
             The balance, and the rules that govern what can be risked against
             it. They belong together: a loss cap means nothing without the
             number it is a cap on. */}
-        <Eyebrow>PRACTICE ACCOUNT</Eyebrow>
+        <Eyebrow>Practice account</Eyebrow>
         <RowList>
           <NavRow
             testID="nav-paper"
@@ -518,25 +518,25 @@ export default function Account() {
             onPress={() => router.push('/account/risk')}
           />
           <Row>
-            <T size={13} style={{ flex: 1 }}>Max position size</T>
-            <Num size={13}>{policy ? `${policy.max_position_pct}% of balance` : '—'}</Num>
+            <T variant="meta" style={{ flex: 1 }}>Max position size</T>
+            <Num variant="meta">{policy ? `${policy.max_position_pct}% of balance` : '—'}</Num>
           </Row>
           <Row>
-            <T size={13} style={{ flex: 1 }}>Kai involvement</T>
-            <T size={12} c={color.violetLight}>{INVOLVEMENT_LABEL[involvement]}</T>
+            <T variant="meta" style={{ flex: 1 }}>Kai involvement</T>
+            <T variant="meta" c={color.violetLight}>{INVOLVEMENT_LABEL[involvement]}</T>
           </Row>
           <Row last>
-            <T size={13} style={{ flex: 1 }}>Paper trading</T>
+            <T variant="meta" style={{ flex: 1 }}>Paper trading</T>
             <Toggle testID="toggle-paper" value onChange={undefined} disabled label="Paper trading" />
           </Row>
         </RowList>
-        <T size={10} c={color.muted} style={{ marginTop: -4 }}>
+        <T variant="meta" c={color.muted} style={{ marginTop: -4 }}>
           Paper is the only mode in this release — real money needs a broker, which comes later.
           Resetting the balance lives on the practice account screen, behind a confirmation.
         </T>
 
         {/* ── 4 · NOTIFICATIONS ────────────────────────────────── */}
-        <Eyebrow>NOTIFICATIONS</Eyebrow>
+        <Eyebrow>Notifications</Eyebrow>
         <RowList>
           <NavRow
             testID="nav-notifications"
@@ -552,7 +552,7 @@ export default function Account() {
             got left" is asked far more often than "what am I on", and the
             value is a real balance read from the server — never a placeholder
             when there is nothing to show. */}
-        <Eyebrow>PLAN</Eyebrow>
+        <Eyebrow>Plan</Eyebrow>
         <RowList>
           <NavRow
             testID="nav-credits"
@@ -575,11 +575,11 @@ export default function Account() {
             A privacy answer, kept whole and kept visible. The switch is OFF
             until the server says otherwise — never assumed, never
             optimistically on. */}
-        <Eyebrow>WHAT THE CLUB SEES</Eyebrow>
+        <Eyebrow>What the club sees</Eyebrow>
         <RowList testID="sharing">
           <Row last>
             <View style={{ flex: 1 }}>
-              <T size={14}>Share my trades</T>
+              <T variant="body">Share my trades</T>
               {/*
                 THE PROMISE, IN ONE LINE, AND IT IS ENFORCEABLE.
                 It is not a reassurance written by a designer: the shared-trade
@@ -588,7 +588,7 @@ export default function Account() {
                 accidentally render. That is why the sentence can be this
                 definite.
               */}
-              <T size={11.5} lh={16.5} c={color.muted} style={{ marginTop: 3 }}>
+              <T variant="meta" lh={16.5} c={color.muted} style={{ marginTop: 3 }}>
                 Direction and levels are shown. Size and dollars never are.
               </T>
             </View>
@@ -600,7 +600,7 @@ export default function Account() {
             />
           </Row>
         </RowList>
-        <T size={10} lh={15} c={color.dim} style={{ marginTop: -4 }}>
+        <T variant="meta" lh={15} c={color.dim} style={{ marginTop: -4 }}>
           {shareTrades
             ? 'Trades you take appear on your profile and in your followers’ feed. You can still turn any single one off when you send it.'
             : 'Off. Nothing you trade is shown to anybody, and calls you publish are a separate, deliberate act.'}
@@ -616,7 +616,7 @@ export default function Account() {
             Not settings. These are journeys, and their own screens are the
             places they naturally end — the rows here are a second door for the
             person who came looking in Account, not the only one. */}
-        <Eyebrow>LEARNING</Eyebrow>
+        <Eyebrow>Learning</Eyebrow>
         <RowList>
           {/* Training's value is the member's own mastery, or nothing at all —
               a learner who has never opened a lesson is shown no number rather
@@ -652,13 +652,13 @@ export default function Account() {
         {kai.adherence && kai.adherence.sessions >= 3 ? (
           <ObjectCard tone="kai" r={radius.xl} style={{ paddingVertical: 13, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10 }} testID="rule-adherence">
             <KaiOrb size={24} />
-            <T size={13} lh={18} style={{ flex: 1 }}>
+            <T variant="meta" lh={18} style={{ flex: 1 }}>
               You've followed your rules{' '}
-              <T size={13} weight="bold">{`${kai.adherence.followed} of the last ${kai.adherence.sessions}`}</T>
+              <T variant="meta" weight="bold">{`${kai.adherence.followed} of the last ${kai.adherence.sessions}`}</T>
               {' '}sessions.
             </T>
             <Pressable onPress={() => router.push('/debrief')} accessibilityRole="button" testID="rule-adherence-details">
-              <T size={11} weight="semibold" c={color.violetLight}>Details</T>
+              <T variant="meta" weight="semibold" c={color.violetLight}>Details</T>
             </Pressable>
           </ObjectCard>
         ) : null}
@@ -667,12 +667,12 @@ export default function Account() {
             The master switch and the door to review or delete what is held.
             Both kept exactly as they were: the audit named this one of the
             protections worth preserving. */}
-        <Eyebrow c={color.violetLight}>KAI</Eyebrow>
+        <Eyebrow c={color.violetLight}>Kai</Eyebrow>
         <ObjectCard tone="kai" r={radius.xl} style={{ paddingVertical: 13, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <KaiOrb size={24} />
           <View style={{ flex: 1 }}>
-            <T size={13} weight="semibold">Kai remembers what you tell him</T>
-            <T size={11} c={color.muted} style={{ marginTop: 2 }}>Turn this off and every conversation starts fresh.</T>
+            <T variant="meta" weight="semibold">Kai remembers what you tell him</T>
+            <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>Turn this off and every conversation starts fresh.</T>
           </View>
           <Toggle testID="toggle-memory" value={memory} onChange={toggleMemory} label="Kai memory" />
         </ObjectCard>
@@ -693,7 +693,7 @@ export default function Account() {
             the operator's own action. */}
         {data?.staff.is_staff ? (
           <>
-            <Eyebrow c={color.volt}>OPERATOR</Eyebrow>
+            <Eyebrow c={color.volt}>Operator</Eyebrow>
             <RowList testID="staff-entry">
               <NavRow
                 testID="nav-admin"
@@ -704,17 +704,17 @@ export default function Account() {
                 last
               />
             </RowList>
-            <T size={10.5} c={color.dim} lh={16} style={{ marginTop: -4 }}>{data.staff.plain}</T>
+            <T variant="meta" c={color.dim} lh={16} style={{ marginTop: -4 }}>{data.staff.plain}</T>
           </>
         ) : null}
 
-        <Eyebrow>CONNECTED</Eyebrow>
+        <Eyebrow>Connected</Eyebrow>
         <RowList>
           <Row last>
             <View style={{ width: 28, height: 28, borderRadius: 8, borderWidth: 0.5, borderColor: alpha.ivory14, backgroundColor: alpha.ivory06, alignItems: 'center', justifyContent: 'center' }}>
               <Plus size={13} color={color.muted} />
             </View>
-            <T size={13} c={color.muted} style={{ flex: 1 }}>None — add a broker later</T>
+            <T variant="meta" c={color.muted} style={{ flex: 1 }}>None — add a broker later</T>
           </Row>
         </RowList>
 
@@ -737,7 +737,7 @@ export default function Account() {
         */}
         {DEV_BUILD && env.DEV_TOOLS ? (
           <>
-            <Eyebrow c={color.gold}>DEVELOPER</Eyebrow>
+            <Eyebrow c={color.gold}>Developer</Eyebrow>
             <Button
               testID="cta-simulate-trade"
               label="Simulate a closed paper trade (dev)"
@@ -782,19 +782,19 @@ export default function Account() {
             marginTop: 2, opacity: pressed ? 0.6 : 1,
           })}
         >
-          <T size={13} c={color.muted}>Delete account</T>
+          <T variant="meta" c={color.muted}>Delete account</T>
         </Pressable>
 
         {/* THE STANDING DISCLAIMER. This app has an AI that discusses entries
             and stops, so the account board carries the full sentence. The
             wording is a DRAFT and needs the owner's legal review — see
             `features/legal/disclaimers.ts`. */}
-        <T size={10.5} lh={16} c={color.dim} style={{ marginTop: 10 }} testID="account-not-advice">
+        <T variant="meta" lh={16} c={color.dim} style={{ marginTop: 10 }} testID="account-not-advice">
           {NOT_ADVICE_LONG}
         </T>
 
         {notAvailable ? <NotConnected what="Your account details" /> : null}
-        {isFixture ? <T size={10} c={color.dim} align="center">Sample account — the account service is not connected here.</T> : null}
+        {isFixture ? <T variant="meta" c={color.dim} align="center">Sample account — the account service is not connected here.</T> : null}
       </ScrollView>
 
       {/* Every setting on this board with more than two values is changed from
@@ -815,7 +815,7 @@ export default function Account() {
       {/* Kai watches is the one MULTI-select here, so it keeps its own sheet
           with chips rather than the single-answer list. */}
       <Sheet visible={focusOpen} onClose={() => setFocusOpen(false)} title="What should Kai watch?" testID="sheet-focus">
-        <T size={12.5} lh={18} c={color.muted}>Kai scans these first. Everything else still gets graded, just later.</T>
+        <T variant="meta" lh={18} c={color.muted}>Kai scans these first. Everything else still gets graded, just later.</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {FOCUS_ORDER.map((k: FocusKey) => {
             const on = kai.focus.includes(k);
@@ -833,18 +833,18 @@ export default function Account() {
                   backgroundColor: on ? alpha.volt10 : 'transparent',
                 }}
               >
-                <T size={13} c={on ? color.volt : color.muted}>{FOCUS_CHIP[k]}</T>
+                <T variant="meta" c={on ? color.volt : color.muted}>{FOCUS_CHIP[k]}</T>
               </Pressable>
             );
           })}
         </View>
-        <T size={11.5} c={color.muted}>{kai.focus.length ? `Kai will scan ${kai.focusShort} first.` : 'Pick at least one, or Kai scans everything.'}</T>
+        <T variant="meta" c={color.muted}>{kai.focus.length ? `Kai will scan ${kai.focusShort} first.` : 'Pick at least one, or Kai scans everything.'}</T>
         <SaveNote status={kai.save.status} message={kai.save.message} onRetry={kai.save.retry} />
         <Button label="Done" kind="volt" height={48} onPress={() => setFocusOpen(false)} />
       </Sheet>
 
       <Sheet visible={!!simResult} onClose={() => setSimResult(null)} title="Simulated trade" testID="sheet-simulate">
-        <T size={13} lh={20} c={color.muted}>{simResult}</T>
+        <T variant="meta" lh={20} c={color.muted}>{simResult}</T>
         <Button label="Open debriefs" kind="volt" height={48} onPress={() => { setSimResult(null); router.push('/debrief'); }} />
       </Sheet>
     </Screen>

@@ -87,7 +87,7 @@ export function DayTradeComingSoon({ mode }: { mode: GoalMode }) {
     <Screen variant="corner" layout="tab" testID="screen-day-trade-soon">
       <View style={{ paddingTop: 8, paddingHorizontal: 16, paddingBottom: 6, gap: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <T size={28} weight="bold">{second.title}</T>
+          <T variant="screenTitle" weight="bold">{second.title}</T>
           <ModeControl mode={mode} testID="day-trade-soon-mode-chip" />
         </View>
       </View>
@@ -102,10 +102,10 @@ export function DayTradeComingSoon({ mode }: { mode: GoalMode }) {
           {/* The heading above already says Day Trade, and so does the chip
               beside it. Saying it a third time here reads like a form letter,
               so this line carries only the new information. */}
-          <T size={19} weight="bold" lh={26} testID="day-trade-soon-title">
+          <T variant="sectionTitle" weight="bold" lh={26} testID="day-trade-soon-title">
             Not live yet.
           </T>
-          <T size={13.5} lh={21} c={color.muted}>
+          <T variant="meta" lh={21} c={color.muted}>
             Kai&apos;s same-day picker is being reworked, and until that lands he does not publish an
             intraday idea with an entry, a stop and a target. So there is nothing on this screen to
             act on — not because something broke, but because he is not calling any.
@@ -113,7 +113,7 @@ export function DayTradeComingSoon({ mode }: { mode: GoalMode }) {
         </View>
 
         <Block label="WHAT IS RUNNING TODAY" testID="day-trade-soon-swing">
-          <T size={13} lh={20} c={color.muted}>
+          <T variant="meta" lh={20} c={color.muted}>
             Swing is live. Same alerts, longer horizon — Kai publishes them on the morning scan and
             they run for days rather than hours.
           </T>
@@ -125,17 +125,17 @@ export function DayTradeComingSoon({ mode }: { mode: GoalMode }) {
             loading={busy}
             onPress={() => { void goSwing(); }}
           />
-          {error ? <T size={11} c={color.red}>{error}</T> : null}
+          {error ? <T variant="meta" c={color.red}>{error}</T> : null}
         </Block>
 
         <Block label="YOUR RECORD" testID="day-trade-soon-record">
-          <T size={13} lh={20} c={color.muted}>
+          <T variant="meta" lh={20} c={color.muted}>
             Nothing has been deleted. Every same-day alert this product has sent is still stored,
             and it comes back with the picker.
           </T>
         </Block>
 
-        <T size={10.5} lh={16} c={color.dim} testID="day-trade-soon-nodate">
+        <T variant="meta" lh={16} c={color.dim} testID="day-trade-soon-nodate">
           There is no date for this yet, and a made-up one would be worth less than saying so.
         </T>
       </ScrollView>

@@ -102,9 +102,9 @@ export function BeltUpSheet({
         </View>
 
         <View style={{ gap: 5 }}>
-          <T size={11} weight="bold" ls={0.88} c={color.volt}>YOU MOVED UP</T>
-          <T size={22} weight="bold" ls={-0.3} testID="belt-up-title">{word}</T>
-          <T size={13} lh={19} c={color.muted} testID="belt-up-plain">
+          <T variant="meta" weight="bold" c={color.volt}>You moved up</T>
+          <T variant="sectionTitle" weight="bold" ls={-0.3} testID="belt-up-title">{word}</T>
+          <T variant="meta" lh={19} c={color.muted} testID="belt-up-plain">
             {plain ?? 'Your calls resolved well enough to move a rung. It is a record of being right, not a prize.'}
           </T>
         </View>
@@ -115,7 +115,7 @@ export function BeltUpSheet({
             borderWidth: 0.5, borderColor: alpha.ivory12, backgroundColor: alpha.ivory035,
           }}
         >
-          <T size={11.5} lh={17} c={color.muted}>
+          <T variant="meta" lh={17} c={color.muted}>
             Belts move both ways. A run of calls that go against you takes the rung back.
           </T>
         </View>

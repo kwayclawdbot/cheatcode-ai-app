@@ -83,7 +83,7 @@ export default function PositionDetail() {
         <StackHeader title="Position" />
         <View style={{ paddingHorizontal: 16 }}>
           <ObjectCard r={radius.xl} style={{ padding: 18 }}>
-            <T size={13} c={color.muted} lh={19}>
+            <T variant="meta" c={color.muted} lh={19}>
               {notAvailable ? "Positions aren't live on this build yet." : error ?? 'I could not find that position.'}
             </T>
           </ObjectCard>
@@ -144,13 +144,13 @@ export default function PositionDetail() {
         {/* Where it is */}
         <ObjectCard tone={atRisk ? 'gold' : 'default'} r={radius.xxl} style={{ padding: 15, gap: 10 }} testID="position-header">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <T size={10} c={color.muted} style={{ flex: 1 }}>{open ? 'Open · unrealised' : 'Closed · realised'}</T>
+            <T variant="meta" c={color.muted} style={{ flex: 1 }}>{open ? 'Open · unrealised' : 'Closed · realised'}</T>
             <StatusDot c={atRisk ? color.gold : open ? color.green : color.muted} />
-            <T size={11} c={atRisk ? color.gold : open ? color.green : color.muted}>{p.health_label}</T>
+            <T variant="meta" c={atRisk ? color.gold : open ? color.green : color.muted}>{p.health_label}</T>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 9 }}>
-            <Num size={30} weight="semibold" c={pnlColor(pnl)} testID="position-pnl">{signedMoney(pnl)}</Num>
-            <Num size={12} weight="regular" c={color.muted}>
+            <Num variant="keyPrice" weight="semibold" c={pnlColor(pnl)} testID="position-pnl">{signedMoney(pnl)}</Num>
+            <Num variant="meta" weight="regular" c={color.muted}>
               {[p.unrealized_pnl_pct != null ? signedPct(p.unrealized_pnl_pct) : null, p.pnl_detail].filter(Boolean).join(' · ')}
             </Num>
           </View>
@@ -180,7 +180,7 @@ export default function PositionDetail() {
         {p.kai_line ? <KaiLine text={p.kai_line} testID="position-kai-line" /> : null}
 
         {/* What the plan said, beside where price is */}
-        <Eyebrow>PLAN VS NOW</Eyebrow>
+        <Eyebrow>Plan vs now</Eyebrow>
         <ObjectCard r={radius.xxl} style={{ paddingHorizontal: 15, paddingVertical: 4 }} testID="plan-vs-now">
           {/* The server composes this table when it can — plan value beside the
               live one, already worded. Otherwise it is derived below. */}
@@ -231,7 +231,7 @@ export default function PositionDetail() {
 
         {p.history.length ? (
           <>
-            <Eyebrow>HOW YOU GOT HERE</Eyebrow>
+            <Eyebrow>How you got here</Eyebrow>
             <ObjectCard r={radius.xxl} style={{ paddingHorizontal: 15, paddingVertical: 4 }} testID="position-history">
               {p.history.map((h, i) => (
                 <DetailRow
@@ -270,7 +270,7 @@ export default function PositionDetail() {
               testID="exit-now"
               accessibilityHint="Shows you the closing order before anything is sent"
             />
-            <T size={11} c={color.dim} align="center" lh={16}>
+            <T variant="meta" c={color.dim} align="center" lh={16}>
               Nothing is sent until you confirm it on the next screen.
             </T>
           </>
@@ -297,7 +297,7 @@ export default function PositionDetail() {
         title={adjust === 'target' ? 'Move your target' : 'Move your stop'}
         testID="adjust-sheet"
       >
-        <T size={13} c={color.muted} lh={19}>
+        <T variant="meta" c={color.muted} lh={19}>
           {adjust === 'target'
             ? 'Where do you want to take this off? Kai updates the plan and the attached order.'
             : 'The stop is the price where you have decided you were wrong. Moving it away from price costs you more when it hits.'}

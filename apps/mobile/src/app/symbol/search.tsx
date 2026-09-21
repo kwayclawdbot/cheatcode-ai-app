@@ -11,7 +11,7 @@ import { KaiOrb } from '../../ui/KaiOrb';
 import { Search, ArrowRight } from '../../ui/Icons';
 import { family, fontStack } from '../../ui/fonts';
 import { Focusable } from '../../ui/Focus';
-import { alpha, color, gradient, gradientAngle, radius } from '../../ui/tokens';
+import { alpha, color, gradient, gradientAngle, radius, typeScale } from '../../ui/tokens';
 import { useSymbolSearch } from '../../features/trade/useTrade';
 
 /**
@@ -49,7 +49,7 @@ export default function SymbolSearch() {
             placeholderTextColor={color.dim}
             autoFocus
             autoCorrect={false}
-            style={{ flex: 1, fontFamily: fontStack(family.regular), fontSize: 15, color: color.text, ...(({ outlineStyle: 'none' } as unknown) as object) }}
+            style={{ flex: 1, fontFamily: fontStack(family.regular), fontSize: typeScale.body.size, color: color.text, ...(({ outlineStyle: 'none' } as unknown) as object) }}
           />
           {pending ? <ActivityIndicator size="small" color={color.muted} /> : null}
         </LinearGradient>
@@ -63,8 +63,8 @@ export default function SymbolSearch() {
       >
         {!q.trim() ? (
           <ObjectCard r={radius.xl} style={{ padding: 18, gap: 8 }}>
-            <T size={14} weight="bold">Type a ticker, or just ask.</T>
-            <T size={13} c={color.muted} lh={19}>
+            <T variant="body" weight="bold">Type a ticker, or just ask.</T>
+            <T variant="meta" c={color.muted} lh={19}>
               &ldquo;META&rdquo; opens the symbol. &ldquo;What moved semiconductors today?&rdquo; goes to Kai instead.
             </T>
           </ObjectCard>
@@ -72,7 +72,7 @@ export default function SymbolSearch() {
 
         {instruments.length ? (
           <>
-            <Eyebrow>SYMBOLS</Eyebrow>
+            <Eyebrow>Symbols</Eyebrow>
             <RowList style={{ paddingVertical: 2 }}>
               {instruments.map((r, i) => (
                 <Row key={r.kind === 'instrument' ? r.symbol : i} last={i === instruments.length - 1} style={{ paddingVertical: 10 }}>
@@ -86,11 +86,11 @@ export default function SymbolSearch() {
                     style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11, minHeight: 44 }}
                   >
                     <View style={{ width: 32, height: 32, borderRadius: 9, borderWidth: 0.5, borderColor: alpha.ivory14, backgroundColor: alpha.ivory06, alignItems: 'center', justifyContent: 'center' }}>
-                      <Num size={12}>{r.kind === 'instrument' ? r.symbol.slice(0, 1) : '?'}</Num>
+                      <Num variant="meta">{r.kind === 'instrument' ? r.symbol.slice(0, 1) : '?'}</Num>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <T size={14} weight="bold">{r.kind === 'instrument' ? r.symbol : ''}</T>
-                      <T size={10} c={color.muted} numberOfLines={1}>
+                      <T variant="body" weight="bold">{r.kind === 'instrument' ? r.symbol : ''}</T>
+                      <T variant="meta" c={color.muted} numberOfLines={1}>
                         {r.kind === 'instrument' ? `${r.name}${r.exchange ? ` · ${r.exchange}` : ''}` : ''}
                       </T>
                     </View>
@@ -115,8 +115,8 @@ export default function SymbolSearch() {
             <ObjectCard tone="kaiCard" r={radius.xl} style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 11 }}>
               <KaiOrb size={30} />
               <View style={{ flex: 1 }}>
-                <T size={11} c={color.violetLight}>Ask Kai</T>
-                <T size={14} weight="semibold" style={{ marginTop: 2 }} numberOfLines={2}>
+                <T variant="meta" c={color.violetLight}>Ask Kai</T>
+                <T variant="body" weight="semibold" style={{ marginTop: 2 }} numberOfLines={2}>
                   {question.kind === 'kai_question' ? question.text : q}
                 </T>
               </View>

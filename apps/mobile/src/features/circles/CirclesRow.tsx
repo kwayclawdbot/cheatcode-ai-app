@@ -99,12 +99,12 @@ export function CirclesRow({
                   alignItems: 'center', justifyContent: 'center',
                 }}
               >
-                <T size={9} weight="bold" c={color.bg}>{c.unread > 99 ? '99+' : String(c.unread)}</T>
+                <T variant="meta" weight="bold" c={color.bg}>{c.unread > 99 ? '99+' : String(c.unread)}</T>
               </View>
             ) : null}
           </View>
-          <T size={10.5} weight="semibold" align="center" numberOfLines={1}>{c.symbol}</T>
-          <Num size={9} weight="regular" c={color.dim} style={{ marginTop: -4 }}>{c.time_left_plain}</Num>
+          <T variant="meta" weight="semibold" align="center" numberOfLines={1}>{c.symbol}</T>
+          <Num variant="meta" weight="regular" c={color.dim} style={{ marginTop: -4 }}>{c.time_left_plain}</Num>
         </Pressable>
       ))}
 
@@ -126,8 +126,8 @@ export function CirclesRow({
               <Path d="M12 5v14M5 12h14" />
             </Svg>
           </View>
-          <T size={10.5} align="center" c={color.volt}>Open</T>
-          <T size={9} align="center" c={color.dim} style={{ marginTop: -4 }}>staff</T>
+          <T variant="meta" align="center" c={color.volt}>Open</T>
+          <T variant="meta" align="center" c={color.dim} style={{ marginTop: -4 }}>staff</T>
         </Pressable>
       ) : null}
     </ScrollView>
