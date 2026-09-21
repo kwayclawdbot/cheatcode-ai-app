@@ -202,13 +202,31 @@ const day = (ts: string) => ts.slice(0, 10);
  * `null` when there are fewer than 20 bars. A "previous day's high" off a
  * six-bar series is a number with no window behind it.
  */
-export function computeKeyLevels(candles: Candle[]): KeyLevels | null {
+export function computeKeyLevels(candles: Candle[], opts: { sessionDate?: string } = {}): KeyLevels | null {
   const bars = solidBars(candles);
   if (bars.length < 20) return null;
 
   const closes = bars.map((b) => b.c);
   const current = closes[closes.length - 1];
-  const prev = bars.length >= 2 ? bars[bars.length - 2] : bars[bars.length - 1];
+  /**
+   * WHICH BAR IS "THE PREVIOUS SESSION".
+   *
+   * Without a date this is the second-to-last bar, which is right only when the
+   * series ENDS with the current session's bar. The chart loads daily bars up
+   * to `lastTradingDate()`, and during the session that is yesterday — so the
+   * second-to-last bar was the day BEFORE yesterday, and Kai drew Thursday's
+   * high as "prior day high" on a Monday morning.
+   *
+   * With `sessionDate` (the New York calendar date the member is looking at),
+   * the previous session is the newest bar dated before it, whether or not the
+   * series already carries a bar for today.
+   */
+  const earlier = opts.sessionDate ? bars.filter((b) => day(b.ts) < opts.sessionDate!) : [];
+  const prev = opts.sessionDate
+    ? (earlier[earlier.length - 1] ?? bars[bars.length - 1])
+    : bars.length >= 2
+      ? bars[bars.length - 2]
+      : bars[bars.length - 1];
   const window = `${day(bars[0].ts)} to ${day(bars[bars.length - 1].ts)}`;
   const levels: NamedLevel[] = [];
 

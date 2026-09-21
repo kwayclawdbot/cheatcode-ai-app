@@ -149,6 +149,34 @@ ok(
   lvl('prior_day_high')?.from.includes('2026-05-18') === true,
   lvl('prior_day_high')?.from
 );
+/**
+ * THE MID-SESSION CASE. The chart loads daily bars only up to
+ * `lastTradingDate()`, which during the session is YESTERDAY. On 2026-09-21 at
+ * 10:45 ET a real NVDA call ended on the 09-18 bar and the old rule named the
+ * 09-17 bar as "prior day". With the session date passed, the previous session
+ * is the newest bar before today, whether or not today's bar is in the series.
+ */
+{
+  const noToday = computeKeyLevels(daily, { sessionDate: '2026-05-20' });
+  const pdh = noToday?.levels.find((l) => l.name === 'prior_day_high');
+  ok(
+    'mid-session, with no bar for today yet, the prior day is the LAST bar, not the one before it',
+    near(pdh?.price, 132) && pdh?.from.includes('2026-05-19') === true,
+    pdh
+  );
+  const withToday = computeKeyLevels(daily, { sessionDate: '2026-05-19' });
+  const pdh2 = withToday?.levels.find((l) => l.name === 'prior_day_high');
+  ok(
+    'when the series already carries today, the prior day is the bar before it',
+    near(pdh2?.price, 133.5) && pdh2?.from.includes('2026-05-18') === true,
+    pdh2
+  );
+  const weekend = computeKeyLevels(daily, { sessionDate: '2026-05-23' });
+  ok(
+    'on a weekend the prior day is the last session that traded',
+    weekend?.levels.find((l) => l.name === 'prior_day_close')?.from.includes('2026-05-19') === true
+  );
+}
 ok('the year high is the highest high in the window', near(lvl('year_high')?.price, 133.5));
 ok('the year low is the lowest low', near(lvl('year_low')?.price, 98));
 ok(

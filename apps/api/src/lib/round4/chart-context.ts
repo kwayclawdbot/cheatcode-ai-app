@@ -142,7 +142,10 @@ export async function loadChartContext(userId: string, stamp: ChartStamp | null 
       return fallback;
     }
   };
-  const computed = safe('key_levels', () => computeKeyLevels(daily), null);
+  // The previous session is judged against TODAY in New York, because `daily`
+  // stops at `lastTradingDate()` — yesterday, while the market is open.
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const computed = safe('key_levels', () => computeKeyLevels(daily, { sessionDate: today }), null);
   const intraday = safe('intraday_levels', () => computeIntradayLevels(intradayRes.candles), null);
   const trendlines = safe('trendlines', () => findTrendlines(daily), []);
   const fib = safe('fib', () => computeFib(daily), null);

@@ -578,7 +578,7 @@ async function readStockToday(input: Record<string, unknown>): Promise<ToolResul
 
   const candles = own ?? [];
   const ownPrior = candles.length ? closesBefore(candles, sessionDate) : null;
-  const levels = candles.length ? computeKeyLevels(candles) : null;
+  const levels = candles.length ? computeKeyLevels(candles, { sessionDate }) : null;
   const nearest = (list: { name: string; price: number }[] | undefined) =>
     (list ?? []).slice(0, 2).map((l) => ({
       level: l.name,
