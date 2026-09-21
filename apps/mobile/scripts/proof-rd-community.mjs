@@ -148,12 +148,14 @@ for (const v of VIEWS) {
   /* ── a post, opened ───────────────────────────────────────────────── */
   const firstCard = page.locator('[data-testid^="post-"][data-testid$="-open"]').first();
   if (await firstCard.count()) {
-    await firstCard.click();
+    // Tap the words, away from any $cashtag (a cashtag opens the symbol instead).
+    const box = await firstCard.boundingBox();
+    await firstCard.click({ position: { x: Math.max(4, (box?.width ?? 20) - 12), y: Math.min(10, (box?.height ?? 20) / 2) } });
     await page.getByTestId('screen-post').waitFor({ timeout: 20000 });
     await page.getByTestId('reply-bar').waitFor({ timeout: 20000 });
     await page.waitForTimeout(2500);
     await shot('05-thread');
-    note(await count('[data-testid^="reply-"]') >= 1, `replies — ${await count('[data-testid^="reply-"]')}`);
+    note(await count('[data-testid^="reply-"]:not([data-testid^="reply-bar"])') >= 1, `replies — ${await count('[data-testid^="reply-"]:not([data-testid^="reply-bar"])')}`);
     await page.goBack();
     await page.waitForTimeout(1500);
   }
