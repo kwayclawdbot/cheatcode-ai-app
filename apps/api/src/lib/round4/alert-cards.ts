@@ -804,7 +804,14 @@ function contractLine(setup: TrackedSetup | null): string | null {
   const peakPart = hasPeak
     ? `contract peak ${money(peak)}${Number.isFinite(mult) && mult > 0 ? ` (${mult.toFixed(1)}x cost)` : ''}`
     : null;
-  const expiredPart = hasExpired ? `expired ${money(expired)}` : null;
+  // "expired $0.00" read like a price tag on nothing. A contract that closed
+  // at zero expired WORTHLESS, and that is the word; one that closed above
+  // zero was worth something at expiry, and it says so in those words.
+  const expiredPart = hasExpired
+    ? expired <= 0
+      ? 'contract expired worthless'
+      : `contract worth ${money(expired)} at expiry`
+    : null;
   return joinBasis([peakPart, expiredPart]);
 }
 
