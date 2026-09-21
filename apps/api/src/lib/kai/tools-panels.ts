@@ -4,10 +4,11 @@
  *
  * Each is an ADAPTER over `lib/market/panels.ts`, never a second query: the
  * range Kai reads out and the range printed on the panel beneath his words are
- * one read. And each carries its own `must_say`, because two of the three are
- * honest partials — no earnings calendar and no option prices on this data
- * plan — and the sentence that says so has to reach the member through Kai as
- * well as through the panel.
+ * one read. And each carries its own `must_say`: where the earnings date came
+ * from (confirmed or estimated), and how fresh the option prices are — the
+ * sentence has to reach the member through Kai as well as through the panel.
+ * Options and the earnings date come from Unusual Whales; stock data from
+ * Polygon.
  *
  * Read-only, like every other tool. The watchlist and portfolio panels need no
  * new tool: `read_watchlist` and `read_positions` in `tools-desk.ts` already
@@ -52,12 +53,12 @@ export const PANEL_TOOLS: Anthropic.Tool[] = [
   {
     name: 'read_options_chain',
     description:
-      'Read which option contracts are LISTED near the money on a stock for its nearest expiry, plus any ' +
-      'contracts the options-flow engine recorded on it in the last few sessions with the bid and ask it saw ' +
-      'at that moment. Call this when the user asks about the options on a ticker, which strikes exist, or ' +
-      'what the unusual flow bought. The listed ladder carries NO prices — live option prices are not on ' +
-      'this data plan — so never quote a premium unless it came back on a recorded flow contract, and say ' +
-      'when it was recorded.',
+      'Read the option chain on a stock for its nearest expiry: the strikes around the money, and for each ' +
+      'call and put its bid, ask, last price, volume, open interest and implied volatility, plus any ' +
+      'contracts the options-flow engine recorded on it in the last few sessions. Call this when the user ' +
+      'asks what an option costs, which strikes exist, or what the unusual flow bought. Say how fresh the ' +
+      'prices are — the time of the newest trade comes back with them — and never call a quote from a ' +
+      'finished session live.',
     input_schema: symbolOnly('The underlying ticker, e.g. NVDA.'),
     strict: true,
   },
@@ -113,7 +114,9 @@ export async function runPanelToolWith(
       found: true,
       symbol: v.symbol,
       company: v.name,
-      next_report: v.next ? { date: v.next.date, days_away: v.next.days_away, where_this_date_came_from: v.next.source_plain } : null,
+      next_report: v.next
+        ? { date: v.next.date, days_away: v.next.days_away, confirmed: v.next.confirmed ?? false, where_this_date_came_from: v.next.source_plain }
+        : null,
       next_report_plain: v.next_plain,
       quarters: v.quarters.map((q) => ({
         quarter: `${q.fiscal_period} ${q.fiscal_year}`.trim(),
@@ -126,7 +129,9 @@ export async function runPanelToolWith(
       must_say:
         `${v.estimates_plain} ` +
         (v.next
-          ? 'The next date is from the source named with it and can move; say where it came from.'
+          ? v.next.confirmed
+            ? 'The company confirmed the next date.'
+            : 'The next date is an estimate, not an announcement — say so, because it can move.'
           : 'There is no next report date on record — say it is not known rather than guessing one.'),
     };
   }
@@ -134,6 +139,17 @@ export async function runPanelToolWith(
   const r = await loaders.optionsChain(symbol);
   if (!r.ok) return NOT_FOUND(r.plain);
   const v = r.value;
+  const side = (q: (typeof v.rows)[number]['call']) =>
+    q
+      ? {
+          bid: q.bid,
+          ask: q.ask,
+          last: q.last,
+          volume: q.volume,
+          open_interest: q.open_interest,
+          implied_volatility_pct: q.iv === null ? null : round(q.iv * 100, 1),
+        }
+      : null;
   return {
     found: true,
     symbol: v.symbol,
@@ -141,11 +157,12 @@ export async function runPanelToolWith(
     underlying_how_fresh_plain: v.spot_plain,
     nearest_expiry: v.expiry,
     other_expiries: v.expiries.slice(1),
-    listed_strikes: v.rows.map((row) => ({
+    prices_as_of: v.prices_as_of ?? null,
+    strikes: v.rows.map((row) => ({
       strike: row.strike,
-      call_listed: Boolean(row.call),
-      put_listed: Boolean(row.put),
       nearest_the_money: row.nearest_the_money,
+      call: side(row.call),
+      put: side(row.put),
     })),
     recorded_flow: v.flow.map((f) => ({
       contract: `${f.type} ${f.strike} expiring ${f.expiry}`,
@@ -157,6 +174,7 @@ export async function runPanelToolWith(
       recorded_at: f.recorded_at,
     })),
     must_say: v.prices_plain,
+    ...(v.degraded ? { degraded: true, degraded_reason: v.degraded_reason } : {}),
   };
 }
 

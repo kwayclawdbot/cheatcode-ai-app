@@ -17,6 +17,7 @@ import type {
   EarningsPanelResponse,
   KaiWorkspaceAction,
   MarketQuote,
+  OptionQuote,
   OptionsChainResponse,
   OptionsFlowPrint,
   QuoteCardResponse,
@@ -146,7 +147,9 @@ export function readEarnings(raw: unknown, symbol: string): EarningsPanelRespons
     kind: 'earnings',
     symbol: str(r.symbol) ?? symbol,
     name: str(r.name),
-    next: nextDate ? { date: nextDate, days_away: num(n.days_away), source_plain: str(n.source_plain) ?? 'Source not named.' } : null,
+    next: nextDate
+      ? { date: nextDate, days_away: num(n.days_away), source_plain: str(n.source_plain) ?? 'Source not named.', confirmed: n.confirmed === true }
+      : null,
     next_plain: str(r.next_plain) ?? 'The next report date is not known.',
     quarters: arr(r.quarters).map((q) => {
       const x = obj(q);
@@ -182,6 +185,26 @@ function readFlow(v: unknown): OptionsFlowPrint | null {
   };
 }
 
+/** One priced side of a strike. No symbol → not listed; a missing price stays null. */
+function readSide(v: unknown): OptionQuote | null {
+  const x = obj(v);
+  const option_symbol = str(x.option_symbol);
+  if (!option_symbol) return null;
+  return {
+    option_symbol,
+    bid: num(x.bid), ask: num(x.ask), last: num(x.last),
+    volume: num(x.volume), open_interest: num(x.open_interest), iv: num(x.iv),
+    last_trade_at: str(x.last_trade_at),
+  };
+}
+
+/** "3.20 / 3.30" — bid and ask without the dollar sign, the way a chain prints them. */
+export function bidAsk(q: { bid: number | null; ask: number | null }): string | null {
+  if (q.bid === null && q.ask === null) return null;
+  const f = (n: number | null) => (n === null ? 'not known' : n.toFixed(2));
+  return `${f(q.bid)} / ${f(q.ask)}`;
+}
+
 export function readOptionsChain(raw: unknown, symbol: string): OptionsChainResponse {
   const r = obj(raw);
   if (r.kind !== 'options' || !Array.isArray(r.rows)) throw new PanelShapeError('options list');
@@ -199,8 +222,8 @@ export function readOptionsChain(raw: unknown, symbol: string): OptionsChainResp
         if (strike === null) return null;
         return {
           strike,
-          call: str(x.call),
-          put: str(x.put),
+          call: readSide(x.call),
+          put: readSide(x.put),
           nearest_the_money: x.nearest_the_money === true,
           call_flow: x.call_flow ? readFlow(x.call_flow) : null,
           put_flow: x.put_flow ? readFlow(x.put_flow) : null,
@@ -209,6 +232,7 @@ export function readOptionsChain(raw: unknown, symbol: string): OptionsChainResp
       .filter((x): x is NonNullable<typeof x> => x !== null),
     flow: arr(r.flow).map(readFlow).filter((x): x is OptionsFlowPrint => x !== null),
     prices_plain: str(r.prices_plain) ?? '',
+    prices_as_of: str(r.prices_as_of),
     degraded: r.degraded === true,
     degraded_reason: str(r.degraded_reason),
   };
@@ -273,15 +297,15 @@ export function fixtureEarnings(symbol: string): EarningsPanelResponse {
   const s = symbol.toUpperCase();
   return {
     kind: 'earnings', symbol: s, name: s === 'NVDA' ? 'NVIDIA Corporation' : null,
-    next: { date: '2026-11-19', days_away: 59, source_plain: 'From the company data the options-flow feed carried on Sep 21. Report dates can move — the company announces the confirmed one.' },
-    next_plain: 'Next report expected Nov 19.',
+    next: { date: '2026-11-18', days_away: 58, confirmed: false, source_plain: 'Estimated by Unusual Whales — the company has not announced it yet, so it can move.' },
+    next_plain: 'Next report expected Nov 18.',
     quarters: [
       { fiscal_period: 'Q2', fiscal_year: '2027', period_end: '2026-07-26', filed: '2026-08-26', eps_diluted: 1.08, revenue: 46.7e9, net_income: 26.4e9 },
       { fiscal_period: 'Q1', fiscal_year: '2027', period_end: '2026-04-26', filed: '2026-05-28', eps_diluted: 0.76, revenue: 44.1e9, net_income: 18.8e9 },
       { fiscal_period: 'Q4', fiscal_year: '2026', period_end: '2026-01-25', filed: '2026-02-26', eps_diluted: 0.89, revenue: 39.3e9, net_income: 22.1e9 },
       { fiscal_period: 'Q3', fiscal_year: '2026', period_end: '2025-10-26', filed: '2025-11-20', eps_diluted: 0.78, revenue: 35.1e9, net_income: 19.3e9 },
     ],
-    estimates_plain: "Analyst estimates are not on this app's data plan, so there is no beat or miss here — only what the company reported.",
+    estimates_plain: 'This panel shows what the company reported, not what analysts expected, so there is no beat or miss here.',
     degraded: false, degraded_reason: null,
   };
 }
@@ -289,22 +313,36 @@ export function fixtureEarnings(symbol: string): EarningsPanelResponse {
 export function fixtureOptionsChain(symbol: string): OptionsChainResponse {
   const s = symbol.toUpperCase();
   const expiry = '2026-09-25';
-  const occ = (t: 'C' | 'P', k: number) => `O:${s}260925${t}${String(Math.round(k * 1000)).padStart(8, '0')}`;
+  const occ = (t: 'C' | 'P', k: number) => `${s}260925${t}${String(Math.round(k * 1000)).padStart(8, '0')}`;
   const flow: OptionsFlowPrint = {
-    option_symbol: occ('C', 182.5), type: 'call', strike: 182.5, expiry,
+    option_symbol: `O:${occ('C', 182.5)}`, type: 'call', strike: 182.5, expiry,
     bid: 2.1, ask: 2.18, volume: 8123, open_interest: 1400, iv: 0.41,
     label: 'The contract the flow bought', recorded_at: '2026-09-21T13:52:00Z',
   };
+  const spot = 181.2;
   const strikes = [167.5, 170, 172.5, 175, 177.5, 180, 182.5, 185, 187.5, 190, 192.5];
+  // Example prices, shaped like a real chain: intrinsic value plus time value
+  // that shrinks away from the money. Fixtures mode only.
+  const side = (t: 'C' | 'P', k: number): OptionQuote => {
+    const intrinsic = Math.max(0, t === 'C' ? spot - k : k - spot);
+    const mid = +(intrinsic + 2.4 * Math.exp(-Math.abs(spot - k) / 6)).toFixed(2);
+    const half = mid < 1 ? 0.02 : 0.05;
+    return {
+      option_symbol: occ(t, k), bid: +(mid - half).toFixed(2), ask: +(mid + half).toFixed(2), last: mid,
+      volume: Math.round(9000 * Math.exp(-Math.abs(spot - k) / 5)), open_interest: Math.round(4000 + 300 * Math.abs(spot - k)),
+      iv: +(0.38 + Math.abs(spot - k) / 400).toFixed(3), last_trade_at: '2026-09-21T14:29:41Z',
+    };
+  };
   return {
-    kind: 'options', symbol: s, spot: 181.2, spot_plain: 'Example data · fixtures mode',
+    kind: 'options', symbol: s, spot, spot_plain: 'Example data · fixtures mode',
     expiry, expiries: [expiry, '2026-10-02', '2026-10-09', '2026-10-16'],
     rows: strikes.map((k) => ({
-      strike: k, call: occ('C', k), put: occ('P', k), nearest_the_money: k === 180,
+      strike: k, call: side('C', k), put: side('P', k), nearest_the_money: k === 180,
       call_flow: k === 182.5 ? flow : null, put_flow: null,
     })),
     flow: [flow],
-    prices_plain: "Live option prices are not on this app's market-data plan, so this shows which contracts are listed, not what they cost. A price appears only on a contract the options-flow engine recorded, and it is the bid and ask at the moment it was recorded.",
+    prices_as_of: '2026-09-21T14:29:41Z',
+    prices_plain: 'Option prices are from Unusual Whales. The newest trade on this expiry was Sep 21, 10:29 AM ET. Bid and ask move constantly — check your broker before you trade.',
     degraded: false, degraded_reason: null,
   };
 }
@@ -340,8 +378,8 @@ export function fixtureWatchlist(): WatchlistResponse {
 export function fixtureWorkspaceTurn(text: string): { reply: string; action: KaiWorkspaceAction } | null {
   const t = text.toLowerCase();
   const tick = /\b([A-Z]{1,5})\b/.exec(text.replace(/\b(I|A)\b/g, ''))?.[1] ?? 'NVDA';
-  if (/earning/.test(t)) return { reply: `Pulling up ${tick}'s earnings — the quarters it reported, and the next date only if a source names one.`, action: { type: 'show_earnings', symbol: tick } };
-  if (/option|strike|chain/.test(t)) return { reply: `Here are the ${tick} strikes listed near the price. There are no live option prices on this plan, so only contracts the flow recorded carry one.`, action: { type: 'show_options', symbol: tick } };
+  if (/earning/.test(t)) return { reply: `Pulling up ${tick}'s earnings — the quarters it reported, and when it reports next.`, action: { type: 'show_earnings', symbol: tick } };
+  if (/option|strike|chain/.test(t)) return { reply: `Here is the ${tick} option chain near the price, with the bid and ask on each contract.`, action: { type: 'show_options', symbol: tick } };
   if (/watchlist|watching/.test(t)) return { reply: 'Here is your watchlist, priced.', action: { type: 'show_watchlist' } };
   if (/position|portfolio|holding/.test(t)) return { reply: 'Here are your paper positions and how they are doing.', action: { type: 'show_portfolio' } };
   if (/quote|price|range|volume/.test(t)) return { reply: `Here is ${tick}'s price card — the day's range and volume are under the price.`, action: { type: 'show_quote', symbol: tick } };

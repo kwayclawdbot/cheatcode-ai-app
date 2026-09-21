@@ -23,7 +23,7 @@
  *
  * HONESTY. Every source failure comes back `found:false` with a sentence. No
  * VIX (the plan does not carry it — VIXY stands in and is called VIXY). No
- * options chain (not on the plan). Option aggregates are reported as activity,
+ * chain here (read_options_chain has it, from UW). Option aggregates are reported as activity,
  * never as a forecast — the engine measured them three ways and they do not
  * call direction.
  */

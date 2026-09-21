@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { workspace } from '../src/features/kai-workspace/store';
 import {
   PanelShapeError, bigMoney, compact, fixtureWorkspaceTurn, rangePosition, readEarnings,
-  readOptionsChain, readQuoteCard, readWatchlist, shortDate, strikeLabel, usd,
+  readOptionsChain, readQuoteCard, readWatchlist, shortDate, strikeLabel, usd, bidAsk,
 } from '../src/features/kai-workspace/panels-read';
 import type { KaiWorkspaceAction } from '@cheatcode/shared';
 
@@ -127,12 +127,19 @@ head('The readers keep a missing number missing');
 
   const o = readOptionsChain({
     kind: 'options', spot: 181, rows: [
-      { strike: 180, call: 'O:X', put: null, nearest_the_money: true, call_flow: null, put_flow: null },
+      { strike: 180, call: { option_symbol: 'X260925C00180000', bid: '3.20', ask: 3.3, last: null, volume: 11762, open_interest: 3196, iv: 0.33, last_trade_at: '2026-09-21T14:51:46Z' }, put: null, nearest_the_money: true, call_flow: null, put_flow: null },
       { strike: 'junk' },
     ], flow: [{ type: 'call', strike: 182.5, expiry: '2026-09-25', option_symbol: 'O:X', recorded_at: '2026-09-21T13:52:00Z', bid: null, ask: 2.18 }],
+    prices_as_of: '2026-09-21T14:51:46Z',
   }, 'X');
   ok('a row without a strike is dropped, not drawn at zero', o.rows.length === 1);
   ok('an unlisted side stays unlisted', o.rows[0].put === null);
+  ok('a priced side keeps its UW numbers', o.rows[0].call?.bid === 3.2 && o.rows[0].call.ask === 3.3 && o.rows[0].call.volume === 11762);
+  ok('a last price that was not sent is null, not $0.00', o.rows[0].call?.last === null);
+  ok('the time of the prices is kept', o.prices_as_of === '2026-09-21T14:51:46Z');
+  ok('a side with no contract symbol is not listed', readOptionsChain({ kind: 'options', rows: [{ strike: 1, call: { bid: 1 } }] }, 'X').rows[0].call === null);
+  ok('bid / ask prints the way a chain does', bidAsk({ bid: 3.2, ask: 3.3 }) === '3.20 / 3.30');
+  ok('a missing half says so, and both missing is nothing', bidAsk({ bid: null, ask: 0.05 }) === 'not known / 0.05' && bidAsk({ bid: null, ask: null }) === null);
   ok('a recorded bid that was not sent is null, not $0.00', o.flow[0].bid === null && o.flow[0].ask === 2.18);
   ok('a flow print without its time is dropped', readOptionsChain({ kind: 'options', rows: [], flow: [{ type: 'call', strike: 1, expiry: 'x', option_symbol: 'y' }] }, 'X').flow.length === 0);
 
@@ -173,7 +180,8 @@ head('The panels are honest on the panel itself');
       && (panels.match(/testID="panel-empty"/g) ?? []).length === 2);
   ok('a failure prints the server\'s own sentence when there is one', /e instanceof Error && e\.message/.test(panels));
   ok('a missing number reads "not known"', (panels.match(/not known/g) ?? []).length >= 4);
-  ok('the options panel states there are no live prices', panels.includes('testID="options-no-live-prices"') && panels.includes('d.prices_plain'));
+  ok('the options panel says where its prices come from and how fresh', panels.includes('testID="options-prices-source"') && panels.includes('d.prices_plain') && panels.includes('d.prices_as_of'));
+  ok('the old "no live prices" caveat is gone from panel and fixtures', !/no live option prices/i.test(panels) && !/market-data plan/.test(read('src/features/kai-workspace/panels-read.ts')));
   ok('a recorded option price says it was recorded', panels.includes('recorded') && panels.includes('etStampOf(f.recorded_at)'));
   ok('the earnings panel states there are no estimates', panels.includes('testID="earnings-no-estimates"'));
   ok('and an unknown next date is said, not blank', panels.includes('testID="earnings-next-unknown"'));

@@ -15,8 +15,12 @@
  *     which session it belongs to; a Friday range on a Monday morning labelled
  *     "today so far" is the lie a freshness label exists to prevent.
  *  2. A HOLE STAYS A HOLE. No bars → nulls, not zeros. No next report date →
- *     null plus a sentence, never an estimate. No option prices → the ladder
- *     has no price field at all.
+ *     null plus a sentence, never an estimate. An estimated date says it is
+ *     an estimate. A contract with no bid is null, not $0.
+ *  2b. OPTIONS AND THE EARNINGS DATE COME FROM UNUSUAL WHALES, proved on
+ *     RECORDED real answers (scripts/fixtures/uw, kai-intel) — the chain's
+ *     bid/ask/last land on their own strike, and a quote from a finished
+ *     session is never called live.
  *  3. A RECORDED OPTION PRICE LANDS ON ITS OWN CONTRACT, and only there —
  *     matched by the OCC symbol, not by the display strings it was stored with.
  *  4. THE TOOLS READ, AND ONLY READ, and each carries the honest sentence.
@@ -34,11 +38,24 @@ import {
   WorkspaceSurfaceKind,
   type MarketQuote,
 } from '@shared/api';
-import { makePanelLoaders, parseOcc, type PanelDeps } from '../src/lib/market/panels.ts';
+import {
+  chainFromUw,
+  expiriesFromUw,
+  makePanelLoaders,
+  nextEarningsFromUw,
+  parseOcc,
+  type PanelDeps,
+} from '../src/lib/market/panels.ts';
 import { PANEL_TOOLS, runPanelToolWith } from '../src/lib/kai/tools-panels.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p: string) => readFileSync(path.join(ROOT, p), 'utf8');
+const fixture = (p: string) => JSON.parse(read(`scripts/fixtures/${p}`)) as { data: never[] };
+
+/** Recorded Unusual Whales answers, 2026-09-21 ~10:51 ET. No token in them. */
+const UW_EXPIRIES = expiriesFromUw(fixture('uw/expiry-breakdown-NVDA.json').data);
+const UW_CHAIN = chainFromUw(fixture('uw/option-contracts-NVDA-2026-09-23.json').data);
+const UW_EARNINGS = fixture('kai-intel/uw-earnings-NVDA.json').data as { report_date: string }[];
 
 let failures = 0;
 let passes = 0;
@@ -75,25 +92,13 @@ const DAILY = [
   { ts: '2026-09-18T04:00:00.000Z', o: 178, h: 180.3, l: 177.2, c: 179.5, v: 171_000_000 },
 ];
 
-const LADDER = (() => {
-  const out: { ticker: string; type: 'call' | 'put'; strike: number; expiry: string }[] = [];
-  for (const expiry of ['2026-09-25', '2026-10-02']) {
-    for (let k = 160; k <= 205; k += 2.5) {
-      const occ = `${expiry.slice(2, 4)}${expiry.slice(5, 7)}${expiry.slice(8, 10)}`;
-      const strike = String(Math.round(k * 1000)).padStart(8, '0');
-      out.push({ ticker: `O:NVDA${occ}C${strike}`, type: 'call', strike: k, expiry });
-      out.push({ ticker: `O:NVDA${occ}P${strike}`, type: 'put', strike: k, expiry });
-    }
-  }
-  return out;
-})();
 
 const FLOW = [
   {
     recorded_at: '2026-09-21T13:52:00Z',
     options: [
-      // On the ladder: nearest expiry, 182.5 call.
-      { option_symbol: 'O:NVDA260925C00182500', label: 'The contract the flow bought', bid: 2.1, ask: 2.18, volume: 8123, open_interest: 1400, iv: 0.41, expiry: 'Sep 25', strike: '182.5' },
+      // On the ladder: the expiry drawn after the close (Sep 23), 225 call.
+      { option_symbol: 'O:NVDA260923C00225000', label: 'The contract the flow bought', bid: 2.1, ask: 2.18, volume: 8123, open_interest: 1400, iv: 0.41, expiry: 'Sep 23', strike: '225' },
       // Off the ladder's expiry.
       { option_symbol: 'O:NVDA261002P00170000', label: 'Named by the engine', bid: 1.02, ask: 1.07, volume: 900, open_interest: 5000, iv: 0.44 },
       // Already expired — history, not a chain.
@@ -105,7 +110,7 @@ const FLOW = [
   {
     // An OLDER reading of the same 182.5 call: the newer one wins.
     recorded_at: '2026-09-18T14:00:00Z',
-    options: [{ option_symbol: 'O:NVDA260925C00182500', label: 'old', bid: 9, ask: 9.5, volume: 1, open_interest: 1, iv: 0.9 }],
+    options: [{ option_symbol: 'O:NVDA260923C00225000', label: 'old', bid: 9, ask: 9.5, volume: 1, open_interest: 1, iv: 0.9 }],
   },
 ];
 
@@ -125,8 +130,9 @@ function deps(over: Partial<PanelDeps> = {}): PanelDeps & { calls: string[] } {
         { fiscal_period: 'Q2', fiscal_year: '2026', end_date: '2025-07-27', filing_date: '2025-08-27', revenue: 30.0e9, net_income: 16.6e9, eps_diluted: 0.67 },
       ],
     }),
-    earningsHint: async () => ({ date: '2026-11-19', recorded_at: '2026-09-21T13:52:00Z' }),
-    optionContracts: async () => ({ contracts: LADDER, degraded: false, reason: null }),
+    nextEarnings: async (s) => { calls.push(`uw.earnings:${s}`); return { ok: true, next: nextEarningsFromUw(UW_EARNINGS, '2026-09-21') }; },
+    optionExpiries: async (s) => { calls.push(`uw.expiries:${s}`); return { expiries: UW_EXPIRIES, degraded: false }; },
+    optionChain: async (s, e) => { calls.push(`uw.chain:${s}:${e}`); return { contracts: e === '2026-09-23' ? UW_CHAIN : [], degraded: false }; },
     flowRecords: async () => FLOW,
     now: () => NOW,
     ...over,
@@ -185,31 +191,53 @@ console.log('\nQUOTE CARD');
 
 console.log('\nEARNINGS');
 {
-  const r = await makePanelLoaders(deps()).earnings('NVDA');
+  const d = deps();
+  const r = await makePanelLoaders(d).earnings('NVDA');
   check('it answers', r.ok);
   if (r.ok) {
     const v = r.value;
     check('and parses with the shared schema', EarningsPanelResponse.safeParse(v).success, EarningsPanelResponse.safeParse(v).error?.issues);
     check('four quarters at most', v.quarters.length === 4);
     check('newest first, as reported', v.quarters[0].fiscal_period === 'Q2' && v.quarters[0].eps_diluted === 1.08);
-    check('a future date with a source becomes the next report', v.next?.date === '2026-11-19');
-    check('counted in days from today', v.next?.days_away === 59, v.next?.days_away);
-    check('and says where it came from', /options-flow feed/.test(v.next?.source_plain ?? ''));
-    check('no beat/miss: the estimates sentence is there', /no beat or miss/.test(v.estimates_plain));
+    check('the next date is Unusual Whales\' (recorded: 2026-11-18)', v.next?.date === '2026-11-18', v.next);
+    check('counted in days from today', v.next?.days_away === 58, v.next?.days_away);
+    check('UW marked it "estimation", so it is NOT confirmed', v.next?.confirmed === false);
+    check('and the panel says it is an estimate that can move', /Estimated by Unusual Whales/.test(v.next?.source_plain ?? '') && /can move/.test(v.next?.source_plain ?? ''));
+    check('the headline says "expected", not a promise', v.next_plain === 'Next report expected Nov 18.', v.next_plain);
+    check('the date was read from UW, once', d.calls.filter((c) => c === 'uw.earnings:NVDA').length === 1, d.calls);
+    check('no beat/miss on this panel, and it says why', /no beat or miss/.test(v.estimates_plain) && !/data plan/.test(v.estimates_plain));
     check('and no estimate field exists to be filled', !('estimate' in (v.quarters[0] as object)));
   }
 }
 {
-  const r = await makePanelLoaders(deps({ earningsHint: async () => ({ date: '2026-08-26', recorded_at: '2026-08-01T13:00:00Z' }) })).earnings('NVDA');
+  const next = nextEarningsFromUw(
+    [
+      { report_date: '2026-08-26', source: 'company', report_time: 'postmarket', actual_eps: '2.22' },
+      { report_date: '2026-11-18', source: 'company', report_time: 'postmarket', actual_eps: null },
+    ],
+    '2026-09-21',
+  );
+  check('a company-sourced row is confirmed, with its time of day', next?.confirmed === true && next.when === 'postmarket');
+  const r = await makePanelLoaders(deps({ nextEarnings: async () => ({ ok: true, next }) })).earnings('NVDA');
+  check('a confirmed date reads "Confirmed by the company, after the close"', r.ok && /Confirmed by the company, after the close/.test(r.value.next?.source_plain ?? ''), r.ok && r.value.next);
+  check('and the headline drops "expected"', r.ok && r.value.next_plain === 'Next report Nov 18.');
+}
+check('a reported quarter is never the next one', nextEarningsFromUw([{ report_date: '2026-09-21', actual_eps: '1.0' }], '2026-09-21') === null);
+{
+  const r = await makePanelLoaders(deps({ nextEarnings: async () => ({ ok: true, next: { date: '2026-08-26', confirmed: true, when: null } }) })).earnings('NVDA');
   check('a date that has passed is not a next date', r.ok && r.value.next === null);
   check('and the gap is explained, not estimated', r.ok && /left blank rather than guessed/.test(r.value.next_plain));
 }
 {
-  const r = await makePanelLoaders(deps({ earningsHint: async () => null })).earnings('NVDA');
-  check('no source: next is null', r.ok && r.value.next === null);
+  const r = await makePanelLoaders(deps({ nextEarnings: async () => ({ ok: true, next: null }) })).earnings('NVDA');
+  check('UW names no date: next is null', r.ok && r.value.next === null);
 }
 {
-  const r = await makePanelLoaders(deps({ earningsHint: async () => null, financials: async () => ({ quarters: [], degraded: false }) })).earnings('SPY');
+  const r = await makePanelLoaders(deps({ nextEarnings: async () => ({ ok: false }) })).earnings('NVDA');
+  check('UW did not answer: said as that, not as "no date"', r.ok && r.value.next === null && /did not answer just now/.test(r.value.next_plain));
+}
+{
+  const r = await makePanelLoaders(deps({ nextEarnings: async () => ({ ok: true, next: null }), financials: async () => ({ quarters: [], degraded: false }) })).earnings('SPY');
   check('nothing at all: a sentence, not an empty table', !r.ok && /no reported quarters on file for SPY/.test(r.ok ? '' : r.plain));
 }
 {
@@ -223,48 +251,82 @@ console.log('\nEARNINGS');
 
 console.log('\nOPTIONS');
 check('an OCC symbol is read', JSON.stringify(parseOcc('O:NVDA260925C00182500')) === JSON.stringify({ root: 'NVDA', expiry: '2026-09-25', type: 'call', strike: 182.5 }));
-check('without the prefix too', parseOcc('NVDA261002P00170000')?.type === 'put');
+check('without the prefix too (UW\'s form)', parseOcc('NVDA261002P00170000')?.type === 'put');
 check('and nonsense is nothing', parseOcc('NVDA Sep 25 180C') === null);
+check('the recorded expiry list is read, soonest first', UW_EXPIRIES[0] === '2026-09-21' && UW_EXPIRIES[1] === '2026-09-23', UW_EXPIRIES.slice(0, 3));
+check('the recorded chain is read, 130 contracts', UW_CHAIN.length === 130, UW_CHAIN.length);
 {
-  const r = await makePanelLoaders(deps()).optionsChain('NVDA');
-  check('it answers', r.ok);
+  const c = UW_CHAIN.find((x) => x.option_symbol === 'NVDA260923C00222500');
+  check('a recorded contract keeps its real numbers', c?.bid === 3.2 && c.ask === 3.3 && c.last === 3.2 && c.volume === 11762 && c.open_interest === 3196, c);
+  check('with its side, strike and expiry from its own symbol', c?.type === 'call' && c.strike === 222.5 && c.expiry === '2026-09-23');
+  check('a missing bid is null, never zero', chainFromUw([{ option_symbol: 'NVDA260923C00300000', nbbo_bid: null, nbbo_ask: '0.01' }])[0].bid === null);
+}
+
+// After the close on Monday 21 Sep: today's expiry has stopped trading.
+const AFTER_CLOSE = new Date('2026-09-21T20:30:00Z');
+const at224 = (over: Partial<PanelDeps> = {}) =>
+  deps({
+    quote: async (s) => ({ quote: quote({ symbol: s, price: 224.3 }), daily: DAILY, degraded: false, degraded_reason: null }),
+    now: () => AFTER_CLOSE,
+    ...over,
+  });
+{
+  const d = at224();
+  const r = await makePanelLoaders(d).optionsChain('NVDA');
+  check('it answers', r.ok, r.ok ? null : r.plain);
   if (r.ok) {
     const v = r.value;
     check('and parses with the shared schema', OptionsChainResponse.safeParse(v).success, OptionsChainResponse.safeParse(v).error?.issues);
-    check('the ladder is drawn for the nearest expiry', v.expiry === '2026-09-25');
-    check('and names the next ones', v.expiries[1] === '2026-10-02');
+    check('after the bell, today\'s expiry is skipped: the ladder is Sep 23', v.expiry === '2026-09-23');
+    check('the chain was asked for that expiry only', d.calls.filter((c) => c.startsWith('uw.chain')).join() === 'uw.chain:NVDA:2026-09-23', d.calls);
+    check('and names the next ones', v.expiries[1] === '2026-09-25', v.expiries);
     check('eleven strikes around the money', v.rows.length === 11, v.rows.length);
     const atm = v.rows.filter((row) => row.nearest_the_money);
-    check('exactly one is nearest the money', atm.length === 1 && atm[0].strike === 180, atm.map((x) => x.strike));
-    check('both sides are listed by their real tickers', v.rows.every((row) => row.call?.startsWith('O:NVDA') && row.put?.startsWith('O:NVDA')));
-    const k = v.rows.find((row) => row.strike === 182.5);
-    check('a recorded price lands on its own contract', k?.call_flow?.ask === 2.18 && k.call_flow.bid === 2.1);
-    check('the NEWER reading of that contract wins', k?.call_flow?.label === 'The contract the flow bought');
-    check('and only on that side', k?.put_flow === null);
-    check('no other row carries a price', v.rows.filter((row) => row.call_flow || row.put_flow).length === 1);
-    check('a row has no price field of its own to fill', !('bid' in (v.rows[0] as object)) && !('last' in (v.rows[0] as object)));
-    check('an off-ladder flow contract is still listed', v.flow.some((f) => f.expiry === '2026-10-02' && f.type === 'put' && f.strike === 170));
-    check('an expired contract is not', !v.flow.some((f) => f.expiry === '2026-09-18'));
-    check('another underlying never appears', !v.flow.some((f) => f.option_symbol.includes('AMD')));
-    check('every flow price carries when it was recorded', v.flow.every((f) => !!f.recorded_at));
-    check('the standing sentence says there are no live prices', /not on this app's market-data plan/.test(v.prices_plain));
+    check('exactly one is nearest the money', atm.length === 1 && atm[0].strike === 225, atm.map((x) => x.strike));
+    const k = v.rows.find((row) => row.strike === 222.5);
+    check('each side carries its own UW price', k?.call?.bid === 3.2 && k.call.ask === 3.3 && k.put?.bid === 1.41 && k.put.ask === 1.42, k);
+    check('and its own contract symbol', k?.call?.option_symbol === 'NVDA260923C00222500' && k.put?.option_symbol === 'NVDA260923P00222500');
+    check('with implied volatility as a fraction', Math.abs((k?.call?.iv ?? 0) - 0.3289) < 0.001);
+    const f = v.rows.find((row) => row.strike === 225);
+    check('a recorded flow price still lands on its own contract', f?.call_flow?.ask === 2.18 && f.call_flow.bid === 2.1);
+    check('the NEWER reading of that contract wins', f?.call_flow?.label === 'The contract the flow bought');
+    check('and only on that side', f?.put_flow === null);
+    check('an off-ladder flow contract is still listed', v.flow.some((x) => x.expiry === '2026-10-02' && x.type === 'put' && x.strike === 170));
+    check('an expired contract is not', !v.flow.some((x) => x.expiry === '2026-09-18'));
+    check('another underlying never appears', !v.flow.some((x) => x.option_symbol.includes('AMD')));
+    check('the prices say how fresh they are', v.prices_as_of === '2026-09-21T14:51:50Z', v.prices_as_of);
+    check('the standing sentence names Unusual Whales and the trade time', /from Unusual Whales/.test(v.prices_plain) && /Sep 21, 10:51 AM ET/.test(v.prices_plain), v.prices_plain);
+    check('same-day prices are not called a finished session\'s', !/not live ones/.test(v.prices_plain));
+    check('the old "not on our plan" caveat is gone', !/market-data plan/.test(v.prices_plain));
   }
+}
+{
+  // Sunday: the chain's newest trade is Friday's. Never call that live.
+  const d = at224({ now: () => new Date('2026-09-20T16:00:00Z'), optionExpiries: async () => ({ expiries: UW_EXPIRIES.slice(1), degraded: false }), optionChain: async () => ({ contracts: UW_CHAIN.map((c) => ({ ...c, last_trade_at: '2026-09-18T19:59:58Z' })), degraded: false }) });
+  const r = await makePanelLoaders(d).optionsChain('NVDA');
+  check('on a weekend the quotes are named as the last session\'s', r.ok && /Sep 18, 3:59 PM ET, so these are that session's last quotes, not live ones/.test(r.value.prices_plain), r.ok && r.value.prices_plain);
+}
+{
+  const d = deps({ quote: async (s) => ({ quote: quote({ symbol: s, price: 224.3 }), daily: DAILY, degraded: false, degraded_reason: null }) });
+  await makePanelLoaders(d).optionsChain('NVDA');
+  check('mid-session, today\'s expiry IS the nearest one', d.calls.includes('uw.chain:NVDA:2026-09-21'), d.calls);
 }
 {
   const r = await makePanelLoaders(deps({ quote: async (s) => ({ quote: quote({ symbol: s, price: null }), daily: [], degraded: true, degraded_reason: null }) })).optionsChain('NVDA');
   check('no underlying price: a sentence, not a guessed ladder', !r.ok && /cannot say which strikes/.test(r.ok ? '' : r.plain));
 }
 {
-  const r = await makePanelLoaders(deps({ optionContracts: async () => ({ contracts: [], degraded: true, reason: 'rate_limited' }), flowRecords: async () => [] })).optionsChain('NVDA');
-  check('contracts failed and no flow: said as a failure, not as "no options"', !r.ok && /did not load just now/.test(r.ok ? '' : r.plain));
+  const r = await makePanelLoaders(at224({ optionExpiries: async () => ({ expiries: [], degraded: true }), flowRecords: async () => [] })).optionsChain('NVDA');
+  check('UW failed and no flow: said as a failure, not as "no options"', !r.ok && /did not load just now/.test(r.ok ? '' : r.plain));
 }
 {
-  const r = await makePanelLoaders(deps({ optionContracts: async () => ({ contracts: [], degraded: false, reason: null }), flowRecords: async () => [] })).optionsChain('XYZ');
+  const r = await makePanelLoaders(at224({ optionExpiries: async () => ({ expiries: [], degraded: false }), flowRecords: async () => [] })).optionsChain('XYZ');
   check('genuinely nothing listed: said as that', !r.ok && /may not have listed options/.test(r.ok ? '' : r.plain));
 }
 {
-  const r = await makePanelLoaders(deps({ optionContracts: async () => ({ contracts: [], degraded: true, reason: 'rate_limited' }) })).optionsChain('NVDA');
-  check('contracts failed but flow exists: the flow still shows, marked degraded', r.ok && r.value.rows.length === 0 && r.value.flow.length > 0 && r.value.degraded);
+  const r = await makePanelLoaders(at224({ optionChain: async () => ({ contracts: [], degraded: true }) })).optionsChain('NVDA');
+  check('chain failed but flow exists: the flow still shows, marked degraded', r.ok && r.value.rows.length === 0 && r.value.flow.length > 0 && r.value.degraded);
+  check('and the sentence says only recorded prices are shown', r.ok && /only the contracts the options-flow engine recorded/.test(r.value.prices_plain));
 }
 
 /* ==================================================================== */
@@ -292,19 +354,23 @@ const L = makePanelLoaders(deps());
 {
   const out = await runPanelToolWith(L, 'read_earnings_history', { symbol: 'NVDA' });
   check('earnings: found', out?.found === true);
-  check('earnings: the next date comes with its source', (out?.next_report as { where_this_date_came_from?: string })?.where_this_date_came_from?.includes('options-flow') === true);
+  check('earnings: the next date comes with its source', (out?.next_report as { where_this_date_came_from?: string })?.where_this_date_came_from?.includes('Unusual Whales') === true);
+  check('earnings: an estimated date reaches Kai as unconfirmed', (out?.next_report as { confirmed?: boolean })?.confirmed === false && /estimate, not an announcement/.test(String(out?.must_say)));
   check('earnings: Kai is told there is no beat/miss', /no beat or miss/.test(String(out?.must_say)));
-  const none = await runPanelToolWith(makePanelLoaders(deps({ earningsHint: async () => null })), 'read_earnings_history', { symbol: 'NVDA' });
+  const none = await runPanelToolWith(makePanelLoaders(deps({ nextEarnings: async () => ({ ok: true, next: null }) })), 'read_earnings_history', { symbol: 'NVDA' });
   check('earnings: with no date, Kai is told not to guess one', none?.next_report === null && /rather than guessing/.test(String(none?.must_say)));
 }
 {
-  const out = await runPanelToolWith(L, 'read_options_chain', { symbol: 'NVDA' });
+  const out = await runPanelToolWith(makePanelLoaders(at224()), 'read_options_chain', { symbol: 'NVDA' });
   check('options: found', out?.found === true);
-  const strikes = out?.listed_strikes as { strike: number }[];
-  check('options: the listed strikes carry no price', Array.isArray(strikes) && strikes.every((s) => Object.keys(s).every((k) => !/bid|ask|price|premium|last/.test(k))));
+  const strikes = out?.strikes as { strike: number; call: { bid: number; ask: number; implied_volatility_pct: number } | null }[];
+  const k = strikes?.find((x) => x.strike === 222.5);
+  check('options: Kai reads the UW bid and ask per strike', k?.call?.bid === 3.2 && k.call.ask === 3.3, k);
+  check('options: IV is said as a percent', k?.call?.implied_volatility_pct === 32.9, k?.call);
+  check('options: the time of the prices travels with them', out?.prices_as_of === '2026-09-21T14:51:50Z');
   const flow = out?.recorded_flow as { ask_when_recorded: number; recorded_at: string }[];
   check('options: a recorded price says it was WHEN RECORDED', flow?.[0]?.ask_when_recorded === 2.18 && !!flow[0].recorded_at);
-  check('options: the no-live-prices sentence is Kai\'s to say', /not on this app's market-data plan/.test(String(out?.must_say)));
+  check('options: the freshness sentence is Kai\'s to say', /from Unusual Whales/.test(String(out?.must_say)) && !/market-data plan/.test(String(out?.must_say)));
 }
 {
   const nf = await runPanelToolWith(makePanelLoaders(deps({ quote: async (s) => ({ quote: quote({ symbol: s, price: null }), daily: [], degraded: true, degraded_reason: null }) })), 'read_quote_card', { symbol: 'ZZZZ' });
@@ -363,7 +429,7 @@ console.log('\nWORKSPACE');
     active_surface: 'options', symbol: 'NVDA', timeframe: null,
     open_surfaces: ['quote', 'options'], setup_id: null, alert_id: null, room_id: null,
   });
-  check('Kai is told a panel is in front of them, in words', line.includes('the listed options for NVDA'), line);
+  check('Kai is told a panel is in front of them, in words', line.includes('the option chain for NVDA'), line);
 }
 
 console.log(failures === 0 ? `\nALL PASS (${passes})\n` : `\n${failures} FAILURE(S), ${passes} passed\n`);

@@ -322,7 +322,7 @@ const SURFACE_PLAIN: Record<string, string> = {
   web: 'a page you opened',
   quote: 'the price card',
   earnings: 'the earnings record',
-  options: 'the listed options',
+  options: 'the option chain',
   watchlist: 'their watchlist',
   portfolio: 'their paper positions',
   training: 'a lesson',

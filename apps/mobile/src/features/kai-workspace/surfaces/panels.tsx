@@ -22,15 +22,18 @@
  * ═════════════════════════════════════════════════════════════════════════════
  * Loading says it is loading. A failure prints the server's own sentence. An
  * empty list says it is empty. A number the data plan cannot supply is drawn as
- * the words "not known", beside the sentence that says why — two of these
- * panels are honest partials (no earnings calendar, no live option prices) and
- * they say so on the panel, not in a footnote somewhere else.
+ * the words "not known", beside the sentence that says why. Where a number
+ * came from and how fresh it is (an estimated report date, option quotes from
+ * a finished session) is said on the panel, not in a footnote elsewhere.
+ * Options and the earnings date come from Unusual Whales; stock data from
+ * Polygon — the server decides, these only draw it.
  */
 import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import type {
   EarningsPanelResponse,
   KaiWorkspaceAction,
+  OptionQuote,
   OptionsChainResponse,
   OptionsFlowPrint,
   QuoteCardResponse,
@@ -48,7 +51,7 @@ import {
   loadEarnings, loadOptionsChain, loadPortfolio, loadQuoteCard, loadWatchlist,
 } from '../panels-data';
 import {
-  bigMoney, compact, etStampOf, rangePosition, shortDate, strikeLabel, usd,
+  bidAsk, bigMoney, compact, etStampOf, rangePosition, shortDate, strikeLabel, usd,
 } from '../panels-read';
 
 /* ==================================================================== */
@@ -302,19 +305,25 @@ export function EarningsSurface({ symbol }: { symbol: string }) {
 /* Options                                                              */
 /* ==================================================================== */
 
-/** One side of one strike: "listed", or the recorded bid/ask with its time. */
-function Side({ listed, flow, align }: { listed: boolean; flow: OptionsFlowPrint | null; align: 'flex-start' | 'flex-end' }) {
-  if (flow) {
+/**
+ * One side of one strike: its bid / ask, and under it the volume traded — or,
+ * when the options-flow engine recorded this exact contract, that it did.
+ */
+function Side({ q, flow, align }: { q: OptionQuote | null; flow: OptionsFlowPrint | null; align: 'flex-start' | 'flex-end' }) {
+  if (!q) {
     return (
-      <View style={{ flex: 1, alignItems: align }} testID="options-flow-cell">
-        <Num size={12.5} c={color.text}>{`${usd(flow.bid) ?? '?'} / ${usd(flow.ask) ?? '?'}`}</Num>
-        <T size={10.5} c={color.dim}>recorded</T>
+      <View style={{ flex: 1, alignItems: align }}>
+        <T size={12} c={color.dim}>not listed</T>
       </View>
     );
   }
+  const quote = bidAsk(q);
   return (
-    <View style={{ flex: 1, alignItems: align }}>
-      <T size={12} c={listed ? color.muted : color.dim}>{listed ? 'listed' : 'not listed'}</T>
+    <View style={{ flex: 1, alignItems: align }} testID={flow ? 'options-flow-cell' : 'options-quote-cell'}>
+      {quote ? <Num size={12.5} c={color.text}>{quote}</Num> : <T size={12} c={color.dim}>no quote</T>}
+      <T size={10.5} c={flow ? color.muted : color.dim} numberOfLines={1}>
+        {flow ? 'flow bought this' : q.volume !== null && q.volume > 0 ? `${compact(q.volume)} traded` : 'no trades yet'}
+      </T>
     </View>
   );
 }
@@ -339,7 +348,9 @@ export function OptionsSurface({ symbol }: { symbol: string }) {
 
       {/* The short form sits where the eye lands first; the full sentence is
           under the ladder, still on the panel, for anyone who wants the why. */}
-      <T size={12} c={color.muted}>Listed contracts only — no live option prices.</T>
+      <T size={12} c={color.muted}>
+        {d.prices_as_of ? `Bid / ask per contract · as of ${etStampOf(d.prices_as_of) ?? 'an unknown time'}` : 'Bid / ask per contract'}
+      </T>
 
       {d.rows.length ? (
         <View testID="options-ladder">
@@ -359,17 +370,17 @@ export function OptionsSurface({ symbol }: { symbol: string }) {
                 borderRadius: row.nearest_the_money ? radius.sm : 0,
               }}
             >
-              <Side listed={!!row.call} flow={row.call_flow} align="flex-start" />
+              <Side q={row.call} flow={row.call_flow} align="flex-start" />
               <View style={{ width: 76, alignItems: 'center' }}>
                 <Num size={13} weight={row.nearest_the_money ? 'bold' : 'semibold'}>{strikeLabel(row.strike)}</Num>
                 {row.nearest_the_money ? <T size={9.5} c={color.muted}>nearest price</T> : null}
               </View>
-              <Side listed={!!row.put} flow={row.put_flow} align="flex-end" />
+              <Side q={row.put} flow={row.put_flow} align="flex-end" />
             </View>
           ))}
         </View>
       ) : (
-        <T size={13} c={color.dim}>{d.degraded_reason ?? 'No listed contracts came back.'}</T>
+        <T size={13} c={color.dim}>{d.degraded_reason ?? 'No contracts came back.'}</T>
       )}
 
       {d.flow.length ? (
@@ -391,7 +402,7 @@ export function OptionsSurface({ symbol }: { symbol: string }) {
         </View>
       ) : null}
 
-      <Caveat text={d.prices_plain} testID="options-no-live-prices" />
+      <Caveat text={d.prices_plain} testID="options-prices-source" />
       {later.length ? <T size={12} c={color.dim}>{`Also listed: ${later.join(', ')}.`}</T> : null}
       <Jumps symbol={d.symbol} except="options" />
     </ScrollView>

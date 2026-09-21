@@ -12,27 +12,28 @@
  * tools already follow.
  *
  * ═════════════════════════════════════════════════════════════════════════════
- * WHAT THE DATA PLAN CAN AND CANNOT ANSWER (checked against Polygon 2026-09-21)
+ * WHERE EACH PANEL'S DATA COMES FROM (owner rule 2026-09-21: options = UW)
  * ═════════════════════════════════════════════════════════════════════════════
- *   stock snapshot (price, day range, volume)     yes
- *   quarterly financials (EPS, revenue, filed)    yes
- *   earnings calendar (Benzinga)                  NOT ENTITLED
- *   option contracts reference (strikes, expiry)  yes
- *   option chain snapshot / last trade / quotes   NOT ENTITLED
+ *   stock snapshot (price, day range, volume)     Polygon
+ *   quarterly financials (EPS, revenue, filed)    Polygon
+ *   next earnings date (confirmed or estimated)   Unusual Whales /api/earnings
+ *   listed expiries                               Unusual Whales expiry-breakdown
+ *   chain with bid / ask / last / volume / OI / IV Unusual Whales option-contracts
  *
- * So two of these panels are honest partials, and they say so in a sentence
- * that travels WITH the data rather than in a comment nobody sees:
+ * Polygon is for STOCK data only. Everything options-shaped is Unusual Whales,
+ * the same source the day-trade engine runs on, so a price on this panel and a
+ * price on an alert card come from one place.
  *
- *   EARNINGS  history is real; a next date appears only when the options-flow
- *             engine recorded one (Unusual Whales' company data), with where it
- *             came from and when it was read. No estimates, so no beat/miss.
- *   OPTIONS   the ladder is the LISTED strikes near the money for the nearest
- *             expiry. It carries no prices. A price appears only on a contract
- *             the flow engine recorded, and it is the bid/ask AT THAT MOMENT,
- *             stamped with the moment.
+ *   EARNINGS  history is Polygon's filed quarters; the next date is UW's, and
+ *             says whether the company confirmed it or UW estimated it.
+ *   OPTIONS   the ladder is the nearest expiry's strikes around the money,
+ *             each side priced, with the time of the newest trade on the chain
+ *             so a Friday quote read on Sunday says it is Friday's. Contracts
+ *             the flow engine recorded are still marked, at the prices it saw
+ *             when it recorded them.
  *
- * Nothing here invents a number to fill a hole. A field the plan cannot fill is
- * null with a sentence beside it.
+ * Nothing here invents a number to fill a hole. A field the source cannot fill
+ * is null with a sentence beside it.
  *
  * ═════════════════════════════════════════════════════════════════════════════
  * WHY THE DEPENDENCIES ARE INJECTED
@@ -46,6 +47,7 @@ import type {
   EarningsPanelResponse,
   EarningsQuarter,
   MarketQuote,
+  OptionQuote,
   OptionsChainResponse,
   OptionsChainRow,
   OptionsFlowPrint,
@@ -68,12 +70,22 @@ export type PanelDeps = {
     quarters: { fiscal_period: string; fiscal_year: string; end_date: string; filing_date: string | null; revenue: number | null; net_income: number | null; eps_diluted: number | null }[];
     degraded: boolean;
   }>;
-  /** The newest next-earnings date any stored flow record carried, and when it was read. */
-  earningsHint: (symbol: string) => Promise<{ date: string; recorded_at: string } | null>;
-  optionContracts: (
+  /**
+   * The next report date from Unusual Whales, or null when it names none.
+   * `ok: false` means the source did not answer — a different sentence from
+   * "no date is known".
+   */
+  nextEarnings: (symbol: string) => Promise<
+    | { ok: true; next: { date: string; confirmed: boolean; when: 'premarket' | 'postmarket' | null } | null }
+    | { ok: false }
+  >;
+  /** Listed expiries from Unusual Whales, soonest first. */
+  optionExpiries: (symbol: string) => Promise<{ expiries: string[]; degraded: boolean }>;
+  /** One expiry's chain with prices, from Unusual Whales. */
+  optionChain: (
     symbol: string,
-    window: { expiryFrom: string; expiryTo: string; strikeLo: number; strikeHi: number },
-  ) => Promise<{ contracts: { ticker: string; type: 'call' | 'put'; strike: number; expiry: string }[]; degraded: boolean; reason: string | null }>;
+    expiry: string,
+  ) => Promise<{ contracts: (OptionQuote & { type: 'call' | 'put'; strike: number; expiry: string })[]; degraded: boolean }>;
   /** Contracts the flow engine recorded on this symbol in the last few sessions. */
   flowRecords: (symbol: string) => Promise<{ recorded_at: string; options: Record<string, unknown>[] }[]>;
   /** Injected so the proof can pin "today". */
@@ -93,14 +105,21 @@ export function etDate(d: Date): string {
   return d.toLocaleDateString('en-CA', { timeZone: NY });
 }
 
-function addDays(date: string, n: number): string {
-  const d = new Date(`${date}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
 function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000);
+}
+
+/** Minutes past midnight in New York. */
+function etMinutes(d: Date): number {
+  const [h, m] = d.toLocaleTimeString('en-GB', { timeZone: NY, hour: '2-digit', minute: '2-digit', hour12: false }).split(':').map(Number);
+  return (h % 24) * 60 + m;
+}
+
+/** "Sep 21, 10:48 AM ET" — an instant as the market names it. */
+function etStamp(iso: string): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.toLocaleString('en-US', { timeZone: NY, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} ET`;
 }
 
 /** "Sep 18" — a session named the way a person names it. */
@@ -206,9 +225,9 @@ export function makePanelLoaders(deps: PanelDeps) {
   async function earnings(symbol: string): Promise<PanelResult<EarningsPanelResponse>> {
     const sym = symbol.trim().toUpperCase();
     const today = etDate(deps.now());
-    const [fin, hint, name] = await Promise.all([
+    const [fin, upcoming, name] = await Promise.all([
       deps.financials(sym).catch(() => ({ quarters: [], degraded: true })),
-      deps.earningsHint(sym).catch(() => null),
+      deps.nextEarnings(sym).catch(() => ({ ok: false as const })),
       deps.name(sym).catch(() => null),
     ]);
 
@@ -226,20 +245,23 @@ export function makePanelLoaders(deps: PanelDeps) {
 
     let next: EarningsPanelResponse['next'] = null;
     let nextPlain: string;
-    if (hint && /^\d{4}-\d{2}-\d{2}/.test(hint.date) && hint.date.slice(0, 10) >= today) {
-      const date = hint.date.slice(0, 10);
+    const hit = upcoming.ok ? upcoming.next : null;
+    if (hit && /^\d{4}-\d{2}-\d{2}/.test(hit.date) && hit.date.slice(0, 10) >= today) {
+      const date = hit.date.slice(0, 10);
+      const when = hit.when === 'premarket' ? ', before the open' : hit.when === 'postmarket' ? ', after the close' : '';
       next = {
         date,
         days_away: daysBetween(today, date),
-        source_plain:
-          `From the company data the options-flow feed carried on ${shortDay(etDate(new Date(hint.recorded_at)))}. ` +
-          'Report dates can move — the company announces the confirmed one.',
+        confirmed: hit.confirmed,
+        source_plain: hit.confirmed
+          ? `Confirmed by the company${when}. From Unusual Whales.`
+          : `Estimated by Unusual Whales${when} — the company has not announced it yet, so it can move.`,
       };
-      nextPlain = `Next report expected ${shortDay(date)}.`;
+      nextPlain = `Next report ${hit.confirmed ? '' : 'expected '}${shortDay(date)}.`;
+    } else if (!upcoming.ok) {
+      nextPlain = `The earnings calendar did not answer just now, so ${sym}'s next report date is not shown. Try again in a minute.`;
     } else {
-      nextPlain =
-        `No source this app has names ${sym}'s next report date. ` +
-        'The market-data plan does not include an earnings calendar, so the date is left blank rather than guessed.';
+      nextPlain = `Unusual Whales has no upcoming report date for ${sym}, so the date is left blank rather than guessed.`;
     }
 
     if (!quarters.length && !next) {
@@ -261,7 +283,7 @@ export function makePanelLoaders(deps: PanelDeps) {
         next_plain: nextPlain,
         quarters,
         estimates_plain:
-          'Analyst estimates are not on this app\'s data plan, so there is no beat or miss here — only what the company reported.',
+          'This panel shows what the company reported, not what analysts expected, so there is no beat or miss here.',
         degraded: fin.degraded,
         degraded_reason: fin.degraded ? 'The reported quarters did not load just now.' : null,
       },
@@ -284,12 +306,7 @@ export function makePanelLoaders(deps: PanelDeps) {
     }
 
     const [listed, records] = await Promise.all([
-      deps.optionContracts(sym, {
-        expiryFrom: today,
-        expiryTo: addDays(today, 45),
-        strikeLo: spot * 0.85,
-        strikeHi: spot * 1.15,
-      }),
+      deps.optionExpiries(sym).catch(() => ({ expiries: [] as string[], degraded: true })),
       deps.flowRecords(sym).catch(() => []),
     ]);
 
@@ -323,23 +340,36 @@ export function makePanelLoaders(deps: PanelDeps) {
     // A contract that has already expired is history, not a chain.
     const liveFlow = flow.filter((f) => f.expiry >= today);
 
-    const expiries = [...new Set(listed.contracts.map((c) => c.expiry))].sort();
+    // Today's expiry stops trading at the 4 PM bell; after that it is history.
+    const pastClose = etMinutes(deps.now()) >= 16 * 60;
+    const expiries = listed.expiries.filter((e) => (pastClose ? e > today : e >= today)).sort();
     const expiry = expiries[0] ?? null;
     let rows: OptionsChainRow[] = [];
+    let chainDegraded = false;
+    let asOf: string | null = null;
     if (expiry) {
-      const onExpiry = listed.contracts.filter((c) => c.expiry === expiry);
+      const chain = await deps.optionChain(sym, expiry).catch(() => ({ contracts: [], degraded: true }));
+      chainDegraded = chain.degraded;
+      const onExpiry = chain.contracts.filter((c) => c.expiry === expiry);
+      for (const c of onExpiry) if (c.last_trade_at && (!asOf || c.last_trade_at > asOf)) asOf = c.last_trade_at;
       const strikes = [...new Set(onExpiry.map((c) => c.strike))].sort((a, b) => a - b);
       let nearest = 0;
       strikes.forEach((k, i) => { if (Math.abs(k - spot) < Math.abs(strikes[nearest] - spot)) nearest = i; });
       const window = strikes.slice(Math.max(0, nearest - 5), nearest + 6);
+      const side = (k: number, t: 'call' | 'put'): OptionQuote | null => {
+        const c = onExpiry.find((x) => x.strike === k && x.type === t);
+        if (!c) return null;
+        return {
+          option_symbol: c.option_symbol, bid: c.bid, ask: c.ask, last: c.last,
+          volume: c.volume, open_interest: c.open_interest, iv: c.iv, last_trade_at: c.last_trade_at,
+        };
+      };
       rows = window.map((k) => {
-        const call = onExpiry.find((c) => c.strike === k && c.type === 'call')?.ticker ?? null;
-        const put = onExpiry.find((c) => c.strike === k && c.type === 'put')?.ticker ?? null;
         const at = (t: 'call' | 'put') => liveFlow.find((f) => f.expiry === expiry && f.strike === k && f.type === t) ?? null;
         return {
           strike: k,
-          call,
-          put,
+          call: side(k, 'call'),
+          put: side(k, 'put'),
           nearest_the_money: k === strikes[nearest],
           call_flow: at('call'),
           put_flow: at('put'),
@@ -347,15 +377,18 @@ export function makePanelLoaders(deps: PanelDeps) {
       });
     }
 
+    const degraded = listed.degraded || chainDegraded;
     if (!rows.length && !liveFlow.length) {
       return {
         ok: false,
-        plain: listed.degraded
-          ? `The list of ${sym} option contracts did not load just now, so I have no chain to show.`
-          : `No ${sym} option contracts are listed within 15% of the price in the next 45 days — it may not have listed options.`,
+        plain: degraded
+          ? `The ${sym} option chain did not load just now, so I have no chain to show.`
+          : `Unusual Whales lists no ${sym} option contracts expiring from today on — it may not have listed options.`,
       };
     }
 
+    const stamp = asOf ? etStamp(asOf) : null;
+    const sameDay = asOf ? etDate(new Date(asOf)) === today : false;
     return {
       ok: true,
       value: {
@@ -367,16 +400,83 @@ export function makePanelLoaders(deps: PanelDeps) {
         expiries: expiries.slice(0, 6),
         rows,
         flow: liveFlow.slice(0, 6),
-        prices_plain:
-          'Live option prices are not on this app\'s market-data plan, so this shows which contracts are listed, not what they cost. ' +
-          'A price appears only on a contract the options-flow engine recorded, and it is the bid and ask at the moment it was recorded.',
-        degraded: listed.degraded,
-        degraded_reason: listed.degraded ? 'The list of listed contracts did not load just now.' : null,
+        prices_as_of: asOf,
+        prices_plain: !rows.length
+          ? 'The chain did not load, so only the contracts the options-flow engine recorded are shown, at the prices it saw when it recorded them.'
+          : stamp
+            ? `Option prices are from Unusual Whales. The newest trade on this expiry was ${stamp}` +
+              (sameDay ? '. ' : ', so these are that session\'s last quotes, not live ones. ') +
+              'Bid and ask move constantly — check your broker before you trade.'
+            : 'Option prices are from Unusual Whales. None of these contracts has traded yet, so there is no last price; bid and ask are the latest quotes.',
+        degraded,
+        degraded_reason: degraded ? 'The option chain did not fully load just now.' : null,
       },
     };
   }
 
   return { quoteCard, earnings, optionsChain };
+}
+
+/* ==================================================================== */
+/* Unusual Whales answers → what the loaders take (pure, proved on       */
+/* recorded responses in scripts/panels-test.mts)                        */
+/* ==================================================================== */
+
+type UwEarningsRow = { report_date: string; report_time?: string; source?: string; actual_eps?: string | null; street_mean_est?: string | null };
+
+/** The next report from UW's per-ticker list: dated today or later, not yet reported. */
+export function nextEarningsFromUw(
+  rows: UwEarningsRow[],
+  today: string,
+): { date: string; confirmed: boolean; when: 'premarket' | 'postmarket' | null } | null {
+  const next = [...rows]
+    .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.report_date) && r.report_date >= today && num(r.actual_eps) === null)
+    .sort((a, b) => a.report_date.localeCompare(b.report_date))[0];
+  if (!next) return null;
+  const t = String(next.report_time ?? '');
+  return {
+    date: next.report_date,
+    confirmed: next.source === 'company',
+    when: t === 'premarket' || t === 'postmarket' ? t : null,
+  };
+}
+
+export function expiriesFromUw(rows: { expires?: string }[]): string[] {
+  return [...new Set(rows.map((e) => String(e.expires ?? '').slice(0, 10)).filter((e) => /^\d{4}-\d{2}-\d{2}$/.test(e)))].sort();
+}
+
+type UwChainRow = {
+  option_symbol: string;
+  nbbo_bid?: string | null;
+  nbbo_ask?: string | null;
+  last_price?: string | null;
+  volume?: number | null;
+  open_interest?: number | null;
+  implied_volatility?: string | null;
+  last_tape_time?: string | null;
+};
+
+export function chainFromUw(rows: UwChainRow[]): (OptionQuote & { type: 'call' | 'put'; strike: number; expiry: string })[] {
+  const out: (OptionQuote & { type: 'call' | 'put'; strike: number; expiry: string })[] = [];
+  for (const c of rows) {
+    const occ = parseOcc(c.option_symbol);
+    if (!occ) continue;
+    // A bid of zero is a real quote (nobody bidding); a missing one is not.
+    out.push({
+      option_symbol: c.option_symbol,
+      type: occ.type,
+      strike: occ.strike,
+      expiry: occ.expiry,
+      bid: num(c.nbbo_bid),
+      ask: num(c.nbbo_ask),
+      last: num(c.last_price),
+      volume: num(c.volume),
+      open_interest: num(c.open_interest),
+      iv: num(c.implied_volatility),
+      last_trade_at: typeof c.last_tape_time === 'string' && c.last_tape_time ? c.last_tape_time : null,
+    });
+  }
+  return out;
 }
 
 /* ==================================================================== */
@@ -389,6 +489,7 @@ export function makePanelLoaders(deps: PanelDeps) {
  */
 async function liveDeps(): Promise<PanelDeps> {
   const polygon = await import('./polygon');
+  const uw = await import('./uw');
   const { serviceClient } = await import('../db');
   const { UOA_ORIGIN } = await import('../uoa/ingest');
 
@@ -403,22 +504,18 @@ async function liveDeps(): Promise<PanelDeps> {
       return ((data as { name?: string } | null)?.name as string) ?? null;
     },
     financials: (symbol) => polygon.getFinancials(symbol, 4),
-    earningsHint: async (symbol) => {
-      const { data } = await serviceClient()
-        .from('setups')
-        .select('created_at,score_components')
-        .eq('symbol', symbol)
-        .eq('quote_snapshot->>origin', UOA_ORIGIN)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      for (const row of (data ?? []) as { created_at: string; score_components: Record<string, unknown> | null }[]) {
-        const uoa = (row.score_components?.uoa ?? null) as Record<string, unknown> | null;
-        const date = typeof uoa?.next_earnings_date === 'string' ? uoa.next_earnings_date : null;
-        if (date) return { date, recorded_at: row.created_at };
-      }
-      return null;
+    nextEarnings: async (symbol) => {
+      const r = await uw.earnings(symbol);
+      return r.ok ? { ok: true, next: nextEarningsFromUw(r.data, etDate(new Date())) } : { ok: false };
     },
-    optionContracts: (symbol, window) => polygon.getOptionContracts(symbol, window),
+    optionExpiries: async (symbol) => {
+      const r = await uw.optionExpiries(symbol);
+      return r.ok ? { expiries: expiriesFromUw(r.data), degraded: false } : { expiries: [], degraded: true };
+    },
+    optionChain: async (symbol, expiry) => {
+      const r = await uw.optionChain(symbol, expiry);
+      return r.ok ? { contracts: chainFromUw(r.data), degraded: false } : { contracts: [], degraded: true };
+    },
     flowRecords: async (symbol) => {
       const since = new Date(Date.now() - 4 * 86_400_000).toISOString();
       const { data } = await serviceClient()

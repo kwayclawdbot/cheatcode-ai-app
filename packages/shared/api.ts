@@ -1588,11 +1588,13 @@ export const EarningsPanelResponse = z.object({
       days_away: z.number().nullable(),
       /** Where the date came from and when it was read. */
       source_plain: z.string(),
+      /** True when the company has announced it; false when it is the source's estimate. */
+      confirmed: z.boolean().optional(),
     })
     .nullable(),
   next_plain: z.string(),
   quarters: z.array(EarningsQuarter),
-  /** Why there is no beat/miss column. */
+  /** Why there is no beat/miss column on this panel. */
   estimates_plain: z.string(),
   degraded: z.boolean(),
   degraded_reason: z.string().nullable(),
@@ -1616,11 +1618,30 @@ export const OptionsFlowPrint = z.object({
 });
 export type OptionsFlowPrint = z.infer<typeof OptionsFlowPrint>;
 
+/**
+ * One side of one strike, priced by Unusual Whales. Every number is nullable:
+ * a contract that has not traded today has no last price, and that is drawn as
+ * "not known", never as zero.
+ */
+export const OptionQuote = z.object({
+  option_symbol: z.string(),
+  bid: z.number().nullable(),
+  ask: z.number().nullable(),
+  last: z.number().nullable(),
+  volume: z.number().nullable(),
+  open_interest: z.number().nullable(),
+  /** Implied volatility as a fraction: 0.32 is 32%. */
+  iv: z.number().nullable(),
+  /** When this contract last traded, per the source. */
+  last_trade_at: z.string().nullable(),
+});
+export type OptionQuote = z.infer<typeof OptionQuote>;
+
 export const OptionsChainRow = z.object({
   strike: z.number(),
-  /** The listed contract's ticker, or null when that side is not listed. */
-  call: z.string().nullable(),
-  put: z.string().nullable(),
+  /** That side's contract with its prices, or null when that side is not listed. */
+  call: OptionQuote.nullable(),
+  put: OptionQuote.nullable(),
   /** The strike nearest the underlying price. */
   nearest_the_money: z.boolean(),
   call_flow: OptionsFlowPrint.nullable(),
@@ -1639,8 +1660,10 @@ export const OptionsChainResponse = z.object({
   rows: z.array(OptionsChainRow),
   /** Every recorded flow contract in the last few sessions, on the ladder or not. */
   flow: z.array(OptionsFlowPrint),
-  /** The standing sentence about what this chain can and cannot show. */
+  /** The standing sentence about where the prices come from and how fresh they are. */
   prices_plain: z.string(),
+  /** The newest trade time on the chain — how current the prices are. */
+  prices_as_of: z.string().nullable().optional(),
   degraded: z.boolean(),
   degraded_reason: z.string().nullable(),
 });
