@@ -89,6 +89,16 @@ export type OrderPreview = {
   max_loss: number | null;
   max_loss_pct: number | null;
   /**
+   * Reward against risk AS THE SERVER PRICED IT — from the estimated fill, not
+   * the planned entry (`preview.risk.rr`). It is the number the "This pays X
+   * to 1" warning is written from, so a card that prints an R must print this
+   * one or the card and its own warning disagree. Optional: older payloads and
+   * fixtures do not send it.
+   */
+  rr?: number | null;
+  /** The price the paper engine expects to fill at (`estimate.fill_price`). */
+  fill_price?: number | null;
+  /**
    * TODAY'S RISK BUDGET, as the preview reports it.
    *
    * `OrderPreviewResponse.risk` carries `daily_cap`, `daily_used` and

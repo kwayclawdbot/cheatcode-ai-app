@@ -277,6 +277,13 @@ export type TradePortal = {
   is_fixture: boolean;
   /** honest note when a piece of this could not be fetched */
   notice: string | null;
+  /**
+   * The setup's stored thesis (`restored.thesis_plain`) — what the scanner wrote
+   * when it graded it. The Trade Detail's thesis card falls back to it when the
+   * alert carries no write-up from Kai. Optional: fixtures and older payloads
+   * do not send it.
+   */
+  thesis_plain?: string | null;
 };
 
 export const KIND_LABEL: Record<AnnotationKind, string> = {

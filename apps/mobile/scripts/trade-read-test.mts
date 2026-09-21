@@ -21,7 +21,9 @@
  * printing a number nobody chose.
  */
 import { readPortal, riskOf, rPlain, NO_SETUP_BLOCKED, NO_STOP_BLOCKED } from '../src/features/portal2/read';
-import { sizeFor, ticketFor, receiptLine } from '../src/features/portal2/order-math';
+import { sizeFor, ticketFor, receiptLine, confirmNumbers } from '../src/features/portal2/order-math';
+import { checklistOf, currentR, plannedR, signedR } from '../src/features/portal2/detail-model';
+import type { OrderPreview } from '../src/features/orders/types';
 import type { TradePortal } from '../src/features/portal/types';
 import type { OrderRow } from '../src/features/orders/types';
 
@@ -208,6 +210,59 @@ console.log('\nThe receipt never says filled before the engine does');
   ok('a fill names the price', receiptLine(filled).includes('$504.62'), receiptLine(filled));
   const rejected = { ...accepted, status: 'rejected' } as OrderRow;
   ok('a rejection says nothing was bought', receiptLine(rejected).includes('Nothing was bought'), receiptLine(rejected));
+}
+
+console.log('\nThe confirmation card and its own warning agree (one source)');
+{
+  const read = readPortal(base());
+  const size = { shares: 9, plain: '', risk_usd: 54 };
+  const preview = {
+    preview_id: 'p1', symbol: 'META', name: null, exchange: null, side: 'buy_to_open', side_label: 'Buy',
+    qty: 9, fractional: false, order_type: 'market', limit_price: null, stop_price: null, duration: 'day',
+    est_cost: null, est_fees: 0, buying_power: null, buying_power_after: null, quote: null, quote_clock: null,
+    risk: { verdict: 'advisory', headline: '', advisories: [{ code: 'x', message: 'This pays 1.35 to 1 and your own minimum is 2 to 1.' }], blockers: [] },
+    stop_attached: 498, first_target: 520, max_loss: 91.8, max_loss_pct: null, expires_at: null,
+    account_label: '', account_kind: 'paper', connected: true, confirm_label: null, disclosures: [],
+    hard_stop_plain: null, footer_plain: null, rr: 1.35, fill_price: 508.2,
+  } as unknown as OrderPreview;
+  const c = confirmNumbers(read, preview, size);
+  ok('the card prints the server rr, not the planned one', c.rr_plain === '1.35 to 1', c);
+  ok('and it is the same words the warning uses', preview.risk.advisories[0].message.includes(c.rr_plain!), c.rr_plain);
+  ok('risk is measured from the fill', c.fill === 508.2 && c.risk_usd === 91.8, c);
+  const silent = confirmNumbers(read, { ...preview, rr: null, max_loss: null } as OrderPreview, size);
+  ok('with no server rr it is measured from the fill, like the server', silent.rr === Math.round((11.8 / 10.2) * 100) / 100, silent);
+  ok('a silent preview still sizes risk from the fill', silent.risk_usd === Math.round(10.2 * 9 * 100) / 100, silent);
+}
+
+console.log('\nThe checklist is the grade, never decoration');
+{
+  const comps = [
+    { key: 'trend', label: 'Trend', status: 'Strong', strength: 5, explanation: 'up' },
+    { key: 'volume', label: 'Volume', status: 'Forming', strength: 3, explanation: 'meh' },
+    { key: 'rr', label: 'Risk / Reward', status: 'Favorable', strength: 4, explanation: 'ok' },
+    { key: 'market', label: 'Market', status: 'Unknown', strength: 0, explanation: null },
+  ];
+  const list = checklistOf(comps, true);
+  const by = (k: string) => list.find((x) => x.key === k)!;
+  ok('four lines in the spec order', list.map((x) => x.label).join(',') === 'Trend,Catalyst,Volume,Risk', list);
+  ok('a top-word leg is met', by('trend').state === 'met');
+  ok('a middling leg is not met', by('volume').state === 'not_met' && by('volume').status === 'Forming');
+  ok('the rr leg answers Risk', by('risk').state === 'met');
+  ok('a leg the mode does not grade is unknown, not ticked', by('catalyst').state === 'unknown');
+  const unknownLeg = checklistOf([{ key: 'catalyst', label: 'Catalyst risk', status: 'Unknown', strength: 0, explanation: 'no read' }], true);
+  ok('an Unknown leg stays unknown', unknownLeg.find((x) => x.key === 'catalyst')!.state === 'unknown');
+  ok('ungraded means every line unknown', checklistOf(comps, false).every((x) => x.state === 'unknown'));
+}
+
+console.log('\nThe R in the corner is where the trade is now');
+{
+  const read = readPortal(base({ alert: gradedAlert as never }));
+  ok('long, above entry reads positive', signedR(currentR(read, 507)!) === '+0.5R', currentR(read, 507));
+  ok('long, below entry reads negative', signedR(currentR(read, 501)!) === '−0.5R', currentR(read, 501));
+  ok('no price, no R', currentR(read, null) === null);
+  ok('planned R is target over stop distance', Math.abs(plannedR(read)! - 16 / 6) < 1e-9, plannedR(read));
+  const bare = readPortal(base({ alert: null, plan: null }));
+  ok('no plan, no R', currentR(bare, 504) === null && plannedR(bare) === null);
 }
 
 console.log(failures ? `\n${failures} failed\n` : '\nall passed\n');
