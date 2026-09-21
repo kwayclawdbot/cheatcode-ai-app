@@ -263,12 +263,22 @@ const STATE_WORD: Record<CheckItem['state'], string> = { met: 'passes', not_met:
  * measured is a dashed question — never a tick. Tapping a line says why, in
  * the grader's own sentence.
  */
+/**
+ * The narrowest a line can be before its word is cut: a 20px mark, a gap and
+ * "Catalyst" at body size. Below it (a 360-wide phone, or large text) the four
+ * lines sit two by two rather than truncate — a clipped "Cata…" is a checklist
+ * line nobody can read.
+ */
+const CHECK_MIN = 86;
+
 export function SetupChecklist({ items }: { items: CheckItem[] }) {
   const [open, setOpen] = useState<CheckItem['key'] | null>(null);
+  const [width, setWidth] = useState(0);
   const openItem = items.find((i) => i.key === open) ?? null;
+  const twoByTwo = width > 0 && width / items.length < CHECK_MIN;
   return (
-    <View testID="setup-checklist" style={{ gap: 4 }}>
-      <View style={{ flexDirection: 'row' }}>
+    <View testID="setup-checklist" style={{ gap: 4 }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
         {items.map((it) => (
           <Pressable
             key={it.key}
@@ -279,7 +289,9 @@ export function SetupChecklist({ items }: { items: CheckItem[] }) {
             accessibilityHint="Shows why."
             onPress={() => setOpen((k) => (k === it.key ? null : it.key))}
             style={({ pressed }) => ({
-              flex: 1, minHeight: tap.min, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+              width: twoByTwo ? '50%' : `${100 / items.length}%`,
+              minHeight: tap.min, flexDirection: 'row', alignItems: 'center', justifyContent: twoByTwo ? 'flex-start' : 'center', gap: 6,
+              paddingHorizontal: twoByTwo ? 8 : 0,
               borderRadius: radius.control, backgroundColor: open === it.key || pressed ? color.raised : 'transparent',
             })}
           >
