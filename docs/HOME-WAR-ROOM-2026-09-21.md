@@ -71,8 +71,8 @@ watchlist and positions light Watchlist; a room lights Community. While Kai is
 writing, Memory is lit, because he is reading the conversation.
 
 **When a panel or chart opens.** The big brain would push the panel off the
-screen, so it shrinks to a small orb in the top bar (which keeps the status
-light's colour) and the panel takes a framed stage:
+screen, so it shrinks to a small orb in the top bar (dimmed when Kai is
+offline) and the panel takes a framed stage:
 
 - monospace tabs, one per open panel, each with a small symbol and the ticker;
 - a "close all" at the end of the tab row, and the existing close button for
@@ -80,8 +80,9 @@ light's colour) and the panel takes a framed stage:
 - the chart stays loaded behind the other tabs, so switching back to it does
   not reload it;
 - the panel settles in with a slight overshoot when it opens;
-- while Kai draws on the chart, his latest line shows as a caption over it
-  (the chart already has a caption slot for this).
+- while Kai draws on the chart, his latest line shows as a caption over it.
+  (The chart's full-screen view already had this; the chart on Home did not,
+  so the panel stage now draws the same kind of caption itself.)
 
 **Voice.** While the mic is listening, the brain's rings follow the volume of
 the member's voice. While Kai speaks, they pulse. The voice code already
@@ -90,7 +91,8 @@ that number back to Home.
 
 **Kai offline.** When the member is out of credit, the brain dims to grey
 lines, the status light reads "Kai offline", and the caption says why in one
-honest line (for example "Out of credit today. Back tomorrow morning.").
+honest line (for example "Today's credits are used up. They come back
+overnight.", with the time taken from when the credits actually reset).
 It still looks like the War Room; nothing is hidden or replaced with an error
 screen. No network gives the same dim brain with "No connection".
 
@@ -112,3 +114,23 @@ screen. No network gives the same dim brain with "No connection".
 - How smoothly the brain animates in Expo Go.
 - Whether the mic volume really moves the rings (the web preview has no
   microphone in the proof runs).
+
+## As built (same day)
+
+- Proof shots, from `apps/mobile/scripts/proof-home-warroom.mjs` in fixtures
+  mode, are in `docs/home-warroom-proof/`: 390×844 at 100% and 130% text, and
+  360×780. They cover a Trade Ready and a Beginner member at rest, Kai writing
+  over a chart, two panels as tabs with "close all", Kai offline, and a panel
+  opened by the member at 360.
+- The rules (status, lit regions, captions) are in
+  `apps/mobile/src/features/home/warroom.ts` and tested by
+  `apps/mobile/scripts/war-room-test.mts`, which runs in `npm test`.
+- Regions light from what is on screen and whether Kai is writing. The app is
+  not yet told which tool Kai calls mid-answer, so a region lights when its
+  panel opens rather than the instant the tool runs. When the server starts
+  sending tool events, `litRegions` is the one place to feed them in.
+- At 130% text the opening card's button falls below the first screen on a
+  390×844 phone; at 100% it stays above it.
+- Fixtures mode gained `?stage=` (preview a stage) and a canned "chart" turn,
+  so the stage-aware brain and the chart caption can be photographed. Neither
+  does anything on a real stack.
