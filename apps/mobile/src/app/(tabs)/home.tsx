@@ -33,6 +33,7 @@ import { fixtureCreditsCeiling, fixtureCreditsOut, fixtureCreditsWarning } from 
 import { ContinueTrainingObject } from '../../features/training/HomeObject';
 import { homeOrderFor, useStageEvolution } from '../../features/stage';
 import type { ConversationRow, GoalMode, WallItem } from '../../lib/types';
+import { useKaiVoice } from '../../features/voice'; // LANE C voice
 
 const Hamburger = ({ onPress }: { onPress: () => void }) => (
   <Pressable
@@ -354,6 +355,8 @@ export default function Home() {
   const sendAgain = useCallback(() => { retry(); setDraftNonce((n) => n + 1); drafts.clear(); }, [retry, drafts]);
   /** A question that got out is no longer a draft. */
   const sendAndClear = useCallback((text: string) => { drafts.clear(); void send(text); }, [drafts, send]);
+  // LANE C voice: the mic beside Send, and Kai reading replies out when that is switched on.
+  const voice = useKaiVoice({ onTranscript: sendAndClear, items, streaming });
 
   /**
    * THE BALANCE, SEEDED ONCE AND THEN LIVE.
@@ -834,6 +837,8 @@ export default function Home() {
           onStop={stop}
           draft={failed?.restore ? failed.text : ''}
           draftNonce={draftNonce}
+          voiceButton={voice.button /* LANE C voice */}
+          voiceOverlay={voice.overlay}
         />
       </KeyboardDock>
 

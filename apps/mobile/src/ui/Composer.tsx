@@ -23,6 +23,13 @@ import { ComposerActions, type ComposerAction } from './ComposerActions';
  * it is real: beside Send on a KAI chat, once recording and transcription
  * actually exist. It does not come back as an icon.
  *
+ * LANE C (2026-09-21): it is built, and it came back exactly that way. The
+ * microphone is NOT this component's: `features/voice/useKaiVoice` owns the
+ * recorder and hands two pieces in — `voiceButton` (drawn beside Send) and
+ * `voiceOverlay` (drawn in place of the field while listening). Both absent
+ * means this is the same pill it always was, which is what every non-Kai
+ * composer gets.
+ *
  * ---------------------------------------------------------------------------
  * THE CIRCLE IS STOP WHILE KAI IS TALKING (audit F05).
  *
@@ -51,6 +58,8 @@ export function Composer({
   onStop,
   draft,
   draftNonce = 0,
+  voiceButton,
+  voiceOverlay,
 }: {
   placeholder?: string;
   onSend?: (text: string) => void;
@@ -69,6 +78,10 @@ export function Composer({
    */
   draft?: string;
   draftNonce?: number;
+  /** LANE C voice: the microphone, beside Send. From `useKaiVoice`. */
+  voiceButton?: React.ReactNode;
+  /** LANE C voice: shown INSTEAD of the text field while the mic is the input. */
+  voiceOverlay?: React.ReactNode;
   /**
    * Pictures, when this composer takes them. ABSENT BY DEFAULT and that is
    * deliberate: this component is also Kai's composer, and Kai does not take
@@ -132,7 +145,7 @@ export function Composer({
         borderColor: alpha.ivory20,
       }}
     >
-      <TextInput
+      {voiceOverlay ?? <TextInput
         testID="composer-input"
         accessibilityLabel={placeholder}
         value={value}
@@ -150,7 +163,8 @@ export function Composer({
           // RN-web puts a focus ring on inputs; the pill is the affordance
           ...(({ outlineStyle: 'none' } as unknown) as object),
         }}
-      />
+      />}
+      {voiceButton}
       <Pressable
         // The testID stays `composer-send` in both states because it is the
         // same control in the same place, and six signed-off proof runs locate

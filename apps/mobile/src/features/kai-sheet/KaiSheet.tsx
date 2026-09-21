@@ -16,6 +16,7 @@ import { useSession } from '../../lib/session';
 import { useKaiThread } from '../../lib/useKai';
 import type { GoalMode, KaiActionPreview } from '../../lib/types';
 import { NOT_ADVICE_SHORT } from '../legal/disclaimers';
+import { useKaiVoice } from '../voice'; // LANE C voice
 import {
   closeKaiSheet, getKaiSheetState, kaiSheetPlaceholder, kaiSheetTitle,
   subscribeKaiSheet, type KaiContext,
@@ -75,6 +76,8 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
     items, send, streaming, stop, retry, clearFailure, failed, suggestions,
     removeItem, pushNotice,
   } = useKaiThread({ mode, context: ctx, key: nonce, opening: null });
+  // LANE C voice: the mic beside Send, and Kai reading replies out when that is switched on.
+  const voice = useKaiVoice({ onTranscript: (t) => { void send(t); }, items, streaming });
 
   /**
    * A failed turn's words go back into the field. The nonce is what makes the
@@ -382,6 +385,8 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
                 onStop={stop}
                 draft={failed?.restore ? failed.text : ''}
                 draftNonce={draftNonce}
+                voiceButton={voice.button /* LANE C voice */}
+                voiceOverlay={voice.overlay}
               />
               {/*
                 "KAI IS NOT AN ADVISER", WHERE HE IS ACTUALLY TALKING.
