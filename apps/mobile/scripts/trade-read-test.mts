@@ -191,7 +191,7 @@ console.log('\nThe server already sized it — the Take beat uses that size (own
   const r = readPortal(portal);
   const s = sizeFor(r, portal);
   ok('the served share count is used', s.shares === 1, s);
-  ok('with the server\'s own sentence', s.plain.startsWith('1 share keeps the loss'), s.plain);
+  ok('with a sentence that names no second dollar figure', s.plain.startsWith('1 share —') && !/\$/.test(s.plain), s.plain);
   ok('and the risk is the distance to the stop', s.risk_usd === 44.65, s.risk_usd);
   ok('so an order can be built and priced', ticketFor(r, portal, s.shares)?.qty === 1);
 

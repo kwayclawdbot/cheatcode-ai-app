@@ -54,10 +54,14 @@ export function sizeFor(read: TradeRead, portal: TradePortal): TakeSize {
    */
   const served = portal.plan?.shares;
   if (typeof served === 'number' && Number.isInteger(served) && served >= 1) {
+    // The server's own sentence names a dollar loss measured from the PLANNED
+    // entry. The ticket is a market order at today's price, and the card prints
+    // the risk from that price one line above — so repeating the server's
+    // number here would put two different losses on one card. Say where the
+    // size came from; let the priced line say what it risks.
     return {
       shares: served,
-      plain: portal.plan?.size_plain
-        ?? `${served} share${served === 1 ? '' : 's'}, sized to your rules.`,
+      plain: `${served} share${served === 1 ? '' : 's'} — the size your risk rules allow at the planned entry.`,
       risk_usd: Math.round(served * perShare * 100) / 100,
     };
   }

@@ -1712,7 +1712,10 @@ export function adaptTickerPage(raw: unknown, symbol: string): TickerPage {
     symbol: r4str(identity.symbol ?? o.symbol, symbol),
     company: r4str(company.name ?? identity.name ?? o.company, symbol),
     quote: adaptQuoteLoose(Object.keys(quote).length ? quote : o.quote),
-    market_label: r4str(market.label ?? o.market_label, 'market closed').toLowerCase(),
+    // The wire's word is `label_plain` ("Market open"). Reading only `label`
+    // fell through to the default on every payload, so the ticker page said
+    // "market closed" in the middle of a Monday session (owner audit, 21 Sept).
+    market_label: r4str(market.label ?? market.label_plain ?? o.market_label, 'market closed').toLowerCase(),
     starred: r4bool(identity.watchlisted ?? o.starred),
     chart: {
       points: r4arr(r4obj(o.chart_config ?? o.chart).points).filter((p): p is number => typeof p === 'number'),
