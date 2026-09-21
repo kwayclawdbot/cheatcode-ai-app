@@ -208,15 +208,19 @@ export function StandardAlertCard({
         ) : null}
       </View>
 
-      {/* what happened · where it is · the shape of it */}
-      <View style={{ pointerEvents: 'box-none', flexDirection: 'row', gap: 12 }}>
-        <View style={{ pointerEvents: 'none', flexGrow: hasChart ? 0 : 1, flexShrink: 1, flexBasis: 'auto', gap: 8, minWidth: 0 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      {/* what happened, then where it is beside the shape of it (the board's
+          microchart sits to the right of the price, at a readable height) */}
+      <View style={{ pointerEvents: 'box-none', gap: 6 }}>
+        <View style={{ pointerEvents: 'box-none', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ pointerEvents: 'none', flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <StatusChip label={verb.label} tone={TONE[verb.tone]} testID={`alert-verb-${sym}`} />
             {ago ? <T variant="meta" c={color.textSecondary} testID={`alert-ago-${sym}`}>{ago}</T> : null}
             {passes ? <T variant="meta" c={color.textSecondary}>I'd pass</T> : null}
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+          {hasChart ? <WindowToggle value={hours} onChange={setHours} testID={`alert-window-${sym}`} /> : null}
+        </View>
+        <View style={{ pointerEvents: 'none', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ flexGrow: hasChart ? 0 : 1, flexShrink: 1, flexBasis: 'auto', minWidth: 0, flexDirection: 'row', alignItems: 'baseline', columnGap: 8, flexWrap: 'wrap' }}>
             {now != null ? (
               <Num variant="keyPrice" c={color.textPrimary} testID={`alert-price-${sym}`}>{money(now)}</Num>
             ) : null}
@@ -231,15 +235,12 @@ export function StandardAlertCard({
               </Num>
             ) : null}
           </View>
-        </View>
-        {hasChart ? (
-          <View style={{ pointerEvents: 'box-none', flex: 1, minWidth: 110, gap: 4 }}>
-            <WindowToggle value={hours} onChange={setHours} testID={`alert-window-${sym}`} />
-            <View style={NONE}>
-              <MicroChart bars={shown} height={expanded ? 52 : 36} testID={`alert-chart-${sym}`} />
+          {hasChart ? (
+            <View style={{ flex: 1, minWidth: 120 }}>
+              <MicroChart bars={shown} height={expanded ? 76 : 56} testID={`alert-chart-${sym}`} />
             </View>
-          </View>
-        ) : null}
+          ) : null}
+        </View>
       </View>
 
       {expanded ? (

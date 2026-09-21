@@ -76,7 +76,7 @@ const CELL_GLYPH: Record<AnalyticsCell['icon'], (p: G) => React.ReactElement> = 
  * levels and scales live. With no bars it draws nothing at all, rather than an
  * empty frame that would read as a flat price.
  */
-export function MicroChart({ bars, height = 52, max = 40, testID }: {
+export function MicroChart({ bars, height = 72, max = 32, testID }: {
   bars: readonly Candle[]; height?: number; max?: number; testID?: string;
 }) {
   const [w, setW] = useState(0);
@@ -86,10 +86,14 @@ export function MicroChart({ bars, height = 52, max = 40, testID }: {
   const hi = Math.max(...shown.map((b) => b.h));
   const lo = Math.min(...shown.map((b) => b.l));
   const span = hi - lo || 1;
-  const pad = 2;
+  const pad = 3;
   const y = (v: number) => pad + ((hi - v) / span) * (height - pad * 2);
   const step = w / shown.length;
-  const body = Math.max(1, Math.min(4, step * 0.6));
+  // Bodies are wide enough to read as candles at arm's length (the board's are
+  // ~3pt), and never thinner than 2pt or a flat bar vanishes into its wick.
+  const body = Math.max(2, Math.min(6, step * 0.62));
+  // Snap to the half-pixel so a 1.25pt wick and a 2pt body stay sharp on 2x/3x.
+  const snap = (v: number) => Math.round(v * 2) / 2;
   return (
     <View
       onLayout={onLayout}
@@ -103,13 +107,14 @@ export function MicroChart({ bars, height = 52, max = 40, testID }: {
           {shown.map((b, i) => {
             const up = b.c >= b.o;
             const ink = up ? color.marketUp : color.marketDown;
-            const cx = i * step + step / 2;
+            const cx = snap(i * step + step / 2);
             const top = y(Math.max(b.o, b.c));
             const bot = y(Math.min(b.o, b.c));
+            const bh = Math.max(2, bot - top);
             return (
               <React.Fragment key={`${b.t}-${i}`}>
-                <Line x1={cx} x2={cx} y1={y(b.h)} y2={y(b.l)} stroke={ink} strokeWidth={1} />
-                <Rect x={cx - body / 2} y={top} width={body} height={Math.max(1, bot - top)} fill={ink} />
+                <Line x1={cx} x2={cx} y1={snap(y(b.h))} y2={snap(y(b.l))} stroke={ink} strokeWidth={1.25} />
+                <Rect x={snap(cx - body / 2)} y={snap(top - (bh - (bot - top)) / 2)} width={body} height={bh} rx={0.5} fill={ink} />
               </React.Fragment>
             );
           })}
