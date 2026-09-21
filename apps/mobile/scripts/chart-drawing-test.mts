@@ -220,8 +220,8 @@ section("Kai's declutter never edits your work");
         var v=0,k=0;
         for (var x=0;x<w;x++) {
           var o=(y*w+x)*4; if (d[o+3]<90) continue;
-          if (near(d[o],d[o+1],d[o+2],'#C8FF00')) v++;
-          else if (near(d[o],d[o+1],d[o+2],'#32D6FF')) k++;
+          if (near(d[o],d[o+1],d[o+2],'#FF5A1F')) v++; // the member's own marks: action orange (was volt)
+          else if (near(d[o],d[o+1],d[o+2],'#F2F2F0')) k++; // Kai's levels: off-white (was cyan)
         }
         if (v > w*0.3) voltRows[y]=1;
         if (k > w*0.3) kaiRows[y]=1;
@@ -303,7 +303,7 @@ section('A saved drawing comes back');
       if (w<200||h<100) continue;
       var d; try { d=cv.getContext('2d').getImageData(0,0,w,h).data; } catch(e) { continue; }
       for (var p=0;p<d.length;p+=4) {
-        if (d[p+3]>90 && Math.abs(d[p]-200)<30 && Math.abs(d[p+1]-255)<30 && d[p+2]<60) n++;
+        if (d[p+3]>90 && Math.abs(d[p]-255)<30 && Math.abs(d[p+1]-90)<30 && d[p+2]<70) n++; // action orange #FF5A1F (was volt)
       }
     }
     return n;

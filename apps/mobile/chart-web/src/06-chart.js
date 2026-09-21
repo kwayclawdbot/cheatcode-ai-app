@@ -44,7 +44,7 @@ function Chart(root) {
       background: { type: 'solid', color: TOKENS.bg },
       textColor: TOKENS.dim,
       fontSize: 10,
-      fontFamily: '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace',
+      fontFamily: '"Geist Mono", ui-monospace, "SF Mono", Menlo, monospace',
       attributionLogo: false,
     },
     grid: {

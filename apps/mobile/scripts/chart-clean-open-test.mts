@@ -178,10 +178,12 @@ const RULES = `(function(){
         var o=(y*w+x)*4;
         if (d[o+3]<90) continue;
         var r=d[o],g=d[o+1],b=d[o+2];
-        var lvl=(Math.abs(r-50)<40&&Math.abs(g-214)<40&&Math.abs(b-255)<40)
-             || (Math.abs(r-255)<40&&Math.abs(g-90)<40&&Math.abs(b-95)<40)
-             || (Math.abs(r-53)<40&&Math.abs(g-208)<40&&Math.abs(b-127)<40)
-             || (Math.abs(r-200)<40&&Math.abs(g-255)<40&&b<60);
+        // Redesign 2026-09-21 level inks: off-white (was cyan), market red,
+        // market green, action orange (was volt).
+        var lvl=(Math.abs(r-242)<30&&Math.abs(g-242)<30&&Math.abs(b-240)<30)
+             || (Math.abs(r-229)<40&&Math.abs(g-72)<40&&Math.abs(b-77)<40)
+             || (Math.abs(r-18)<40&&Math.abs(g-161)<40&&Math.abs(b-80)<40)
+             || (Math.abs(r-255)<30&&Math.abs(g-90)<30&&b<70);
         if (lvl) { n++; if (x<minX) minX=x; }
       }
       if (n > w*0.3 && minX < 12) rows[y]=1;

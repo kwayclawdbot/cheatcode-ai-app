@@ -1,5 +1,5 @@
 /**
- * Palette lock 14 (Volt + Violet), copied from apps/mobile/src/ui/tokens.ts.
+ * Redesign palette (2026-09-21), copied from apps/mobile/src/ui/tokens.ts.
  *
  * The page NEVER picks a colour of its own. Every value here is a token, and the
  * host may overwrite the whole object with `setTheme` so the app stays the one
@@ -12,27 +12,29 @@
  * keeps the page a single self-contained file with no bundler in the toolchain.
  */
 var TOKENS = {
-  bg: '#0B0B0E',
-  surface: '#1C1C22',
-  surface2: '#17171C',
-  surface3: '#111117',
+  bg: '#0C0C0F',
+  surface: '#1C1C20',
+  surface2: '#1C1C20',
+  surface3: '#0C0C0F',
 
-  text: '#FFF7E8',
-  muted: '#B9B0A8',
-  dim: '#6E675F',
+  text: '#F2F2F0',
+  muted: '#9A9892',
+  dim: '#9A9892',
 
-  volt: '#C8FF00',
-  violet: '#8B4DFF',
-  violetLight: '#CBB2FF',
-  cyan: '#32D6FF',
-  green: '#35D07F',
-  red: '#FF5A5F',
-  gold: '#FFC857',
+  // volt -> action orange; cyan -> neutral ink (the spec draws entry and
+  // market levels off-white, and keeps green/red for target/stop).
+  volt: '#FF5A1F',
+  violet: '#7B45F5',
+  violetLight: '#B9A2FA',
+  cyan: '#F2F2F0',
+  green: '#12A150',
+  red: '#E5484D',
+  gold: '#D7A93A',
 
-  grid: 'rgba(255,247,232,0.045)',
-  hairline: 'rgba(255,247,232,0.10)',
+  grid: 'rgba(242,242,240,0.045)',
+  hairline: 'rgba(242,242,240,0.12)',
   /** Bars outside 09:30–16:00 New York. Market data that is real, but not regular. */
-  session: 'rgba(255,247,232,0.024)',
+  session: 'rgba(242,242,240,0.024)',
 };
 
 /**

@@ -1,7 +1,7 @@
 /**
  * Boot.
  *
- * NO WHITE FLASH: the document is painted `#0B0B0E` by the stylesheet before a
+ * NO WHITE FLASH: the document is painted `#0C0C0F` by the stylesheet before a
  * line of this runs, and the WebView itself is given the same colour, so the
  * three moments that used to flash white (WebView creation, first paint, chart
  * canvas insertion) are all already the surface colour.

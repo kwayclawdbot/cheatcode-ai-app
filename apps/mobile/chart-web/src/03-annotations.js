@@ -38,8 +38,8 @@
  *   price + price2   → a zone          price only      → a level
  */
 
-var CHIP_FONT = '500 9.5px "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace';
-var TAG_FONT = '500 9.5px "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace';
+var CHIP_FONT = '500 9.5px "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace';
+var TAG_FONT = '500 9.5px "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace';
 
 function shapeOf(a) {
   if (a.kind === 'trendline') return 'trendline';

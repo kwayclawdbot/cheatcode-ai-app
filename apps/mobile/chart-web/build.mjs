@@ -28,19 +28,19 @@ const LIB = path.join(
 );
 
 /**
- * JetBrains Mono, inlined.
+ * Geist Mono, inlined (the app's mono face since the 2026-09-21 redesign).
  *
  * The page cannot reach the network and cannot see the app's loaded fonts — a
  * WebView is its own document with its own font stack. Two weights (400 for
  * axis numerals, 500 for chips and the rail) are embedded as base64 so the
  * chart's numbers are the same numerals as the rest of the app. Everything else
  * falls back to the platform mono, which is why `font-display: swap` is safe:
- * first paint uses SF Mono and swaps once JetBrains has decoded, so the font
+ * first paint uses SF Mono and swaps once Geist Mono has decoded, so the font
  * never sits in front of the chart appearing.
  */
 const FONTS = [
-  { weight: 400, file: '400Regular/JetBrainsMono_400Regular.ttf' },
-  { weight: 500, file: '500Medium/JetBrainsMono_500Medium.ttf' },
+  { weight: 400, file: '400Regular/GeistMono_400Regular.ttf' },
+  { weight: 500, file: '500Medium/GeistMono_500Medium.ttf' },
 ];
 
 const esc = (s) => s.replace(/<\/script>/gi, '<\\/script>');
@@ -59,15 +59,15 @@ async function main() {
 
   const faces = [];
   for (const f of FONTS) {
-    const p = path.join(APP, 'node_modules', '@expo-google-fonts', 'jetbrains-mono', f.file);
+    const p = path.join(APP, 'node_modules', '@expo-google-fonts', 'geist-mono', f.file);
     try {
       const b = await fs.readFile(p);
       faces.push(
-        `@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:${f.weight};` +
+        `@font-face{font-family:"Geist Mono";font-style:normal;font-weight:${f.weight};` +
         `font-display:swap;src:url(data:font/ttf;base64,${b.toString('base64')}) format("truetype")}`
       );
     } catch {
-      console.warn(`  ! JetBrains Mono ${f.weight} not found at ${p} — falling back to the platform mono.`);
+      console.warn(`  ! Geist Mono ${f.weight} not found at ${p} — falling back to the platform mono.`);
     }
   }
 

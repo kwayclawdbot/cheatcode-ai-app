@@ -473,7 +473,7 @@ const READER = `(function () {
     tol = tol || 26;
     return Math.abs(r - c[0]) < tol && Math.abs(g - c[1]) < tol && Math.abs(b - c[2]) < tol;
   };
-  var MUTED = '#B9B0A8', CYAN = '#32D6FF', RED = '#FF5A5F', GREEN = '#35D07F', BG = '#0B0B0E';
+  var MUTED = '#9A9892', CYAN = '#F2F2F0', RED = '#E5484D', GREEN = '#12A150', BG = '#0C0C0F'; // redesign 2026-09-21: levels are off-white (the old cyan)
   var out = { curveCols: {}, looseCols: {}, ruleRows: {}, ruleMinX: {}, width: 0, height: 0,
               bandRun: 0, zoneRun: 0 };
   var canvases = document.querySelectorAll('canvas');
@@ -553,8 +553,8 @@ const READER = `(function () {
      * column are one or two rows too, so they cannot be mistaken for either.
      *
      * WHICH FILL a run belongs to is read off its colour. The band fill is the
-     * muted family and composites to a neutral grey; the zone fill is cyan and
-     * composites blue-heavy. Nothing else on the plot is a tall run at all.
+     * muted family and composites to a dark neutral grey; the zone fill is the level ink
+     * (off-white) and composites to a lighter one. Nothing else on the plot is a tall run at all.
      */
     var runsIn = function (x) {
       var best = { neutral: 0, cyan: 0 };
@@ -562,8 +562,15 @@ const READER = `(function () {
       var close = function () {
         if (runLen >= 3) {
           var mr = sr / runLen, mg = sg / runLen, mb = sb / runLen;
-          if (mb > mr + 8 && mb > mg) { if (runLen > best.cyan) best.cyan = runLen; }
-          else if (Math.abs(mr - mg) < 26 && mr >= mb - 10) { if (runLen > best.neutral) best.neutral = runLen; }
+          // REDESIGN 2026-09-21: a level is off-white now, not cyan, so a zone
+          // can no longer be told from a band by HUE. It is told by how much
+          // ink is in the wash instead: a zone is the level ink at 11% (grey
+          // ~37 on this canvas), a band is the muted ink at 5.5% (grey ~20).
+          // The upper bound keeps the crosshair's full-height column (~67)
+          // from passing for a zone.
+          var isNeutral = Math.abs(mr - mg) < 26 && mr >= mb - 10;
+          if (isNeutral && mr >= 28 && mr <= 52 && runLen < h * 0.8) { if (runLen > best.cyan) best.cyan = runLen; }
+          else if (isNeutral) { if (runLen > best.neutral) best.neutral = runLen; }
         }
         runLen = 0; sr = 0; sg = 0; sb = 0;
       };
