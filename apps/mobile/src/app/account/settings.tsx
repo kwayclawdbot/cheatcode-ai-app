@@ -11,6 +11,7 @@ import { alpha, color, radius, tap } from '../../ui/tokens';
 import { useMe, useSettingsWriter } from '../../features/account/useAccount';
 import { useA11y } from '../../features/a11y';
 import type { ExplainLevel } from '../../lib/types';
+import { VoiceRepliesRow } from '../../features/voice'; // LANE C voice
 
 const LEVELS: { key: ExplainLevel; label: string }[] = [
   { key: 'beginner', label: 'Beginner' },
@@ -105,6 +106,9 @@ export default function Settings() {
           <T size={11} c={color.muted} ls={0.6}>SAMPLE</T>
           <T size={15} lh={22} style={{ marginTop: 6 }}>{SAMPLE[level]}</T>
         </ObjectCard>
+
+        {/* LANE C voice: drawn only when the server says Kai's voice is live. */}
+        <VoiceRepliesRow />
 
         <Eyebrow c={color.gold}>QUIET HOURS</Eyebrow>
         <RowList>
