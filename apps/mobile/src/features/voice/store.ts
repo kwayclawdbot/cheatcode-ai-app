@@ -13,6 +13,7 @@
  */
 import { useEffect, useSyncExternalStore } from 'react';
 import { api } from '../../lib/api';
+import { env } from '../../lib/env';
 import { voiceApi } from './api';
 
 export type VoicePrefs = {
@@ -35,7 +36,7 @@ function set(patch: Partial<VoicePrefs>) {
 
 export function loadVoicePrefs(force = false): Promise<void> {
   if (!api.available()) {
-    if (!state.loaded) set({ loaded: true, available: false });
+    if (!state.loaded) set({ loaded: true, available: state.available && env.FIXTURES });
     return Promise.resolve();
   }
   if (inflight) return inflight;
@@ -48,6 +49,18 @@ export function loadVoicePrefs(force = false): Promise<void> {
       inflight = null;
     });
   return inflight;
+}
+
+/**
+ * FIXTURES ONLY: behave as if the server had said voice is live.
+ *
+ * Fixtures have no API to ask, so the mic is never drawn there, which left no
+ * way to photograph it. This flips `available` on for a fixtures build only;
+ * against a real API it does nothing, and the server's answer is the only one.
+ */
+export function previewVoiceInFixtures(on: boolean): void {
+  if (!env.FIXTURES || api.available()) return;
+  if (state.available !== on) set({ loaded: true, available: on, replies: false });
 }
 
 /** Optimistic, and put back with a sentence if the server says no. */

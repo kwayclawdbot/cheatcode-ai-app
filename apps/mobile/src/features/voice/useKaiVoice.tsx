@@ -316,13 +316,21 @@ export function useKaiVoice(opts: {
     else if (p === 'idle' && !optsRef.current.streaming) void start();
   }, [finish, start, stopSpeaking]);
 
+  /**
+   * THE LIVE VOLUME, 0–1, for anything on screen that wants to move with the
+   * member's voice (Home's brain rings). It is the newest meter reading the mic
+   * button already draws from, and 0 whenever the mic is not recording — a
+   * stale last reading must not keep a ring swollen after the question ended.
+   */
+  const level = phase === 'recording' ? (levels[levels.length - 1] ?? 0) : 0;
+
   const enabled = prefs.available && webCanRecord();
-  if (!enabled) return { enabled: false as const, phase, button: null, overlay: null, stopSpeaking };
+  if (!enabled) return { enabled: false as const, phase, level: 0, press, waiting: false, button: null, overlay: null, stopSpeaking };
 
   const button = (
     <KaiMicButton
       phase={phase}
-      level={levels[levels.length - 1] ?? 0}
+      level={level}
       onPress={press}
       // While Kai writes, the circle beside this one is Stop; the mic waits.
       waiting={opts.streaming && phase === 'idle'}
@@ -343,5 +351,11 @@ export function useKaiVoice(opts: {
       />
     ) : null;
 
-  return { enabled: true as const, phase, button, overlay, stopSpeaking };
+  /**
+   * `press` and `waiting` are handed out too, so a screen that wants the mic
+   * somewhere other than beside Send (Home, where it is the main control) can
+   * draw its own `KaiMicButton` on the same state instead of a second copy.
+   */
+  const waiting = opts.streaming && phase === 'idle';
+  return { enabled: true as const, phase, level, press, waiting, button, overlay, stopSpeaking };
 }

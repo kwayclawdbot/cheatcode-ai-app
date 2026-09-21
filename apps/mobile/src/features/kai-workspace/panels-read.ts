@@ -382,6 +382,7 @@ export function fixtureWorkspaceTurn(text: string): { reply: string; action: Kai
   if (/option|strike|chain/.test(t)) return { reply: `Here is the ${tick} option chain near the price, with the bid and ask on each contract.`, action: { type: 'show_options', symbol: tick } };
   if (/watchlist|watching/.test(t)) return { reply: 'Here is your watchlist, priced.', action: { type: 'show_watchlist' } };
   if (/position|portfolio|holding/.test(t)) return { reply: 'Here are your paper positions and how they are doing.', action: { type: 'show_portfolio' } };
+  if (/\bchart\b/.test(t)) return { reply: `Here is ${tick} on the 15-minute chart. The shaded band is where it has been buying back in, and the line above it is yesterday's high — that is the level I would watch today.`, action: { type: 'open_chart', symbol: tick, timeframe: '15m', setup_id: null } };
   if (/quote|price|range|volume/.test(t)) return { reply: `Here is ${tick}'s price card — the day's range and volume are under the price.`, action: { type: 'show_quote', symbol: tick } };
   return null;
 }

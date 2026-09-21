@@ -37,11 +37,21 @@ export function KaiMicButton({
   level,
   onPress,
   waiting,
+  size = SIZE,
+  primary = false,
 }: {
   phase: VoicePhase;
   level: number;
   onPress: () => void;
   waiting?: boolean;
+  /** Diameter. 40 beside Send; larger where the mic is the screen's main control. */
+  size?: number;
+  /**
+   * The mic as the MAIN control (Home, War Room style): at rest it is a volt
+   * ring on a volt wash rather than a quiet outline, because talking is the
+   * first way in and typing is the backup.
+   */
+  primary?: boolean;
 }) {
   const listening = phase === 'recording';
   const speaking = phase === 'speaking';
@@ -75,14 +85,14 @@ export function KaiMicButton({
       onPress={onPress}
       hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
       style={({ pressed }) => ({
-        width: SIZE,
-        height: SIZE,
-        borderRadius: SIZE / 2,
+        width: size,
+        height: size,
+        borderRadius: size / 2,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: listening ? color.volt : speaking ? color.violet : 'transparent',
-        borderWidth: listening || speaking ? 0 : 0.5,
-        borderColor: alpha.ivory20,
+        backgroundColor: listening ? color.volt : speaking ? color.violet : primary ? alpha.volt10 : 'transparent',
+        borderWidth: listening || speaking ? 0 : primary ? 1 : 0.5,
+        borderColor: primary ? alpha.volt50 : alpha.ivory20,
         opacity: waiting ? 0.4 : pressed ? 0.8 : 1,
       })}
     >
@@ -94,9 +104,9 @@ export function KaiMicButton({
           testID="kai-mic-ring"
           style={{
             position: 'absolute',
-            width: SIZE + 8 + level * 14,
-            height: SIZE + 8 + level * 14,
-            borderRadius: (SIZE + 8 + level * 14) / 2,
+            width: size + 8 + level * 14,
+            height: size + 8 + level * 14,
+            borderRadius: (size + 8 + level * 14) / 2,
             borderWidth: 2,
             borderColor: alpha.volt40,
           }}
@@ -107,7 +117,7 @@ export function KaiMicButton({
       ) : speaking ? (
         <SoundBars c={color.text} />
       ) : (
-        <Mic size={17} color={listening ? color.bg : color.text} strokeWidth={2} />
+        <Mic size={Math.round(size * 0.42)} color={listening ? color.bg : primary ? color.volt : color.text} strokeWidth={2} />
       )}
     </Pressable>
   );
