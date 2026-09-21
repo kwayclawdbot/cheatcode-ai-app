@@ -78,13 +78,15 @@ function publicUrl(path: string): string {
 }
 
 /** A cache hit costs one list call and nothing else — no model, no dollars. */
-async function cached(path: string): Promise<SpeechResult | null> {
+async function cached(path: string, measure = true): Promise<SpeechResult | null> {
   const slash = path.lastIndexOf('/');
   const dir = slash > 0 ? path.slice(0, slash) : '';
   const name = slash > 0 ? path.slice(slash + 1) : path;
   const { data, error } = await serviceClient().storage.from(BUCKET()).list(dir, { search: name, limit: 1 });
   if (error || !data?.length) return null;
   const url = publicUrl(path);
+  // An MP3 has no header to measure, so fetching it back would buy nothing.
+  if (!measure) return { audio_url: url, duration_ms: 0, state: 'estimated', cached: true };
   const res = await fetch(url).catch(() => null);
   const buf = res?.ok ? new Uint8Array(await res.arrayBuffer()) : null;
   const ms = buf ? wavDurationMs(buf) : null;
@@ -102,6 +104,20 @@ export async function speak(opts: {
   text: string;
   voice?: TtsVoice;
   requestId?: string;
+  /**
+   * LANE C (Kai voice replies). `mp3` for a spoken chat reply: a two-minute
+   * reply as WAV is ~5 MB on a phone connection, as MP3 about a tenth of that.
+   * The chart answer keeps WAV because it needs a MEASURED duration; a chat
+   * reply is not choreographed against anything, so an estimate is fine.
+   * Default `wav`, so every existing caller is byte-for-byte unchanged.
+   */
+  format?: 'wav' | 'mp3';
+  /**
+   * LANE C. Which switch this voice answers to. Default is the chart answer's
+   * (`LIVE_ANSWER_VOICE`); voice replies pass their own so turning one off
+   * cannot silently turn the other off.
+   */
+  enabled?: () => boolean;
 }): Promise<SpeechResult> {
   const requestId = opts.requestId ?? '-';
   const voice: TtsVoice = opts.voice ?? 'kai';
@@ -115,20 +131,23 @@ export async function speak(opts: {
   if (!text) return { audio_url: null, duration_ms: 0, state: 'estimated', cached: false };
 
   const key = env('OPENAI_API_KEY');
-  if (!key || !answerVoiceEnabled()) return fallback();
+  if (!key || !(opts.enabled ?? answerVoiceEnabled)()) return fallback();
+  const format = opts.format ?? 'wav';
 
   const model = MODEL();
   const voiceName = VOICE(voice);
   const speed = SPEED();
-  const path = audioKeyFor({
+  const wavPath = audioKeyFor({
     text,
     voice: voiceName,
     model,
     speed,
     sha256: (i) => createHash('sha256').update(i).digest('hex'),
   });
+  // Same hash, different container: the key still names what produced the audio.
+  const path = format === 'mp3' ? wavPath.replace(/\.wav$/, '.mp3') : wavPath;
 
-  const hit = await cached(path).catch(() => null);
+  const hit = await cached(path, format === 'wav').catch(() => null);
   if (hit) return { ...hit, duration_ms: hit.duration_ms || estimateDurationMs(text) };
 
   let buf: Uint8Array;
@@ -140,7 +159,7 @@ export async function speak(opts: {
         model,
         voice: voiceName,
         input: text,
-        response_format: 'wav',
+        response_format: format,
         speed,
         instructions: instructionsFor(voice),
       }),
@@ -155,10 +174,15 @@ export async function speak(opts: {
     return fallback();
   }
 
-  const ms = wavDurationMs(buf) ?? estimateDurationMs(text);
+  const measured = format === 'wav' ? wavDurationMs(buf) : null;
+  const ms = measured ?? estimateDurationMs(text);
   const up = await serviceClient()
     .storage.from(BUCKET())
-    .upload(path, buf, { contentType: 'audio/wav', upsert: true, cacheControl: '31536000' });
+    .upload(path, buf, {
+      contentType: format === 'wav' ? 'audio/wav' : 'audio/mpeg',
+      upsert: true,
+      cacheControl: '31536000',
+    });
 
   if (up.error) {
     // The audio exists but nobody can fetch it, so it is no better than none.
@@ -166,5 +190,5 @@ export async function speak(opts: {
     return { audio_url: null, duration_ms: ms, state: 'estimated', cached: false };
   }
 
-  return { audio_url: publicUrl(path), duration_ms: ms, state: 'ready', cached: false };
+  return { audio_url: publicUrl(path), duration_ms: ms, state: format === 'wav' ? 'ready' : 'estimated', cached: false };
 }
