@@ -33,6 +33,7 @@ import { ApiError } from '@/lib/errors';
 import { serviceClient } from '@/lib/db';
 import { liveMarketBlock } from '@/lib/market/live';
 import { getNews, lastTradingDate, polygonConfigured, resolveQuote } from '@/lib/market/polygon';
+import { headerQuoteOptions } from '@/lib/market/header-quote';
 import { getCompanyProfile } from '@/lib/market/profile';
 import { computeTechnicals } from '@/lib/market/technicals';
 import { loadAlertCards } from '@/lib/round4/alerts-feed';
@@ -147,8 +148,15 @@ export const GET = authedParams<{ symbol: string }>(
           .order('created_at', { ascending: false }),
       ]);
 
-    const quote = priced.quote;
     const rows = (setupsRes.data ?? []) as unknown as SetupRow[];
+    /* THE HEADER IS THE PRICE NOW, and it is Trade's price. The chart below
+     * still draws completed daily bars (`priced`); the number above it is
+     * asked exactly the way the Trade portal asks, so a member walking from
+     * this page into Trade sees one price — see `lib/market/header-quote.ts`
+     * for the $559.82-vs-$606.75 report this closes. */
+    const quoteMode = rows.find((r) => r.mode === mode)?.mode ?? rows[0]?.mode ?? mode;
+    const live = await resolveQuote(symbol, headerQuoteOptions(quoteMode)).catch(() => null);
+    const quote = live?.quote?.price != null ? live.quote : priced.quote;
     // Mode is global context now, so the setup shown is simply the best live one
     // for the user's current mode, with any mode as the fallback.
     const current = rows.find((r) => r.mode === mode) ?? rows[0] ?? null;

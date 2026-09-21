@@ -69,6 +69,7 @@ import { listAnnotations, markPlanLevels } from '@/lib/round4/annotations';
 import { listCircles } from '@/lib/round4/circles';
 import { loadAlertCards } from '@/lib/round4/alerts-feed';
 import { findOpenedCard, openedFrom } from '@/lib/round4/opened-from';
+import { defaultTimeframe, headerQuoteOptions } from '@/lib/market/header-quote';
 import { experienceOf, speak } from '@/lib/kai/voice';
 
 export const dynamic = 'force-dynamic';
@@ -89,10 +90,6 @@ const TIMEFRAMES = [
 /** How many bars of the resolved series travel in the payload. */
 const PORTAL_CHART_BARS = 400;
 
-/** Which timeframe an alert should land on. Day trades open intraday. */
-function defaultTimeframe(mode: string): string {
-  return mode === 'day_trade' ? '5m' : '1d';
-}
 
 export const GET = authedParams<{ symbol: string }>(
   async (req: NextRequest, ctx: Ctx & { params: { symbol: string } }) => {
@@ -222,10 +219,7 @@ export const GET = authedParams<{ symbol: string }>(
      * that same series — including the resolution it actually landed on when
      * the requested one was behind the last close (spec §9: no silent
      * inference, one source timestamp per quote). */
-    const resolved = await resolveQuote(symbol, {
-      preferIntraday: requestedTimeframe !== '1d',
-      timeframe: requestedTimeframe,
-    });
+    const resolved = await resolveQuote(symbol, headerQuoteOptions(mode, requestedTimeframe));
     const quote = resolved.quote;
     const timeframe = resolved.timeframe;
     // The wire copy keeps the NEWEST bars, so the last bar — the one the header
