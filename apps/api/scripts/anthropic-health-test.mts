@@ -87,7 +87,7 @@ check('no key at all is invalid_key', (await probeAnthropic({ key: undefined }))
 check('an unrelated 400 is not called no_credit', classify(400, err('invalid_request_error', 'max_tokens: bad')) === 'unreachable');
 
 // The probe is a real, minimal model call on the cheap model.
-let sent: { url: string; body: Record<string, unknown> } | null = null;
+let sent = null as { url: string; body: Record<string, unknown> } | null;
 await probeAnthropic({
   key: 'sk-test',
   fetchImpl: (async (url: string, init: RequestInit) => {
