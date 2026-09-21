@@ -25,8 +25,17 @@ levels. These are built from the components in `src/ui/` (`Panel`, `Text`/`T`,
 
 Do **not** rebuild these on a component library. They are the product's face, they
 carry rules a generic library has no concept of (a ticker always appears with its
-logo; prices always go through `Num`; volt means the user acted and violet means
-Kai did), and every one of them has signed-off pixels in `apps/mobile/proof/`.
+logo; prices always go through `Num`; orange means the brand and the member's
+action and violet means Kai did), and every one of them has signed-off pixels in
+`apps/mobile/proof/`.
+
+**Redesign 2026-09-21.** The look is now the owner's pack in
+`docs/design/redesign-2026-09-21/` (spec + boards). Compose screens from
+`src/ui/kit.ts` (Card, AppBar, SegmentedControl, SectionTabs, StatusChip,
+GradeBadge, PriceTriplet, …); set text with `<T variant=…>` on the spec's six
+named styles; pick colours by meaning (`color.action`, `color.kai`,
+`color.marketUp`, `color.grade`) — the old `volt`/`cyan`/`dim` names are
+aliases kept only so nothing broke on the day of the switch.
 
 ### Chrome — gluestack-ui v5 + uniwind, Tailwind classNames
 
@@ -81,11 +90,11 @@ Rules that follow from that diagram, all enforced by
 - **Never write hex values into `global.css`.** A second copy of the palette has
   no way of knowing when the first one changes, and the two halves of the app
   would drift apart one token at a time without anything failing.
-- The mapping keeps the house grammar intact: `primary` is **volt** (the user
-  acting), `accent` is **violet** (Kai), `destructive` is the same red the P&L
-  uses. An accent-coloured control therefore reads as "Kai did this" in chrome
-  exactly as it does on a hand-rolled card. `border` is genuinely an *alpha*
-  colour — ivory at 12%, not a flat grey.
+- The mapping keeps the house grammar intact: `primary` is **action orange**
+  (the brand and the member acting), `accent` is **Kai violet**, `destructive`
+  is the same red a stop and a loss use. An accent-coloured control therefore
+  reads as "Kai did this" in chrome exactly as it does on a hand-rolled card.
+  `border` is genuinely an *alpha* colour — the ink at 12%, not a flat grey.
 
 ## `global.css` has no preflight, deliberately
 
