@@ -103,8 +103,15 @@ for (const size of SIZES) {
   await askAndWait(page, 'What should I watch first?');
   note(await has(page, 'kai-followups'), `${size.tag}: follow-up chips under the reply`);
   note(await has(page, 'kai-monitoring'), `${size.tag}: monitoring line (META has an armed alert)`);
+  // The question and the start of Kai's answer, then the card and its follow-ups.
+  await page.evaluate(() => {
+    const wall = document.querySelector('[data-testid="kai-wall"]');
+    const q = [...document.querySelectorAll('[data-testid="kai-wall"] div')].find((d) => d.textContent === 'What should I watch first?');
+    if (wall && q) wall.scrollTop += q.getBoundingClientRect().top - wall.getBoundingClientRect().top - 40;
+  });
+  await shot(page, `${size.tag}-03a-chat-question`);
   await tid(page, 'kai-wall').evaluate((el) => { el.scrollTop = el.scrollHeight; });
-  await shot(page, `${size.tag}-03-chat-setup-card`);
+  await shot(page, `${size.tag}-03b-chat-setup-card`);
 
   // 4 — voice listening
   if (await has(page, 'kai-mic')) {
