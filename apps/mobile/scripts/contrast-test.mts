@@ -50,7 +50,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { alpha, color, FLOOR, gradient, tap, type } from '../src/ui/tokens.ts';
+import { alpha, color, FLOOR, gradient, palette, tap, type, typeScale } from '../src/ui/tokens.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, '..');
@@ -118,9 +118,9 @@ const AA = 4.5;
  */
 const neutralGrounds: Array<[string, string]> = [
   ['the page ground', color.bg],
-  ['a raised panel', color.surface],
-  ['a sheet / popover', color.surface2],
-  ['a recessed well', color.surface3],
+  ['a card surface', color.surface],
+  ['a raised surface (sheet, selected)', color.raised],
+  ['a recessed well (the canvas)', color.surface3],
   ['the object panel gradient', stack(gradient.panel, color.bg)],
   ['a chip at 70%', over(alpha.chip70, color.bg)],
   ['a chip at 85%', over(alpha.chip85, color.bg)],
@@ -152,21 +152,52 @@ for (const [name, ground] of neutralGrounds) {
   }
 }
 
-console.log('\nThe semantic inks clear AA on the ground they label');
-for (const [ink, hex] of [
-  ['gold / caution', color.gold],
-  ['grade gold', color.gradeGold],
-  ['green / gain', color.green],
-  ['red / loss', color.red],
-  ['cyan / market', color.cyan],
-  ['volt / the user acting', color.volt],
-  ['violetLight / Kai speaking', color.violetLight],
-] as const) {
-  // Measured on the LIGHTEST neutral ground, which is the worst case for every
-  // one of these — they are all lighter than the surfaces they sit on.
-  const worst = neutralGrounds.reduce((a, b) => (luminance(a[1]) > luminance(b[1]) ? a : b));
-  const r = contrast(hex, worst[1]);
-  ok(`${ink} on ${worst[0]} — ${r.toFixed(2)}:1`, r >= AA, { ink: hex, ground: worst[1], ratio: r });
+console.log('\nThe semantic inks clear AA on the grounds prices actually sit on');
+{
+  /*
+   * REDESIGN 2026-09-21. Prices, levels and Kai's words sit on the canvas and
+   * on the card surface — that is where every board in the pack draws them.
+   * Both are checked for every semantic ink at the 4.5:1 small-text floor.
+   *
+   * The RAISED surface (#1C1C20 — sheets, a selected segment) is checked too,
+   * and one ink misses there: the spec's market red #E5484D scores ~4.4:1 on
+   * raised. It is kept at the spec value (the owner's palette) and the miss is
+   * written down rather than hidden: on a raised surface a red value must be
+   * at least cardTitle size (17px) — large enough that the 3:1 large-text
+   * floor applies — or sit on the card surface instead.
+   */
+  const cardGrounds: Array<[string, string]> = [
+    ['the canvas', color.canvas],
+    ['a card surface', color.surface],
+  ];
+  const inks = [
+    ['grade gold', color.grade],
+    ['market up', color.marketUp],
+    ['market down', color.marketDown],
+    ['action orange', color.action],
+    ['Kai ink', color.kaiInk],
+    ['entry (neutral)', color.priceEntry],
+  ] as const;
+  for (const [ink, hex] of inks) {
+    for (const [gname, g] of cardGrounds) {
+      const r = contrast(hex, g);
+      ok(`${ink} on ${gname} — ${r.toFixed(2)}:1`, r >= AA, { ink: hex, ground: g, ratio: r });
+    }
+    const rr = contrast(hex, color.raised);
+    const floor = hex === color.marketDown ? 3 : AA;
+    ok(`${ink} on a raised surface — ${rr.toFixed(2)}:1 (needs ${floor}:1${floor === 3 ? ', large text only — see note' : ''})`,
+      rr >= floor, { ink: hex, ratio: rr });
+  }
+  const redRaised = contrast(color.marketDown, color.raised);
+  ok(`the red-on-raised exception is real, not stale (${redRaised.toFixed(2)}:1 < 4.5)`, redRaised < AA, redRaised);
+}
+
+console.log('\nThe orange action carries dark ink, because white on orange fails');
+{
+  const dark = contrast(color.onAction, color.action);
+  const white = contrast(color.textPrimary, color.action);
+  ok(`dark ink on orange — ${dark.toFixed(2)}:1`, dark >= AA, dark);
+  ok(`white on orange would fail AA (${white.toFixed(2)}:1), so it is never used`, white < AA, white);
 }
 
 console.log('\nViolet is a surface, not an ink — which is why Kai SPEAKS in violetLight');
@@ -186,16 +217,31 @@ for (const [name, ground] of tintedGrounds) {
   ok(`muted on ${name} (${ground}) — ${m.toFixed(2)}:1`, m >= AA, { ground, ratio: m });
 }
 
-console.log('\nThe ink ladder is still three distinct steps');
+console.log('\nThe spec has two inks, and they are clearly two');
 {
-  // If `dim` is raised far enough to clear every tinted surface it stops being
-  // quieter than `muted`, and the hierarchy collapses into two inks that look
-  // the same. Each step has to be a step somebody can SEE.
-  const step = (a: string, b: string) => contrast(a, b);
-  ok(`text is clearly above muted (${step(color.text, color.muted).toFixed(2)}:1)`, step(color.text, color.muted) >= 1.7);
-  ok(`muted is clearly above dim (${step(color.muted, color.dim).toFixed(2)}:1)`, step(color.muted, color.dim) >= 1.4);
-  ok('dim is still the quietest of the three',
-    luminance(color.dim) < luminance(color.muted) && luminance(color.muted) < luminance(color.text));
+  // The old palette had a third, quieter ink (`dim`). The spec defines two:
+  // primary and secondary. `dim` is kept as a name so ~470 call sites compile,
+  // and it resolves to the secondary ink. A third step quiet enough to SEE as
+  // a step (≥1.4:1 under secondary) would land near 3.9:1 on a raised surface
+  // — under the floor — which is why the spec's two-ink answer is the right one.
+  ok(`primary is clearly above secondary (${contrast(color.textPrimary, color.textSecondary).toFixed(2)}:1)`,
+    contrast(color.textPrimary, color.textSecondary) >= 1.7);
+  ok('dim is the secondary ink (the spec has two inks)', color.dim === color.textSecondary && color.muted === color.textSecondary);
+  ok('the inks are the spec values', color.textPrimary === '#F2F2F0' && color.textSecondary === '#9A9892');
+}
+
+console.log('\nThe palette is the spec, value for value');
+{
+  const spec: Record<string, string> = {
+    canvas: '#0C0C0F', surface: '#151518', raised: '#1C1C20', border: 'rgba(242,242,240,0.12)',
+    textPrimary: '#F2F2F0', textSecondary: '#9A9892', orange: '#FF5A1F', orangeLight: '#FF8A3D',
+    violet: '#7B45F5', positive: '#12A150', negative: '#E5484D', gold: '#D7A93A',
+  };
+  for (const [k, v] of Object.entries(spec)) {
+    ok(`palette.${k} is ${v}`, (palette as Record<string, string>)[k] === v, (palette as Record<string, string>)[k]);
+  }
+  ok('the lime and cyan are gone from every colour token',
+    !Object.values(color).some((v) => /^#(C8FF00|32D6FF|D6FF3D|DEFF66)$/i.test(v)));
 }
 
 /* ── size, scaling and targets ───────────────────────────────────────────── */
@@ -205,7 +251,15 @@ console.log('\nThe legibility floor exists, and it is inside the primitive');
   const text = readFileSync(path.join(SRC, 'ui', 'Text.tsx'), 'utf8');
   ok('the floor is 11 logical pixels', FLOOR === 11, FLOOR);
   ok('T applies it — `Math.max(size, FLOOR)`', text.includes('Math.max(size, FLOOR)'));
-  ok('T\'s default body size is the audit\'s 15–16', /size = 1[56],/.test(text), text.match(/size = \d+,/)?.[0]);
+  ok('T defaults to the body style when given no variant or size', text.includes("variant ?? 'body'") && typeScale.body.size === 15);
+  const specScale: Record<string, [number, number, boolean]> = {
+    screenTitle: [32, 38, false], sectionTitle: [20, 26, false], cardTitle: [17, 22, false],
+    body: [15, 22, false], meta: [12, 16, false], keyPrice: [26, 30, true],
+  };
+  for (const [name, [sz, lh, mono]] of Object.entries(specScale)) {
+    const v = (typeScale as Record<string, { size: number; lh: number; mono: boolean }>)[name];
+    ok(`typeScale.${name} is ${sz}/${lh}${mono ? ' mono' : ''}`, v && v.size === sz && v.lh === lh && v.mono === mono, v);
+  }
 
   // Nothing in the ramp may name a size the floor would silently override —
   // a token that says 9 and renders 11 is a lie in the source.

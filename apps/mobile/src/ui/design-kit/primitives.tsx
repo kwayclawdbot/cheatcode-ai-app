@@ -4,6 +4,7 @@ import { T, type TProps } from '../Text';
 import { KaiOrb } from '../KaiOrb';
 import { color, alpha, layout, useDesignPreferences } from './theme';
 import { KitIcon, type IconName } from './icons';
+import { family } from '../fontFamilies';
 
 export function KitText({ size = 16, lh, ...props }: TProps) {
   const { textScale } = useDesignPreferences();
@@ -109,10 +110,10 @@ const s = StyleSheet.create({
   nav: { borderTopWidth: 1, borderColor: alpha.ivory12, paddingTop: 4, paddingBottom: 6, paddingHorizontal: 6 },
   navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 54 },
   composer: { minHeight: 56, borderWidth: 1, borderRadius: 16, paddingLeft: 12, paddingRight: 2, backgroundColor: alpha.ivory035 },
-  input: { flex: 1, minWidth: 0, minHeight: 44, maxHeight: 112, paddingVertical: 12, color: color.text, fontFamily: 'SpaceGrotesk_400Regular' },
+  input: { flex: 1, minWidth: 0, minHeight: 44, maxHeight: 112, paddingVertical: 12, color: color.text, fontFamily: family.regular },
   header: { minHeight: 64, paddingHorizontal: 12 },
   content: { paddingHorizontal: layout.gutter, paddingTop: 10, paddingBottom: 24, width: '100%', maxWidth: layout.contentMax, alignSelf: 'center' },
   dock: { paddingHorizontal: layout.gutter, paddingTop: 8, paddingBottom: 10, gap: 8, width: '100%', maxWidth: layout.contentMax, alignSelf: 'center' },
   setting: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: 72, paddingVertical: 14, borderBottomWidth: 1, borderColor: alpha.ivory12 },
-  field: { minHeight: 52, borderRadius: 12, borderWidth: 1, borderColor: alpha.ivory20, color: color.text, padding: 14, fontFamily: 'SpaceGrotesk_400Regular', backgroundColor: alpha.ivory04 },
+  field: { minHeight: 52, borderRadius: 12, borderWidth: 1, borderColor: alpha.ivory20, color: color.text, padding: 14, fontFamily: family.regular, backgroundColor: alpha.ivory04 },
 });

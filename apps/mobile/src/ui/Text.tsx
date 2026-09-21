@@ -1,10 +1,18 @@
 import React from 'react';
 import { Text as RNText, TextProps, StyleProp, TextStyle } from 'react-native';
-import { color, FLOOR } from './tokens';
+import { color, FLOOR, typeScale, type TextVariant } from './tokens';
 import { family, fontStack, Weight } from './fonts';
 import { useTextScale } from '../features/a11y/context';
 
 export type TProps = TextProps & {
+  /**
+   * One of the spec's six named styles — screenTitle, sectionTitle, cardTitle,
+   * body, meta, keyPrice. Sets size, line height, weight, and (for keyPrice)
+   * mono. Any of `size` / `lh` / `weight` / `mono` / `ls` passed alongside it
+   * wins over the variant for that one property.
+   */
+  variant?: TextVariant;
+  /** An off-scale size. Prefer `variant`; this exists for charts and art. */
   size?: number;
   weight?: Weight;
   mono?: boolean;
@@ -19,7 +27,7 @@ const monoFor: Record<Weight, string> = {
   regular: family.mono,
   medium: family.monoMedium,
   semibold: family.monoSemibold,
-  bold: family.monoBold, // JetBrains Mono ships 400/500/600/700
+  bold: family.monoBold, // Geist Mono ships 400/500/600/700
 };
 
 /**
@@ -57,33 +65,45 @@ function resolveSize(size: number, scale: number): number {
   return Math.round(floored * scale * 2) / 2;
 }
 
-/** Every text in the app goes through here so the two families are the only ones used. */
+/**
+ * Every text in the app goes through here so the two families are the only ones used.
+ *
+ * With no `variant` and no `size`, text is the spec's `body` (15/22 regular).
+ * An explicit `size` with no `variant` keeps the old behaviour — the size
+ * alone, no line height imposed — so an off-scale literal that has not been
+ * migrated renders exactly as it did.
+ */
 export function T({
-  size = 15, weight = 'regular', mono = false, c = color.text,
+  variant, size, weight, mono, c = color.text,
   ls, lh, align, style, ...rest
 }: TProps) {
   const scale = useTextScale();
-  const fontSize = resolveSize(size, scale);
+  const v = typeScale[variant ?? 'body'];
+  const fromScale = variant !== undefined || size === undefined;
+  const authored = size ?? v.size;
+  const w: Weight = weight ?? (fromScale ? v.weight : 'regular');
+  const isMono = mono ?? (fromScale ? v.mono : false);
+  const lhAuthored = lh ?? (fromScale ? v.lh : undefined);
+  const lsAuthored = ls ?? (fromScale && v.ls !== 0 ? v.ls : undefined);
+  const fontSize = resolveSize(authored, scale);
   // A line height that did not grow with the text would clip a two-line
   // paragraph the moment somebody picks "Larger" — or the moment the floor
-  // lifts a 9px caption to 11 inside a 12px line box. So `lh` is treated as
-  // the RATIO the caller asked for, measured against the size they authored,
-  // and re-applied to whatever size actually renders. When nothing moved
-  // (size at or above the floor, scale 1) the arithmetic returns `lh` exactly.
-  const lineHeight = lh === undefined ? undefined : Math.round((lh / size) * fontSize * 2) / 2;
+  // lifts a small caption. So `lh` is treated as the RATIO against the size
+  // that was authored, and re-applied to whatever size actually renders.
+  const lineHeight = lhAuthored === undefined ? undefined : Math.round((lhAuthored / authored) * fontSize * 2) / 2;
   return (
     <RNText
       {...rest}
       style={[
         {
-          fontFamily: fontStack(mono ? monoFor[weight] : family[weight], mono),
+          fontFamily: fontStack(isMono ? monoFor[w] : family[w], isMono),
           fontSize,
           color: c,
-          ...(ls !== undefined ? { letterSpacing: ls } : null),
+          ...(lsAuthored !== undefined ? { letterSpacing: lsAuthored } : null),
           ...(lineHeight !== undefined ? { lineHeight } : null),
           ...(align ? { textAlign: align } : null),
           // tabular figures for prices/times (web + iOS honour this)
-          ...(mono ? { fontVariant: ['tabular-nums'] as TextStyle['fontVariant'] } : null),
+          ...(isMono ? { fontVariant: ['tabular-nums'] as TextStyle['fontVariant'] } : null),
         },
         style,
       ]}
@@ -91,15 +111,25 @@ export function T({
   );
 }
 
-/** Section eyebrow: 11px / 700 / 0.08em, colour carries the section's role. */
+/**
+ * A section label. REDESIGN 2026-09-21: the spec retires the tracked,
+ * uppercase eyebrow ("excessive uppercase mono text"), so this is the `meta`
+ * style — 12/16 medium, secondary ink, no letter-spacing. The name is kept so
+ * ~190 call sites did not have to move; write the label in sentence case.
+ */
 export function Eyebrow({ children, c = color.muted, style }: { children: React.ReactNode; c?: string; style?: StyleProp<TextStyle> }) {
-  return <T size={11} weight="bold" ls={0.88} c={c} style={style}>{children}</T>;
+  return <T variant="meta" c={c} style={style}>{children}</T>;
 }
 
-/** Price / level / time. Always mono + tabular; never plain text. */
-export function Num({ children, size = 14, weight = 'semibold', c = color.text, style, testID, accessibilityLabel }: {
-  children: React.ReactNode; size?: number; weight?: Weight; c?: string; style?: StyleProp<TextStyle>;
-  testID?: string; accessibilityLabel?: string;
+/**
+ * Price / level / time / % / R. Always Geist Mono + tabular figures; never
+ * plain text. Defaults to body size; `variant="keyPrice"` for the one price a
+ * card is about, `variant="meta"` for a timestamp.
+ */
+export function Num({ children, variant, size, weight = 'semibold', c = color.text, style, testID, accessibilityLabel, numberOfLines }: {
+  children: React.ReactNode; variant?: TextVariant; size?: number; weight?: Weight; c?: string; style?: StyleProp<TextStyle>;
+  testID?: string; accessibilityLabel?: string; numberOfLines?: number;
 }) {
-  return <T mono size={size} weight={weight} c={c} style={style} testID={testID} accessibilityLabel={accessibilityLabel}>{children}</T>;
+  const v = variant ?? (size === undefined ? 'body' : undefined);
+  return <T mono variant={v} size={size} weight={weight} c={c} style={style} testID={testID} accessibilityLabel={accessibilityLabel} numberOfLines={numberOfLines}>{children}</T>;
 }

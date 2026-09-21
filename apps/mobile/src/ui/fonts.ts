@@ -1,19 +1,19 @@
 import { Platform } from 'react-native';
+import { useFonts } from 'expo-font';
 import {
-  useFonts as useSpaceGrotesk,
-  SpaceGrotesk_400Regular,
-  SpaceGrotesk_500Medium,
-  SpaceGrotesk_600SemiBold,
-  SpaceGrotesk_700Bold,
-} from '@expo-google-fonts/space-grotesk';
+  Geist_400Regular,
+  Geist_500Medium,
+  Geist_600SemiBold,
+  Geist_700Bold,
+} from '@expo-google-fonts/geist';
 import {
-  JetBrainsMono_400Regular,
-  JetBrainsMono_500Medium,
-  JetBrainsMono_600SemiBold,
-  JetBrainsMono_700Bold,
-} from '@expo-google-fonts/jetbrains-mono';
+  GeistMono_400Regular,
+  GeistMono_500Medium,
+  GeistMono_600SemiBold,
+  GeistMono_700Bold,
+} from '@expo-google-fonts/geist-mono';
 
-/** Round 4: mono is JetBrains Mono app-wide (was IBM Plex Mono). */
+/** Redesign 2026-09-21: Geist Sans + Geist Mono (was Space Grotesk + JetBrains Mono). */
 /**
  * THE FAMILY MAP MOVED, AND ONLY THE MAP.
  *
@@ -30,7 +30,7 @@ export { family, type Weight } from './fontFamilies';
  * ===========================================================================
  *
  * The audit inspected the public `/welcome` and `/sign-up` and found them set
- * in a SERIF face while the computed `font-family` said `SpaceGrotesk_400Regular`
+ * in a SERIF face while the computed `font-family` said the bare loaded face name
  * — and recorded the cause as unverified. It is verifiable, and it is here.
  *
  * `family` above holds the names expo-font registers the loaded faces under.
@@ -54,9 +54,9 @@ export { family, type Weight } from './fontFamilies';
  * calls it.
  */
 const SANS_FALLBACK =
-  '"Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+  '"Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 const MONO_FALLBACK =
-  '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
+  '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
 
 /**
  * The family string to hand to a style. On native it is the face name and
@@ -75,15 +75,15 @@ export function fontStack(name: string, mono = false): string {
  * the face loads. Only native blocks (and only for one frame).
  */
 export function useAppFonts(): { ready: boolean; blocking: boolean } {
-  const [loaded, error] = useSpaceGrotesk({
-    SpaceGrotesk_400Regular,
-    SpaceGrotesk_500Medium,
-    SpaceGrotesk_600SemiBold,
-    SpaceGrotesk_700Bold,
-    JetBrainsMono_400Regular,
-    JetBrainsMono_500Medium,
-    JetBrainsMono_600SemiBold,
-    JetBrainsMono_700Bold,
+  const [loaded, error] = useFonts({
+    Geist_400Regular,
+    Geist_500Medium,
+    Geist_600SemiBold,
+    Geist_700Bold,
+    GeistMono_400Regular,
+    GeistMono_500Medium,
+    GeistMono_600SemiBold,
+    GeistMono_700Bold,
   });
   const ready = loaded || !!error;
   return { ready, blocking: Platform.OS !== 'web' && !ready };
