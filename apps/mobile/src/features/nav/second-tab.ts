@@ -100,7 +100,7 @@ const ALERTS = {
 /** Swing is the live alerts mode and the answer for anything unrecognised. */
 const SWING: SecondTab = {
   ...ALERTS,
-  note: 'Swing alerts · switch to Day Trade or Invest above',
+  note: 'Showing Swing · switch to Day Trade or Invest',
 };
 
 export function secondTab(mode: GoalMode): SecondTab {
@@ -122,7 +122,7 @@ export function secondTab(mode: GoalMode): SecondTab {
           // above every card). It still says which mode this is and names a
           // live way out, which is all it is for — the mode chip beside the
           // title is the switch, and the sheet behind it explains each mode.
-          note: 'Day Trade alerts · switch to Swing or Invest above',
+          note: 'Showing Day Trade · switch to Swing or Invest',
         }
         : {
           ...ALERTS,
