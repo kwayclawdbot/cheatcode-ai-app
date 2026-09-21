@@ -15,8 +15,7 @@
  * second sheet from a component library beside them would be the odd one out.
  */
 import React, { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
-import Svg, { Path, Rect } from 'react-native-svg';
+import { View } from 'react-native';
 import type { KaiWorkspaceAction } from '@cheatcode/shared';
 import { Sheet } from '../../ui/Sheet';
 import { Field } from '../../ui/Field';
@@ -42,27 +41,6 @@ const ENTRIES: Entry[] = [
   { key: 'watchlist', label: 'Your watchlist', sub: 'What you follow, priced', needsSymbol: false, action: () => ({ type: 'show_watchlist' }) },
   { key: 'portfolio', label: 'Your positions', sub: 'Your paper trades and how they are doing', needsSymbol: false, action: () => ({ type: 'show_portfolio' }) },
 ];
-
-/** The small top-bar control that opens the sheet. Dim, like its neighbours. */
-export function PanelLauncherButton({ onPress }: { onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel="Open a panel"
-      testID="home-panels-open"
-      hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
-      style={({ pressed }) => ({ opacity: pressed ? 0.6 : 0.55 })}
-    >
-      <Svg width={19} height={19} viewBox="0 0 24 24" fill="none">
-        <Rect x={4} y={4} width={7} height={7} rx={1.5} stroke={color.text} strokeWidth={1.8} />
-        <Rect x={13} y={4} width={7} height={7} rx={1.5} stroke={color.text} strokeWidth={1.8} />
-        <Rect x={4} y={13} width={7} height={7} rx={1.5} stroke={color.text} strokeWidth={1.8} />
-        <Path d="M16.5 13.5v6M13.5 16.5h6" stroke={color.text} strokeWidth={1.8} strokeLinecap="round" />
-      </Svg>
-    </Pressable>
-  );
-}
 
 export function PanelLauncher({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const [symbol, setSymbol] = useState('');

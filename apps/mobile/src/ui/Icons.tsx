@@ -175,3 +175,35 @@ export const Lock = ({ size = 20, color: c = color.muted, strokeWidth = 2 }: Ico
     <Path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke={c} strokeWidth={strokeWidth} />
   </S>
 );
+
+/* ---------------- Redesign V2 — Kai agent (Home) ---------------- */
+
+/** Paperclip — the composer's attach control. */
+export const Paperclip = ({ size = 20, color: c = color.text, strokeWidth = 1.75 }: IconProps) => (
+  <S size={size}>
+    <Path d="M20.5 11.5 12.3 19.7a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8" stroke={c} strokeWidth={strokeWidth} />
+  </S>
+);
+
+/** Kai's four-point spark. Filled; violet unless told otherwise — it means Kai. */
+export const Spark = ({ size = 16, color: c = color.kai }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M12 1.5c.7 5.4 3.6 8.6 9.9 10.5-6.3 1.9-9.2 5.1-9.9 10.5-.7-5.4-3.6-8.6-9.9-10.5C8.4 10.1 11.3 6.9 12 1.5Z" fill={c} />
+  </Svg>
+);
+
+/** A page with lines — "explain", "the thesis", "the report". */
+export const DocLines = ({ size = 18, color: c = color.text, strokeWidth = 1.75 }: IconProps) => (
+  <S size={size}>
+    <Path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" stroke={c} strokeWidth={strokeWidth} />
+    <Path d="M14 3v5h5M9 13h6M9 17h4" stroke={c} strokeWidth={strokeWidth} />
+  </S>
+);
+
+/** A question in a circle — a follow-up that asks Kai to explain. */
+export const Question = ({ size = 18, color: c = color.text, strokeWidth = 1.75 }: IconProps) => (
+  <S size={size}>
+    <Circle cx={12} cy={12} r={9} stroke={c} strokeWidth={strokeWidth} />
+    <Path d="M9.6 9.3a2.5 2.5 0 0 1 4.8 1c0 1.7-2.4 2.2-2.4 3.7M12 17.2h.01" stroke={c} strokeWidth={strokeWidth} />
+  </S>
+);

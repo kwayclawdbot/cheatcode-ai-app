@@ -24,7 +24,7 @@
 import type { NextRequest } from 'next/server';
 import {
   HomeQuery,
-  HomeRound5Response,
+  HomeRound6Response,
   PAPER_ACCOUNT_PLAIN,
   SETUP_CAPS,
   type BriefingPayload,
@@ -44,8 +44,15 @@ import { homeStanding } from '@/lib/v5/standing';
 import { loadFollowMarks } from '@/lib/v5/attention';
 import { ensureDevTicker } from '@/lib/execution/tick-dev';
 import { briefingTitle, loadConversations, toSummary } from '@/lib/round4/conversations';
+import { anthropicHealth } from '@/lib/kai/anthropic-health';
+import { homeCalendar, watchClause } from '@/lib/v5/calendar';
+import { uwConfigured } from '@/lib/market/uw';
+import { makePanelDeps } from '@/lib/market/panels';
 
 export const dynamic = 'force-dynamic';
+
+/** The earnings reader, built once per server instance on first use. */
+let calendarDeps: ReturnType<typeof makePanelDeps> | undefined;
 
 const INVEST_NOTICE =
   'Your second tab is the research desk while you are in Invest mode — every name the desk argued for, and why. Kai placing trades for you arrives in a later release; everything below still works, and nothing touches real money.';
@@ -57,8 +64,13 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
   const kctx = await assembleContext({ userId: ctx.user.id, mode: q.mode, cap: SETUP_CAPS[q.mode ?? 'day_trade'] });
   const mode = kctx.mode;
 
-  const [briefingResult, positions, account, triggered, plans] = await Promise.all([
-    getOrCreateBriefing(kctx, mode, ctx.requestId),
+  // Asked first and cached for minutes: when Kai certainly cannot answer, the
+  // morning report is not requested from a model that will refuse.
+  const kaiHealth = await anthropicHealth().catch(() => null);
+  const kaiAvailable = kaiHealth ? kaiHealth.healthy : true;
+
+  const [briefingResult, positions, account, triggered, plans, armed] = await Promise.all([
+    getOrCreateBriefing(kctx, mode, ctx.requestId, { mayGenerate: kaiAvailable }),
     loadOpenPositions({ userId: ctx.user.id }),
     loadPaperAccount(ctx.user.id),
     db
@@ -75,6 +87,15 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
       .eq('status', 'planned')
       .order('created_at', { ascending: false })
       .limit(5),
+    // The alerts this member switched on — the only thing Home may promise to
+    // "update you" about.
+    db
+      .from('alerts')
+      .select('id,natural_language,refs')
+      .eq('user_id', ctx.user.id)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(10),
   ]);
 
   const [risk, marks] = await Promise.all([
@@ -160,8 +181,43 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
     },
   });
 
+  const also = alsoWatching({
+    userId: ctx.user.id,
+    setups: kctx.setups,
+    positions: positions.rows,
+    priority,
+  });
+
+  /**
+   * THE AGENT BLOCK (redesign V2). What Kai's opening brief is built from on
+   * the phone, with no model call: the alerts he is actually watching, the
+   * report dates on this member's names, and whether he can answer right now.
+   */
+  const calendarSymbols = [
+    ...positions.rows.map((p) => p.symbol),
+    ...(priority?.symbol ? [priority.symbol] : []),
+    ...also.map((r) => r.symbol),
+  ];
+  const calendar = await homeCalendar(calendarSymbols, {
+    configured: uwConfigured(),
+    nextEarnings: (sym) => (calendarDeps ??= makePanelDeps()).then((d) => d.nextEarnings(sym)),
+    today: new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }),
+  });
+  const monitoring = ((armed.data ?? []) as Record<string, unknown>[])
+    .map((a) => {
+      const refs = (a.refs as Record<string, unknown>) ?? {};
+      const plain = typeof a.natural_language === 'string' ? a.natural_language.trim() : '';
+      return {
+        id: String(a.id),
+        symbol: typeof refs.symbol === 'string' ? refs.symbol.toUpperCase() : null,
+        plain,
+        clause: watchClause(plain),
+      };
+    })
+    .filter((m) => m.plain.length > 0);
+
   return ok(
-    HomeRound5Response.parse({
+    HomeRound6Response.parse({
       mode,
       // Live already: `assembleContext` priced every setup on this screen in
       // one call and asked the exchange what session it is. Nothing here pays
@@ -174,12 +230,7 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
         degraded: briefingResult.degraded,
       }),
       priority,
-      also_watching: alsoWatching({
-        userId: ctx.user.id,
-        setups: kctx.setups,
-        positions: positions.rows,
-        priority,
-      }),
+      also_watching: also,
       briefing: briefingResult.briefing,
       lead_setup: leadEnvelope,
       watching,
@@ -189,6 +240,12 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
       degraded_reason: briefingResult.reason ?? positions.degraded_reason,
       invest_mode_notice: mode === 'invest' ? INVEST_NOTICE : null,
       standing,
+      agent: {
+        kai: { available: kaiAvailable, status: kaiHealth?.status ?? 'ok' },
+        positions_open: positions.degraded ? null : positions.rows.length,
+        monitoring: armed.error ? [] : monitoring,
+        calendar,
+      },
       conversation: {
         id: todays?.id ?? null,
         title: todays?.title ?? briefingTitle(),

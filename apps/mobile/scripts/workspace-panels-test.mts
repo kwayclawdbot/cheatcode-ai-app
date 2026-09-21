@@ -196,7 +196,9 @@ head('The member opens and closes them without Kai');
   const launcher = read('src/features/kai-workspace/PanelLauncher.tsx');
   const host = read('src/features/kai-workspace/WorkspaceHost.tsx');
   const home = read('src/app/(tabs)/home.tsx');
-  ok('Home has the launcher', home.includes('<PanelLauncherButton') && home.includes('<PanelLauncher '));
+  // Redesign V2: the launcher is reached from the composer's attach button
+  // ("add to the conversation") rather than a separate icon in the bar.
+  ok('Home has the launcher', home.includes('<PanelLauncher ') && home.includes('onAttach={() => setPanelsOpen(true)}'));
   ok('it applies the same actions Kai emits', launcher.includes('workspace.apply(e.action(sym))'));
   ok('it offers all five panels', ['show_quote', 'show_earnings', 'show_options', 'show_watchlist', 'show_portfolio'].every((a) => launcher.includes(`'${a}'`)));
   ok('a symbol panel waits for a ticker shaped like one', launcher.includes('if (e.needsSymbol && !valid) return'));

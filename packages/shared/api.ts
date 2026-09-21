@@ -3017,6 +3017,8 @@ export const AlsoWatchingRow = z.object({
   id: z.string().nullable(),
   symbol: z.string(),
   plain: z.string(),
+  /** Two or three words naming the state — "Setup ready", "Open position". */
+  state_label: z.string().nullable().default(null),
   quote: Quote.nullable().default(null),
   route: z.string(),
 });
@@ -6946,3 +6948,72 @@ export const HomeRound5Response = HomeRound4Response.extend({
   standing: HomeStanding,
 });
 export type HomeRound5Response = z.infer<typeof HomeRound5Response>;
+
+/**
+ * HOME AS AN AGENT (redesign V2, 2026-09-21) — what Kai's opening brief is
+ * built from, without a model call. Additive: a round-5 client ignores it.
+ *
+ *   positions_open  how many open positions the server read (null = the read failed)
+ *   monitoring      the alerts this member switched on — the only basis for
+ *                   "Kai will update you when …"
+ *   calendar        earnings dates on the member's names in the next week. There
+ *                   is no economic-calendar source, so no macro events appear.
+ */
+export const HomeCalendarEvent = z.object({
+  kind: z.literal('earnings'),
+  symbol: z.string(),
+  /** `YYYY-MM-DD`, New York. */
+  date: z.string(),
+  when: z.enum(['premarket', 'postmarket', 'unknown']),
+  /** false = the source's estimate; the company has not announced it. */
+  confirmed: z.boolean(),
+  days_away: z.number(),
+});
+export type HomeCalendarEvent = z.infer<typeof HomeCalendarEvent>;
+
+export const HomeAgentCalendar = z.object({
+  state: z.enum(['ok', 'unavailable', 'not_connected']),
+  plain: z.string(),
+  events: z.array(HomeCalendarEvent),
+});
+export type HomeAgentCalendar = z.infer<typeof HomeAgentCalendar>;
+
+export const HomeMonitoringRow = z.object({
+  id: z.string(),
+  symbol: z.string().nullable(),
+  /** The member's own words for the alert. */
+  plain: z.string(),
+  /** "when PURR breaks 24.40" — null when the words do not read as a condition. */
+  clause: z.string().nullable(),
+});
+export type HomeMonitoringRow = z.infer<typeof HomeMonitoringRow>;
+
+export const HomeAgentBlock = z.object({
+  /**
+   * Can Kai answer a question right now? From the cached provider probe
+   * (`lib/kai/anthropic-health.ts`). `available:false` only when he certainly
+   * cannot — out of credit or a refused key — never for a passing blip.
+   */
+  kai: z.object({
+    available: z.boolean(),
+    status: z.enum(['ok', 'invalid_key', 'no_credit', 'rate_limited', 'unreachable']),
+  }),
+  positions_open: z.number().nullable(),
+  monitoring: z.array(HomeMonitoringRow),
+  calendar: HomeAgentCalendar,
+});
+export type HomeAgentBlock = z.infer<typeof HomeAgentBlock>;
+
+/**
+ * What Kai says when he certainly cannot answer (out of credit, refused key).
+ * One sentence, shared, so the server's reply and the phone's banner match.
+ * Alerts and positions are priced by the market worker, not by the model, so
+ * the second half is true while the first is.
+ */
+export const KAI_OFFLINE_PLAIN =
+  "I'm offline right now, so I can't answer new questions. Your alerts and positions are still being watched.";
+
+export const HomeRound6Response = HomeRound5Response.extend({
+  agent: HomeAgentBlock,
+});
+export type HomeRound6Response = z.infer<typeof HomeRound6Response>;

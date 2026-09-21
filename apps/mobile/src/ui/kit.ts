@@ -9,6 +9,7 @@
  */
 export { AppBar, IconButton } from './AppBar';
 export { BrandMark, BrandMarkButton } from './BrandMark';
+export { KaiAvatar } from './KaiAvatar';
 export { Card, CardStack, Divider, type CardTone } from './Card';
 export { Pill, ContextChip, StatusChip, type ChipTone } from './Chips';
 export { SegmentedControl, SectionTabs } from './SegmentedControl';
