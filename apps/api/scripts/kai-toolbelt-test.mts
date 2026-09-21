@@ -16,7 +16,7 @@
  *     sentence is user-derived text; it arrives inside <untrusted_content>, and
  *     a price inside one must never reach the contradiction validator's list of
  *     numbers Kai was shown.
- *  3. THE REGISTRY IS WHOLE AND NOTHING IN IT WRITES. Fourteen tools, unique
+ *  3. THE REGISTRY IS WHOLE AND NOTHING IN IT WRITES. Seventeen tools, unique
  *     names, and not one verb that could place, modify or cancel anything —
  *     the hard boundary in the system prompt is a claim about this array.
  *  4. EVERY REGISTERED NAME DISPATCHES. A tool the model can see and the
@@ -32,6 +32,7 @@
 import 'dotenv/config';
 import { KAI_TOOLS, MARKET_TOOLS, runKaiTool } from '../src/lib/kai/tools.ts';
 import { DESK_TOOLS } from '../src/lib/kai/tools-desk.ts';
+import { PANEL_TOOLS } from '../src/lib/kai/tools-panels.ts';
 import { ROOM_TOOLS } from '../src/lib/kai/tools-room.ts';
 import { WEB_TOOLS, __test as web } from '../src/lib/kai/tools-web.ts';
 import { contextNumbers, renderMemory, type KaiContext, type MemoryRow } from '../src/lib/kai/context.ts';
@@ -116,12 +117,12 @@ check(
 
 console.log('\nREGISTRY');
 const names = KAI_TOOLS.map((t) => t.name);
-check('fourteen tools', KAI_TOOLS.length === 14, KAI_TOOLS.length);
+check('seventeen tools', KAI_TOOLS.length === 17, KAI_TOOLS.length);
 check('names are unique', new Set(names).size === names.length);
 check(
-  'the registry is exactly its four groups',
-  KAI_TOOLS.length === MARKET_TOOLS.length + DESK_TOOLS.length + ROOM_TOOLS.length + WEB_TOOLS.length,
-  { market: MARKET_TOOLS.length, desk: DESK_TOOLS.length, room: ROOM_TOOLS.length, web: WEB_TOOLS.length }
+  'the registry is exactly its five groups',
+  KAI_TOOLS.length === MARKET_TOOLS.length + PANEL_TOOLS.length + DESK_TOOLS.length + ROOM_TOOLS.length + WEB_TOOLS.length,
+  { market: MARKET_TOOLS.length, panels: PANEL_TOOLS.length, desk: DESK_TOOLS.length, room: ROOM_TOOLS.length, web: WEB_TOOLS.length }
 );
 
 /**

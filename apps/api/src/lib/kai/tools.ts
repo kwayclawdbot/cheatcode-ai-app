@@ -56,6 +56,7 @@ import {
   resolveLevel,
 } from './chart-commands';
 import { DESK_TOOLS, runDeskTool } from './tools-desk';
+import { PANEL_TOOLS, runPanelTool } from './tools-panels';
 import { ROOM_TOOLS, runRoomTool } from './tools-room';
 import { WEB_TOOLS, runWebTool } from './tools-web';
 import { NOT_FOUND, sym, type ToolCtx, type ToolResult } from './tool-kit';
@@ -209,7 +210,9 @@ export const MARKET_TOOLS: Anthropic.Tool[] = [
  * own rows before other people's opinions is not an accident: when a question
  * could be answered from either, their own record is the better answer.
  *
- * Fourteen tools where there were four. Not one of them writes anything: the
+ * Seventeen tools where there were four — the three panel reads (quote card,
+ * earnings, options ladder) sit with the market tools because that is what
+ * they are. Not one of them writes anything: the
  * hard boundary in the system prompt — *I prepare and explain, I never execute*
  * — is a claim about this array, and it is still true of every entry in it.
  *
@@ -219,7 +222,7 @@ export const MARKET_TOOLS: Anthropic.Tool[] = [
  * only the sentence in SECURITY naming a fetched page as one of the things it
  * covers, which it now does.
  */
-export const KAI_TOOLS: Anthropic.Tool[] = [...MARKET_TOOLS, ...DESK_TOOLS, ...ROOM_TOOLS, ...WEB_TOOLS];
+export const KAI_TOOLS: Anthropic.Tool[] = [...MARKET_TOOLS, ...PANEL_TOOLS, ...DESK_TOOLS, ...ROOM_TOOLS, ...WEB_TOOLS];
 
 /* ------------------------------------------------------------------ */
 /* Running one                                                         */
@@ -525,6 +528,7 @@ export async function runKaiTool(
       // honest sentence at the bottom rather than to a thrown error.
       default:
         out =
+          (await runPanelTool(name, input, ctx)) ??
           (await runDeskTool(name, input, ctx)) ??
           (await runRoomTool(name, input, ctx)) ??
           (await runWebTool(name, input, ctx));
@@ -555,7 +559,12 @@ export const TOOL_PROTOCOL = `LOOKING THINGS UP
 You can go and look things up. If the user asks about a stock you were not given
 — any stock, listed below or not — look it up rather than saying you have no
 information about it. You have the price, the levels on its chart, what the
-company does, and the graded setups.
+company does, and the graded setups. You can also read a stock's full price card
+(the day's range and volume), its reported quarters, and which option contracts
+are listed near the money. There is no earnings calendar and there are no live
+option prices on this data plan: a next report date only exists when the lookup
+names its source, and an option premium only exists on a contract the flow
+engine recorded, at the moment it recorded it.
 
 YOU CAN ALSO READ THIS PERSON'S OWN RECORD, and you should, whenever a question
 has "my" or "I" in it. Their watchlist, the positions they are actually in, the

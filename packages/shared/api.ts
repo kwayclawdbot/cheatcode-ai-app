@@ -477,6 +477,15 @@ export const WorkspaceSurfaceKind = z.enum([
   'news',
   'web',
   /**
+   * THE PANELS. Each is a read-only view onto one symbol (quote, earnings,
+   * options) or onto the member's own desk (watchlist, portfolio). Offered.
+   */
+  'quote',
+  'earnings',
+  'options',
+  'watchlist',
+  'portfolio',
+  /**
    * DEFINED, NOT YET OFFERED.
    *
    * The kind exists here so the client's switch is exhaustive from day one and
@@ -485,8 +494,6 @@ export const WorkspaceSurfaceKind = z.enum([
    * must never be able to say "here it is" about a surface that will not appear.
    * Adding the surface and adding it to that list are the same commit.
    */
-  'watchlist',
-  'portfolio',
   'training',
   'plan',
 ]);
@@ -510,6 +517,16 @@ export const KaiWorkspaceAction = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('show_news'), symbol: z.string().min(1) }),
   z.object({ type: z.literal('show_web'), url: z.string().min(1), title: z.string().nullable().default(null) }),
+  /** A symbol's price card: price, change, the day's range and volume. */
+  z.object({ type: z.literal('show_quote'), symbol: z.string().min(1).max(12) }),
+  /** A symbol's next report date (when known) and its recent quarters. */
+  z.object({ type: z.literal('show_earnings'), symbol: z.string().min(1).max(12) }),
+  /** The listed strikes near the money, plus any contracts the flow engine recorded. */
+  z.object({ type: z.literal('show_options'), symbol: z.string().min(1).max(12) }),
+  /** The member's own watchlist. No subject: it is always theirs. */
+  z.object({ type: z.literal('show_watchlist') }),
+  /** The member's paper positions. No subject: it is always theirs. */
+  z.object({ type: z.literal('show_portfolio') }),
   z.object({ type: z.literal('focus_surface'), surface_id: z.string().min(1) }),
   z.object({ type: z.literal('close_surface'), surface_id: z.string().min(1) }),
 ]);
@@ -529,6 +546,11 @@ export const KAI_OFFERED_ACTIONS = [
   'show_community',
   'show_news',
   'show_web',
+  'show_quote',
+  'show_earnings',
+  'show_options',
+  'show_watchlist',
+  'show_portfolio',
   'focus_surface',
   'close_surface',
 ] as const;
@@ -1502,6 +1524,130 @@ export const SymbolDetailResponse = z.object({
   degraded_reason: z.string().nullable(),
 });
 export type SymbolDetailResponse = z.infer<typeof SymbolDetailResponse>;
+
+/* ------------------------------------------------------------------ */
+/* Workspace panels — quote, earnings, options                          */
+/* ------------------------------------------------------------------ */
+/**
+ * THREE READ-ONLY PANELS, ONE LOADER EACH, TWO WAYS IN.
+ *
+ * Kai reads them through a tool; the phone draws them through
+ * `GET /symbols/:symbol/panel?kind=`. Both call the same loader in
+ * `apps/api/src/lib/market/panels.ts`, so the number Kai says and the number on
+ * the panel under his words cannot disagree.
+ *
+ * Every field that the data plan cannot fill is NULL with a sentence beside it
+ * saying why — never a zero, never a dash that looks like a measurement.
+ */
+export const PanelKind = z.enum(['quote', 'earnings', 'options']);
+export type PanelKind = z.infer<typeof PanelKind>;
+
+export const QuoteCardResponse = z.object({
+  kind: z.literal('quote'),
+  symbol: z.string(),
+  name: z.string().nullable(),
+  /** Price, change, previous close and the freshness sentence, as everywhere else. */
+  quote: MarketQuote,
+  day: z.object({
+    open: z.number().nullable(),
+    high: z.number().nullable(),
+    low: z.number().nullable(),
+    volume: z.number().nullable(),
+    vwap: z.number().nullable(),
+    /** ET date of the session the range belongs to. */
+    session_date: z.string().nullable(),
+    /** 'session_so_far' = today's running bar; 'last_session' = the newest finished day. */
+    basis: z.enum(['session_so_far', 'last_session', 'none']),
+    basis_plain: z.string(),
+  }),
+  degraded: z.boolean(),
+  degraded_reason: z.string().nullable(),
+});
+export type QuoteCardResponse = z.infer<typeof QuoteCardResponse>;
+
+export const EarningsQuarter = z.object({
+  fiscal_period: z.string(),
+  fiscal_year: z.string(),
+  period_end: z.string(),
+  /** When the report was filed with the SEC — the closest thing to "reported on". */
+  filed: z.string().nullable(),
+  eps_diluted: z.number().nullable(),
+  revenue: z.number().nullable(),
+  net_income: z.number().nullable(),
+});
+export type EarningsQuarter = z.infer<typeof EarningsQuarter>;
+
+export const EarningsPanelResponse = z.object({
+  kind: z.literal('earnings'),
+  symbol: z.string(),
+  name: z.string().nullable(),
+  /** Null when no source this app has names a date. `next_plain` says which. */
+  next: z
+    .object({
+      date: z.string(),
+      days_away: z.number().nullable(),
+      /** Where the date came from and when it was read. */
+      source_plain: z.string(),
+    })
+    .nullable(),
+  next_plain: z.string(),
+  quarters: z.array(EarningsQuarter),
+  /** Why there is no beat/miss column. */
+  estimates_plain: z.string(),
+  degraded: z.boolean(),
+  degraded_reason: z.string().nullable(),
+});
+export type EarningsPanelResponse = z.infer<typeof EarningsPanelResponse>;
+
+/** One contract the options-flow engine recorded, with the prices it saw AT THAT TIME. */
+export const OptionsFlowPrint = z.object({
+  option_symbol: z.string(),
+  type: z.enum(['call', 'put']),
+  strike: z.number(),
+  expiry: z.string(),
+  bid: z.number().nullable(),
+  ask: z.number().nullable(),
+  volume: z.number().nullable(),
+  open_interest: z.number().nullable(),
+  iv: z.number().nullable(),
+  /** "The contract the flow bought" / "Named by the engine". */
+  label: z.string(),
+  recorded_at: z.string(),
+});
+export type OptionsFlowPrint = z.infer<typeof OptionsFlowPrint>;
+
+export const OptionsChainRow = z.object({
+  strike: z.number(),
+  /** The listed contract's ticker, or null when that side is not listed. */
+  call: z.string().nullable(),
+  put: z.string().nullable(),
+  /** The strike nearest the underlying price. */
+  nearest_the_money: z.boolean(),
+  call_flow: OptionsFlowPrint.nullable(),
+  put_flow: OptionsFlowPrint.nullable(),
+});
+export type OptionsChainRow = z.infer<typeof OptionsChainRow>;
+
+export const OptionsChainResponse = z.object({
+  kind: z.literal('options'),
+  symbol: z.string(),
+  spot: z.number().nullable(),
+  spot_plain: z.string(),
+  /** The expiry the ladder is drawn for — the nearest one listed. */
+  expiry: z.string().nullable(),
+  expiries: z.array(z.string()),
+  rows: z.array(OptionsChainRow),
+  /** Every recorded flow contract in the last few sessions, on the ladder or not. */
+  flow: z.array(OptionsFlowPrint),
+  /** The standing sentence about what this chain can and cannot show. */
+  prices_plain: z.string(),
+  degraded: z.boolean(),
+  degraded_reason: z.string().nullable(),
+});
+export type OptionsChainResponse = z.infer<typeof OptionsChainResponse>;
+
+export const SymbolPanelQuery = z.object({ kind: PanelKind });
+export type SymbolPanelQuery = z.infer<typeof SymbolPanelQuery>;
 
 /* ------------------------------------------------------------------ */
 /* Positions & debriefs                                                 */

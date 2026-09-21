@@ -69,8 +69,9 @@ export const WORKSPACE_PROTOCOL = `SHOWING THINGS ON SCREEN
 
 You can put things in front of the person you are talking to. Their screen has a
 workspace above the conversation, and you can open a surface in it: a live chart,
-a setup, one of their alerts, a community room, the news on a ticker, or a page
-you read. You do this by emitting ONE fenced block:
+a setup, one of their alerts, a community room, the news on a ticker, a page you
+read, a stock's price card, its earnings, its options, or their own watchlist or
+positions. You do this by emitting ONE fenced block:
 
 \`\`\`${KAI_UI_FENCE}
 { "type": "open_chart", "symbol": "NVDA", "timeframe": "4h" }
@@ -88,6 +89,11 @@ THE ACTIONS
   { "type": "show_community", "symbol": "NVDA" }   or  { "room": "traders" }
   { "type": "show_news",      "symbol": "NVDA" }
   { "type": "show_web",       "url": "<a url you actually opened>" }
+  { "type": "show_quote",     "symbol": "NVDA" }    price, change, day range, volume
+  { "type": "show_earnings",  "symbol": "NVDA" }    reported quarters, next date if known
+  { "type": "show_options",   "symbol": "NVDA" }    listed strikes near the money
+  { "type": "show_watchlist" }                      THEIR watchlist
+  { "type": "show_portfolio" }                      THEIR paper positions
   { "type": "focus_surface",  "surface_id": "chart" }
   { "type": "close_surface",  "surface_id": "news" }
 
@@ -253,6 +259,29 @@ export async function resolveWorkspaceAction(
     }
 
     /**
+     * THE SYMBOL PANELS are checked the way a chart is: by the shape of the
+     * ticker, not against the catalogue. Each panel loads its own data and says
+     * in a sentence when there is none, so an untracked but real ticker opens
+     * onto an honest answer rather than being refused here.
+     */
+    case 'show_quote':
+    case 'show_earnings':
+    case 'show_options': {
+      const symbol = action.symbol.trim().toUpperCase();
+      if (!/^[A-Z][A-Z0-9.\-]{0,11}$/.test(symbol)) return drop('symbol_shape');
+      return { ...action, symbol };
+    }
+
+    /**
+     * THEIR OWN DESK carries no id at all — the client loads the watchlist and
+     * the positions of whoever is signed in — so there is nothing to borrow and
+     * nothing to check. An empty list is an answer the panel states.
+     */
+    case 'show_watchlist':
+    case 'show_portfolio':
+      return action;
+
+    /**
      * ONLY A PAGE HE ACTUALLY READ.
      *
      * `show_web` is the one action carrying a URL, so it is the one that could
@@ -291,8 +320,11 @@ const SURFACE_PLAIN: Record<string, string> = {
   community: 'a community room',
   news: 'the news on a ticker',
   web: 'a page you opened',
+  quote: 'the price card',
+  earnings: 'the earnings record',
+  options: 'the listed options',
   watchlist: 'their watchlist',
-  portfolio: 'their positions',
+  portfolio: 'their paper positions',
   training: 'a lesson',
   plan: 'a trade plan',
 };

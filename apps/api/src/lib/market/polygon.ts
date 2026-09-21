@@ -1371,6 +1371,104 @@ export async function getSessionExtremes(symbols: string[]): Promise<Map<string,
 }
 
 /**
+ * TODAY'S RUNNING BAR FOR ONE SYMBOL — open, high, low, volume, VWAP.
+ *
+ * The quote card needs the session's range and volume, and the ticker snapshot
+ * already carries them in `day`. It is the SAME cached row `getSnapshot` just
+ * read to price the symbol, so on the quote card's path this usually costs no
+ * extra request at all.
+ *
+ * Outside a session Polygon zeroes the running aggregate. Zero is not a price,
+ * so that comes back as null and the caller falls back to the last finished
+ * daily bar — labelled as that session, never as today.
+ */
+export type SessionBar = {
+  open: number | null;
+  high: number;
+  low: number;
+  volume: number | null;
+  vwap: number | null;
+};
+
+export async function getSessionBar(symbol: string): Promise<SessionBar | null> {
+  const s = symbol.toUpperCase();
+  const snapped = await tickersSnapshot([s]);
+  const day = snapped?.get(s)?.day as (SnapAgg & { vw?: number }) | undefined;
+  const high = num(day?.h);
+  const low = num(day?.l);
+  if (high === null || low === null || high <= 0 || low <= 0) return null;
+  const open = num(day?.o);
+  const volume = num(day?.v);
+  const vwap = num(day?.vw);
+  return {
+    open: open !== null && open > 0 ? open : null,
+    high,
+    low,
+    volume: volume !== null && volume > 0 ? volume : null,
+    vwap: vwap !== null && vwap > 0 ? vwap : null,
+  };
+}
+
+/**
+ * WHICH OPTION CONTRACTS EXIST — strikes and expiries, and nothing about price.
+ *
+ * `/v3/reference/options/contracts` is the one options endpoint this account's
+ * plan answers (checked 2026-09-21: the chain snapshot, last trade and
+ * per-contract snapshot all come back NOT_ENTITLED). So this is a list of what
+ * is listed, and the caller must never present it as a priced chain.
+ *
+ * Cached for fifteen minutes per window: the listed strikes on a name change a
+ * few times a day at most, and the options side of the plan is the scarce one.
+ */
+export type OptionContractRef = {
+  ticker: string;
+  type: 'call' | 'put';
+  strike: number;
+  expiry: string;
+};
+
+const contractsCache = new Map<string, Cached<OptionContractRef[]>>();
+const CONTRACTS_TTL_MS = 15 * 60_000;
+
+export async function getOptionContracts(
+  underlying: string,
+  window: { expiryFrom: string; expiryTo: string; strikeLo: number; strikeHi: number },
+): Promise<{ contracts: OptionContractRef[]; degraded: boolean; reason: PolyFail | null }> {
+  const u = underlying.toUpperCase();
+  const lo = Math.floor(window.strikeLo);
+  const hi = Math.ceil(window.strikeHi);
+  const key = `${u}:${window.expiryFrom}:${window.expiryTo}:${lo}:${hi}`;
+  const hit = fresh(contractsCache.get(key), CONTRACTS_TTL_MS);
+  if (hit) return { contracts: hit, degraded: false, reason: null };
+
+  type Body = {
+    results?: { ticker?: string; contract_type?: string; strike_price?: number; expiration_date?: string }[];
+  };
+  const r = await polyGet<Body>('/v3/reference/options/contracts', {
+    underlying_ticker: u,
+    'expiration_date.gte': window.expiryFrom,
+    'expiration_date.lte': window.expiryTo,
+    'strike_price.gte': lo,
+    'strike_price.lte': hi,
+    expired: false,
+    limit: 250,
+    sort: 'expiration_date',
+    order: 'asc',
+  });
+  if (!r.ok) return { contracts: [], degraded: true, reason: r.reason };
+
+  const out: OptionContractRef[] = [];
+  for (const c of r.data.results ?? []) {
+    const strike = num(c.strike_price);
+    const type = c.contract_type === 'call' ? 'call' : c.contract_type === 'put' ? 'put' : null;
+    if (!c.ticker || strike === null || !type || !c.expiration_date) continue;
+    out.push({ ticker: c.ticker, type, strike, expiry: c.expiration_date });
+  }
+  contractsCache.set(key, { at: Date.now(), value: out });
+  return { contracts: out, degraded: false, reason: null };
+}
+
+/**
  * Daily bars, UNADJUSTED, for one ticker — equity or option.
  *
  * SEPARATE FROM `fetchAggregates` ON PURPOSE, and the difference is the whole
@@ -2307,6 +2405,7 @@ export async function fetchTickerReference(symbol: string): Promise<TickerRefere
 export function resetMarketCaches(): void {
   groupedCache.clear();
   quoteCache.clear();
+  contractsCache.clear();
   snapTickerCache.clear();
   newsCache.clear();
   resolveCache.clear();
