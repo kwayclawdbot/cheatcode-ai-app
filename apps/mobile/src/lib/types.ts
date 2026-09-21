@@ -1079,7 +1079,35 @@ export type AlertCard = {
   held?: string | null;
   /** True when the row is the engine re-run over stored tape, not an alert anyone was sent. */
   replay?: boolean;
+  /**
+   * When the alert fired (or the card was made), as an instant — the V2 card
+   * prints "2m ago" from it. `triggered_at_label` is the server's sentence for
+   * the same moment and stays for surfaces that want the clock time.
+   */
+  triggered_at?: string | null;
+  /** What the live call has done, measured by the peak tracker. See AlertTracking. */
+  tracking?: AlertTracking | null;
+  /** The producer's own pattern label and measured volume ratio, or null. */
+  analytics?: AlertAnalytics | null;
 };
+
+/**
+ * THE TRACKER'S READING OF A LIVE CARD (V2 Alerts). Every field null when not
+ * measured; the card derives its verb ("Target 1 hit", "Stop hit") only from
+ * these, never from the setup's own state label.
+ */
+export type AlertTracking = {
+  peak_price: number | null;
+  peak_at: string | null;
+  peak_gain_pct: number | null;
+  targets_hit: number | null;
+  stop_hit: boolean | null;
+  contract_cost: number | null;
+  contract_peak: number | null;
+  contract_peak_multiple: number | null;
+};
+
+export type AlertAnalytics = { pattern: string | null; volume_ratio: number | null };
 
 export type AlertsRound4 = {
   active: AlertCard[];
