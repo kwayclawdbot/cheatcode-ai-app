@@ -39,6 +39,7 @@ export function KaiMicButton({
   waiting,
   size = SIZE,
   primary = false,
+  tone = 'volt',
 }: {
   phase: VoicePhase;
   level: number;
@@ -52,8 +53,15 @@ export function KaiMicButton({
    * first way in and typing is the backup.
    */
   primary?: boolean;
+  /**
+   * REDESIGN V2: 'kai' is the spec's violet mic — "voice control is violet
+   * because it invokes Kai". A filled violet disc at rest and while listening;
+   * 'volt' keeps the earlier look for any composer that still wants it.
+   */
+  tone?: 'volt' | 'kai';
 }) {
   const listening = phase === 'recording';
+  const kai = tone === 'kai';
   const speaking = phase === 'speaking';
   const busy = phase === 'starting' || phase === 'transcribing';
 
@@ -90,8 +98,10 @@ export function KaiMicButton({
         borderRadius: size / 2,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: listening ? color.volt : speaking ? color.violet : primary ? alpha.volt10 : 'transparent',
-        borderWidth: listening || speaking ? 0 : primary ? 1 : 0.5,
+        backgroundColor: kai
+          ? color.kai
+          : listening ? color.volt : speaking ? color.violet : primary ? alpha.volt10 : 'transparent',
+        borderWidth: kai || listening || speaking ? 0 : primary ? 1 : 0.5,
         borderColor: primary ? alpha.volt50 : alpha.ivory20,
         opacity: waiting ? 0.4 : pressed ? 0.8 : 1,
       })}
@@ -108,16 +118,16 @@ export function KaiMicButton({
             height: size + 8 + level * 14,
             borderRadius: (size + 8 + level * 14) / 2,
             borderWidth: 2,
-            borderColor: alpha.volt40,
+            borderColor: kai ? alpha.kai40 : alpha.volt40,
           }}
         />
       ) : null}
       {busy ? (
-        <ActivityIndicator size="small" color={color.muted} />
+        <ActivityIndicator size="small" color={kai ? color.textPrimary : color.muted} />
       ) : speaking ? (
         <SoundBars c={color.text} />
       ) : (
-        <Mic size={Math.round(size * 0.42)} color={listening ? color.bg : primary ? color.volt : color.text} strokeWidth={2} />
+        <Mic size={Math.round(size * 0.42)} color={kai ? color.textPrimary : listening ? color.bg : primary ? color.volt : color.text} strokeWidth={2} />
       )}
     </Pressable>
   );
@@ -147,7 +157,7 @@ export function VoiceOverlay({
           {bars.map((v, i) => (
             <View
               key={i}
-              style={{ width: 3, borderRadius: 1.5, height: 3 + Math.round(v * 21), backgroundColor: v > 0.05 ? color.volt : alpha.ivory20 }}
+              style={{ width: 3, borderRadius: 1.5, height: 3 + Math.round(v * 21), backgroundColor: v > 0.05 ? color.kaiInk : alpha.ivory20 }}
             />
           ))}
         </View>
