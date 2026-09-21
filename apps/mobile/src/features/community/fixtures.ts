@@ -207,6 +207,18 @@ export const fixtureMessages: RoomMessage[] = [
     refs: null, structured_idea: null, position_disclosure: null,
     kai_object: null, community_call: null, deleted: false, is_claim: false, reactions: EMPTY_REACTIONS, reply_count: 0, parent_id: null, quote: null, media: [], author_deleted: false,
   },
+  /*
+   * THE SAME PERSON, STILL TALKING. Twenty seconds after the line above, so
+   * the fixture room shows how one turn of several lines draws: once with the
+   * avatar and the name, then just the words (`continuesTurn`).
+   */
+  {
+    id: 'm-2b', room_id: 'room-meta', seq: 5, kind: 'text', created_at: '2026-08-26T13:41:20Z', time_label: 'Today at 9:41',
+    author: SAM, body: 'The first ten minutes always look loud on $META.',
+    refs: null, structured_idea: null, position_disclosure: null,
+    kai_object: null, community_call: null, deleted: false, is_claim: false,
+    reactions: { counts: { agree: 3 }, mine: [] }, reply_count: 0, parent_id: null, quote: null, media: [], author_deleted: false,
+  },
   {
     id: 'm-3', room_id: 'room-meta', seq: 6, kind: 'kai_object', created_at: '2026-08-26T13:41:30Z', time_label: 'Today at 9:41',
     author: KAI, body: null, refs: { symbol: 'META' }, structured_idea: null,
