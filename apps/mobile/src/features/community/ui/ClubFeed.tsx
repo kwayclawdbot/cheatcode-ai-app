@@ -18,10 +18,10 @@ import { Avatar } from './Chrome';
 import type { MessageMedia, ReactionKind, RoomMessage } from '../types';
 import { MediaStrip, QuoteBlock, ReactionBar, ThreadLine } from './Social';
 import { PostBody } from './PostBody';
-import { FollowButton } from '../../social/FollowButton';
 import { MemberName } from '../../social/MemberName';
 import { CommunityCallCard } from '../../social/CommunityCallCard';
-import { ConversationRow, type ConversationMessage } from '../../../ui/trade';
+import { useRouter } from 'expo-router';
+import { CHAT, ChatRow, RoleWord, chatTime } from './ChatRow';
 
 /**
  * The feed's body.
@@ -33,9 +33,9 @@ import { ConversationRow, type ConversationMessage } from '../../../ui/trade';
  * 1.5 rather than the room's 1.45 — and that is the only difference left.
  */
 export function ClubBody({
-  text, size = 14, onTicker,
+  text, size = CHAT.body, onTicker,
 }: { text: string; size?: number; onTicker?: (symbol: string) => void }) {
-  return <PostBody text={text} size={size} lineHeight={Math.round(size * 1.5)} onTicker={onTicker} />;
+  return <PostBody text={text} size={size} lineHeight={Math.round(size * 1.42)} onTicker={onTicker} />;
 }
 
 /**
@@ -88,22 +88,14 @@ export function SetupObjectCard({
 
 export function ClubMessage({
   message, onTicker, onReact, onReply, onOpenSetup, reactionNotice, onActions, onOpenThread,
-  onOpenMedia, onOpenQuote, showFollow = false,
+  onOpenMedia, onOpenQuote, continued = false,
 }: {
   message: RoomMessage;
   /**
-   * The compact follow control at the end of the author line.
-   *
-   * `ClubMessage` and `MessageRow` are SEPARATE components with separate
-   * author lines — the club board draws this one, a room draws the other — so
-   * the affordance had to be added twice or it would exist on one surface and
-   * not the other, which is exactly the drift that produced two different
-   * `$TICKER` treatments before `PostBody` was extracted.
-   *
-   * Off by default and decided by the caller: this component cannot tell
-   * whether the author is the person reading, and Kai is never followable.
+   * The same person's next line in one turn (`continuesTurn`) — drawn without
+   * the avatar and the name, the way every group chat does it.
    */
-  showFollow?: boolean;
+  continued?: boolean;
   onTicker: (symbol: string) => void;
   onReact?: (kind: ReactionKind) => void;
   /** Answer this post, quoting it. */
@@ -125,107 +117,90 @@ export function ClubMessage({
   const kai = message.author.is_kai;
   const idea = message.structured_idea;
   const refSymbol = typeof message.refs?.symbol === 'string' ? (message.refs.symbol as string) : null;
+  const router = useRouter();
 
   /*
-    THE CLUB ROW IS THE KIT'S TOO, and the differences that mattered survived.
+    THE CLUB ROW AND THE ROOM ROW SHARE ONE SHELL — `ChatRow` — and it is a
+    chat shell, not the trade kit's record shell (see ChatRow's header for why
+    that changed back). What is still this board's own is passed explicitly:
+    Kai's violet rail down the content column, its own words for a removed
+    post, and the fact that Kai's posts carry no reactions here.
 
-    This component and `MessageRow` were two hand-maintained author lines, and
-    the file already records what that cost: the follow button had to be added
-    twice, the call card had to be added twice, and `$TICKER` was drawn two
-    different ways until `PostBody` was extracted. They share `ConversationRow`
-    now, so the next thing is added once.
-
-    What is NOT shared is passed explicitly rather than lost: this board's own
-    name sizes, its bordered AI pill, Kai's violet rail down the content
-    column, its own words for a removed post, and the fact that Kai's posts
-    carry no reactions here.
+    NO FOLLOW BUTTON ON THE LINE. It is on the profile, one tap away on the
+    name or the picture.
   */
-  const asMessage: ConversationMessage = {
-    id: message.id,
-    name: message.author.display_name,
-    text: message.body ?? '',
-    timeLabel: message.time_label,
-    belt: message.author.belt ?? null,
-    isKai: kai,
-    handle: kai ? message.author.handle : null,
-    deleted: message.deleted,
-    /* Not "This message was removed." A moderated board says who did it; the
-       kit owns the refusal to print the body, not the sentence about it. */
-    deletedText: 'Removed by a moderator.',
-    authorDeleted: message.author.author_deleted,
-  };
+  const roles = message.author.role_labels.filter((r) => !(kai && r.toLowerCase() === 'ai')).slice(0, 2);
 
   return (
-    <ConversationRow
-      message={asMessage}
+    <ChatRow
       testID={`club-message-${message.id}`}
-      // NOT `accessibilityRole="button"`. A message already contains buttons —
-      // the $TICKER chips and the reaction pills — and on web react-native
-      // renders a role of "button" as a real <button>, which cannot legally
-      // contain another one. `ConversationRow` sets no role for this reason.
+      continued={continued}
+      deleted={message.deleted}
+      /* A moderated board says who did it. */
+      deletedText="Removed by a moderator."
+      // Press and hold for report / moderation. Kai's posts have no actions.
       onLongPress={kai ? undefined : onActions}
       contentStyle={kai ? { borderLeftWidth: 2, borderLeftColor: alpha.violet50, paddingLeft: 11 } : undefined}
-      avatar={kai ? <KaiOrb size={32} /> : (
-        // Drawn through the shared Avatar so a member's picture appears here
-        // the moment they have one, without a second copy of the fallback.
-        <Avatar size={32} initial={message.author.initial} url={message.author.avatar_url} />
+      avatar={kai ? <KaiOrb size={CHAT.avatar} glow={false} /> : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${message.author.display_name}'s profile`}
+          disabled={message.author.author_deleted || !message.author.user_id}
+          onPress={() => router.push(`/contributor/${encodeURIComponent(message.author.user_id ?? '')}` as never)}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        >
+          <Avatar size={CHAT.avatar} initial={message.author.initial} url={message.author.avatar_url} />
+        </Pressable>
       )}
       /*
-        THE NAME ON THIS BOARD IS A DOOR. `MemberName` carries the route
-        itself, which is why the gap could close here without the screen above
-        having to learn about it. Kai gets neither belt nor door: violetLight
-        is his, he has no rank, and there is no profile behind him. Nor does a
-        deleted author — a door onto a removed account is a dead end.
+        THE NAME IS A DOOR AND IT IS DYED. `MemberName` carries the route and
+        the belt ink. Kai gets neither: violetLight is his, he has no rank, and
+        there is no profile behind him. Nor does a deleted author.
       */
       name={kai ? (
-        <T size={13} weight="bold" c={color.violetLight}>{message.author.display_name}</T>
+        <T size={CHAT.name} weight="bold" c={color.violetLight}>{message.author.display_name}</T>
       ) : (
         <MemberName
           name={message.author.display_name}
           userId={message.author.author_deleted ? null : message.author.user_id}
           belt={message.author.belt}
-          handle={message.author.handle}
-          showHandle
-          size={13}
-          handleSize={10.5}
+          stage={message.author.stage}
+          size={CHAT.name}
           testID={`club-author-name-${message.id}`}
         />
       )}
-      aiTag={kai ? (
-        <View style={{ paddingHorizontal: 5, borderRadius: 4, borderWidth: 0.5, borderColor: alpha.violet50 }}>
-          <T size={8.5} weight="bold" c={color.violetLight}>AI</T>
-        </View>
-      ) : null}
-      chips={message.author.role_labels.slice(0, 2).map((r) => (
-        <T key={r} size={9.5} c={color.dim}>{r}</T>
-      ))}
-      /* A sibling of the name, never a child of a pressable. */
-      aside={showFollow && !kai && message.author.user_id ? (
-        <FollowButton userId={message.author.user_id} compact testID={`club-follow-${message.id}`} />
-      ) : null}
-      quote={message.quote ? (
-        <View style={{ marginTop: 4 }}>
-          <QuoteBlock
-            quote={message.quote}
-            onOpen={onOpenQuote ? () => onOpenQuote(message.quote!.message_id) : undefined}
-            testID={`quote-${message.id}`}
-          />
-        </View>
-      ) : null}
-      /*
-        A MEMBER'S CALL, IN THE CONVERSATION. The card replaces the body rather
-        than joining it: the sentence the message arrived with describes the
-        same trade, and drawing both says the idea twice.
-      */
-      body={message.community_call ? (
-        <View style={{ marginTop: 6 }} testID={`club-message-call-${message.id}`}>
-          <CommunityCallCard call={message.community_call} compact />
-        </View>
-      ) : message.body ? (
-        <View style={{ marginTop: 2 }}>
-          <ClubBody text={message.body} onTicker={onTicker} />
-        </View>
-      ) : null}
+      meta={(
+        <>
+          {kai ? <RoleWord label="AI" /> : null}
+          {roles.map((r) => <RoleWord key={r} label={r} />)}
+          <T size={CHAT.meta} c={color.dim}>{chatTime(message.time_label)}</T>
+        </>
+      )}
+      body={(
+        <>
+          {message.quote ? (
+            <View style={{ marginTop: 3 }}>
+              <QuoteBlock
+                quote={message.quote}
+                onOpen={onOpenQuote ? () => onOpenQuote(message.quote!.message_id) : undefined}
+                testID={`quote-${message.id}`}
+              />
+            </View>
+          ) : null}
+          {/*
+            A MEMBER'S CALL, IN THE CONVERSATION. The card replaces the body
+            rather than joining it: the sentence the message arrived with
+            describes the same trade, and drawing both says the idea twice.
+          */}
+          {message.community_call ? (
+            <View style={{ marginTop: 6 }} testID={`club-message-call-${message.id}`}>
+              <CommunityCallCard call={message.community_call} compact />
+            </View>
+          ) : message.body ? (
+            <ClubBody text={message.body} onTicker={onTicker} />
+          ) : null}
+        </>
+      )}
       beneath={(
         <>
           {idea && refSymbol ? (
@@ -268,7 +243,7 @@ export function ClubMessage({
           ) : null}
           {/* The server's sentence when a reaction did NOT land. Never ours. */}
           {reactionNotice ? (
-            <T size={9.5} c={color.gold} style={{ marginTop: 3 }}>{reactionNotice}</T>
+            <T size={10.5} c={color.gold} style={{ marginTop: 3 }}>{reactionNotice}</T>
           ) : null}
         </>
       )}

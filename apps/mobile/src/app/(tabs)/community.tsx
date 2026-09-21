@@ -71,6 +71,7 @@ import { communityApi, circlesApi, moderationApi, type Source } from '../../lib/
 import { subscribeRoom, transportLabel, type RealtimeMode } from '../../lib/realtime';
 import { useMe } from '../../features/account/useAccount';
 import { ClubMessage } from '../../features/community/ui/ClubFeed';
+import { continuesTurn } from '../../features/community/ui/ChatRow';
 import { MessageActionsSheet, type MessageActionsTarget } from '../../features/community/ui/MessageActionsSheet';
 import { CirclesRow } from '../../features/circles/CirclesRow';
 import { CreateCircleSheet } from '../../features/circles/CreateCircleSheet';
@@ -715,10 +716,11 @@ export default function Community() {
             ) : null}
 
             <View style={{ paddingHorizontal: 16, gap: 14, paddingTop: 12 }}>
-              {messages.length ? messages.map((m) => (
+              {messages.length ? messages.map((m, i) => (
                 <ClubMessage
                   key={m.id}
                   message={m}
+                  continued={continuesTurn(messages[i - 1], m)}
                   onTicker={(s) => router.push(`/symbol/${encodeURIComponent(s)}` as never)}
                   onReact={(k) => { void react(m.id, k); }}
                   onOpenSetup={(s) => router.push(`/trade/${encodeURIComponent(s)}?ctx=alert` as never)}
@@ -729,10 +731,6 @@ export default function Community() {
                   onOpenQuote={(qid) => router.push(`/thread/${encodeURIComponent(qid)}` as never)}
                   reactionNotice={reactionNotice[m.id] ?? null}
                   onActions={() => openActions(m)}
-                  // Never on your own post, and never on Kai's — the component
-                  // handles Kai, the screen is the only thing that knows which
-                  // of these people is the person reading.
-                  showFollow={!!myUserId && m.author.user_id !== myUserId && m.author.user_id !== 'me'}
                 />
               )) : selected ? (
                 /*

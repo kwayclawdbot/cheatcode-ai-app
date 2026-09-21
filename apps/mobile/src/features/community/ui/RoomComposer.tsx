@@ -215,7 +215,11 @@ export function RoomComposer({
             placeholderTextColor={color.muted}
             returnKeyType="send"
             style={{
+              // minWidth 0: on web a text input has an intrinsic width of about
+              // twenty characters, and without this it refused to shrink below
+              // it on a 360pt phone — pushing Send half off the screen.
               flex: 1,
+              minWidth: 0,
               fontFamily: fontStack(family.regular),
               fontSize: 14,
               color: color.text,

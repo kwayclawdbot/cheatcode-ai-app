@@ -2,15 +2,14 @@ import React from 'react';
 import { View, Pressable } from 'react-native';
 import { alpha, color, radius } from '../../../ui/tokens';
 import { T } from '../../../ui/Text';
-import { Avatar, ClaimChip, DisclosureChip, RoleChip } from './Chrome';
+import { Avatar, ClaimChip } from './Chrome';
 import { KaiObjectView } from './KaiObjects';
 import type { MessageMedia, ReactionKind, RoomMessage } from '../types';
 import { MediaStrip, QuoteBlock, ReactionBar, ThreadLine } from './Social';
 import { PostBody } from './PostBody';
-import { FollowButton } from '../../social/FollowButton';
 import { MemberName } from '../../social/MemberName';
 import { CommunityCallCard } from '../../social/CommunityCallCard';
-import { ConversationRow, type ConversationMessage } from '../../../ui/trade';
+import { CHAT, ChatRow, RoleWord, chatTime } from './ChatRow';
 
 /**
  * One message in a room (V3-C1 / S81).
@@ -36,7 +35,7 @@ const roleTone = (label: string): 'gold' | 'kai' | 'green' | 'neutral' => {
 export function MessageRow({
   message, selected, onSelect, onOpenAuthor, onMore, showStructured = true,
   onReact, onReply, onOpenThread, onOpenMedia, onTicker, onOpenQuote, hideThreadLine,
-  showFollow = false,
+  continued = false,
 }: {
   message: RoomMessage;
   selected?: boolean;
@@ -45,13 +44,10 @@ export function MessageRow({
   onMore?: () => void;
   showStructured?: boolean;
   /**
-   * Draw the compact follow control at the end of the author line. Off by
-   * default, and the CALLER decides — this component cannot know whether the
-   * author is the person reading, and offering to follow yourself is the
-   * silliest thing a social feature can do. Never true for Kai either: he is
-   * not a member and there is nothing to subscribe to.
+   * The same person's next line in one turn (`continuesTurn`) — drawn without
+   * the avatar and the name, the way every group chat does it.
    */
-  showFollow?: boolean;
+  continued?: boolean;
   onReact?: (kind: ReactionKind) => void;
   /** Answer this one, quoting it. Absent = this surface does not reply. */
   onReply?: () => void;
@@ -69,109 +65,77 @@ export function MessageRow({
 }) {
   const m = message;
   const isKai = m.author.is_kai;
-  const nameColor = isKai ? color.violetLight : m.author.role_labels.some((r) => roleTone(r) === 'gold') ? color.gold : color.text;
+  const educator = m.author.role_labels.some((r) => roleTone(r) === 'gold');
+  /* Kai's own "AI" label is his whole introduction; a second one would be noise. */
+  const roles = m.author.role_labels.filter((r) => !(isKai && r.toLowerCase() === 'ai'));
 
   /*
-    THE ROW IS THE KIT'S NOW, AND THE ROOM'S FEATURES CAME WITH IT.
+    A CHAT LINE, NOT A RECORD. The shell is `ChatRow` — see its header for the
+    history. What this file decides is the content: whose door the name is, and
+    what goes under the words.
 
-    `docs/trade-ui-MIGRATION.md` step 4 recorded that this could not move,
-    because `RoomMessage` carries twenty-odd fields and `ConversationMessage`
-    had eight, and putting the kit's preview here would have deleted a dozen
-    shipped features to gain a shared shell. That objection was correct about
-    the shape it was arguing against and is answered by a different one: the
-    kit owns the SHELL and takes the rest as SLOTS, so not one of those
-    features is reimplemented — every component below is the same component
-    this row has always drawn, passed through.
-
-    What moved into the kit is what two independent implementations were most
-    likely to drift on: the row geometry, the order of the header line, the
-    BELT LAW on the name, and the refusal to draw a removed message's body,
-    reactions, media or thread line. That refusal used to be four separate
-    `!m.deleted &&` guards in this file, each of which had to be remembered;
-    it is one rule in one place now.
+    FOLLOW IS NOT ON THIS LINE. It was, on every message from anybody else,
+    from 6 Sept; the owner's word for the result was "techy". It lives on the
+    profile, which the name and the picture both open.
   */
-  const asMessage: ConversationMessage = {
-    id: m.id,
-    name: m.author.display_name,
-    text: m.body ?? '',
-    timeLabel: m.time_label,
-    belt: m.author.belt ?? null,
-    isKai,
-    /* Kai and a deleted author print their handle plainly here; a member's is
-       inside `MemberName`, where it is part of the same door as the name. */
-    handle: isKai || !m.author.user_id ? m.author.handle : null,
-    deleted: m.deleted,
-    deletedText: 'This message was removed.',
-    authorDeleted: m.author_deleted,
-  };
-
   return (
-    <ConversationRow
-      message={asMessage}
+    <ChatRow
       testID={`message-row-${m.id}`}
+      continued={continued}
       selected={!!selected}
+      deleted={m.deleted}
+      deletedText="This message was removed."
       avatar={(
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={isKai ? 'Kai' : `Open ${m.author.display_name}'s contributor profile`}
+          accessibilityLabel={isKai ? 'Kai' : `Open ${m.author.display_name}'s profile`}
           disabled={isKai || !onOpenAuthor}
           onPress={onOpenAuthor}
           hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         >
           <Avatar
+            size={CHAT.avatar}
             initial={m.author.initial}
             url={m.author.avatar_url}
-            tone={isKai ? 'kai' : m.author.role_labels.some((r) => roleTone(r) === 'gold') ? 'educator' : 'neutral'}
+            tone={isKai ? 'kai' : educator ? 'educator' : 'neutral'}
           />
         </Pressable>
       )}
       /*
-        NAME AND USERNAME ARE ONE DOOR. `MemberName` holds both and routes
-        itself, and it dyes the name with the belt — the kit's default does the
-        same thing, so the law holds whichever of the two draws it.
-
-        Kai keeps violetLight, keeps his role chip, and is not a door: he is not
-        a member and there is no profile behind him. A deleted author has no
-        `user_id`, so they are not a door either.
-
-        AN EDUCATOR'S NAME IS NOT GOLD. A name can carry one claim and the belt
-        is the one the owner asked for; gold was doing the work of the RoleChip
-        printed right beside it.
+        NAME IS A DOOR, AND IT IS DYED. `MemberName` routes itself and inks the
+        name with the belt. Kai keeps violetLight and is not a door: he is not a
+        member and there is no profile behind him. A deleted author has no
+        `user_id`, so they are not a door either. The handle stays on the
+        profile — in a chat the name is enough to know who is talking.
       */
       name={isKai || !m.author.user_id ? (
-        <T size={13.5} weight="bold" c={nameColor}>{m.author.display_name}</T>
+        <T size={CHAT.name} weight="bold" c={isKai ? color.violetLight : color.text}>{m.author.display_name}</T>
       ) : (
         <MemberName
           name={m.author.display_name}
           userId={m.author.user_id}
           belt={m.author.belt}
           stage={m.author.stage}
-          handle={m.author.handle}
-          showHandle
-          size={13.5}
-          handleSize={11.5}
+          size={CHAT.name}
           testID={`message-author-name-${m.id}`}
         />
       )}
-      /* Kai's role chip already says "AI" on this surface, so the kit's own
-         marker is suppressed rather than printed a second time beside it. */
-      aiTag={null}
-      chips={(
+      meta={(
         <>
-          {m.author.role_labels.map((r) => <RoleChip key={r} label={r} tone={roleTone(r)} />)}
+          {isKai ? <RoleWord label="AI" /> : null}
+          {roles.map((r) => <RoleWord key={r} label={r} />)}
+          <T size={CHAT.meta} c={color.dim}>{chatTime(m.time_label)}</T>
           {m.position_disclosure ? (
-            <DisclosureChip label={m.position_disclosure.label} holds={m.position_disclosure.holds} />
+            <T
+              size={CHAT.meta}
+              c={m.position_disclosure.holds ? color.gold : color.muted}
+              accessibilityLabel={`Position disclosure: ${m.position_disclosure.label}`}
+            >
+              {`· ${m.position_disclosure.label}`}
+            </T>
           ) : null}
         </>
       )}
-      /*
-        Follow is a SIBLING of the name's pressable and never a child of it: on
-        web a role of "button" renders as a real <button>, and one cannot
-        contain another. Same rule as MediaStrip and the call card below.
-      */
-      aside={showFollow && !isKai && m.author.user_id ? (
-        <FollowButton userId={m.author.user_id} compact testID={`message-follow-${m.id}`} />
-      ) : null}
       body={(
         /* The body is the tap target for selection so the row never nests a
            button inside a button (web renders both as <button>). */
@@ -186,14 +150,13 @@ export function MessageRow({
           onLongPress={onMore}
         >
           {m.kai_object ? (
-            <View style={{ marginTop: 2 }}>
+            <View style={{ marginTop: 4 }}>
               <KaiObjectView object={m.kai_object} />
             </View>
           ) : (
             <>
               {/* The post being answered goes ABOVE the answer, the way a
-                  quotation does on paper. Below it, the reply would read as an
-                  afterthought about something you had already finished. */}
+                  quotation does on paper. */}
               {m.quote ? (
                 <View style={{ marginTop: 3 }}>
                   <QuoteBlock
@@ -203,7 +166,12 @@ export function MessageRow({
                   />
                 </View>
               ) : null}
-              {m.body ? <PostBody text={m.body} onTicker={onTicker} /> : null}
+              {/* A member's call is drawn as its card below, IN PLACE of the
+                  sentence it arrived with — both describe the same trade, and
+                  printing the two says the idea twice. */}
+              {m.body && !m.community_call ? (
+                <PostBody text={m.body} size={CHAT.body} lineHeight={CHAT.bodyLh} onTicker={onTicker} />
+              ) : null}
               {m.structured_idea && showStructured ? <StructuredBlock idea={m.structured_idea} /> : null}
             </>
           )}
@@ -211,18 +179,9 @@ export function MessageRow({
       )}
       beneath={(
         <>
-          {/*
-            A MEMBER'S CALL IS THE BODY, WHEN THERE IS ONE — drawn in place of
-            the words, because the body it arrived with describes the same
-            trade and printing both would say the idea twice.
-
-            IT SITS OUTSIDE THE SELECTION PRESSABLE for the nesting rule above.
-            The cost is that a call cannot be long-pressed for the moderation
-            sheet from this row; it can still be reacted to, replied to and
-            opened as a thread, and the club feed's row does offer the actions.
-          */}
+          {/* Outside the selection Pressable: the card holds its own buttons. */}
           {m.community_call ? (
-            <View style={{ marginTop: 4 }} testID={`message-call-${m.id}`}>
+            <View style={{ marginTop: 6 }} testID={`message-call-${m.id}`}>
               <CommunityCallCard call={m.community_call} compact />
             </View>
           ) : null}
@@ -231,7 +190,7 @@ export function MessageRow({
               ambiguous on iOS and illegal markup on web. */}
           {m.media.length ? <MediaStrip media={m.media} onOpen={onOpenMedia} /> : null}
           {!isKai && m.is_claim ? (
-            <View style={{ flexDirection: 'row', marginTop: 4 }}>
+            <View style={{ flexDirection: 'row', marginTop: 6 }}>
               <ClaimChip
                 state={
                   m.verified_by?.result === 'verified' ? 'verified'
