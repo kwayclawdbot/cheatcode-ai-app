@@ -1410,66 +1410,7 @@ export async function getSessionBar(symbol: string): Promise<SessionBar | null> 
 }
 
 /**
- * WHICH OPTION CONTRACTS EXIST — strikes and expiries, and nothing about price.
- *
- * `/v3/reference/options/contracts` is the one options endpoint this account's
- * plan answers (checked 2026-09-21: the chain snapshot, last trade and
- * per-contract snapshot all come back NOT_ENTITLED). So this is a list of what
- * is listed, and the caller must never present it as a priced chain.
- *
- * Cached for fifteen minutes per window: the listed strikes on a name change a
- * few times a day at most, and the options side of the plan is the scarce one.
- */
-export type OptionContractRef = {
-  ticker: string;
-  type: 'call' | 'put';
-  strike: number;
-  expiry: string;
-};
-
-const contractsCache = new Map<string, Cached<OptionContractRef[]>>();
-const CONTRACTS_TTL_MS = 15 * 60_000;
-
-export async function getOptionContracts(
-  underlying: string,
-  window: { expiryFrom: string; expiryTo: string; strikeLo: number; strikeHi: number },
-): Promise<{ contracts: OptionContractRef[]; degraded: boolean; reason: PolyFail | null }> {
-  const u = underlying.toUpperCase();
-  const lo = Math.floor(window.strikeLo);
-  const hi = Math.ceil(window.strikeHi);
-  const key = `${u}:${window.expiryFrom}:${window.expiryTo}:${lo}:${hi}`;
-  const hit = fresh(contractsCache.get(key), CONTRACTS_TTL_MS);
-  if (hit) return { contracts: hit, degraded: false, reason: null };
-
-  type Body = {
-    results?: { ticker?: string; contract_type?: string; strike_price?: number; expiration_date?: string }[];
-  };
-  const r = await polyGet<Body>('/v3/reference/options/contracts', {
-    underlying_ticker: u,
-    'expiration_date.gte': window.expiryFrom,
-    'expiration_date.lte': window.expiryTo,
-    'strike_price.gte': lo,
-    'strike_price.lte': hi,
-    expired: false,
-    limit: 250,
-    sort: 'expiration_date',
-    order: 'asc',
-  });
-  if (!r.ok) return { contracts: [], degraded: true, reason: r.reason };
-
-  const out: OptionContractRef[] = [];
-  for (const c of r.data.results ?? []) {
-    const strike = num(c.strike_price);
-    const type = c.contract_type === 'call' ? 'call' : c.contract_type === 'put' ? 'put' : null;
-    if (!c.ticker || strike === null || !type || !c.expiration_date) continue;
-    out.push({ ticker: c.ticker, type, strike, expiry: c.expiration_date });
-  }
-  contractsCache.set(key, { at: Date.now(), value: out });
-  return { contracts: out, degraded: false, reason: null };
-}
-
-/**
- * Daily bars, UNADJUSTED, for one ticker — equity or option.
+ * Daily bars, UNADJUSTED, for one STOCK ticker.
  *
  * SEPARATE FROM `fetchAggregates` ON PURPOSE, and the difference is the whole
  * reason it exists: that one passes `adjusted: true`, which restates old prices
@@ -1480,16 +1421,17 @@ export async function getOptionContracts(
  * the share terms the call was made in, so: `adjusted=false`, always, and any
  * future caller reading this should not be tempted to "reuse the other one".
  *
- * Polygon serves option tickers — `O:MRNA260821C00120000` — from the same
- * aggregates path as equities, so this doubles as the contract grader's reader.
- * The ticker is NOT uppercased here: an option ticker is already in its exact
- * form and case-folding a symbol we were handed is how `O:` tickers get broken.
+ * STOCKS ONLY. It used to double as the option-contract grader's reader; that
+ * moved to Unusual Whales (owner rule 2026-09-21: everything options is UW),
+ * because Polygon's option DAILY bars cannot say whether a high came before or
+ * after the alert fired. An `O:` ticker is refused here so nothing drifts back.
  */
 export async function fetchDailyBarsUnadjusted(
   ticker: string,
   from: string,
   to: string
 ): Promise<PolyResult<Candle[]>> {
+  if (/^O:/i.test(ticker)) return { ok: false, reason: 'error' };
   const r = await polyGet<AggsBody>(
     `/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${from}/${to}`,
     { adjusted: false, sort: 'asc', limit: 5000 }
@@ -2405,7 +2347,6 @@ export async function fetchTickerReference(symbol: string): Promise<TickerRefere
 export function resetMarketCaches(): void {
   groupedCache.clear();
   quoteCache.clear();
-  contractsCache.clear();
   snapTickerCache.clear();
   newsCache.clear();
   resolveCache.clear();

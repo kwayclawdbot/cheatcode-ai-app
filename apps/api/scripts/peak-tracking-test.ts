@@ -28,12 +28,26 @@
  * The functions are pure — no database, no network, no clock — so all of it
  * runs in microseconds. There is no excuse not to run this.
  */
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   contractFromComponents,
   extremesFromBars,
+  fireTimeOf,
+  gradeContract,
+  gradeFromMinuteBars,
+  intrinsicValue,
   mergeExtremes,
   optionTicker,
+  weekdaysBetween,
 } from '../src/lib/tracking/peaks.ts';
+import type { UwMinuteBar } from '../src/lib/market/uw.ts';
+
+const FIX = resolve(dirname(fileURLToPath(import.meta.url)), 'fixtures/uw');
+/** Recorded Unusual Whales minute bars for the NET 297.5 put, 2026-09-21. */
+const netBars = (day: string): UwMinuteBar[] =>
+  (JSON.parse(readFileSync(resolve(FIX, `intraday-NET260911P00297500-${day}.json`), 'utf8')) as { data: UwMinuteBar[] }).data;
 
 let pass = 0;
 let fail = 0;
@@ -189,5 +203,104 @@ ok('a null blob is null', contractFromComponents('MRNA', null) === null);
 
 /* ------------------------------------------------------------------ */
 
-console.log(`\n${pass} passed, ${fail} failed`);
-if (fail) process.exit(1);
+// CommonJS here, so the async part runs inside one function and the tally waits for it.
+async function contractGrades(): Promise<void> {
+section('The contract grade counts only what happened AFTER the alert (UW minute bars)');
+
+// The real NET row: alert fired 2026-09-09 13:58:45Z at $4.30 on the Sep 11
+// 297.5 put. Polygon daily bars graded it 2.05x off an $8.80 print at 13:40Z.
+const NET = {
+  symbol: 'NET',
+  contract_ticker: 'O:NET260911P00297500',
+  contract_expiry: '2026-09-11',
+  created_at: '2026-09-09T13:58:45.00283+00:00',
+  fired_at: '2026-09-09T13:58:45.002830+00:00',
+};
+{
+  ok(
+    'the fire time is the engine\'s own stamp',
+    fireTimeOf({ fired_at: NET.fired_at, snap_ts: '2026-09-09T14:30:00Z', created_at: '2026-09-09T15:00:00Z' }) === '2026-09-09T13:58:45.002Z',
+  );
+  ok('then the snapshot\'s', fireTimeOf({ fired_at: null, snap_ts: '2026-09-09T14:30:00Z', created_at: '2026-09-09T15:00:00Z' }) === '2026-09-09T14:30:00.000Z');
+  ok('then the row\'s', fireTimeOf({ fired_at: 'nonsense', snap_ts: null, created_at: '2026-09-09T15:00:00Z' }) === '2026-09-09T15:00:00.000Z');
+  ok('a Friday-to-Monday life is two sessions', weekdaysBetween('2026-09-11', '2026-09-14').join() === '2026-09-11,2026-09-14');
+
+  const sessions = new Map([
+    ['2026-09-09', netBars('2026-09-09')],
+    ['2026-09-10', netBars('2026-09-10')],
+    ['2026-09-11', netBars('2026-09-11')],
+  ]);
+  const g = gradeFromMinuteBars({ firedAt: fireTimeOf(NET), expiry: NET.contract_expiry, sessions, ticker: NET.contract_ticker, underlyingCloseOnExpiry: null });
+  ok('the $8.80 print from 13:40Z, before the alert, is NOT the peak', g.peak !== 8.8, g);
+  ok('the peak is the best price after the alert: $4.75', g.peak === 4.75, g.peak);
+  ok('stamped to its minute, 14:21Z', g.peak_at === '2026-09-09T14:21:00.000Z', g.peak_at);
+  ok('so the multiple on a $4.30 cost is 1.10x, not 2.05x', Math.round((g.peak! / 4.3) * 100) / 100 === 1.1);
+  ok('the minute the alert fired in is dropped (13:58 bar starts before 13:58:45)', g.minutes_before_fire_ignored >= 1, g.minutes_before_fire_ignored);
+  ok('the expiry value is its last trade on Sep 11, $0.13', g.expiry_value === 0.13 && g.expiry_value_from === 'last_trade', g);
+
+  // The same grade through the fetching path, with the recorded answers as UW.
+  const asked: string[] = [];
+  const res = await gradeContract(
+    { ...NET, fired_at: fireTimeOf(NET) },
+    {
+      today: '2026-09-21',
+      intraday: async (sym, day) => {
+        asked.push(`${sym}@${day}`);
+        return { ok: true, data: sessions.get(day) ?? [] };
+      },
+      underlyingClose: async () => {
+        throw new Error('not needed: the contract traded on its expiry day');
+      },
+    },
+  );
+  ok('the fetching path gives the same grade', res.ok && res.grade.peak === 4.75 && res.grade.expiry_value === 0.13, res);
+  ok('UW is asked with the bare OCC symbol, once per session, three in all', asked.join() === 'NET260911P00297500@2026-09-09,NET260911P00297500@2026-09-10,NET260911P00297500@2026-09-11', asked);
+
+  const failed = await gradeContract(
+    { ...NET, fired_at: fireTimeOf(NET) },
+    { today: '2026-09-21', intraday: async (_s, day) => (day === '2026-09-10' ? { ok: false, reason: 'rate_limited' } : { ok: true, data: [] }), underlyingClose: async () => null },
+  );
+  ok('a session UW could not answer leaves the row ungraded, not half-graded', !failed.ok && /2026-09-10: rate_limited/.test(failed.ok ? '' : failed.reason), failed);
+}
+{
+  // The contract did not trade on its expiry day: it settles to intrinsic.
+  const g = gradeFromMinuteBars({
+    firedAt: '2026-09-09T13:58:45Z',
+    expiry: '2026-09-11',
+    sessions: new Map([['2026-09-09', netBars('2026-09-09')], ['2026-09-11', []]]),
+    ticker: 'O:NET260911P00297500',
+    underlyingCloseOnExpiry: 290.1,
+  });
+  ok('no trade on expiry: the put is worth strike minus close, $7.40', g.expiry_value === 7.4 && g.expiry_value_from === 'intrinsic', g);
+  ok('an out-of-the-money contract settles to zero, which is a real value', intrinsicValue('O:NET260911P00297500', 310) === 0);
+  ok('a call is close minus strike', intrinsicValue('MRNA260821C00120000', 125.5) === 5.5);
+  const none = gradeFromMinuteBars({ firedAt: '2026-09-09T13:58:45Z', expiry: '2026-09-11', sessions: new Map([['2026-09-11', []]]), ticker: 'O:NET260911P00297500', underlyingCloseOnExpiry: null });
+  ok('never traded after the alert and no close: peak and value are null, not zero', none.peak === null && none.expiry_value === null && none.expiry_value_from === null);
+}
+{
+  const fired = '2026-09-09T14:00:00Z';
+  const bar = (t: string, h: string): UwMinuteBar => ({ start_time: t, open: h, high: h, low: h, close: h });
+  const g = gradeFromMinuteBars({
+    firedAt: fired,
+    expiry: '2026-09-09',
+    sessions: new Map([['2026-09-09', [bar('2026-09-09T13:59:00Z', '9.99'), bar('2026-09-09T14:00:00Z', '3.10'), bar('2026-09-09T15:00:00Z', '3.40')]]]),
+    ticker: 'O:NET260909P00297500',
+    underlyingCloseOnExpiry: null,
+  });
+  ok('a bar starting exactly at the fire time counts; one a minute earlier does not', g.peak === 3.4 && g.minutes_after_fire === 2 && g.minutes_before_fire_ignored === 1, g);
+}
+
+}
+
+/* ------------------------------------------------------------------ */
+
+contractGrades().then(
+  () => {
+    console.log(`\n${pass} passed, ${fail} failed`);
+    if (fail) process.exit(1);
+  },
+  (e) => {
+    console.log(`  FAIL  the contract grade section threw: ${e instanceof Error ? e.message : String(e)}`);
+    process.exit(1);
+  },
+);

@@ -50,7 +50,9 @@
  * Two things cost extra, and both are once-per-row rather than once-per-pass:
  *   - SEEDING a row whose history predates tracking: one daily-bars call, the
  *     first time that row is ever seen, and never again.
- *   - GRADING a contract at its expiry: one daily-bars call, once, ever.
+ *   - GRADING a contract at its expiry: one Unusual Whales minute-bars call per
+ *     session the contract was alive after the alert (a 0-2 day contract is
+ *     one to three calls), once, ever. See THE CONTRACT GRADE below.
  *
  * =====================================================================
  * SEEDING, AND WHY A SEEDED PEAK SAYS SO
@@ -66,10 +68,36 @@
  * THE BARS ARE UNADJUSTED. `fetchDailyBarsUnadjusted` exists for this and its
  * header explains the split that once minted a fake 15x here. A call made
  * before a split has to be measured in the share terms it was made in.
+ *
+ * =====================================================================
+ * THE CONTRACT GRADE — Unusual Whales minute bars, AFTER the alert only
+ * =====================================================================
+ * Owner rule 2026-09-21: everything options comes from Unusual Whales, and
+ * Polygon is for stocks. The grader used to read the contract's Polygon DAILY
+ * bars from the alert's date to expiry. A daily high cannot say WHEN in the
+ * session it printed, so a contract that traded at $8.80 at 9:40 and was
+ * alerted at $4.30 at 9:58 was graded a 2.05x on a price nobody could have paid
+ * after the alert (NET, 2026-09-09; the after-fire high was $4.75, a 1.10x).
+ *
+ * Now: every one-minute bar the contract printed from the alert to expiry,
+ * from UW's `/api/option-contract/{symbol}/intraday`, keeping only bars that
+ * START at or after the fire time. The minute the alert fired in is dropped —
+ * it mixes prints from before and after, and the honest reading excludes it.
+ * The fire time is the engine's own `score_components.timing.fired_at_utc`,
+ * falling back to `quote_snapshot.source_ts`, then to `created_at`.
+ *
+ * THE EXPIRY VALUE is the contract's last trade on its expiry session. If it
+ * did not trade that day, it is what it settled to: its intrinsic value from
+ * the underlying's close (a STOCK price, so Polygon). If neither is known it is
+ * left null — absent, not zero.
+ *
+ * A session UW cannot answer for (an error, not an empty day) leaves the row
+ * ungraded for the next pass rather than grading it on part of its life.
  */
 import { serviceClient } from '../db';
 import { log } from '../log';
 import { fetchDailyBarsUnadjusted, getSessionExtremes } from '../market/polygon';
+import { contractIntraday, uwOptionSymbol, type UwMinuteBar, type UwResult } from '../market/uw';
 
 /** How many rows of each kind one pass will touch. Same reasoning as the
  *  resolver's own BATCH: a pass must finish inside its function timeout rather
@@ -85,6 +113,7 @@ export type PeakReport = {
   contracts_identified: number;
   contracts_graded: number;
   polygon_extra_calls: number;
+  uw_calls: number;
   plain: string;
 };
 
@@ -263,6 +292,163 @@ export function contractFromComponents(
   if (!ticker) return null;
 
   return { ticker, cost: numOrNull(first.cost), expiry };
+}
+
+/* ------------------------------------------------------------------ */
+/* Grading a contract — pure, and proved on recorded UW answers          */
+/* ------------------------------------------------------------------ */
+
+/** The true fire time: the engine's own stamp, then the snapshot's, then the row's. */
+export function fireTimeOf(row: { fired_at?: string | null; snap_ts?: string | null; created_at: string }): string {
+  for (const t of [row.fired_at, row.snap_ts, row.created_at]) {
+    if (t && !Number.isNaN(new Date(t).getTime())) return new Date(t).toISOString();
+  }
+  return row.created_at;
+}
+
+/** Weekdays from `from` to `to`, inclusive, as YYYY-MM-DD. A holiday in the
+ *  list costs one call that comes back empty, which is harmless. */
+export function weekdaysBetween(from: string, to: string): string[] {
+  const out: string[] = [];
+  const d = new Date(`${from}T12:00:00Z`);
+  const end = new Date(`${to}T12:00:00Z`);
+  for (let i = 0; d <= end && i < 400; i++) {
+    const wd = d.getUTCDay();
+    if (wd !== 0 && wd !== 6) out.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return out;
+}
+
+/** What an option settles to from the underlying's close: its intrinsic value. */
+export function intrinsicValue(ticker: string, underlyingClose: number): number | null {
+  const m = /^(?:O:)?[A-Z.]{1,6}\d{6}([CP])(\d{8})$/.exec(ticker.toUpperCase());
+  if (!m || !Number.isFinite(underlyingClose)) return null;
+  const strike = Number(m[2]) / 1000;
+  const v = m[1] === 'C' ? underlyingClose - strike : strike - underlyingClose;
+  return Math.round(Math.max(0, v) * 100) / 100;
+}
+
+export type ContractGrade = {
+  peak: number | null;
+  peak_at: string | null;
+  expiry_value: number | null;
+  expiry_value_from: 'last_trade' | 'intrinsic' | null;
+  minutes_after_fire: number;
+  /** Bars dropped because they started before the fire time. */
+  minutes_before_fire_ignored: number;
+};
+
+/**
+ * The peak after fire and the expiry value, from minute bars already fetched.
+ * `sessions` maps each session date to its bars (any order).
+ */
+export function gradeFromMinuteBars(input: {
+  firedAt: string;
+  expiry: string;
+  sessions: Map<string, UwMinuteBar[]>;
+  ticker: string;
+  underlyingCloseOnExpiry: number | null;
+}): ContractGrade {
+  const fired = new Date(input.firedAt).getTime();
+  let peak: number | null = null;
+  let peakAt: string | null = null;
+  let after = 0;
+  let before = 0;
+  for (const bars of input.sessions.values()) {
+    for (const b of bars) {
+      const t = new Date(b.start_time).getTime();
+      const h = Number(b.high);
+      if (!Number.isFinite(t) || !Number.isFinite(h) || h <= 0) continue;
+      if (t < fired) {
+        before += 1;
+        continue;
+      }
+      after += 1;
+      if (peak === null || h > peak) {
+        peak = h;
+        peakAt = new Date(t).toISOString();
+      }
+    }
+  }
+
+  const onExpiry = [...(input.sessions.get(input.expiry) ?? [])]
+    .filter((b) => Number.isFinite(Number(b.close)) && Number(b.close) > 0)
+    .sort((a, b) => a.start_time.localeCompare(b.start_time));
+  const lastTrade = onExpiry.length ? Number(onExpiry[onExpiry.length - 1].close) : null;
+  let expiryValue: number | null = null;
+  let from: ContractGrade['expiry_value_from'] = null;
+  if (lastTrade !== null) {
+    expiryValue = lastTrade;
+    from = 'last_trade';
+  } else if (input.underlyingCloseOnExpiry !== null) {
+    expiryValue = intrinsicValue(input.ticker, input.underlyingCloseOnExpiry);
+    from = expiryValue === null ? null : 'intrinsic';
+  }
+
+  return {
+    peak,
+    peak_at: peakAt,
+    expiry_value: expiryValue,
+    expiry_value_from: from,
+    minutes_after_fire: after,
+    minutes_before_fire_ignored: before,
+  };
+}
+
+export type ContractGradeDeps = {
+  intraday: (optionSymbol: string, date: string) => Promise<UwResult<UwMinuteBar[]>>;
+  underlyingClose: (symbol: string, date: string) => Promise<number | null>;
+  today: string;
+};
+
+/** The live readers: UW for the contract, Polygon for the stock's close. */
+export function liveContractGradeDeps(today: string): ContractGradeDeps {
+  return {
+    today,
+    intraday: (sym, date) => contractIntraday(sym, date, today),
+    underlyingClose: async (symbol, date) => {
+      const r = await fetchDailyBarsUnadjusted(symbol.toUpperCase(), date, date);
+      if (!r.ok) return null;
+      const bar = r.data.find((b) => etDate(b.ts) === date);
+      return bar ? numOrNull(bar.c) : null;
+    },
+  };
+}
+
+/**
+ * Fetch every session the contract lived through after the alert, and grade
+ * it. `ok:false` when any session could not be read — the caller then leaves
+ * the row for a later pass rather than grading part of its life.
+ */
+export async function gradeContract(
+  row: { symbol: string; contract_ticker: string; contract_expiry: string; fired_at: string },
+  deps: ContractGradeDeps,
+): Promise<{ ok: true; grade: ContractGrade; calls: number } | { ok: false; reason: string; calls: number }> {
+  const fireDay = etDate(row.fired_at);
+  const days = weekdaysBetween(fireDay, row.contract_expiry).filter((d) => d <= deps.today);
+  const sym = uwOptionSymbol(row.contract_ticker);
+  const sessions = new Map<string, UwMinuteBar[]>();
+  let calls = 0;
+  for (const day of days) {
+    calls += 1;
+    const r = await deps.intraday(sym, day);
+    if (!r.ok) return { ok: false, reason: `${day}: ${r.reason}`, calls };
+    sessions.set(day, r.data);
+  }
+  const traded = (sessions.get(row.contract_expiry) ?? []).length > 0;
+  const close = traded ? null : await deps.underlyingClose(row.symbol, row.contract_expiry);
+  return {
+    ok: true,
+    calls,
+    grade: gradeFromMinuteBars({
+      firedAt: row.fired_at,
+      expiry: row.contract_expiry,
+      sessions,
+      ticker: row.contract_ticker,
+      underlyingCloseOnExpiry: close,
+    }),
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -497,7 +683,6 @@ export async function runPeakTracking(opts: {
   const contractWork = await runContractLane({ requestId: opts.requestId, at, today });
   identified = contractWork.identified;
   graded = contractWork.graded;
-  extraCalls += contractWork.calls;
 
   return {
     tracked_setups: setups.length,
@@ -507,7 +692,8 @@ export async function runPeakTracking(opts: {
     resolved,
     contracts_identified: identified,
     contracts_graded: graded,
-    polygon_extra_calls: extraCalls,
+    polygon_extra_calls: extraCalls + contractWork.polygon_calls,
+    uw_calls: contractWork.uw_calls,
     plain: setups.length || calls.length
       ? `Watched ${setups.length} house alert${setups.length === 1 ? '' : 's'} and ${calls.length} member call${calls.length === 1 ? '' : 's'} across ${symbols.length} symbol${symbols.length === 1 ? '' : 's'}: ${written} new extreme${written === 1 ? '' : 's'}, ${seeded} seeded from history, ${resolved} ended.`
       : 'Nothing active to watch.',
@@ -537,11 +723,12 @@ async function runContractLane(opts: {
   requestId: string;
   at: string;
   today: string;
-}): Promise<{ identified: number; graded: number; calls: number }> {
+}): Promise<{ identified: number; graded: number; uw_calls: number; polygon_calls: number }> {
   const db = serviceClient();
   let identified = 0;
   let graded = 0;
-  let calls = 0;
+  let uwCalls = 0;
+  let polygonCalls = 0;
 
   /* (a) Rows that named a contract but have not had it identified yet. */
   // Only rows that actually named a contract. Without this filter every pass
@@ -574,20 +761,33 @@ async function runContractLane(opts: {
   }
 
   /* (b) Contracts whose expiry has passed and that have not been graded. */
+  //
+  // Only expiries in the last sixty days: UW's dated history reaches back about
+  // ninety trading days, and a row older than that can never be graded here, so
+  // asking for it every five minutes would be a request that cannot succeed.
+  // Ten per pass keeps a backlog from turning one pass into a burst on a token
+  // the live engine shares.
+  const oldest = new Date(`${opts.today}T12:00:00Z`);
+  oldest.setUTCDate(oldest.getUTCDate() - 60);
   const due = await db
     .from('setups')
-    .select('id,symbol,created_at,contract_ticker,contract_expiry,contract_cost,resolution_kind')
+    .select(
+      'id,symbol,created_at,contract_ticker,contract_expiry,contract_cost,resolution_kind,' +
+        'fired_at:score_components->timing->>fired_at_utc,snap_ts:quote_snapshot->>source_ts',
+    )
     .not('contract_ticker', 'is', null)
     .is('contract_graded_at', null)
     .lte('contract_expiry', opts.today)
-    .limit(50);
+    .gte('contract_expiry', oldest.toISOString().slice(0, 10))
+    .limit(10);
 
   if (due.error) {
     log('warn', opts.requestId, 'peaks.contract_due_failed', { message: due.error.message });
-    return { identified, graded, calls };
+    return { identified, graded, uw_calls: uwCalls, polygon_calls: polygonCalls };
   }
 
-  for (const row of (due.data ?? []) as {
+  const deps = liveContractGradeDeps(opts.today);
+  for (const row of (due.data ?? []) as unknown as {
     id: string;
     symbol: string;
     created_at: string;
@@ -595,37 +795,35 @@ async function runContractLane(opts: {
     contract_expiry: string;
     contract_cost: number | null;
     resolution_kind: string | null;
+    fired_at: string | null;
+    snap_ts: string | null;
   }[]) {
-    const from = etDate(row.created_at);
-    calls += 1;
-    const bars = await fetchDailyBarsUnadjusted(row.contract_ticker, from, row.contract_expiry);
-    if (!bars.ok || !bars.data.length) {
-      log('warn', opts.requestId, 'peaks.contract_bars_missing', {
+    // The expiry session must be FINISHED before its last trade is the value.
+    if (row.contract_expiry === opts.today && etMinutesOf(opts.at) < 16 * 60 + 15) continue;
+
+    const firedAt = fireTimeOf(row);
+    const res = await gradeContract({ ...row, fired_at: firedAt }, deps);
+    uwCalls += res.calls;
+    if (!res.ok) {
+      log('warn', opts.requestId, 'peaks.contract_minutes_missing', {
         setup_id: row.id,
         ticker: row.contract_ticker,
-        reason: bars.ok ? 'no_bars' : bars.reason,
+        reason: res.reason,
       });
       continue;
     }
-
-    const ext = extremesFromBars(bars.data);
-    // The expiry session's own close is what the contract was worth at the end.
-    // A contract that did not trade on its expiry day has no such close, and
-    // that is left absent rather than filled with the last price it happened to
-    // print days earlier — which would read as a settlement it never had.
-    const lastBar = bars.data[bars.data.length - 1];
-    const closeOnExpiry =
-      lastBar && etDate(lastBar.ts) === row.contract_expiry ? numOrNull(lastBar.c) : null;
+    const g = res.grade;
+    if (g.expiry_value_from === 'intrinsic') polygonCalls += 1;
 
     const patch: Record<string, unknown> = {
       contract_graded_at: opts.at,
-      contract_basis: 'daily_bar',
+      contract_basis: 'minute',
+      // Written even when null: a contract that never traded after the alert
+      // has no peak, and a regrade must be able to clear an old wrong one.
+      contract_peak: g.peak,
+      contract_peak_at: g.peak_at,
+      contract_expiry_value: g.expiry_value,
     };
-    if (ext) {
-      patch.contract_peak = ext.high;
-      patch.contract_peak_at = ext.highAt;
-    }
-    if (closeOnExpiry !== null) patch.contract_expiry_value = closeOnExpiry;
 
     // The contract expiring IS the ending for this family — it publishes no
     // stop and no target, so nothing else was ever going to end it. Only
@@ -653,10 +851,23 @@ async function runContractLane(opts: {
       setup_id: row.id,
       ticker: row.contract_ticker,
       cost: row.contract_cost,
-      peak: ext?.high ?? null,
-      expiry_value: closeOnExpiry,
+      fired_at: firedAt,
+      peak: g.peak,
+      peak_at: g.peak_at,
+      expiry_value: g.expiry_value,
+      expiry_value_from: g.expiry_value_from,
+      minutes_before_fire_ignored: g.minutes_before_fire_ignored,
     });
   }
 
-  return { identified, graded, calls };
+  return { identified, graded, uw_calls: uwCalls, polygon_calls: polygonCalls };
+}
+
+/** Minutes past midnight in New York for an instant. */
+function etMinutesOf(iso: string): number {
+  const [h, m] = new Date(iso)
+    .toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
+    .split(':')
+    .map(Number);
+  return (h % 24) * 60 + m;
 }

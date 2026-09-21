@@ -213,7 +213,7 @@ ok('every day-trade replay that named a contract has it identified', contracts.l
 
 const graded = contracts.filter((c) => c.contract_peak !== null);
 ok('the identified contracts were graded from their own bars', graded.length > 0, graded.length);
-ok('a graded contract records that it came from daily bars', graded.every((c) => c.contract_basis === 'daily_bar'));
+ok('a graded contract records that it came from UW minute bars', graded.every((c) => c.contract_basis === 'minute'));
 ok(
   'the peak multiple agrees with the cost the ingest recorded',
   graded.every((c) => {
