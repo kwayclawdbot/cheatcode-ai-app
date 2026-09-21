@@ -1,50 +1,69 @@
 /**
- * THE TRADE SECTION, REBUILT AS A SPINE.
+ * THE TRADE SECTION — the redesign's Trade Detail (2026-09-21, V1 board panel 4).
  *
- * The owner's brief, in his words: "trade section should be where users and kai
- * conduct their analysis to determine if trade is good to take, then take the
- * trade from the app by either using the papertrading features of the app or
- * connecting brokerage (later)."
+ * The owner's brief for the section, in his words: "trade section should be
+ * where users and kai conduct their analysis to determine if trade is good to
+ * take, then take the trade from the app by either using the papertrading
+ * features of the app or connecting brokerage (later)."
  *
- * That is one job in three beats — LOOK AT IT, DECIDE, TAKE IT — and this screen
- * shows exactly one of them at a time. Everything the old portal had is still
- * reachable; none of it is on screen at once. What moved where:
+ * The approved layout (docs/design/redesign-2026-09-21, "Trade Detail"):
  *
- *   the chart, Kai's marks, the timeframes ....... beat one, full size
- *   the alert panel (grade, scorecard, thesis) ... beat two, as the verdict
- *   the plan panel (entry/stop/target/size) ...... beat two as evidence,
- *                                                  beat three as the order
- *   the execution object / CTA ................... beat three, as the card
- *   the community panel ......................... beat two, one labelled line
- *   the context switcher ........................ gone; the spine replaced it
- *   the drawers + ticker switcher ............... unchanged, in the top bar
- *   the annotation sheet ........................ unchanged, on tapping a level
+ *   back · "PURR · Swing Long" · overflow
+ *   logo  PURR  [A setup]                               3.0R
+ *         Purr Technologies
+ *   Chart | Details | Discussion
+ *   the chart, with entry / stop / target in their meaning colours
+ *   the setup summary — Entry / Stop / Target, Risk / Reward, Setup type
+ *   Kai's thesis — the only violet card
+ *   Trend · Catalyst · Volume · Risk
+ *   [ Add to watchlist ]                   <- the one orange action
+ *   the dock, identical to every other primary screen
  *
- * THE MACHINERY IS THE OLD MACHINERY, AND IT NOW LIVES SOMEWHERE BOTH PLACES
- * CAN REACH. The chart, the candles, the annotations and the command applier are
- * `features/kai-workspace/chart-runtime.ts` — moved out of this file, not
- * rewritten — so Home's workspace and this screen run ONE chart implementation.
- * Kai's chart vocabulary works identically in both and any fix lands on both.
+ * WHERE THE OLD THREE BEATS WENT. The section used to be one job in three beats
+ * — look, decide, take — with a step bar across the top. Nothing was dropped:
  *
- * PAPER ONLY. See `venues.ts` for the seam a brokerage would slot into.
+ *   LOOK   -> the Chart tab. Same chart, same tools, same full screen.
+ *   DECIDE -> the Details tab: the grade, the levels that justify it (tap one to
+ *             mark it), what would prove it wrong, Kai's read, the scorecard.
+ *   TAKE   -> the paper order, opened from the overflow ("Paper trade this
+ *             setup", its first row) or from the outline button on Details. It
+ *             replaces the tabs while it is open, exactly as step 3 replaced the
+ *             chart, and it still prices itself however it was reached.
+ *
+ * `?beat=look|decide|take` links still land in the right place (Chart, Details,
+ * the order), and `?tab=chart|details|discussion` names a tab directly.
+ *
+ * ONE PRIMARY ACTION. The spec says one dominant CTA per screen and names it:
+ * Add to watchlist. The paper order is therefore never orange here; it is one
+ * tap away in the overflow and a quiet outline on Details.
+ *
+ * THE DOCK. `/trade/[symbol]` is a stacked route, so the tab navigator's bar is
+ * not under it. The screen draws the same `Dock` itself, with Trade active and
+ * the same dot and padlock (`features/nav/dock-state.ts`), because the spec
+ * says the dock is identical across primary screens and this is where the
+ * Trade tab resolves to.
+ *
+ * THE MACHINERY IS THE OLD MACHINERY. The chart, the candles, the annotations
+ * and Kai's command applier are `features/kai-workspace/chart-runtime.ts`,
+ * shared with Home; the paper order is `useTake` over the same
+ * `tradeApi.preview` -> `tradeApi.submit` path `/order/*` uses. PAPER ONLY —
+ * see `venues.ts` for the seam a brokerage would slot into.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '../../ui/Screen';
-import { T, Eyebrow } from '../../ui/Text';
 import { Composer } from '../../ui/Composer';
 import { KeyboardDock } from '../../ui/KeyboardDock';
-import { ObjectCard } from '../../ui/Panel';
-import { Button } from '../../ui/Button';
+import { Dock } from '../../ui/TabBar';
 import { ScreenLoading } from '../../ui/Loading';
-import { alpha, color, radius } from '../../ui/tokens';
+import { Card, SectionTabs, T, Button, color, layout, tap } from '../../ui/kit';
 import { useSession } from '../../lib/session';
 import { env } from '../../lib/env';
 import type { GoalMode } from '../../lib/types';
 import { AnnotationRail } from '../chart/AnnotationRail';
 import { SymbolChart } from '../chart/SymbolChart';
-import { AnnotationSheet, PortalTopBar, TickerSwitcherSheet } from '../portal/chrome';
+import { AnnotationSheet, TickerSwitcherSheet } from '../portal/chrome';
 import { PortalDrawersSheet } from '../portal/Drawers';
 import { KaiPanel, PortalNotice } from '../portal/panels';
 import { useChartRuntime } from '../kai-workspace';
@@ -53,49 +72,35 @@ import { rememberSymbol } from '../portal/last-symbol';
 import { isTradeLevel } from '../portal/visible-annotations';
 import { SymbolOfferCard } from '../portal/SymbolOfferCard';
 import type { SymbolOffer } from '../portal/plan-command';
-import type { Annotation, PortalTimeframe } from '../portal/types';
+import type { Annotation } from '../portal/types';
+import { useDockState } from '../nav/dock-state';
+import { useWatchlistToggle } from '../trade/useTrade';
 import { TradeLocked } from './TradeLocked';
-import { Spine, SpineFooter } from './Spine';
 import { DecideBeat, type KaiReadState } from './Decide';
 import { ConfirmCard, Receipt } from './Take';
-import { ACTION_LABEL } from '../orders/vocabulary';
-import { readPortal, type Beat, type ReadLevel } from './read';
+import { readPortal, type ReadLevel } from './read';
 import { useTake } from './useTake';
 import { useMe } from '../account/useAccount';
+import { DiscussionTab } from './Discussion';
+import { MoreSheet } from './MoreSheet';
+import {
+  IdentityRow, KaiThesisCard, SetupChecklist, SetupSummary, TradeHeader, WatchlistCta,
+} from './DetailParts';
+import { checklistOf, currentR, levelOf, plannedR, setupType, thesisOf } from './detail-model';
 
 /**
- * A bar time as the annotations API stores it.
- *
- * The chart page counts in seconds since the epoch, because that is what
- * Lightweight Charts hands it and converting on every pointer move would be
- * arithmetic in the middle of a gesture. One conversion at the boundary instead.
+ * The chart's height on the Chart tab. The board gives it roughly the top
+ * third of the screen under the tabs, which leaves the setup summary in view on
+ * a 390x844 phone without scrolling.
  */
-function isoOf(t: number | string | null | undefined): string | null {
-  if (t == null) return null;
-  if (typeof t === 'string') return t;
-  return Number.isFinite(t) ? new Date(t * 1000).toISOString() : null;
-}
+const CHART_HEIGHT = 250;
 
 /**
- * The chart is the subject in beat one and the ground in beat two.
- *
- * IN BEAT THREE IT IS NOT ON SCREEN AT ALL. Confirming an order is the one
- * moment that is not about the chart, and on a phone the band was costing the
- * hundred and thirty pixels that put SEND below the fold — which is the worst
- * possible place for it, because a person then confirms an order they have
- * scrolled past the risk on. It is HIDDEN, not unmounted: the same chart is
- * still mounted behind the card, so cancelling comes straight back to it
- * without a WebView reload.
- */
-const CHART_HEIGHT: Record<Beat, number> = { look: 352, decide: 150, take: 150 };
-
-/**
- * The question the "read this chart" button asks.
+ * The question the "read this chart" path asks.
  *
  * Phrased the way a person phrases it, because it goes through the same path a
  * typed question does — the model reads it, writes the answer, and the director
- * places the gestures. A terse instruction produces a terse answer and a chart
- * that barely moves.
+ * places the gestures.
  */
 export const READ_QUESTION = (symbol: string) =>
   `Walk me through this ${symbol} chart — what matters on it right now, and why?`;
@@ -109,12 +114,19 @@ export const READ_QUESTION = (symbol: string) =>
 export const MARK_CHART_QUESTION = (symbol: string) =>
   `Mark what is actually on the ${symbol} chart — the previous session's high and low, the moving averages, the opening range and VWAP — and tell me what they say about where price is.`;
 
+type Tab = 'chart' | 'details' | 'discussion';
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'chart', label: 'Chart' },
+  { key: 'details', label: 'Details' },
+  { key: 'discussion', label: 'Discussion' },
+];
+
 export default function TradePortalV2() {
   const router = useRouter();
   const { profile } = useSession();
   const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? 'day_trade';
   const params = useLocalSearchParams<{
-    symbol?: string; alert?: string; setup?: string; beat?: string; sim?: string; locked?: string;
+    symbol?: string; alert?: string; setup?: string; beat?: string; tab?: string; sim?: string; locked?: string;
   }>();
 
   const symbol = String(params.symbol ?? '').toUpperCase();
@@ -122,25 +134,12 @@ export default function TradePortalV2() {
   const setupId = params.setup ? String(params.setup) : null;
 
   /**
-   * THE CHART AND KAI'S HANDS ON IT NOW COME FROM ONE PLACE.
+   * THE CHART AND KAI'S HANDS ON IT COME FROM ONE PLACE — `useChartRuntime`,
+   * which Home's workspace mounts too. One chart implementation, so Kai's chart
+   * vocabulary works identically in both and any fix lands on both.
    *
-   * Every line of this — the portal payload, the candles, the annotation set,
-   * the timeframe, the focus bar, the reveal set and the forty-line command
-   * applier — used to live in this file, which meant the chart could only exist
-   * at `/trade/[symbol]`. It is `features/kai-workspace/chart-runtime.ts` now,
-   * and Home's workspace mounts the SAME hook behind the same `SymbolChart`.
-   *
-   * THIS IS THE PARITY, AND IT IS THE POINT OF THE MOVE. There is one chart
-   * implementation in this app, not a Trade chart and a Home chart that drift
-   * apart on the first bug fix. The code was moved, not rewritten — including
-   * the ordering that matters most, that React state is committed AFTER the
-   * choreography so levels do not snap into existence before Kai's pointer
-   * reaches them.
-   *
-   * `onRoute` stays a `router.push` here because in the Trade section that is
-   * right: you are already on the chart's own stack. On Home the same command
-   * must not throw somebody out of the conversation they are having, which is
-   * exactly why the runtime takes it as a callback rather than deciding.
+   * `onRoute` is a `router.push` here because in the Trade section that is
+   * right: you are already on the chart's own stack.
    */
   const [offer, setOffer] = useState<SymbolOffer | null>(null);
   const rt = useChartRuntime({
@@ -153,16 +152,22 @@ export default function TradePortalV2() {
   });
   const {
     data, annotations, onChart, candles, exact, revealed, reveal,
-    upsertAnnotation, createUserAnnotation, updateUserAnnotation, setAnnotationStatus,
-    loading, error, locked, reload, hideAnnotations, setHideAnnotations, focusTs,
+    createUserAnnotation, updateUserAnnotation, setAnnotationStatus,
+    loading, error, locked, reload, hideAnnotations, focusTs,
     applyCommand,
   } = rt;
   const tf = rt.timeframe;
   const setTf = rt.setTimeframe;
 
-  const [beat, setBeat] = useState<Beat>(
-    params.beat === 'decide' || params.beat === 'take' ? (params.beat as Beat) : 'look',
-  );
+  const initialTab: Tab = params.tab === 'details' || params.tab === 'discussion' || params.tab === 'chart'
+    ? (params.tab as Tab)
+    : params.beat === 'decide' ? 'details' : 'chart';
+  const [tab, setTab] = useState<Tab>(initialTab);
+  /** The paper order is open in place of the tabs — the old step 3. */
+  const [taking, setTaking] = useState(params.beat === 'take');
+  /** The Kai composer is out. Opened from the thesis card's "Ask Kai". */
+  const [asking, setAsking] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [inspecting, setInspecting] = useState<Annotation | null>(null);
   const [drawersOpen, setDrawersOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -170,62 +175,20 @@ export default function TradePortalV2() {
 
   useEffect(() => { if (symbol) rememberSymbol(symbol); }, [symbol]);
 
-  /* The reveal set lives in the runtime now — see `useChartRuntime`. */
-
   /**
-   * WHETHER THE READ HAS ALREADY BEEN ASKED FOR ON THIS CHART.
-   *
-   * "The 'What's the read' button should be there when first loading screen but
-   * not after." It is an OPENING move: the one thing worth offering somebody who
-   * has just landed on a chart and has not decided anything yet. Once they have
-   * had the read it is a button that says the thing they are already looking at,
-   * and the spine above is a permanent, better route back to it.
-   *
-   * THE RESET BOUNDARY IS THE SYMBOL, AND THE VISIT. Walking to a different
-   * ticker is a different question and offers itself again; leaving the screen
-   * and coming back unmounts this component, so a fresh visit starts fresh
-   * without needing anything remembered. Nothing is persisted across sessions —
-   * a button that stayed hidden for a week because you pressed it once would be
-   * a worse bug than the one being fixed.
-   */
-  const [readAsked, setReadAsked] = useState(false);
-  useEffect(() => { setReadAsked(false); }, [symbol]);
-
-  /**
-   * The symbol Kai has offered to put up, if any. One at a time: a reply that
-   * mentioned three tickers should leave one card, not a stack of them, and the
-   * newest is the one the conversation is on.
+   * The symbol Kai has offered to put up, if any. One at a time, and it retires
+   * when the symbol changes.
    */
   useEffect(() => { setOffer(null); }, [symbol]);
 
   /**
-   * `?sim=offer` puts Kai's symbol card up without a model call.
-   *
-   * The same device `?sim=readfail` already uses, and for the same reason: a
-   * state nobody has looked at is a state nobody has designed. It matters more
-   * than usual here because the model that would normally emit this command
-   * cannot be reached at all right now — the Anthropic key is out of credit — so
-   * without a switch the card would ship having been rendered by no one.
+   * `?sim=offer` puts Kai's symbol card up without a model call, so the state
+   * can be looked at while the model is unreachable.
    */
-  /**
-   * THE PENCIL, AND WHETHER THE TRAY IS OUT.
-   *
-   * "pencil glyph for sure." The tools were built on the full-screen stage and
-   * lost their door when Expand was removed; this is the door, on the chart
-   * itself, where the drawing happens.
-   *
-   * IT IS QUIET BY DEFAULT AND HAS TO BE. The chart was just made to open clean,
-   * and a permanent tool palette over it would put the clutter straight back in
-   * a different shape. So it is one glyph at the weight of the Auto chip, in the
-   * one corner of the plot with nothing in it, and the tray only exists while
-   * you are actually drawing.
-   */
-
   const simOffer = String(params.sim ?? '') === 'offer';
   useEffect(() => {
     if (simOffer) setOffer({ symbol: 'AMKR', hook: 'the one you asked about' });
   }, [simOffer, symbol]);
-  /* `reveal` and `applyCommand` come from the runtime — see the block above. */
 
   const { turns, send, streaming, narrate, answer, status } = useKaiPortal({
     mode,
@@ -236,44 +199,29 @@ export default function TradePortalV2() {
     onCommand: applyCommand,
   });
 
-  /**
-   * WHAT THE CANVAS ACTUALLY GETS. `annotations` stays the whole set — the rail,
-   * the count and the inspector all read it — and only the chart is narrowed.
-   */
-  /* `onChart` — the narrowed canvas set — is the runtime's. */
-
   const read = useMemo(() => (data ? readPortal(data) : null), [data]);
   const take = useTake(read, data);
   /**
-   * STEP 3 PRICES ITSELF, HOWEVER IT WAS REACHED.
-   *
-   * Pricing used to start only from the footer button in step 2. Tapping
-   * "3 TAKE" on the step bar — or opening a `?beat=take` link — changed the
-   * step without asking for a price, and the card said "Pricing it…" forever.
-   * Now showing step 3 is what asks, once per visit to it; leaving and coming
-   * back asks again, because the price may have moved.
+   * THE ORDER PRICES ITSELF, HOWEVER IT WAS OPENED — from the overflow, from
+   * the Details button or from a `?beat=take` link. Opening it is what asks,
+   * once per opening; closing and re-opening asks again, because the price may
+   * have moved.
    */
   const { phase: takePhase, prepare: takePrepare, reset: takeReset } = take;
   useEffect(() => {
-    if (beat === 'take' && takePhase === 'idle' && read) void takePrepare();
-  }, [beat, takePhase, takePrepare, read]);
+    if (taking && takePhase === 'idle' && read) void takePrepare();
+  }, [taking, takePhase, takePrepare, read]);
   useEffect(() => {
-    if (beat !== 'take' && (takePhase === 'unsized' || takePhase === 'failed')) takeReset();
-  }, [beat, takePhase, takeReset]);
-  /**
-   * Read only for the sharing default on the confirmation card. It is the
-   * account-level answer; the card's own switch is what actually travels with
-   * the order, so a `/me` that has not landed yet means "not shared", which is
-   * the safe direction to be wrong in.
-   */
+    if (!taking && (takePhase === 'unsized' || takePhase === 'failed')) takeReset();
+  }, [taking, takePhase, takeReset]);
+  /** The account-level sharing default for the confirmation card. */
   const me = useMe();
+  const dock = useDockState();
+  const watch = useWatchlistToggle(symbol, Boolean(data?.starred));
 
   /**
-   * The failure a person is most likely to hit, made visible.
-   *
    * `?sim=readfail` forces the Kai-read block into its failure state so the
-   * proof can shoot it — fixtures never fail on their own, and a state nobody
-   * has looked at is a state nobody has designed.
+   * proof can shoot it — fixtures never fail on their own.
    */
   const simFail = String(params.sim ?? '') === 'readfail';
   const [readFailed, setReadFailed] = useState(simFail);
@@ -282,17 +230,18 @@ export default function TradePortalV2() {
     ? 'failed'
     : read?.interpretation ? 'ready' : loading ? 'loading' : 'failed';
 
+  /** Anything asked of Kai is answered on the Chart tab, where his marks land. */
   const askKai = useCallback(
     (q: string, opts?: { expectMarks?: boolean; working?: string }) => {
-      // However the read was asked for — the footer, the composer, a marked-up
-      // answer — it has now been had, and the opening offer retires.
-      setReadAsked(true);
+      setTab('chart');
+      setAsking(true);
       void send(q, opts);
     },
     [send],
   );
 
   const markLevel = useCallback((l: ReadLevel) => {
+    setTab('chart');
     applyCommand({
       command: 'mark_level',
       payload: { kind: l.key, price: l.price },
@@ -300,169 +249,254 @@ export default function TradePortalV2() {
     });
   }, [applyCommand]);
 
+  const goBack = () => (router.canGoBack() ? router.back() : router.replace('/home'));
+  const openTake = () => { setMoreOpen(false); setTaking(true); };
+  const closeTake = () => { take.reset(); setTaking(false); };
+
   /* ---------------- honest failure states ---------------- */
 
+  const bare = (children: React.ReactNode) => (
+    <Screen variant="corner" layout="tab" testID="screen-trade-portal-v2">
+      <View style={{ flex: 1 }}>{children}</View>
+      <Dock active="trade" onNavigate={(n) => router.navigate(`/${n}` as never)} {...dock} />
+    </Screen>
+  );
+
   if (!symbol) {
-    return (
-      <Screen variant="corner" layout="tab" testID="screen-trade-portal-v2">
-        <View style={{ padding: 16 }}>
-          <T variant="meta" c={color.muted}>No symbol was passed to the Trade section.</T>
-        </View>
-      </Screen>
+    return bare(
+      <View style={{ padding: layout.gutter }}>
+        <T variant="meta" c={color.textSecondary}>No symbol was passed to the Trade section.</T>
+      </View>,
     );
   }
 
   /**
-   * THE PLAN SAID NO, AND THAT IS NOT AN ERROR.
-   *
-   * Checked BEFORE the loading and failure branches, because a free account
-   * reaching this route — from an alert, from the desk, from a saved link — is
-   * an expected journey and not a fault. It used to land on "I could not open
-   * that chart just now" with a Try again button that could never work.
+   * THE PLAN SAID NO, AND THAT IS NOT AN ERROR. Checked BEFORE the loading and
+   * failure branches: a free account reaching this route is an expected
+   * journey, not a fault. `?locked=1` is a FIXTURES-ONLY preview of it.
    */
-  // `?locked=1` is a FIXTURES-ONLY preview of that screen. On a real stack the
-  // parameter does nothing: `locked` comes from the server's own 402.
   if (locked || (env.FIXTURES && params.locked === '1')) {
     return <TradeLocked symbol={symbol} plain={locked ? error : null} />;
   }
 
   if (!data && loading) {
-    return (
-      <Screen variant="corner" layout="tab" testID="screen-trade-portal-v2">
-        <ScreenLoading label={`Opening ${symbol}…`} />
-      </Screen>
-    );
+    return bare(<ScreenLoading label={`Opening ${symbol}…`} />);
   }
 
   if (!data || !read) {
-    return (
-      <Screen variant="corner" layout="tab" testID="screen-trade-portal-v2">
-        <View style={{ paddingHorizontal: 16, gap: 12 }} testID="portal2-error">
-          <ObjectCard r={radius.xl} style={{ padding: 18, gap: 8 }}>
-            <Eyebrow c={color.muted}>Nothing loaded</Eyebrow>
-            <T variant="meta" c={color.muted} lh={19}>{error ?? `I could not open ${symbol} just now.`}</T>
-          </ObjectCard>
-          <Button label="Try again" kind="outline" onPress={reload} testID="portal2-retry" />
-        </View>
-      </Screen>
+    return bare(
+      <View style={{ paddingHorizontal: layout.gutter, gap: 12 }} testID="portal2-error">
+        <Card style={{ gap: 8 }}>
+          <T variant="cardTitle">Nothing loaded</T>
+          <T variant="body" c={color.textSecondary}>{error ?? `I could not open ${symbol} just now.`}</T>
+        </Card>
+        <Button label="Try again" kind="outline" onPress={reload} testID="portal2-retry" />
+      </View>,
     );
   }
 
-  const chartHeight = CHART_HEIGHT[beat];
-  const chartHidden = beat === 'take';
   const markedCount = annotations.filter((a) => a.status === 'valid').length;
+  const tradeLevels = onChart.filter(isTradeLevel).length;
+  const onChartCount = onChart.filter((a) => !isTradeLevel(a)).length;
+  const kind = setupType(data.alert);
+  const title = kind ? `${data.symbol} · ${kind}` : data.symbol;
+  const rNow = currentR(read, data.quote?.price ?? null);
+  const checklist = checklistOf(data.alert?.score_components, read.gradeable);
+  const thesis = thesisOf(read, data);
+  // Kai's conversation shows once there is one: the composer is out, or
+  // something beyond his opening line has been said. His opening line on its
+  // own is a greeting; the thesis card is where he argues the trade.
+  const conversation = asking || turns.some((t) => t.kind !== 'kai');
+  const chartShown = tab === 'chart' && !taking;
 
   return (
     <Screen variant="corner" layout="tab" testID="screen-trade-portal-v2">
-      <PortalTopBar
+      <TradeHeader
+        title={title}
+        symbol={data.symbol}
+        onBack={taking ? closeTake : goBack}
+        onSearch={() => setSwitcherOpen(true)}
+        onMore={() => setMoreOpen(true)}
+      />
+      <IdentityRow
         symbol={data.symbol}
         name={data.name}
+        grade={read.grade_display}
+        score={read.score}
+        rNow={rNow}
         quote={data.quote}
-        marketState={data.market_state}
-        paper={data.paper}
-        onBack={() => (router.canGoBack() ? router.back() : router.replace('/home'))}
-        onSwitchTicker={() => setSwitcherOpen(true)}
-        onOpenDrawers={() => setDrawersOpen(true)}
-        showSearch={false}
       />
-
-      <Spine
-        value={beat}
-        onChange={setBeat}
-        lockedTake={read.takeable ? null : read.blocked_plain}
-      />
+      {taking ? null : (
+        <SectionTabs
+          tabs={TABS}
+          value={tab}
+          onChange={setTab}
+          testID="trade-tabs"
+          style={{ marginHorizontal: layout.gutter, marginTop: 4 }}
+        />
+      )}
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 14, gap: 12 }}
+        contentContainerStyle={{ paddingHorizontal: layout.gutter, paddingTop: 12, paddingBottom: 16, gap: layout.cardGap }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={{ display: chartHidden ? 'none' : 'flex' }}>
         {/*
-          ONE CHART, SHARED WITH THE TICKER PAGE. Everything that used to be
-          assembled here — the pencil, the expand glyph, the tray, the stage and
-          the wiring from a finished drawing back to the store — moved into
-          `SymbolChart`, because none of it was about the portal. The ticker page
-          had a bare ChartView with no tools and no annotations at all, and the
-          owner asked for the two to be the same chart rather than two charts
-          that resemble each other.
+          ONE CHART, SHARED WITH THE TICKER PAGE AND HOME, and it stays MOUNTED
+          on every tab — hidden, not unmounted — so switching to Details and back
+          does not reload the WebView or lose a drawing in progress.
         */}
-        <SymbolChart
-          testID="portal-chart"
-          symbol={data.symbol}
-          name={data.name}
-          timeframe={tf ?? data.chart.timeframe}
-          timeframes={data.chart.timeframes}
-          candles={candles}
-          annotations={annotations}
-          portal={data}
-          lastPrice={data.quote?.price ?? null}
-          focusTs={focusTs}
-          hideAnnotations={hideAnnotations}
-          height={chartHeight}
-          busy={streaming}
-          live={Boolean(answer?.live)}
-          caption={answer?.text ?? null}
-          notice={status?.text ?? null}
-          noticeTone={status?.tone ?? null}
-          revealed={revealed}
-          onReveal={reveal}
-          onTimeframeChange={setTf}
-          onSelectAnnotation={(a) => { reveal([a.id]); setInspecting(a); }}
-          onChartHandle={rt.bindChart}
-          onStageHandle={rt.bindStage}
-          onStageOpenChange={rt.setStageOpen}
-          onDrawCreate={(a) => { void createUserAnnotation(a); }}
-          onDrawUpdate={updateUserAnnotation}
-          onDrawDelete={(id) => setAnnotationStatus(id, 'deleted')}
-          kaiSheet={(
-            <>
-              <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
-                <KaiPanel turns={turns} symbol={data.symbol} />
-              </ScrollView>
-              <Composer
-                testID="stage-composer"
-                placeholder={`Ask Kai about ${data.symbol}…`}
-                disabled={streaming}
-                onSend={(text) => { void send(text); }}
-              />
-            </>
-          )}
-        />
+        <View style={{ display: chartShown ? 'flex' : 'none' }}>
+          <SymbolChart
+            testID="portal-chart"
+            symbol={data.symbol}
+            name={data.name}
+            timeframe={tf ?? data.chart.timeframe}
+            timeframes={data.chart.timeframes}
+            candles={candles}
+            annotations={annotations}
+            portal={data}
+            lastPrice={data.quote?.price ?? null}
+            focusTs={focusTs}
+            hideAnnotations={hideAnnotations}
+            height={CHART_HEIGHT}
+            busy={streaming}
+            live={Boolean(answer?.live)}
+            caption={answer?.text ?? null}
+            notice={status?.text ?? null}
+            noticeTone={status?.tone ?? null}
+            revealed={revealed}
+            onReveal={reveal}
+            onTimeframeChange={setTf}
+            onSelectAnnotation={(a) => { reveal([a.id]); setInspecting(a); }}
+            onChartHandle={rt.bindChart}
+            onStageHandle={rt.bindStage}
+            onStageOpenChange={rt.setStageOpen}
+            onDrawCreate={(a) => { void createUserAnnotation(a); }}
+            onDrawUpdate={updateUserAnnotation}
+            onDrawDelete={(id) => setAnnotationStatus(id, 'deleted')}
+            kaiSheet={(
+              <>
+                <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
+                  <KaiPanel turns={turns} symbol={data.symbol} />
+                </ScrollView>
+                <Composer
+                  testID="stage-composer"
+                  placeholder={`Ask Kai about ${data.symbol}…`}
+                  disabled={streaming}
+                  onSend={(text) => { void send(text); }}
+                />
+              </>
+            )}
+          />
         </View>
 
-        {beat === 'look' ? (
-          <LookBeat
+        {chartShown ? (
+          <View style={{ gap: layout.cardGap }} testID="beat-look">
+            <MarksLine
+              symbol={data.symbol}
+              markedCount={markedCount}
+              onChartCount={onChartCount}
+              tradeLevels={tradeLevels}
+              levelsOpen={levelsOpen}
+              exact={exact}
+              onToggle={() => setLevelsOpen((v) => !v)}
+            />
+            {levelsOpen ? (
+              <AnnotationRail annotations={annotations} onSelect={(a) => { reveal([a.id]); setInspecting(a); }} />
+            ) : null}
+
+            <SetupSummary
+              entry={levelOf(read, 'entry')}
+              stop={levelOf(read, 'stop')}
+              target={levelOf(read, 'target')}
+              rPlanned={plannedR(read)}
+              setupType={kind}
+              emptyPlain={read.blocked_plain}
+            />
+            <KaiThesisCard
+              thesis={thesis}
+              symbol={data.symbol}
+              asking={asking}
+              onAsk={() => setAsking((v) => !v)}
+            />
+            <SetupChecklist items={checklist} />
+
+            {conversation ? <KaiPanel turns={turns} symbol={data.symbol} /> : null}
+            {offer ? (
+              <SymbolOfferCard
+                symbol={offer.symbol}
+                hook={offer.hook}
+                onDismiss={() => setOffer(null)}
+                onOpen={(s) => {
+                  setOffer(null);
+                  rememberSymbol(s);
+                  // Replace, so Back still means "out of Trade" rather than "the last ticker".
+                  router.replace(`/trade/${encodeURIComponent(s)}` as never);
+                }}
+              />
+            ) : null}
+          </View>
+        ) : null}
+
+        {tab === 'details' && !taking ? (
+          <View style={{ gap: 16 }} testID="trade-details">
+            <DecideBeat
+              read={read}
+              portal={data}
+              kaiState={kaiState}
+              onMark={markLevel}
+              onMarkChart={() => askKai(MARK_CHART_QUESTION(data.symbol), {
+                expectMarks: true,
+                working: `Kai is marking the ${data.symbol} chart…`,
+              })}
+              onAsk={askKai}
+              onRetryRead={() => { setReadFailed(false); reload(); }}
+              showKaiRead={false}
+            />
+            {data.alert?.fit_plain ? (
+              <T variant="meta" c={color.textSecondary} testID="details-fit">{data.alert.fit_plain}</T>
+            ) : null}
+            {/*
+              THE PAPER ORDER, SECONDARY ON PURPOSE. An outline, never orange —
+              the screen's one orange action is the watchlist. Blocked with the
+              reason in words when there is nothing to take.
+            */}
+            <Button
+              kind="outline"
+              height={48}
+              label="Paper trade this setup"
+              disabled={!read.takeable}
+              onPress={openTake}
+              testID="details-paper-trade"
+              accessibilityHint={read.takeable ? 'Prices a paper order from these levels. Nothing is sent until you confirm.' : read.blocked_plain ?? undefined}
+            />
+            {!read.takeable && read.blocked_plain ? (
+              <T variant="meta" c={color.textSecondary} testID="details-paper-blocked">{read.blocked_plain}</T>
+            ) : null}
+          </View>
+        ) : null}
+
+        {tab === 'discussion' && !taking ? (
+          <DiscussionTab
             symbol={data.symbol}
-            markedCount={markedCount}
-            onChartCount={onChart.filter((a) => !isTradeLevel(a)).length}
-            tradeLevels={onChart.filter(isTradeLevel).length}
-            levelsOpen={levelsOpen}
-            annotations={annotations}
-            exact={exact}
-            onToggleLevels={() => setLevelsOpen((v) => !v)}
-            onInspect={(a) => { reveal([a.id]); setInspecting(a); }}
+            community={data.community}
+            onNavigate={(r) => router.push(r as never)}
           />
         ) : null}
 
-        {beat === 'decide' ? (
-          <DecideBeat
-            read={read}
-            portal={data}
-            kaiState={kaiState}
-            onMark={markLevel}
-            onMarkChart={() => askKai(MARK_CHART_QUESTION(data.symbol), {
-              expectMarks: true,
-              working: `Kai is marking the ${data.symbol} chart…`,
-            })}
-            onAsk={askKai}
-            onRetryRead={() => { setReadFailed(false); reload(); }}
-          />
-        ) : null}
-
-        {beat === 'take' ? (
-          <View style={{ gap: 12 }}>
+        {taking ? (
+          <View style={{ gap: 12 }} testID="trade-take">
+            <Pressable
+              testID="take-back"
+              accessibilityRole="button"
+              accessibilityLabel="Back to the setup"
+              onPress={closeTake}
+              style={{ minHeight: tap.min, justifyContent: 'center', alignSelf: 'flex-start' }}
+            >
+              <T variant="meta" weight="semibold" c={color.textSecondary}>← Back to the setup</T>
+            </Pressable>
             {take.phase === 'receipt' && take.order ? (
               <Receipt
                 order={take.order}
@@ -473,7 +507,7 @@ export default function TradePortalV2() {
                     ? `/position/${encodeURIComponent(take.order.position_id)}` as never
                     : '/position' as never,
                 )}
-                onDone={() => { take.reset(); setBeat('look'); }}
+                onDone={() => { closeTake(); setTab('chart'); }}
               />
             ) : take.phase === 'confirm' || take.phase === 'sending' ? (
               take.preview ? (
@@ -485,15 +519,15 @@ export default function TradePortalV2() {
                   error={take.error}
                   shareDefault={me.data?.settings.share_trades ?? false}
                   onSend={(shareTrade) => { void take.send(shareTrade); }}
-                  onCancel={() => { take.reset(); setBeat('decide'); }}
+                  onCancel={closeTake}
                 />
               ) : null
             ) : take.phase === 'unsized' ? (
               /* NOTHING WAS PRICED BECAUSE NO ORDER COULD BE BUILT — said as
                  that, with the reason, rather than as a pricing failure. */
-              <ObjectCard r={radius.xl} style={{ padding: 16, gap: 10 }} testID="take-unsized">
-                <Eyebrow c={color.muted}>No order to price</Eyebrow>
-                <T variant="body" lh={21}>{take.error}</T>
+              <Card style={{ gap: 10 }} testID="take-unsized">
+                <T variant="cardTitle">No order to price</T>
+                <T variant="body">{take.error}</T>
                 <Button
                   label="Open the full ticket"
                   kind="outline"
@@ -501,19 +535,13 @@ export default function TradePortalV2() {
                   onPress={() => router.push(`/order/new?symbol=${encodeURIComponent(data.symbol)}` as never)}
                   testID="take-full-ticket"
                 />
-              </ObjectCard>
+              </Card>
             ) : take.phase === 'failed' ? (
-              <ObjectCard r={radius.xl} style={{ padding: 16, gap: 10 }} testID="take-failed">
-                <Eyebrow c={color.muted}>Not priced</Eyebrow>
-                <T variant="body" lh={21}>{take.error}</T>
-                {take.size?.plain ? <T variant="meta" lh={19} c={color.muted}>{take.size.plain}</T> : null}
-                <Button
-                  label="Try again"
-                  kind="outline"
-                  height={44}
-                  onPress={() => { take.reset(); }}
-                  testID="take-retry"
-                />
+              <Card style={{ gap: 10 }} testID="take-failed">
+                <T variant="cardTitle">Not priced</T>
+                <T variant="body">{take.error}</T>
+                {take.size?.plain ? <T variant="meta" c={color.textSecondary}>{take.size.plain}</T> : null}
+                <Button label="Try again" kind="outline" height={44} onPress={() => { take.reset(); }} testID="take-retry" />
                 <Button
                   label="Open the full ticket"
                   kind="outline"
@@ -521,100 +549,42 @@ export default function TradePortalV2() {
                   onPress={() => router.push(`/order/new?symbol=${encodeURIComponent(data.symbol)}` as never)}
                   testID="take-full-ticket"
                 />
-              </ObjectCard>
+              </Card>
             ) : (
-              <ObjectCard r={radius.xl} style={{ padding: 16, gap: 8 }} testID="take-preparing">
-                <Eyebrow c={color.muted}>Pricing it</Eyebrow>
-                <T variant="body" lh={21} c={color.muted}>Working out the size and what it costs…</T>
-              </ObjectCard>
+              <Card style={{ gap: 8 }} testID="take-preparing">
+                <T variant="cardTitle">Pricing it</T>
+                <T variant="body" c={color.textSecondary}>Working out the size and what it costs…</T>
+              </Card>
             )}
           </View>
         ) : null}
-
-        {/*
-          KAI'S REPLY LIVES ON THE SCREEN, NOT INSIDE BEAT ONE.
-
-          THE BUG: it was rendered inside `LookBeat`, and the composer is on
-          every beat. So a question asked in DECIDE or TAKE — typed, or by
-          pressing "Mark what's on this chart", which only EXISTS in DECIDE —
-          had its entire reply rendered into a component that was not mounted.
-          The answer arrived, the narration arrived, the failure arrived, and
-          the user saw a screen that had not changed at all. Reproduced in
-          fixtures, where nothing can go wrong on the network and it still
-          showed nothing five seconds after the press.
-        */}
-        <KaiPanel turns={turns} symbol={data.symbol} />
-
-        {/*
-          Kai's offer to change the chart, under his reply where he made it.
-          It never moves anything on its own — see `plan-command`'s case.
-        */}
-        {offer ? (
-          <SymbolOfferCard
-            symbol={offer.symbol}
-            hook={offer.hook}
-            onDismiss={() => setOffer(null)}
-            onOpen={(s) => {
-              setOffer(null);
-              rememberSymbol(s);
-              // The same swap the search does, for the same reason: replace, so
-              // Back still means "out of Trade" rather than "the last ticker".
-              router.replace(`/trade/${encodeURIComponent(s)}` as never);
-            }}
-          />
-        ) : null}
-
-        {/*
-          NO SECOND COPY OF THE SAME SENTENCE. The panel above is the transcript
-          and it already carries the failure in Kai's own words. `status` exists
-          for the ONE surface that cannot show a transcript — the full-screen
-          stage, which is a modal over all of this — and it is passed there and
-          nowhere else.
-        */}
 
         {data.notice ? <PortalNotice text={data.notice} /> : null}
         {data.is_fixture ? <PortalNotice text="Example data — no account is connected on this build." /> : null}
       </ScrollView>
 
-      {beat === 'look' && !readAsked ? (
-        <SpineFooter
-          label="What’s the read?"
-          onPress={() => { setReadAsked(true); setBeat('decide'); }}
-          testID="spine-next-decide"
-        />
-      ) : null}
-      {beat === 'decide' ? (
-        <SpineFooter
-          label={ACTION_LABEL.review_paper_order}
-          blocked={read.takeable ? null : read.blocked_plain}
-          onPress={() => setBeat('take')}
-          testID="spine-next-take"
-        />
-      ) : null}
-
       {/*
-        NOTHING OPENS THIS RIGHT NOW, AND THAT IS A REPORTED CONSEQUENCE RATHER
-        THAN AN OVERSIGHT.
-
-        "Expand" was the only way in, and it was removed at the owner's word.
-        The stage is where the hand-drawing tools live (the level, trendline and
-        zone tray), so those are currently unreachable from the portal. It is
-        left mounted and wired because re-opening it is one call — whichever
-        surface he decides drawing belongs on — and because deleting it would
-        throw away a feature he asked for two rounds ago over a sentence about
-        two buttons. Flagged for his call; no replacement chrome invented here.
+        THE FOOT OF THE SCREEN: the one action, or Kai's composer while he is
+        being asked something, then the dock. The composer is docked so the
+        keyboard never covers it; the watchlist button steps aside while it is
+        out, because two bottom bars would be two focal points.
       */}
+      {asking ? (
+        <KeyboardDock floor={8} style={{ paddingHorizontal: layout.gutter, paddingTop: 4 }}>
+          <Composer
+            testID="portal-composer"
+            placeholder={`Ask Kai about ${data.symbol}…`}
+            disabled={streaming}
+            onSend={(text) => { void send(text); }}
+          />
+        </KeyboardDock>
+      ) : !taking ? (
+        <View style={{ paddingHorizontal: layout.gutter, paddingTop: 4, paddingBottom: 10 }}>
+          <WatchlistCta symbol={data.symbol} on={watch.on} busy={watch.busy} onToggle={() => { void watch.toggle(); }} />
+        </View>
+      ) : null}
 
-      {/* Docked so asking Kai about the chart does not put the composer under
-          the keyboard, and so the bar clears the home indicator otherwise. */}
-      <KeyboardDock floor={12} style={{ paddingHorizontal: 16, paddingTop: 2 }}>
-        <Composer
-          testID="portal-composer"
-          placeholder={`Ask Kai about ${data.symbol}…`}
-          disabled={streaming}
-          onSend={(text) => { void send(text); }}
-        />
-      </KeyboardDock>
+      <Dock active="trade" onNavigate={(n) => router.navigate(`/${n}` as never)} {...dock} />
 
       <AnnotationSheet
         annotation={inspecting}
@@ -627,6 +597,38 @@ export default function TradePortalV2() {
           setInspecting(null);
           narrate(a.reason ?? `${a.kind} at ${a.price ?? '—'}.`);
         }}
+      />
+
+      <MoreSheet
+        visible={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        symbol={data.symbol}
+        paper={data.paper}
+        rows={[
+          {
+            key: 'paper',
+            label: 'Paper trade this setup',
+            blocked: read.takeable ? null : read.blocked_plain,
+            hint: 'Prices a practice order from these levels. Nothing is sent until you confirm.',
+            onPress: openTake,
+          },
+          {
+            key: 'ticket',
+            label: 'Open the full order ticket',
+            hint: 'Choose the size and order type yourself.',
+            onPress: () => { setMoreOpen(false); router.push(`/order/new?symbol=${encodeURIComponent(data.symbol)}` as never); },
+          },
+          {
+            key: 'drawers',
+            label: 'Positions, orders and watchlist',
+            onPress: () => { setMoreOpen(false); setDrawersOpen(true); },
+          },
+          {
+            key: 'search',
+            label: 'Search another symbol',
+            onPress: () => { setMoreOpen(false); setSwitcherOpen(true); },
+          },
+        ]}
       />
 
       <PortalDrawersSheet
@@ -648,15 +650,10 @@ export default function TradePortalV2() {
           setSwitcherOpen(false);
           rememberSymbol(s);
           /**
-           * A REPLACE, NOT A PUSH, AND THAT IS THE WHOLE "in place" QUESTION.
-           *
-           * `/trade/[symbol]` is this same screen with a different parameter, so
-           * replacing swaps the chart, the levels, the plan and the Kai thread
-           * together and leaves the back button where it was. A push would stack
-           * a second Trade section on top of the first and make Back mean "the
-           * previous ticker", which is how you end up eleven charts deep and
-           * cannot get out. Nothing else re-mounts: to the person holding it,
-           * the chart changed.
+           * A REPLACE, NOT A PUSH. `/trade/[symbol]` is this same screen with a
+           * different parameter, so replacing swaps the chart, the levels, the
+           * plan and the Kai thread together and leaves Back where it was. A
+           * push would make Back mean "the previous ticker".
            */
           router.replace(`/trade/${encodeURIComponent(s)}` as never);
         }}
@@ -666,67 +663,46 @@ export default function TradePortalV2() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Beat one — look at it                                                */
+/* The chart's index line                                               */
 /* ------------------------------------------------------------------ */
 
-function LookBeat({
-  symbol, markedCount, onChartCount, tradeLevels, levelsOpen, annotations, exact,
-  onToggleLevels, onInspect,
+/**
+ * One quiet line under the chart that says what is on it — and BOTH numbers
+ * when they differ, because most saved marks are deliberately not drawn at
+ * rest. Tapping it lists them; tapping any in the list puts it back.
+ */
+function MarksLine({
+  symbol, markedCount, onChartCount, tradeLevels, levelsOpen, exact, onToggle,
 }: {
   symbol: string;
   markedCount: number;
-  /** How many of them are actually drawn right now. */
   onChartCount: number;
-  /** The trade's own entry / stop / target drawn from the trade, not stored. */
   tradeLevels: number;
   levelsOpen: boolean;
-  annotations: Annotation[];
   exact: boolean;
-  onToggleLevels: () => void;
-  onInspect: (a: Annotation) => void;
+  onToggle: () => void;
 }) {
-  /**
-   * THE TWO BUTTONS THAT SAT HERE ARE GONE, at the owner's word: "the kai read
-   * this chart button and expand don't need to be there". Kai is asked through
-   * the composer at the foot of the screen, which is where every other question
-   * to him is asked, so a second dedicated button for one phrasing of one
-   * question was chrome the screen was carrying for no one.
-   */
+  const text = markedCount === 0
+    ? tradeLevels
+      ? `The trade's ${tradeLevels === 3 ? 'entry, stop and target are' : 'levels are'} on the chart.`
+      : `Nothing marked on ${symbol} yet.`
+    : onChartCount === markedCount
+      ? `${markedCount} mark${markedCount === 1 ? '' : 's'} on the chart · ${levelsOpen ? 'hide' : 'show'}`
+      : `${onChartCount} on the chart · ${markedCount} saved · ${levelsOpen ? 'hide' : 'show'}`;
   return (
-    <View style={{ gap: 12 }} testID="beat-look">
-      {/*
-        The chart's index — and now genuinely an index rather than a legend,
-        because most of what it lists is deliberately not on the canvas. It says
-        BOTH numbers when they differ: "12 marks" printed over a chart showing
-        two would read as a bug, and the honest line is what makes the quiet
-        chart legible instead of suspicious. Tapping any of them puts it back.
-      */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <T
-          variant="meta"
-          c={color.muted}
-          onPress={onToggleLevels}
-          testID="look-levels-toggle"
-          accessibilityRole="button"
-          accessibilityLabel={
-            markedCount === 0
-              ? (tradeLevels ? "The trade's levels are on the chart." : `Nothing marked on ${symbol} yet.`)
-              : `${onChartCount} of ${markedCount} marks on the chart. ${levelsOpen ? 'Hide' : 'Show'} the list. Tap any of them to put it back on the chart.`
-          }
-          style={{ flex: 1 }}
-        >
-          {markedCount === 0
-            ? tradeLevels
-              ? `The trade's ${tradeLevels === 3 ? 'entry, stop and target are' : 'levels are'} on the chart.`
-              : `Nothing marked on ${symbol} yet.`
-            : onChartCount === markedCount
-              ? `${markedCount} mark${markedCount === 1 ? '' : 's'} on the chart \u00b7 ${levelsOpen ? 'hide' : 'show'}`
-              : `${onChartCount} on the chart \u00b7 ${markedCount} saved \u00b7 ${levelsOpen ? 'hide' : 'show'}`}
-        </T>
-        {!exact ? <T variant="meta" c={color.gold} testID="look-coarser">Coarser bars</T> : null}
-      </View>
-
-      {levelsOpen ? <AnnotationRail annotations={annotations} onSelect={onInspect} /> : null}
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: -4 }}>
+      <Pressable
+        testID="look-levels-toggle"
+        accessibilityRole="button"
+        accessibilityLabel={markedCount === 0 ? text : `${text}. Tap any of them to put it back on the chart.`}
+        onPress={onToggle}
+        disabled={markedCount === 0}
+        hitSlop={{ top: 6, bottom: 6 }}
+        style={{ flex: 1, minHeight: 32, justifyContent: 'center' }}
+      >
+        <T variant="meta" c={color.textSecondary}>{text}</T>
+      </Pressable>
+      {!exact ? <T variant="meta" c={color.textSecondary} testID="look-coarser">Coarser bars</T> : null}
     </View>
   );
 }

@@ -40,7 +40,7 @@ export function Verdict({ read, testID = 'decide-verdict' }: { read: TradeRead; 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <GradeMedallion grade={read.grade_display} score={read.score} size={82} />
         <View style={{ flex: 1, gap: 5 }}>
-          {read.descriptor ? <Eyebrow c={color.muted}>{read.descriptor.toUpperCase()}</Eyebrow> : null}
+          {read.descriptor ? <Eyebrow c={color.muted}>{read.descriptor}</Eyebrow> : null}
           <T variant="body" weight="bold" lh={22} testID="decide-headline">{read.headline}</T>
         </View>
       </View>
@@ -199,11 +199,17 @@ export function NoGradedSetup({
 /* ------------------------------------------------------------------ */
 
 export function DecideBeat({
-  read, portal, kaiState, onMark, onMarkChart, onAsk, onRetryRead,
+  read, portal, kaiState, onMark, onMarkChart, onAsk, onRetryRead, showKaiRead = true,
 }: {
   read: TradeRead;
   portal: TradePortal;
   kaiState: KaiReadState;
+  /**
+   * Whether Kai's read is drawn here. The Trade Detail's Chart tab already
+   * carries it as "Kai's thesis" — the screen's one violet card — so its
+   * Details tab leaves it out rather than print the same paragraph twice.
+   */
+  showKaiRead?: boolean;
   onMark: (l: ReadLevel) => void;
   onMarkChart: () => void;
   onAsk: (q: string) => void;
@@ -231,7 +237,7 @@ export function DecideBeat({
 
       {read.wrong_if ? <WrongIf text={read.wrong_if} /> : null}
 
-      {read.gradeable ? (
+      {read.gradeable && showKaiRead ? (
         <KaiRead
           state={kaiState}
           text={read.interpretation}
@@ -250,7 +256,7 @@ export function DecideBeat({
             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 26 }}
           >
             <Eyebrow c={color.muted}>Why this grade</Eyebrow>
-            <T variant="meta" weight="semibold" c={color.violetLight}>{evidence ? 'Hide' : 'Show the five'}</T>
+            <T variant="meta" weight="semibold" c={color.textPrimary}>{evidence ? 'Hide' : 'Show the five'}</T>
           </Pressable>
           {evidence ? <Scorecard components={components} testID="decide-scorecard" /> : null}
         </View>
