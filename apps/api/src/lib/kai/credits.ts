@@ -344,6 +344,32 @@ export function resetFailOpenCounter(): void {
   failOpens.length = 0;
 }
 
+/**
+ * The arguments `kai_credit_state` is called with. Pure, so the test can hand
+ * the exact same object to the SQL.
+ *
+ * `p_ceiling_since` is ALWAYS sent, including on free. A free plan has no
+ * ceiling of its own, but a period that was downgraded to free mid-day keeps
+ * the paid plan's ceiling (0051), and the month's spend must be added up for
+ * it — sending NULL here is what used to make that spend read as $0.
+ */
+export function creditStateArgs(userId: string, plan: Plan, period: Period, basis: CreditBasis) {
+  return {
+    p_user_id: userId,
+    p_period_kind: 'day',
+    p_period_key: period.key,
+    p_period_start: period.start,
+    p_period_end: period.end,
+    p_plan_key: plan.key,
+    p_granted_credits: plan.daily_credits,
+    p_cost_ceiling_usd: plan.monthly_cost_ceiling_usd,
+    p_basis_usd_per_credit: basis.usd_per_credit,
+    p_basis_source: basis.source,
+    p_day_start: period.start,
+    p_ceiling_since: period.ceilingSince,
+  };
+}
+
 /** The state everything else is built from. Never throws. */
 export async function creditState(userId: string, requestId = '-', route = 'unknown'): Promise<CreditState> {
   const now = new Date();
@@ -361,24 +387,7 @@ export async function creditState(userId: string, requestId = '-', route = 'unkn
   const period = periodFor(now, timezone);
   const basis = await measureBasis(requestId);
 
-  const out = await callRpc<StateRow>(
-    'kai_credit_state',
-    {
-      p_user_id: userId,
-      p_period_kind: 'day',
-      p_period_key: period.key,
-      p_period_start: period.start,
-      p_period_end: period.end,
-      p_plan_key: plan.key,
-      p_granted_credits: plan.daily_credits,
-      p_cost_ceiling_usd: plan.monthly_cost_ceiling_usd,
-      p_basis_usd_per_credit: basis.usd_per_credit,
-      p_basis_source: basis.source,
-      p_day_start: period.start,
-      p_ceiling_since: plan.monthly_cost_ceiling_usd === null ? null : period.ceilingSince,
-    },
-    requestId
-  );
+  const out = await callRpc<StateRow>('kai_credit_state', creditStateArgs(userId, plan, period, basis), requestId);
 
   if (!out.ok) {
     /**
