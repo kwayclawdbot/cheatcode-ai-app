@@ -94,7 +94,7 @@ server only ever returns counts, plus the avatars of people who posted.
 Live audio is out of scope. A live room is a text room, and its route opens
 that room.
 
-## Strip rooms (0052)
+## Strip rooms (0053)
 
 Checked in production (read-only) on 2026-09-21: the core rooms there are
 traders, investors and beginners. The mapping:
@@ -121,7 +121,7 @@ has nothing hard-coded.
 - If the call has already **resolved**, the delete is refused with 409. You can
   withdraw a claim before it is proved wrong, but you cannot tidy one away after.
 
-0053 fixes the related bug. `messages.user_id → profiles` had no ON DELETE
+0054 fixes the related bug. `messages.user_id → profiles` had no ON DELETE
 action, so deleting any member who had ever posted failed with 23503. The key
 is now ON DELETE SET NULL, and a trigger anonymises the post the same way
 `delete_account` does: `author_deleted` is set, the body is cleared, pictures
@@ -149,9 +149,9 @@ These match the room routes:
 | File | What it does |
 |---|---|
 | `0050_a_post_can_be_liked_reposted_and_saved.sql` | Feed room; `like` kind; `post_reposts` plus the `repost_count` trigger; `post_bookmarks`; `community_feed_page()`; RLS on with no policies and service role only; checks that size columns are absent |
-| `0051_a_member_is_somewhere_right_now.sql` | `community_presence`; `community_online_counts()`; service role only |
-| `0052_the_live_rooms_strip.sql` | Creates `wins` and `ask-kai`; writes `config.strip` on the five strip rooms |
-| `0053_a_deleted_profile_does_not_strand_its_posts.sql` | `messages.user_id` ON DELETE SET NULL, plus the anonymising triggers |
+| `0052_a_member_is_somewhere_right_now.sql` | `community_presence`; `community_online_counts()`; service role only |
+| `0053_the_live_rooms_strip.sql` | Creates `wins` and `ask-kai`; writes `config.strip` on the five strip rooms |
+| `0054_a_deleted_profile_does_not_strand_its_posts.sql` | `messages.user_id` ON DELETE SET NULL, plus the anonymising triggers |
 
 Each file can be run twice safely. All four were applied to a separate local
 stack, both in turn and by a fresh `supabase db reset`. None of them has
@@ -185,5 +185,8 @@ All require `Authorization: Bearer <supabase token>`. Types are in
 Tests: `scripts/community-feed-test.ts` (pure logic) and
 `scripts/community-feed-proof.mts` (every endpoint against a real database,
 called in-process). Both are part of `npm test`. The proof requires
-`.env.local` to point at a local stack with 0050–0053 applied, and refuses to
+`.env.local` to point at a local stack with 0050 and 0052–0054 applied, and refuses to
 run against a hosted `supabase.co` URL.
+
+
+> Renumbered 2026-09-21 at merge: 0051→0052, 0052→0053, 0053→0054 (0051 was taken by the credit-ceiling migration already applied in production).
