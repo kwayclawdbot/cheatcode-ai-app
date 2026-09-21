@@ -353,7 +353,20 @@ const drawnKinds = budgeted.rules.map((r) => r.lead.kind);
 ok('the stop is always drawn', drawnKinds.includes('stop'), drawnKinds);
 ok('the trigger is always drawn', drawnKinds.includes('trigger') || drawnKinds.includes('entry'), drawnKinds);
 ok('both targets are drawn', drawnKinds.filter((k) => k === 'target').length === 2, drawnKinds);
-ok('a trigger and an entry a tenth of a percent apart are ONE line that says so', budgeted.rules.some((r) => r.extra === 1));
+ok('a trigger and an entry a tenth of a percent apart are ONE line, and it is the entry',
+  drawnKinds.includes('entry') && !drawnKinds.includes('trigger'), drawnKinds);
+ok('a stop and an invalidation at one price are ONE line that says so', budgeted.rules.some((r) => r.lead.kind === 'stop' && r.extra === 1));
+{
+  const zoned = layer._budget([
+    lv('t', 'trigger', 504), { id: 'ez', kind: 'entry', price: 504, price2: 507, text: 'Entry 504–507', status: 'valid' },
+    lv('t2', 'trigger', 520),
+  ]) as { rules: { lead: Record<string, unknown> }[]; others: Record<string, unknown>[] };
+  const ids = [...zoned.rules.map((r) => r.lead.id), ...zoned.others.map((o) => o.id)];
+  ok('a trigger inside an entry zone is drawn by the entry alone', !ids.includes('t') && ids.includes('ez'), ids);
+  ok('a trigger away from the entry is still drawn', ids.includes('t2'), ids);
+  const mine = layer._budget([{ ...lv('u', 'trigger', 504), provenance: 'user' }, { id: 'ez', kind: 'entry', price: 504, price2: 507, status: 'valid' }]) as { others: Record<string, unknown>[] };
+  ok('a trigger you drew yourself is never folded away', mine.others.some((o) => o.id === 'u'));
+}
 
 const zone = (id: string, top: number, bottom: number, text: string) =>
   ({ id, kind: 'zone', price: top, price2: bottom, ts_from: ramp[10].time, ts_to: null, text, status: 'valid' });
@@ -622,9 +635,13 @@ const clusters = (ys: number[]) => {
   return s.filter((y, i) => i === 0 || y - s[i - 1] > 3).length;
 };
 const looseCols = Object.keys(seen.looseCols).map(Number).sort((a, b) => a - b);
-const looseMid = seen.looseCols[looseCols[Math.floor(looseCols.length * 0.5)]] || [];
-ok('a band draws all of its edges, not just its middle', clusters(looseMid) >= 6,
-  { distinctOverlayLinesAtMidColumn: clusters(looseMid) });
+// The best of a few columns around the middle, not one column: which single x
+// lands mid-list moves whenever a label or tag elsewhere on the plot changes
+// width, and at one x two curves can be crossing and read as one.
+const midCols = looseCols.slice(Math.floor(looseCols.length * 0.45), Math.ceil(looseCols.length * 0.55));
+const midClusters = Math.max(0, ...midCols.map((x) => clusters(seen.looseCols[x] || [])));
+ok('a band draws all of its edges, not just its middle', midClusters >= 6,
+  { distinctOverlayLinesNearMidColumn: midClusters });
 
 const ruleRows = Object.entries(seen.ruleRows)
   .filter(([y, n]) => n > seen.width * 0.3 && (seen.ruleMinX[Number(y)] ?? 999) < 12)
