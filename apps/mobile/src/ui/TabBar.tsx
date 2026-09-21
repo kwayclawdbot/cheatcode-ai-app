@@ -32,6 +32,34 @@ function items(mode: GoalMode): Item[] {
 
 export function TabBar({ state, navigation, badges, locked, mode = DEFAULT_MODE }: BottomTabBarProps & {
   badges?: Record<string, boolean>;
+  locked?: Record<string, boolean>;
+  mode?: GoalMode;
+}) {
+  return (
+    <Dock
+      active={state.routes[state.index]?.name}
+      onNavigate={(name) => navigation.navigate(name)}
+      badges={badges}
+      locked={locked}
+      mode={mode}
+    />
+  );
+}
+
+/**
+ * THE DOCK ITSELF — the same five items, drawn the same way, wherever it is.
+ *
+ * `TabBar` is the tab navigator's adapter onto it. A stacked route that is still
+ * a primary screen — the Trade section at `/trade/[symbol]`, which is where the
+ * Trade tab resolves to — mounts this directly with `active="trade"`, so the
+ * spec's "the bottom dock stays identical across all primary screens" holds
+ * there too. `onNavigate` is the only difference between the two callers.
+ */
+export function Dock({ active: activeName, onNavigate, badges, locked, mode = DEFAULT_MODE }: {
+  /** The route name of the item to draw as active. */
+  active: string | undefined;
+  onNavigate: (name: string) => void;
+  badges?: Record<string, boolean>;
   /**
    * Tabs this plan does not include. FIVE STAYS FIVE — a locked tab is drawn,
    * not removed, and that is a deliberate product call rather than laziness: a
@@ -48,7 +76,6 @@ export function TabBar({ state, navigation, badges, locked, mode = DEFAULT_MODE 
   mode?: GoalMode;
 }) {
   const insets = useSafeAreaInsets();
-  const activeName = state.routes[state.index]?.name;
   const ITEMS = items(mode);
 
   /**
@@ -88,7 +115,7 @@ export function TabBar({ state, navigation, badges, locked, mode = DEFAULT_MODE 
             accessibilityState={{ selected: active }}
             accessibilityLabel={shut ? `${label}. Not on your plan.` : label}
             onPress={() => {
-              if (!active) navigation.navigate(name);
+              if (!active) onNavigate(name);
             }}
             style={{ flex: 1, alignItems: 'center', gap: 4, minWidth: 44, minHeight: 50, justifyContent: 'center' }}
           >
