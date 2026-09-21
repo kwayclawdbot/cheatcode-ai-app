@@ -1896,6 +1896,18 @@ AnnotationLayer.prototype._chipAndTag = function (ctx, a, col, y, W, chip, base,
   ctx.font = TAG_FONT;
   var w = ctx.measureText(txt).width + 10;
   var x = W - w - 3;
+  // On a narrow plot the labelled tag can reach back under the floating
+  // timeframe rail. The price is the part that must stay readable, so the tag
+  // drops its word before it lets the rail cover its number.
+  var av = this._avoid;
+  if (merged && av && y > av.y - 9 && y < av.y + av.h + 9 && x < av.x + av.w + 4) {
+    txt = fmtPrice(a.price);
+    w = ctx.measureText(txt).width + 10;
+    x = W - w - 3;
+    // Still under it: draw no tag rather than half of one. The line keeps its
+    // colour and the price scale still prints the number at this height.
+    if (x < av.x + av.w + 4) return;
+  }
   ctx.globalAlpha = (dead ? 0.4 : 1) * chip;
   ctx.fillStyle = col;
   roundRect(ctx, x, y - 7.5, w, 15, 3);
