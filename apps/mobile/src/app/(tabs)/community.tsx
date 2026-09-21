@@ -87,6 +87,9 @@ import { DEFAULT_MODE } from '../../features/nav/second-tab';
 import { BeltUpSheet, PREVIEW_BELT, useBeltUp } from '../../features/social';
 import type { GoalMode } from '../../lib/types';
 
+import { hitSlopFor } from '../../ui/touch';
+import { BrandMarkButton } from '../../ui/BrandMark';
+import { layout } from '../../ui/tokens';
 const SearchIcon = () => (
   <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={color.muted} strokeWidth={2}>
     <SvgCircle cx={11} cy={11} r={7} />
@@ -498,10 +501,11 @@ export default function Community() {
     <Screen variant="corner" layout="tab" testID="screen-community">
       <View
         style={{
-          flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 16,
-          paddingTop: 8, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: alpha.ivory07,
+          flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: layout.gutter,
+          paddingTop: 8, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: alpha.divider,
         }}
       >
+        <BrandMarkButton />
         <View style={{ flex: 1, minWidth: 0 }}>
           {/* The club is still the club; it is an eyebrow rather than the
               heading, because the thing a reader needs to find on this screen
@@ -786,7 +790,7 @@ export default function Community() {
                   Nothing was reached, so nothing is shown. The rooms below would have been made up,
                   and an invented club is worse than an empty screen.
                 </T>
-                <Pressable
+                <Pressable hitSlop={hitSlopFor(44, 36)}
                   testID="community-retry"
                   accessibilityRole="button"
                   accessibilityLabel="Try loading the club again"

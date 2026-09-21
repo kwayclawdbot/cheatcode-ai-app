@@ -75,6 +75,9 @@ import { ModeSheet, MODE_LABEL } from '../../features/trade/ModeSheet';
 import { PaperChip } from '../../features/trade/components';
 import type { Experience, FocusKey, GoalMode } from '../../lib/types';
 
+import { hitSlopFor } from '../../ui/touch';
+import { AppBar } from '../../ui/AppBar';
+import { layout } from '../../ui/tokens';
 const INVOLVEMENT_LABEL = { hands_on: 'I confirm every action', guided: 'Kai prepares, I approve' } as const;
 
 /**
@@ -231,9 +234,10 @@ export default function Account() {
 
   return (
     <Screen variant="corner" layout="tab" testID="screen-account">
+      <AppBar title="Account" />
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingTop: 8, paddingHorizontal: 16, gap: 11, paddingBottom: 16 }}
+        contentContainerStyle={{ paddingTop: 8, paddingHorizontal: layout.gutter, gap: layout.cardGap, paddingBottom: 16 }}
         showsVerticalScrollIndicator={false}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
@@ -407,7 +411,7 @@ export default function Account() {
             row rather than a button: taking your picture down is a decision a
             member makes deliberately, not one the board should invite. */}
         {avatarUrl && !avatar.busy ? (
-          <Pressable
+          <Pressable hitSlop={hitSlopFor(44, 32)}
             testID="identity-avatar-remove"
             accessibilityRole="button"
             accessibilityLabel="Remove your profile picture"

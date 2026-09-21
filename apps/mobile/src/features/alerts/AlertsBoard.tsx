@@ -23,6 +23,8 @@ import { BeltChip, CommunityCallCard, MemberName, useDeskCalls } from '../social
 import type { AlertBoardTab, AlertCard, AlertCardState, CommunityCall, GoalMode } from '../../lib/types';
 import { NOT_ADVICE_ALERTS } from '../legal/disclaimers';
 
+import { BrandMarkButton } from '../../ui/BrandMark';
+import { layout } from '../../ui/tokens';
 /**
  * Alerts — prototype board "Alerts" + docs/10 §1–§5.
  *
@@ -328,9 +330,12 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
 
   return (
     <Screen variant="corner" layout="tab" testID="screen-alerts">
-      <View style={{ paddingTop: 8, paddingHorizontal: 16, paddingBottom: 6, gap: 10 }}>
+      <View style={{ paddingTop: 8, paddingHorizontal: layout.gutter, paddingBottom: 6, gap: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <T variant="screenTitle" weight="bold">{second.title}</T>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 }}>
+            <BrandMarkButton />
+            <T variant="sectionTitle" weight="bold" numberOfLines={1}>{second.title}</T>
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             {/*
               Where the natural-language bar went. `/alert/new` is the same
@@ -364,7 +369,7 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
         ref={listRef}
         onLayout={(e) => { listH.current = e.nativeEvent.layout.height; }}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 10, gap: 10 }}
+        contentContainerStyle={{ paddingHorizontal: layout.gutter, paddingBottom: 10, gap: layout.cardGap }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         testID={`alerts-list-${tab}`}

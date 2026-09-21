@@ -167,8 +167,8 @@ export function SurfaceStrip({
             })}
           >
             <Glyph kind={s.kind} ink={ink} />
-            <T mono variant="meta" weight="semibold" ls={0.6} c={ink}>
-              {LABEL[s.kind].toUpperCase()}{s.symbol ? ` ${s.symbol}` : ''}
+            <T variant="meta" weight="semibold" c={ink}>
+              {LABEL[s.kind]}{s.symbol ? ` ${s.symbol}` : ''}
             </T>
           </Pressable>
         );

@@ -5,8 +5,12 @@ import { color } from './tokens';
 /** Every glyph below is the exact path data from the artboard <svg> markup. */
 export type IconProps = { size?: number; color?: string; strokeWidth?: number };
 
+/**
+ * Round caps and joins on every glyph: at the dock's 1.75 stroke a square
+ * cap reads as a pixel error, and the redesign boards draw every icon round.
+ */
 const S = ({ size = 20, children }: { size?: number; children: React.ReactNode }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">{children}</Svg>
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">{children}</Svg>
 );
 
 export const Bolt = ({ size = 20, color: c = color.volt, strokeWidth = 2 }: IconProps) => (
@@ -97,6 +101,11 @@ export const TradeGlyph = ({ size = 20, color: c = color.muted, strokeWidth = 2 
     <Rect x={5} y={7} width={4} height={10} rx={1} stroke={c} strokeWidth={strokeWidth} />
     <Rect x={15} y={5} width={4} height={9} rx={1} stroke={c} strokeWidth={strokeWidth} />
   </S>
+);
+
+/** The Trade tab on the redesign boards: three bars of rising height. */
+export const TradeBars = ({ size = 20, color: c = color.muted, strokeWidth = 2 }: IconProps) => (
+  <S size={size}><Path d="M6 20v-7M12 20V5M18 20v-10" stroke={c} strokeWidth={strokeWidth} /></S>
 );
 
 export const AccountGlyph = ({ size = 20, color: c = color.muted, strokeWidth = 2 }: IconProps) => (

@@ -39,6 +39,8 @@ import type { ConversationRow, GoalMode, Stage, WallItem } from '../../lib/types
 import { KaiMicButton, previewVoiceInFixtures, useKaiVoice } from '../../features/voice'; // LANE C voice
 import { useTextScale } from '../../features/a11y/context';
 
+import { BrandMarkButton } from '../../ui/BrandMark';
+import { layout } from '../../ui/tokens';
 /** The five read-only panels, which get a taller band than the object surfaces. */
 const PANEL_KINDS = new Set<string>(['quote', 'earnings', 'options', 'watchlist', 'portfolio']);
 
@@ -598,8 +600,9 @@ export default function Home() {
         Inside another conversation its title sits on the second row, and
         tapping it goes back to today.
       */}
-      <View style={{ paddingTop: 4, paddingHorizontal: 16, paddingBottom: 6, gap: 4 }} testID="warroom-bar">
+      <View style={{ paddingTop: 4, paddingHorizontal: layout.gutter, paddingBottom: 6, gap: 4 }} testID="warroom-bar">
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <BrandMarkButton />
           {/* Re-read on open: a conversation started in this sitting only exists
               on the server after its first turn, and the drawer is where somebody
               goes to come back to it. */}
@@ -620,8 +623,8 @@ export default function Home() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 18 }}>
           <KaiStatusLight state={kaiState} />
           {stage ? (
-            <T mono variant="meta" ls={0.6} c={color.dim} numberOfLines={1} testID="warroom-stage">
-              {`· ${STAGE_LABEL[stage].toUpperCase()}`}
+            <T variant="meta" c={color.dim} numberOfLines={1} testID="warroom-stage">
+              {`· ${STAGE_LABEL[stage]}`}
             </T>
           ) : null}
           {thread.kind === 'today' ? (
@@ -691,7 +694,7 @@ export default function Home() {
         {!activeSurface ? (
           <HudFrame
             testID="warroom-brain"
-            label="KAI · BRAIN"
+            label="Kai · brain"
             dim={kaiState === 'offline'}
             compact={compactBrain}
           >
@@ -977,7 +980,7 @@ export default function Home() {
                 size={52}
                 primary
               />
-              <T mono variant="meta" ls={0} c={voice.phase === 'recording' ? color.volt : voice.phase === 'speaking' ? color.violetLight : color.dim} testID="warroom-mic-word">
+              <T variant="meta" c={voice.phase === 'recording' ? color.volt : voice.phase === 'speaking' ? color.violetLight : color.dim} testID="warroom-mic-word">
                 {voice.phase === 'recording' ? 'LISTENING…'
                   : voice.phase === 'speaking' ? 'SPEAKING'
                     : voice.phase === 'transcribing' || voice.phase === 'starting' ? 'ONE SEC'

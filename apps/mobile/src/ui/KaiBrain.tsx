@@ -266,8 +266,8 @@ export function KaiBrain({ state, lit, level = 0, height = 150, compact = false,
         style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 4 : 5, justifyContent: side === 'left' ? 'flex-end' : 'flex-start' }}
       >
         {side === 'right' ? dot : null}
-        <T mono variant="meta" weight={on ? 'bold' : 'medium'} ls={compact ? 0.2 : 0.6} lh={compact ? 13 : undefined} c={on ? color.violetLight : color.dim} numberOfLines={1}>
-          {text.toUpperCase()}
+        <T variant="meta" weight={on ? 'semibold' : 'medium'} lh={compact ? 13 : undefined} c={on ? color.violetLight : color.dim} numberOfLines={1}>
+          {text}
         </T>
         {side === 'left' ? dot : null}
       </View>
@@ -376,8 +376,8 @@ export function KaiStatusLight({ state, testID = 'kai-status' }: { state: KaiSta
           shadowColor: ink, shadowOpacity: state === 'offline' ? 0 : 0.8, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },
         }}
       />
-      <T mono variant="meta" weight="semibold" ls={0.6} c={state === 'offline' ? color.muted : ink} testID={`${testID}-word`}>
-        {STATE_WORD[state].toUpperCase()}
+      <T variant="meta" weight="semibold" c={state === 'offline' ? color.muted : ink} testID={`${testID}-word`}>
+        {STATE_WORD[state]}
       </T>
     </View>
   );
@@ -402,33 +402,15 @@ export function HudFrame({
   style?: object;
   testID?: string;
 }) {
-  const ink = dim ? alpha.ivory16 : alpha.violet45;
-  const arm = 12;
-  const corner = (pos: 'tl' | 'tr' | 'bl' | 'br') => (
-    <View
-      key={pos}
-      pointerEvents="none"
-      style={{
-        position: 'absolute', width: arm, height: arm, borderColor: ink,
-        top: pos[0] === 't' ? 0 : undefined,
-        bottom: pos[0] === 'b' ? 0 : undefined,
-        left: pos[1] === 'l' ? 0 : undefined,
-        right: pos[1] === 'r' ? 0 : undefined,
-        borderTopWidth: pos[0] === 't' ? 1 : 0,
-        borderBottomWidth: pos[0] === 'b' ? 1 : 0,
-        borderLeftWidth: pos[1] === 'l' ? 1 : 0,
-        borderRightWidth: pos[1] === 'r' ? 1 : 0,
-      }}
-    />
-  );
   return (
     <View testID={testID} style={[{ paddingHorizontal: 10, paddingTop: compact ? 4 : 8, paddingBottom: compact ? 5 : 10 }, style]}>
-      {corner('tl')}{corner('tr')}{corner('bl')}{corner('br')}
+      {/* REDESIGN 2026-09-21: the four corner brackets are gone — the spec
+          removes "decorative terminal brackets and HUD ornament". */}
       {/* Compact drops the label row: the bar above already reads KAI · WAR ROOM,
           and on large text those 18 points are what keep the first button in view. */}
       {compact && !right ? null : (
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-          <T mono variant="meta" weight="semibold" ls={1.1} c={color.dim}>{label}</T>
+          <T variant="meta" weight="semibold" c={color.dim}>{label}</T>
           {right}
         </View>
       )}

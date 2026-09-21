@@ -1,14 +1,15 @@
 import React from 'react';
-import { View, Pressable } from 'react-native';
+import { View, Pressable, StyleSheet } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
-import { alpha, chrome, color } from './tokens';
+import { alpha, chrome, color, layout } from './tokens';
 import { T } from './Text';
-import { HomeGlyph, Bell, Users, TradeGlyph, AccountGlyph, DeskGlyph, Lock } from './Icons';
+import { HomeGlyph, Bell, Users, TradeBars, AccountGlyph, DeskGlyph, Lock } from './Icons';
 import { DEFAULT_MODE, secondTab } from '../features/nav/second-tab';
 import type { GoalMode } from '../lib/types';
 
-type Item = { name: string; label: string; Icon: React.ComponentType<{ size?: number; color?: string }> };
+type Item = { name: string; label: string; Icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }> };
 
 /**
  * L6 nav, owner-confirmed: Home · [Alerts | Research] · Community · Trade · Account.
@@ -24,7 +25,7 @@ function items(mode: GoalMode): Item[] {
     { name: 'home', label: 'Home', Icon: HomeGlyph },
     { name: 'alerts', label: second.label, Icon: second.icon === 'desk' ? DeskGlyph : Bell },
     { name: 'community', label: 'Community', Icon: Users },
-    { name: 'trade', label: 'Trade', Icon: TradeGlyph },
+    { name: 'trade', label: 'Trade', Icon: TradeBars },
     { name: 'account', label: 'Account', Icon: AccountGlyph },
   ];
 }
@@ -50,24 +51,35 @@ export function TabBar({ state, navigation, badges, locked, mode = DEFAULT_MODE 
   const activeName = state.routes[state.index]?.name;
   const ITEMS = items(mode);
 
+  /**
+   * THE DOCK (redesign 2026-09-21). Identical on every primary screen: five
+   * items, 22px glyphs at a 1.75 stroke on one optical grid, active in action
+   * orange, inactive in the secondary ink. Translucent blur lives here and on
+   * the composers and NOWHERE else — it is how persistent navigation is told
+   * from content. The blur sits under a dock-coloured veil, so a platform
+   * that cannot blur (older Android, a reduced-transparency setting) still
+   * paints a legible, near-opaque bar instead of see-through text.
+   */
   return (
     <View
       testID="tab-bar"
       style={{
         flexDirection: 'row',
         justifyContent: 'space-around',
-        paddingTop: 8,
+        paddingTop: 6,
         paddingHorizontal: 8,
         paddingBottom: Math.max(insets.bottom, chrome.tabBarBottom),
-        borderTopWidth: 1,
-        borderTopColor: alpha.ivory07,
-        backgroundColor: color.bg,
+        borderTopWidth: layout.border,
+        borderTopColor: alpha.border,
+        overflow: 'hidden',
       }}
     >
+      <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: alpha.dock }]} />
       {ITEMS.map(({ name, label, Icon }) => {
         const active = activeName === name;
         const shut = Boolean(locked?.[name]) && !active;
-        const c = active ? color.volt : shut ? color.dim : color.muted;
+        const c = active ? color.action : color.textSecondary;
         return (
           <Pressable
             key={name}
@@ -78,21 +90,20 @@ export function TabBar({ state, navigation, badges, locked, mode = DEFAULT_MODE 
             onPress={() => {
               if (!active) navigation.navigate(name);
             }}
-            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-            style={{ alignItems: 'center', gap: 3, minWidth: 44, minHeight: 44, justifyContent: 'center' }}
+            style={{ flex: 1, alignItems: 'center', gap: 4, minWidth: 44, minHeight: 50, justifyContent: 'center' }}
           >
             <View>
-              <Icon size={20} color={c} />
+              <Icon size={layout.navIcon} color={c} strokeWidth={layout.navStroke} />
               {badges?.[name] ? (
-                <View style={{ position: 'absolute', top: -2, right: -6, width: 7, height: 7, borderRadius: 3.5, backgroundColor: color.gold }} />
+                <View style={{ position: 'absolute', top: -1, right: -4, width: 8, height: 8, borderRadius: 4, backgroundColor: color.action, borderWidth: 1.5, borderColor: color.canvas }} />
               ) : null}
               {shut ? (
-                <View style={{ position: 'absolute', top: -3, right: -7 }} testID={`tab-${name}-locked`}>
-                  <Lock size={10} color={color.gold} strokeWidth={2.4} />
+                <View style={{ position: 'absolute', top: -3, right: -8 }} testID={`tab-${name}-locked`}>
+                  <Lock size={11} color={color.textSecondary} strokeWidth={2.2} />
                 </View>
               ) : null}
             </View>
-            <T variant="meta" weight={active ? 'semibold' : 'regular'} c={c}>{label}</T>
+            <T variant="meta" weight={active ? 'semibold' : 'medium'} c={c}>{label}</T>
           </Pressable>
         );
       })}
