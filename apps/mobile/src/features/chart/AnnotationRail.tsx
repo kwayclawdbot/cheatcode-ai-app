@@ -26,7 +26,7 @@ import { Num } from '../../ui/Text';
 import { alpha, color, radius } from '../../ui/tokens';
 import type { Annotation } from '../portal/types';
 import { KIND_LABEL, PROVENANCE_LABEL } from '../portal/types';
-import { kindColor } from './semantics';
+import { annotationColor } from './semantics';
 import { useMotion } from '../a11y/context';
 import { Focusable } from '../../ui/Focus';
 
@@ -93,7 +93,7 @@ export function AnnotationRail({
       style={{ flexGrow: 0 }}
     >
       {visible.map((a) => {
-        const c = kindColor(a.kind);
+        const c = annotationColor(a);
         const dead = a.status === 'invalidated';
         // The KIND, then the NUMBER. Not the chip's own label: "Entry 504-507"
         // followed by "504.00" says the same thing twice and pushes the next

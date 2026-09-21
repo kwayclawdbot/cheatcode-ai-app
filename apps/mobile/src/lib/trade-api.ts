@@ -316,6 +316,8 @@ function adaptPreview(v: unknown, ticket?: OrderTicket): OrderPreview {
     stop_attached: stop,
     first_target: target,
     max_loss: maxLoss,
+    rr: num(pick(riskBlock, 'rr')) ?? num(pick(src, 'rr')),
+    fill_price: num(pick(est, 'fill_price')) ?? num(pick(src, 'est_fill_price')),
     max_loss_pct: num(pick(src, 'max_loss_pct'))
       ?? (maxLoss != null && total ? (maxLoss / total) * 100 : null),
     expires_at: str(pick(src, 'expires_at'))
@@ -1451,6 +1453,7 @@ export const portalApi = {
         recent: symList(pick(drawers, 'recent')),
       },
       is_fixture: false,
+      thesis_plain: str(pick(obj(pick(raw, 'restored')), 'thesis_plain')) || null,
       notice: degraded
         ? 'The portal service is not live on this stack yet — the chart, levels and plan come from the symbol endpoint.'
         : null,

@@ -183,7 +183,10 @@ const RULES = `(function(){
         var lvl=(Math.abs(r-242)<30&&Math.abs(g-242)<30&&Math.abs(b-240)<30)
              || (Math.abs(r-229)<40&&Math.abs(g-72)<40&&Math.abs(b-77)<40)
              || (Math.abs(r-18)<40&&Math.abs(g-161)<40&&Math.abs(b-80)<40)
-             || (Math.abs(r-255)<30&&Math.abs(g-90)<30&&b<70);
+             || (Math.abs(r-255)<30&&Math.abs(g-90)<30&&b<70)
+             // Kai's own marks are drawn in Kai violet ink since the Trade
+             // Detail redesign (annotationColor in chart-web/src/01-theme.js).
+             || (Math.abs(r-185)<30&&Math.abs(g-162)<30&&Math.abs(b-250)<30);
         if (lvl) { n++; if (x<minX) minX=x; }
       }
       if (n > w*0.3 && minX < 12) rows[y]=1;

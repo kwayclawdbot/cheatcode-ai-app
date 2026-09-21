@@ -909,7 +909,7 @@ AnnotationLayer.prototype._draw = function (target) {
        * "support" in the sense the engine means — you have not graded it, and
        * colouring it cyan would file your own mark under the app's analysis.
        */
-      var col = a.color || (a.provenance === 'user' ? TOKENS.volt : kindColor(a.kind));
+      var col = a.color || annotationColor(a);
       // Two pulses: the opacity swings, the line does not move. Motion that
       // moves a price line would be a lie about the price.
       var pulse = 1;
@@ -964,7 +964,7 @@ AnnotationLayer.prototype._draw = function (target) {
         // `computedLevels` uses on the server to decide whether a level is
         // acting as support or as resistance. The chart is the only place that
         // knows where price is, so it is the only place that can decide.
-        var zc = a.kind === 'zone' ? self._zoneColour(a) : col;
+        var zc = a.kind === 'zone' && a.provenance !== 'kai' && !a.color ? self._zoneColour(a) : col;
         ctx.globalAlpha = 0.11 * pulse * (dead ? 0.4 : 1);
         ctx.fillStyle = zc;
         ctx.fillRect(bx, byT, bw, bh);
@@ -1299,16 +1299,47 @@ var OVERFLOW_ID = '__levels_overflow__';
 /** The trash on the selected drawing. Same trick: a hit target that is not a mark. */
 var TRASH_ID = '__delete_selected__';
 
-/** The left label plus the price tag hanging on the right edge. */
+/**
+ * The left label plus the price tag hanging on the right edge — or, for the
+ * trade's own three levels, ONE tag that says both.
+ *
+ * REDESIGN 2026-09-21 (Trade Detail board): entry, stop and target read as a
+ * single labelled price tag at the right edge — "Target 30.49", "Entry 24.40",
+ * "Stop 22.37" — filled in the level's meaning colour. A left chip AND a right
+ * tag for the same line was two labels for one fact, and on a phone the left
+ * chip collided with the timeframe rail and the chart's own glyphs. The merged
+ * tag is also the tap target, so inspecting a level still works.
+ *
+ * Only the trade kinds merge, and only when the engine or Kai placed them. A
+ * level the member drew keeps its chip in their colour, and every other kind
+ * (support, a trigger, an overlay) keeps the chip that names it.
+ */
+var TAG_KINDS = { entry: true, stop: true, target: true, invalidation: true };
+
 AnnotationLayer.prototype._chipAndTag = function (ctx, a, col, y, W, chip, base, hit, dead, extra) {
+  var merged = TAG_KINDS[a.kind] === true && a.price != null && a.provenance !== 'user';
   // Slide out from under the rail rather than being covered by it. The LINE
   // still starts at x=0 — only the label moves, and only when it has to.
-  this._chipAt(ctx, a, col, 4, y, chip, base, hit, dead, W, extra);
+  if (!merged) this._chipAt(ctx, a, col, 4, y, chip, base, hit, dead, W, extra);
   if (a.price == null || chip <= 0) return;
-  var txt = fmtPrice(a.price);
+  var txt = merged
+    ? (KIND_LABEL[a.kind] || a.kind) + ' ' + fmtPrice(a.price) + (extra > 0 ? ' +' + extra : '')
+    : fmtPrice(a.price);
   ctx.font = TAG_FONT;
   var w = ctx.measureText(txt).width + 10;
   var x = W - w - 3;
+  // On a narrow plot the labelled tag can reach back under the floating
+  // timeframe rail. The price is the part that must stay readable, so the tag
+  // drops its word before it lets the rail cover its number.
+  var av = this._avoid;
+  if (merged && av && y > av.y - 9 && y < av.y + av.h + 9 && x < av.x + av.w + 4) {
+    txt = fmtPrice(a.price);
+    w = ctx.measureText(txt).width + 10;
+    x = W - w - 3;
+    // Still under it: draw no tag rather than half of one. The line keeps its
+    // colour and the price scale still prints the number at this height.
+    if (x < av.x + av.w + 4) return;
+  }
   ctx.globalAlpha = (dead ? 0.4 : 1) * chip;
   ctx.fillStyle = col;
   roundRect(ctx, x, y - 7.5, w, 15, 3);
@@ -1317,6 +1348,7 @@ AnnotationLayer.prototype._chipAndTag = function (ctx, a, col, y, W, chip, base,
   ctx.textAlign = 'center';
   ctx.fillText(txt, x + w / 2, y + 0.5);
   ctx.textAlign = 'left';
+  if (merged) hit.push({ id: a.id, x: x - 6, y: y - 15, w: w + 12, h: 30 });
 };
 
 /** One label chip. Opaque, because the level's own dashed line runs behind it

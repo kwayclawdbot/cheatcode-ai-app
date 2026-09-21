@@ -41,7 +41,8 @@ import { Check } from '../../ui/Icons';
 import type { OrderPreview, OrderRow } from '../orders/types';
 import { ACTION_LABEL, PLACING_LABEL, orderSteps, stateForOrderStatus } from '../orders/vocabulary';
 import { OrderProgress, ObjectStateStrip } from '../orders/ExecutionUI';
-import { rPlain, riskOf, type TradeRead } from './read';
+import type { TradeRead } from './read';
+import { confirmNumbers } from './order-math';
 import type { TakeSize } from './useTake';
 import { PAPER_VENUE } from './venues';
 
@@ -81,12 +82,14 @@ export function ConfirmCard({
    */
   shareDefault?: boolean;
 }) {
-  const entry = read.because.find((l) => l.key === 'entry')?.price ?? null;
-  const stop = read.because.find((l) => l.key === 'stop')?.price ?? null;
-  const target = read.because.find((l) => l.key === 'target')?.price ?? null;
-  const shares = preview.qty ?? size.shares;
-  const r = riskOf(entry, stop, target, shares);
-  const risk = preview.max_loss ?? r.risk_usd ?? size.risk_usd;
+  /*
+   * ONE SOURCE FOR EVERY NUMBER ON THIS CARD (see `confirmNumbers`). The R used
+   * to be worked out here from the planned entry while the warning under it was
+   * written by the server from the fill price — "3.0R" over "pays 1.35 to 1".
+   */
+  const num = confirmNumbers(read, preview, size);
+  const { stop, target, shares } = num;
+  const risk = num.risk_usd;
   const verdict = preview.risk.verdict;
   const verdictTint = verdict === 'blocker' ? color.red : verdict === 'advisory' ? color.gold : color.green;
   const [share, setShare] = useState(shareDefault);
@@ -110,8 +113,14 @@ export function ConfirmCard({
         </T>
 
         <View style={{ paddingTop: 8 }}>
-          <Line label="Entry" value={entry == null ? '—' : money(entry)} tint={color.cyan} testID="confirm-entry" />
+          <Line label="Fills near" value={num.fill == null ? '—' : money(num.fill)} tint={color.priceEntry} testID="confirm-entry" />
           <Rule />
+          {num.planned_entry != null && num.fill != null && Math.abs(num.planned_entry - num.fill) >= 0.005 ? (
+            <>
+              <Line label="Planned entry" value={money(num.planned_entry)} tint={color.textSecondary} testID="confirm-planned-entry" />
+              <Rule />
+            </>
+          ) : null}
           <Line label="Stop" value={stop == null ? '—' : money(stop)} tint={color.red} testID="confirm-stop" />
           <Rule />
           <Line label="Target" value={target == null ? '—' : money(target)} tint={color.green} testID="confirm-target" />
@@ -127,7 +136,7 @@ export function ConfirmCard({
           <Rule />
           <Line
             label="Reward for that risk"
-            value={rPlain(r.r_multiple) ?? 'not known'}
+            value={num.rr_plain ?? 'not known'}
             testID="confirm-r"
           />
         </View>

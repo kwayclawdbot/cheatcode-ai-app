@@ -221,7 +221,9 @@ section("Kai's declutter never edits your work");
         for (var x=0;x<w;x++) {
           var o=(y*w+x)*4; if (d[o+3]<90) continue;
           if (near(d[o],d[o+1],d[o+2],'#FF5A1F')) v++; // the member's own marks: action orange (was volt)
-          else if (near(d[o],d[o+1],d[o+2],'#F2F2F0')) k++; // Kai's levels: off-white (was cyan)
+          // Kai's marks: Kai violet ink since the Trade Detail redesign; his
+          // trade levels keep their meaning colour (entry off-white).
+          else if (near(d[o],d[o+1],d[o+2],'#B9A2FA') || near(d[o],d[o+1],d[o+2],'#F2F2F0')) k++;
         }
         if (v > w*0.3) voltRows[y]=1;
         if (k > w*0.3) kaiRows[y]=1;

@@ -13,7 +13,7 @@
 import type { OrderSide, OrderTicket } from '../orders/types';
 import { entrySideFor } from '../orders/types';
 import type { TradePortal } from '../portal/types';
-import type { OrderRow } from '../orders/types';
+import type { OrderPreview, OrderRow } from '../orders/types';
 import type { TradeRead } from './read';
 
 export type TakeSize = {
@@ -124,4 +124,67 @@ export function receiptLine(o: OrderRow): string {
   if (o.status === 'cancelled') return `That ${o.symbol} order was cancelled. Nothing was bought.`;
   if (o.status === 'rejected') return `That ${o.symbol} order was rejected. Nothing was bought.`;
   return `Sent.${size ? `${size} ${o.symbol} is` : ` ${o.symbol} is`} accepted and waiting to fill — accepted is not filled, and I will say so when it is.`;
+}
+
+/* ------------------------------------------------------------------ */
+/* The confirmation card's numbers — one source                         */
+/* ------------------------------------------------------------------ */
+
+export type ConfirmNumbers = {
+  /** The entry the plan was built around. Context only; the order is market. */
+  planned_entry: number | null;
+  /** Where the paper engine expects to fill — what the risk and reward are measured from. */
+  fill: number | null;
+  stop: number | null;
+  target: number | null;
+  shares: number | null;
+  risk_usd: number | null;
+  /** Reward against risk, rounded to two places exactly as the server's warning prints it. */
+  rr: number | null;
+  /** "1.35 to 1" — the same words the server's "This pays 1.35 to 1" uses. */
+  rr_plain: string | null;
+};
+
+const r2 = (v: number) => Math.round(v * 100) / 100;
+
+/**
+ * WHY THIS EXISTS: the card printed "3.0R" while the warning under it said
+ * "This pays 1.35 to 1". Both were right about different things — the card
+ * measured from the PLANNED entry, the server measured from the price the
+ * market order will actually fill at — and a person reading them cannot know
+ * that. Two numbers for one question on one card is the bug.
+ *
+ * So there is one source now: the preview. Its `rr` is the number the warning
+ * was written from; its stop and target are the bracket that will actually be
+ * attached; its fill price is what the risk is measured from. The plan's own
+ * levels are used only where the preview is silent, and even then the reward is
+ * measured from the fill price, the way the server does it.
+ */
+export function confirmNumbers(read: TradeRead, preview: OrderPreview, size: TakeSize): ConfirmNumbers {
+  const lvl = (k: 'entry' | 'stop' | 'target') => read.because.find((l) => l.key === k)?.price ?? null;
+  const planned = lvl('entry');
+  const stop = preview.stop_attached ?? lvl('stop');
+  const target = preview.first_target ?? lvl('target');
+  const fill = preview.fill_price ?? preview.limit_price ?? preview.quote?.price ?? null;
+  const shares = preview.qty ?? size.shares;
+
+  let rr: number | null = typeof preview.rr === 'number' && Number.isFinite(preview.rr) ? r2(preview.rr) : null;
+  if (rr == null && fill != null && stop != null && target != null) {
+    const risk = Math.abs(fill - stop);
+    rr = risk > 0 ? r2(Math.abs(target - fill) / risk) : null;
+  }
+  const perShare = fill != null && stop != null ? Math.abs(fill - stop) : null;
+  const risk = preview.max_loss
+    ?? (perShare != null && shares != null ? r2(perShare * shares) : size.risk_usd);
+
+  return {
+    planned_entry: planned,
+    fill,
+    stop,
+    target,
+    shares,
+    risk_usd: risk ?? null,
+    rr,
+    rr_plain: rr == null ? null : `${rr} to 1`,
+  };
 }

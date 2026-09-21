@@ -227,7 +227,10 @@ console.log('\nF06 / the decision essentials are on the card, not behind a tap')
 
 console.log('\nF18 / the attention dot is shared state, not a one-shot fetch');
 {
-  const layout = read('src/app/(tabs)/_layout.tsx');
+  // The dock's state moved to one hook so the Trade section's own dock reads
+  // it too; the tab layout must still go through it.
+  ok('the tab layout reads the shared dock state', read('src/app/(tabs)/_layout.tsx').includes('useDockState'));
+  const layout = read('src/features/nav/dock-state.ts');
   ok('the tab bar no longer asks for alerts itself', !layout.includes('api.alertsSimple('));
   ok('it reads the shared attention instead', layout.includes('useAlertAttention'));
   ok('and only a CHECKED answer draws a dot', layout.includes("attention.status === 'ready'"));
