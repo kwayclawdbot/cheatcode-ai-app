@@ -122,6 +122,16 @@ function LevelCell({ label, value, c, bg, border, compact, testID }: {
   );
 }
 
+/** A level as words: "Entry 504". The number keeps its colour and its face. */
+function InlineLevel({ label, value, c, testID }: { label: string; value: string; c: string; testID?: string }) {
+  return (
+    <View testID={testID} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
+      <T size={12} c={color.muted}>{label}</T>
+      <Num size={12.5} weight="semibold" c={c}>{value}</Num>
+    </View>
+  );
+}
+
 const price = (n: number | null): string | null =>
   n == null ? null : Number.isInteger(n) ? String(n) : n.toFixed(2);
 
@@ -339,7 +349,20 @@ export function CommunityCallCard({
 
       {/* ONLY THE LEVELS THAT EXIST. Same colours as the house card, because a
           stop is a stop whoever wrote it: entry cyan, stop red, target green. */}
-      {hasLevels ? (
+      {/*
+        IN CHAT, THE LEVELS ARE ONE LINE OF TEXT, not three boxes. Three tinted
+        cells in a stream of messages is a dashboard dropped into a
+        conversation; the same three numbers in their own colours, set as a
+        sentence, say the plan and let the chat stay a chat. The full card
+        (profiles, the board) keeps the cells.
+      */}
+      {hasLevels && compact ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 }} testID={`call-levels-${call.id}`}>
+          {entry ? <InlineLevel label="Entry" value={entry} c={color.cyan} testID={`call-entry-${call.id}`} /> : null}
+          {stop ? <InlineLevel label="Stop" value={stop} c={color.red} testID={`call-stop-${call.id}`} /> : null}
+          {target ? <InlineLevel label="Target" value={target} c={color.green} testID={`call-target-${call.id}`} /> : null}
+        </View>
+      ) : hasLevels ? (
         <View style={{ flexDirection: 'row', gap: 6 }} testID={`call-levels-${call.id}`}>
           {entry ? <LevelCell label="Entry" value={entry} c={color.cyan} bg={color.cyanTint} border={alpha.cyan40} compact={compact} testID={`call-entry-${call.id}`} /> : null}
           {stop ? <LevelCell label="Stop" value={stop} c={color.red} bg={color.redTint} border={alpha.red40} compact={compact} testID={`call-stop-${call.id}`} /> : null}
@@ -351,7 +374,7 @@ export function CommunityCallCard({
       {call.thesis ? (
         <PostBody
           text={call.thesis}
-          size={compact ? 12.5 : 13}
+          size={compact ? 14 : 13}
           onTicker={(s) => router.push(`/symbol/${encodeURIComponent(s)}` as never)}
           testID={`call-thesis-${call.id}`}
         />
