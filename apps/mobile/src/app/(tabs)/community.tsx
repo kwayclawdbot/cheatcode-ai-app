@@ -51,6 +51,9 @@ const TABS: { key: FeedTab; label: string }[] = [
   { key: 'trade_calls', label: 'Trade Calls' },
   { key: 'media', label: 'Media' },
 ];
+/** Four equal tabs; when a quarter of the screen cannot hold "Trade Calls" on one line, it says "Calls". */
+const tabsFor = (width: number, scale: number) =>
+  width / 4 >= 92 * scale ? TABS : TABS.map((t) => (t.key === 'trade_calls' ? { ...t, label: 'Calls' } : t));
 
 type Row = { kind: 'post'; post: CommunityPost } | { kind: 'invite'; room: LiveRoom };
 
@@ -170,7 +173,7 @@ export default function Community() {
           <ActivityIndicator color={color.textSecondary} />
         </View>
       )}
-      <SectionTabs tabs={TABS} value={tab} onChange={setTab} testID="feed-tabs" style={{ paddingHorizontal: 4 }} />
+      <SectionTabs tabs={tabsFor(width, scale)} value={tab} onChange={setTab} testID="feed-tabs" style={{ paddingHorizontal: 4 }} />
       {feed.source === 'fixtures' ? (
         <T variant="meta" c={color.textSecondary} style={{ paddingHorizontal: layout.gutter, paddingTop: 8 }}>Example posts</T>
       ) : null}
@@ -199,7 +202,7 @@ export default function Community() {
         title={fullTitle ? 'CheatCode Community' : 'Community'}
         status={{ text: online > 0 ? `${online.toLocaleString()} ${online === 1 ? 'member' : 'members'} online` : 'The club', live: online > 0 }}
         actions={(
-          <View style={{ flexDirection: 'row', gap: 4, marginRight: -6 }}>
+          <View style={{ flexDirection: 'row', marginRight: -8 }}>
             <BarAction testID="club-search" label="Search" onPress={() => router.push('/symbol/search')}>
               <SearchIcon />
             </BarAction>

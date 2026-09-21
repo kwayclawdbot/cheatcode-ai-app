@@ -169,10 +169,15 @@ export function MessageRow({
               {/* A member's call is drawn as its card below, IN PLACE of the
                   sentence it arrived with — both describe the same trade, and
                   printing the two says the idea twice. */}
-              {/* A call's words are its thesis, and the card under them is the
-                  plan: the compact call object carries only the levels, so the
-                  sentence stays (V1 board: the talk, then the structured call). */}
-              {m.body ? (
+              {/* A call arrives with a generated sentence that restates its
+                  levels; the compact call object below already shows them, so
+                  the line says the member's THESIS instead — the why, which the
+                  card does not carry (V1 board: the talk, then the plan). */}
+              {m.community_call ? (
+                m.community_call.thesis ? (
+                  <PostBody text={m.community_call.thesis} size={CHAT.body} lineHeight={CHAT.bodyLh} onTicker={onTicker} />
+                ) : null
+              ) : m.body ? (
                 <PostBody text={m.body} size={CHAT.body} lineHeight={CHAT.bodyLh} onTicker={onTicker} />
               ) : null}
               {m.structured_idea && showStructured ? <StructuredBlock idea={m.structured_idea} /> : null}

@@ -14,7 +14,7 @@
  * tapped and then takes the server's `{on, count}` as the truth.
  */
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { CommunityPost } from '@shared/community';
 import type { MessageMedia, SocialAuthor } from '@cheatcode/shared';
@@ -147,6 +147,7 @@ export function PostCard({
 }) {
   const router = useRouter();
   const scale = useTextScale();
+  const { width: screenW } = useWindowDimensions();
   const p = post;
   const id = testID ?? `post-${p.id}`;
   const openSymbol = (s: string) => router.push(`/symbol/${encodeURIComponent(s)}` as never);
@@ -154,6 +155,10 @@ export function PostCard({
   const charts = p.media.filter((m): m is Extract<typeof m, { type: 'chart' }> => m.type === 'chart');
   const author = p.author;
   const avatarSize = 44;
+
+  // A call published from a room arrives with a generated line that restates
+  // its levels; the call object shows those, so the post says the thesis.
+  const words = !p.room.is_feed && p.trade_call?.thesis ? p.trade_call.thesis : p.body;
 
   // A settled call shows its result card; the call itself stays for its levels.
   const resultCall = p.trade_call && p.result && p.trade_call.id === p.result.call_id ? p.trade_call : null;
@@ -208,7 +213,7 @@ export function PostCard({
           </View>
 
           {/* The words open the thread — the most common tap on a post. */}
-          {p.body ? (
+          {words ? (
             <Pressable
               testID={onOpen ? `${id}-open` : undefined}
               accessibilityRole={onOpen ? 'button' : 'text'}
@@ -217,11 +222,15 @@ export function PostCard({
               onPress={onOpen}
               style={{ marginTop: -4 }}
             >
-              <FeedText text={p.body} onTicker={openSymbol} size={detail ? 'body' : 'body'} />
+              <FeedText text={words} onTicker={openSymbol} />
             </Pressable>
           ) : null}
 
-          {images.length ? <MediaStrip media={images} testID={`${id}-images`} /> : null}
+          {images.length ? (
+            // The strip sizes itself from the screen; the post's column is the
+            // screen less the gutters, the avatar and the gap beside it.
+            <MediaStrip media={images} maxWidth={screenW - layout.gutter * 2 - avatarSize - 12} testID={`${id}-images`} />
+          ) : null}
 
           {charts.map((c, i) => (
             <PostChart
@@ -230,7 +239,7 @@ export function PostCard({
               symbol={c.symbol}
               timeframe={c.timeframe}
               levels={c.levels}
-              height={Math.round(140 * Math.min(scale, 1.15))}
+              height={Math.round(118 * Math.min(scale, 1.15))}
               onExpand={() => openSymbol(c.symbol)}
             />
           ))}

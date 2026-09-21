@@ -249,43 +249,43 @@ export function PostChart({ symbol, timeframe, levels, height = 150, onExpand, t
   const plan = PLAN[timeframe] ?? PLAN['1D'];
   const last = candles.length ? candles[candles.length - 1] : null;
   return (
-    <View testID={testID}>
-      {loading && !candles.length ? (
-        <View style={{ height: height + 28, alignItems: 'center', justifyContent: 'center', borderRadius: radius.xl, borderWidth: 0.5, borderColor: alpha.border }}>
-          <T variant="meta" c={color.textSecondary}>Drawing {symbol}…</T>
-        </View>
-      ) : (
-        <CandleChart
-          candles={candles}
-          levels={chartLevels(levels)}
-          height={height}
-          showVolume={false}
-          footerLeft={plan.label}
-        />
-      )}
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute', top: 8, left: 8, flexDirection: 'row', alignItems: 'center', gap: 6,
-          paddingHorizontal: 6, paddingVertical: 3, borderRadius: 8, backgroundColor: alpha.bg82,
-        }}
-      >
+    <View testID={testID} style={{ gap: 6 }}>
+      {/* The name, the timeframe and the last price sit ABOVE the drawing, not
+          on it: a level tag at the top of the range would otherwise land on
+          top of the label, and at larger text sizes it always does. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <TickerMark symbol={symbol} size={18} />
         <T variant="meta" weight="bold" c={color.textPrimary}>{symbol}</T>
         <Num variant="meta" weight="medium" c={color.textSecondary}>{timeframe}</Num>
+        <View style={{ flex: 1 }} />
         {last ? <Num variant="meta" weight="semibold" c={color.textPrimary}>{px(last.c)}</Num> : null}
       </View>
-      {onExpand ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Open the ${symbol} chart`}
-          onPress={onExpand}
-          hitSlop={4}
-          style={{ position: 'absolute', right: 2, bottom: -4, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <ExpandIcon />
-        </Pressable>
-      ) : null}
+      <View>
+        {loading && !candles.length ? (
+          <View style={{ height: height + 28, alignItems: 'center', justifyContent: 'center', borderRadius: radius.xl, borderWidth: 0.5, borderColor: alpha.border }}>
+            <T variant="meta" c={color.textSecondary}>Drawing {symbol}…</T>
+          </View>
+        ) : (
+          <CandleChart
+            candles={candles}
+            levels={chartLevels(levels)}
+            height={height}
+            showVolume={false}
+            footerLeft={plan.label}
+          />
+        )}
+        {onExpand ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open the ${symbol} chart`}
+            onPress={onExpand}
+            hitSlop={4}
+            style={{ position: 'absolute', right: 2, bottom: -4, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <ExpandIcon />
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }

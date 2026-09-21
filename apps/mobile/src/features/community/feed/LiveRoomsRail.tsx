@@ -20,6 +20,7 @@ import type { LiveRoom } from '@shared/community';
 import { T } from '../../../ui/Text';
 import { alpha, color, layout, radius } from '../../../ui/tokens';
 import { TickerMark } from '../../../ui/Ticker';
+import { useTextScale } from '../../a11y/context';
 import type { Circle } from '../../circles/types';
 import {
   AskKaiGlyph, BeginnersGlyph, InvestorsGlyph, RoomGlyph, WarRoomGlyph, WinsGlyph,
@@ -80,9 +81,9 @@ function Ring({ lit, kai, live, children, testID }: {
   );
 }
 
-function Label({ name, sub, dot }: { name: string; sub: string; dot: boolean }) {
+function Label({ name, sub, dot, width }: { name: string; sub: string; dot: boolean; width: number }) {
   return (
-    <View style={{ alignItems: 'center', gap: 1, width: ITEM_W }}>
+    <View style={{ alignItems: 'center', gap: 1, width }}>
       <T variant="meta" weight="semibold" c={color.textPrimary} numberOfLines={1}>{name}</T>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
         {dot ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color.marketUp }} /> : null}
@@ -99,6 +100,9 @@ export function LiveRoomsRail({ rooms, circles = [], onOpenRoom, onOpenCircle, t
   onOpenCircle?: (c: Circle) => void;
   testID?: string;
 }) {
+  // Labels grow with the member's text size, so the column does too; the rail
+  // scrolls sideways rather than cutting "Beginners" to "Beginne…".
+  const itemW = Math.round(ITEM_W * Math.max(1, useTextScale()));
   return (
     <ScrollView
       horizontal
@@ -117,7 +121,7 @@ export function LiveRoomsRail({ rooms, circles = [], onOpenRoom, onOpenCircle, t
             accessibilityRole="button"
             accessibilityLabel={`${r.name}${r.live ? ', live' : ''}, ${r.listener_count} online`}
             onPress={() => onOpenRoom(r)}
-            style={({ pressed }) => ({ alignItems: 'center', gap: 6, width: ITEM_W, opacity: pressed ? 0.75 : 1 })}
+            style={({ pressed }) => ({ alignItems: 'center', gap: 6, width: itemW, opacity: pressed ? 0.75 : 1 })}
           >
             <Ring lit={lit} kai={kai} live={r.live} testID={`live-room-${key}-ring`}>
               {glyphFor(r.slug, lit)}
@@ -126,6 +130,7 @@ export function LiveRoomsRail({ rooms, circles = [], onOpenRoom, onOpenCircle, t
               name={r.name}
               sub={r.listener_count > 0 ? `${countLabel(r.listener_count)} online` : 'Quiet'}
               dot={r.listener_count > 0}
+              width={itemW}
             />
           </Pressable>
         );
@@ -137,12 +142,12 @@ export function LiveRoomsRail({ rooms, circles = [], onOpenRoom, onOpenCircle, t
           accessibilityRole="button"
           accessibilityLabel={`${c.name} circle, ${c.time_left_plain}`}
           onPress={() => onOpenCircle?.(c)}
-          style={({ pressed }) => ({ alignItems: 'center', gap: 6, width: ITEM_W, opacity: pressed ? 0.75 : 1 })}
+          style={({ pressed }) => ({ alignItems: 'center', gap: 6, width: itemW, opacity: pressed ? 0.75 : 1 })}
         >
           <Ring lit={c.unread > 0} kai={false} live={false}>
             <TickerMark symbol={c.symbol} size={30} />
           </Ring>
-          <Label name={c.symbol} sub={c.time_left_plain} dot={false} />
+          <Label name={c.symbol} sub={c.time_left_plain} dot={false} width={itemW} />
         </Pressable>
       ))}
       <View style={{ width: 4, borderRadius: radius.pill }} />
