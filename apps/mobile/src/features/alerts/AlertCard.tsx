@@ -3,7 +3,7 @@ import { View, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
-import { alpha, color, gradientAngle, radius } from '../../ui/tokens';
+import { alpha, color, gradientAngle, radius, type as typeScale } from '../../ui/tokens';
 import { T, Num, Eyebrow } from '../../ui/Text';
 import { KaiOrb } from '../../ui/KaiOrb';
 // A ticker is never plain text and never a letter in a gradient square — the
@@ -22,8 +22,9 @@ import { TradeDetail } from '../../ui/trade/TradeDetail';
 import { ideaFromAlertCard, isZone, notesFromAlert } from './trade-adapter';
 import { openKaiSheet } from '../kai-sheet';
 import { kaiContextFor, tradeHref } from './links';
+import { headlineWithoutSymbol, kaiPasses, sideOf } from './card-rules';
 import type {
-  AlertCard as AlertCardModel, AlertCardState, AlertScoreComponent, Candle,
+  AlertCard as AlertCardModel, AlertCardState, AlertOptionContract, AlertScoreComponent, Candle,
 } from '../../lib/types';
 
 /**
@@ -228,201 +229,197 @@ function stateTone(state: AlertCardState): string {
  * The contract graphic is composed, not discarded: `ContractSection` is still
  * the same component, still compact above the fold and filled in on expand.
  */
-export function StandardAlertCard({ alert, testID, candles }: {
+/**
+ * THE DAY TRADE CONTRACT, AS ONE ROW (owner, 21 September: "daytrade is diff
+ * from swing card ui"). Strike and side, expiry, what it cost, and the best it
+ * reached where that was measured — the same four facts on the collapsed and
+ * the opened card. The full contract read (liquidity checks, flow, implied
+ * volatility) is still there, behind "Why".
+ */
+function ContractRow({ c, symbol }: { c: AlertOptionContract; symbol: string }) {
+  const put = c.type === 'put';
+  const paid = c.cost ? (c.cost.startsWith('$') ? c.cost : `$${c.cost}`) : null;
+  const dot = (k: string) => <T key={k} size={typeScale.small.size} c={color.dim}>·</T>;
+  return (
+    <View
+      testID={`contract-row-${symbol}`}
+      accessibilityLabel={[
+        `Contract: ${c.strike} ${put ? 'put' : 'call'}`,
+        c.expiry ? `expires ${c.expiry}` : null,
+        paid ? `paid ${paid}` : null,
+      ].filter(Boolean).join(', ')}
+      style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 6, rowGap: 2 }}
+    >
+      <T size={typeScale.small.size} weight="semibold" c={put ? color.red : color.green}>{put ? 'Put' : 'Call'}</T>
+      <Num size={typeScale.small.size} weight="semibold">{`$${c.strike.replace(/^\$/, '')}`}</Num>
+      {c.expiry ? [dot('d1'), <T key="e" size={typeScale.small.size} c={color.muted}>{`exp ${c.expiry}`}</T>] : null}
+      {paid ? [dot('d2'), <T key="p" size={typeScale.small.size} c={color.muted}>paid</T>, <Num key="pv" size={typeScale.small.size}>{paid}</Num>] : null}
+    </View>
+  );
+}
+
+export function StandardAlertCard({ alert, testID, candles, onOpen }: {
   alert: AlertCardModel;
   testID?: string;
   /** Bars from `/market/candles` — the alert wire carries none. See useAlertCandles. */
   candles?: readonly Candle[];
+  /**
+   * Called when the card opens, so the list can bring it to the top of the
+   * screen — the opened card is sized to fit one screen WITH its action, and
+   * that is only true if the screen starts where the card does.
+   */
+  onOpen?: () => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [story, setStory] = useState(false);
-  const band = gradeBand(alert.grade, alert.score);
+  const [open, setOpenState] = useState(false);
+  const setOpen = (v: boolean) => {
+    setOpenState(v);
+    if (v) onOpen?.();
+  };
+  const [why, setWhy] = useState(false);
+  const passes = kaiPasses(alert);
+  // The frame follows the same rule as the badge: no gold on a card Kai passes on.
+  const band = passes ? gradeBand(null, 0) : gradeBand(alert.grade, alert.score);
   const acting = ACTING.has(alert.state);
   const trade = alert.trade;
   const bars = tradeBars(alert);
   const contracts = alert.recommended_options ?? [];
-  const hasStory = !!(alert.company_summary || alert.kai_interpretation || alert.community);
+  const contractLed = contracts.length > 0;
 
-  const idea = useMemo(() => ideaFromAlertCard(alert, { candles }), [alert, candles]);
+  const idea = useMemo(() => {
+    const base = ideaFromAlertCard(alert, { candles });
+    return { ...base, title: headlineWithoutSymbol(base.title, alert.symbol) };
+  }, [alert, candles]);
   const notes = useMemo(() => notesFromAlert(alert), [alert]);
   const hasLevels = idea.entry != null || idea.stop != null || idea.target != null;
   const rr = riskReward(idea);
   const hasPlan = rr !== null;
-  const contractLed = contracts.length > 0;
   /**
    * A ZONE IS NOT A PRICE, AND A RATIO MEASURED OFF ITS EDGE IS A BEST CASE.
-   *
-   * The wire sends entries as zones — `'504–507'` — and the kit's ruler works
-   * from one number per level. Feeding it the near edge would produce a
-   * confident risk/reward that is arithmetically fine and quietly flattering:
-   * it prices a fill at the best end of a range the member has not got yet.
-   *
-   * So a card with a zone in it does not draw the computed ruler. It shows the
-   * server's own ratio, which was measured by whatever actually knows how this
-   * engine sizes a zone, and it says where that number came from.
+   * A card with an entry zone shows the server's own ratio, never one computed
+   * from the near edge of the range. (Unchanged rule; see trade-adapter.ts.)
    */
   const zoned = isZone(trade.entry) || isZone(trade.stop) || isZone(trade.target);
-  /** The wire's words for each level, so a zone prints as the zone it is. */
-  const levelText = {
-    entry: trade.entry ?? null,
-    stop: trade.stop ?? null,
-    target: trade.target ?? null,
-  };
-  /* No levels and no bars is nothing to draw. The kit would say so in words,
-     but a chart frame reporting its own emptiness on every card of a family
-     that never has one is furniture, not information. */
+  const levelText = { entry: trade.entry ?? null, stop: trade.stop ?? null, target: trade.target ?? null };
   const showMap = hasLevels || (candles?.length ?? 0) > 0;
+  const holdPlan = [trade.hold, trade.expires ? `expires ${trade.expires}` : null].filter(Boolean).join(' · ');
+  const openPortal = () => router.push(tradeHref(alert) as never);
+  const side = sideOf(alert);
 
-  /**
-   * How long you are meant to hold it, and when the setup stops counting —
-   * one plain line. Either half can be missing; a missing half is left out
-   * rather than shown as a dash, which would read as "no plan".
-   */
-  const holdPlan = [trade.hold, trade.expires ? `expires ${trade.expires}` : null]
-    .filter(Boolean).join(' · ');
+  const rrValue = zoned
+    ? (trade.rr ? <Num size={typeScale.small.size} weight="semibold" c={color.text} testID={`alert-rr-stated-${alert.symbol}`}>{trade.rr}</Num> : null)
+    : rr
+      ? <Num size={typeScale.small.size} weight="semibold" c={passes ? color.muted : color.green} testID={`alert-rr-${alert.symbol}`}>{`${rr.ratio.toFixed(1)}R`}</Num>
+      : null;
 
-  const openPortal = () =>
-    router.push(tradeHref(alert) as never);
+  const chevron = (
+    <View style={{ width: 22, alignItems: 'center' }}><Chevron open={open} /></View>
+  );
 
-  /* The setup type, which the audit asks for by name and the wire already
-     knows in the member's own words. */
-  const eyebrow = [alert.mode_label, alert.direction_label, alert.instrument_label]
-    .filter(Boolean).join(' · ');
-
-  /**
-   * The lifecycle row, and under it the bar that says how close a watching
-   * card is. The pill prints the SERVER's word, never the kit's collapsed one,
-   * so a resting order reads "Order pending" and not "Entry reached".
-   */
-  const statusSlot = (
-    <View style={{ gap: 9, marginTop: open ? 12 : 9 }}>
+  /* When it happened is printed WHOLE — see TradeStatusStrip's `line`. */
+  const status = (
+    <View style={{ gap: 6 }}>
       <TradeStatusStrip
-        variant="pill"
-        dense={!open}
+        variant="line"
         status={idea.status}
         label={alert.state_label}
         hint={alert.progress?.label ?? alert.triggered_at_label ?? undefined}
         testID={`alert-state-${alert.symbol}`}
-        /*
-          THE REWARD RIDES ON THE STATE ROW when the board is dense. Collapsed,
-          a separate ruler cost a whole row to say a number that belongs to the
-          same question the pill is already answering. Expanded, the proportional
-          ruler comes back — there the picture is worth the space, because a
-          member is deciding rather than comparing.
-        */
-        /*
-          A ZONE IS ASKED FIRST, and the order is the whole point.
-          Written the other way round this read the computed ratio off the near
-          edge of a range and printed 2.7R on a card whose server had said
-          2.4:1 — the exact best-case-dressed-as-the-case that the zone rule
-          exists to refuse, reintroduced by a convenience.
-        */
-        trailing={open ? null : zoned ? (trade.rr ? (
-          <Num size={13} weight="semibold" c={color.text} testID={`alert-rr-stated-${alert.symbol}`}>
-            {trade.rr}
-          </Num>
-        ) : null) : rr ? (
-          <Num size={13} weight="semibold" c={color.green} testID={`alert-rr-${alert.symbol}`}>
-            {`${rr.ratio.toFixed(1)}R`}
-          </Num>
-        ) : null}
+        trailing={open ? rrValue : null}
       />
       {alert.progress ? (
-        <View
-          testID={`alert-progress-${alert.symbol}`}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}
-        >
-          <T size={11} c={color.muted} style={{ width: 74 }}>To trigger</T>
-          <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: alpha.ivory08, overflow: 'hidden' }}>
-            <View style={{ width: `${Math.max(0, Math.min(100, alert.progress.pct))}%`, height: '100%', borderRadius: 3, backgroundColor: color.violet }} />
-          </View>
-          <Num size={11} c={color.muted}>{alert.progress.label}</Num>
+        <View testID={`alert-progress-${alert.symbol}`} style={{ height: 4, borderRadius: 2, backgroundColor: alpha.ivory08, overflow: 'hidden' }}>
+          <View style={{ width: `${Math.max(0, Math.min(100, alert.progress.pct))}%`, height: '100%', backgroundColor: color.violet }} />
         </View>
       ) : null}
     </View>
   );
 
+  const contractRow = contractLed ? <ContractRow c={contracts[0]} symbol={alert.symbol} /> : null;
   /*
-    THE CONTRACT IS THE TRADE, so it is not behind the fold, and for this
-    family it is not below the chart either. (owner, 7 Sept: "the daytrade
-    alerts and cards are supposed to be options based")
-
-    Only the options family is affected, and not by a mode check: the swing
-    scanner writes no `recommended_options` at all, so `contracts.length` is
-    already the question "is this a contract-led card". A check on the mode
-    would be a second answer to that, free to disagree with the data.
-
-    Collapsed the graphic is COMPACT — strike rail, days left, cost, the
-    one-line verdict. Expanding fills the SAME object in with implied
-    volatility, the two score blocks and their evidence, rather than moving the
-    contract or drawing it twice.
-  */
-  /*
-    THE CONTRACT, AT TWO DEPTHS (owner, 8 September: the collapsed card was
-    taking more than a full screen).
-
-    Collapsed, this family leads with the contract as ONE LINE — strike, side,
-    expiry, days left, what it cost, and whether it can be traded at a fair
-    price. That is the whole of what a member needs to decide whether to open
-    it, and it is forty pixels instead of three hundred.
-
-    Expanding restores the graphic in full: the strike rail, the runway, the
-    two score blocks and their evidence. Nothing about the contract was
-    deleted, and it is still the FIRST object on this family's card at both
-    depths, which is what page 7 asks for.
-  */
-  const lead = contractLed ? (
-    <View style={{ marginTop: 14 }}>
-      {open ? (
-        <ContractSection contracts={contracts} symbol={alert.symbol} />
-      ) : (
-        <ContractLine c={contracts[0]} symbol={alert.symbol} showLiquidity />
-      )}
-    </View>
-  ) : undefined;
-
-  /**
-   * WHAT STANDS WHERE THE RULER WOULD BE, WHEN THERE IS NO PLAN TO MEASURE.
-   *
-   * The unusual-options family has no stop and no target, so there is no ratio
-   * — not a ratio of zero, and not a ruler waiting for data. The server
-   * already sends a sentence explaining the gap and that sentence is the
-   * honest object here; the fallback names the absence plainly rather than
-   * leaving the space blank, because a blank reads as nothing to say.
+   * EXPLAIN BEFORE PLAN, for the family that needs it (audit page 7): "a
+   * beginner who understands a stock setup should not be assumed to understand
+   * a contract." On the opened card the offer sits right under the contract,
+   * above the action that takes it.
    */
-  const plan = hasPlan && !zoned ? undefined : zoned && trade.rr ? (
-    <View
-      testID={`alert-rr-stated-${alert.symbol}`}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: open ? 12 : 9 }}
-    >
-      <T size={12.5} c={color.muted}>Planned risk/reward</T>
-      <Num size={14} c={color.text}>{trade.rr}</Num>
-      <T size={11.5} c={color.muted} style={{ flex: 1 }}>from Kai's plan</T>
+  const contractOpen = contractLed ? (
+    <View style={{ gap: 0 }}>
+      {contractRow}
+      <Pressable
+        onPress={() => openKaiSheet({
+          context: kaiContextFor(alert),
+          question: `Explain this options signal on ${alert.symbol} — what was detected, and what would I actually be buying?`,
+        })}
+        accessibilityRole="button"
+        testID={`alert-explain-${alert.symbol}`}
+        style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' }}
+      >
+        <T size={typeScale.sub.size} weight="semibold" c={color.violetLight}>Explain this signal ↗</T>
+      </Pressable>
+    </View>
+  ) : null;
+
+  /*
+   * THE VERDICT, IN TWO SENTENCES THAT EACH GET THE WIDTH.
+   * "Your risk $91 · fits daily cap" and "Reward against risk is 0.65 to 1 …
+   * I would leave this one" used to share one row, so the second was squeezed
+   * into a column one word wide. Stacked, both read as sentences.
+   */
+  const verdict = alert.fit ? (() => {
+    const amount = alert.fit.risk_amount ?? null;
+    const isNumber = !!amount && /^[$\d]/.test(amount.trim());
+    const conflicts = alert.fit.conflict_list ?? [];
+    return (
+      <View testID={`alert-verdict-${alert.symbol}`} style={{ gap: 4 }}>
+        {amount && isNumber ? (
+          <T size={typeScale.small.size} c={color.muted}>
+            Your risk <Num size={typeScale.small.size} c={color.gold}>{amount}</Num>
+            {alert.fit.cap_line ? ` · ${alert.fit.cap_line}` : ''}
+          </T>
+        ) : amount && hasPlan ? (
+          /* With no plan, the plan line above already says why nothing was
+             sized; the same fact twice is one sentence too many. */
+          <T size={typeScale.small.size} lh={19} c={color.muted}>{amount}</T>
+        ) : null}
+        {conflicts
+          .filter((c) => c !== amount && c !== trade.note)
+          // With no plan, "I cannot size this one yet…" is the plan line above
+          // saying the same thing in other words.
+          .filter((c) => hasPlan || !/^I cannot size/i.test(c))
+          .map((c) => (
+          <T key={c} size={typeScale.small.size} lh={19} c={passes ? color.text : color.muted}>{c}</T>
+        ))}
+      </View>
+    );
+  })() : null;
+
+  /* No exit plan (the Day Trade family): the server's own sentence stands in. */
+  const planLine = hasPlan && !zoned ? undefined : zoned && trade.rr ? (
+    <View testID={`alert-rr-stated-${alert.symbol}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <T size={typeScale.small.size} c={color.muted}>Planned risk/reward</T>
+      <Num size={typeScale.small.size} c={color.text}>{trade.rr}</Num>
     </View>
   ) : (
-    <T
-      size={12.5}
-      c={color.muted}
-      lh={18}
-      style={{ marginTop: open ? 12 : 9 }}
-      testID={`alert-no-plan-${alert.symbol}`}
-    >
+    <T size={typeScale.small.size} c={color.muted} lh={19} testID={`alert-no-plan-${alert.symbol}`}>
       {trade.note ?? 'No exit plan supplied.'}
     </T>
   );
 
-  /**
-   * THE EVIDENCE, once a member has asked for it.
-   *
-   * Everything here answers "why should I believe it", which is a different
-   * question from "what is it" and belongs behind the expander per F06.
-   * Nothing was deleted in the move — the score, the bars, the hold plan, the
-   * company, Kai's read and what the room is saying are all still here.
+  /*
+   * "WHY" — THE EVIDENCE, ONE TAP FURTHER. Nothing here was deleted; it moved
+   * behind a disclosure so the opened card fits one screen with its action
+   * visible (owner, 21 September). What happened in full, the live price with
+   * its freshness, the score and its bars, how long to hold, the contract's
+   * full read, the company, and what members say.
    */
-  const evidence = open ? (
-    <View style={{ gap: 11, marginTop: 14 }}>
-      {/* The live price, with the mark that says how old it is. */}
+  const whyBody = why ? (
+    <View style={{ gap: 10 }} testID={`alert-why-body-${alert.symbol}`}>
+      {/* The company, once, and only when it is a name rather than the symbol
+          again — "P / P" was the symbol standing in for a missing name. */}
+      {alert.company && alert.company.toUpperCase() !== alert.symbol.toUpperCase() ? (
+        <T size={typeScale.small.size} weight="semibold" c={color.text} numberOfLines={2}>{alert.company}</T>
+      ) : null}
+      {alert.what_changed ? <T size={typeScale.small.size} lh={19} c={color.muted}>{alert.what_changed}</T> : null}
       {trade.current ? (
         <View style={{ flexDirection: 'row', gap: 6 }}>
           <LevelCell
@@ -443,77 +440,19 @@ export function StandardAlertCard({ alert, testID, candles }: {
           />
         </View>
       ) : null}
-
-      {/* Where a plan DOES exist, the note is a footnote about it rather than
-          the stand-in for it, so it is shown here instead of above. */}
-      {hasPlan && trade.note ? (
-        <T size={11.5} c={color.muted} lh={17}>{trade.note}</T>
-      ) : null}
-
-      {/*
-        "Your risk $58" is a number with a label. When there is no number, the
-        server sends a SENTENCE instead ("I cannot size this one yet — without
-        both an entry and an invalidation level there is no risk to size
-        against"), and pouring that into the same slot produced "Your risk I
-        cannot size this one yet…" wrapped around a gold dash. A sentence is
-        rendered as a sentence.
-      */}
-      {alert.fit ? (
-        (() => {
-          const amount = alert.fit.risk_amount ?? null;
-          const isNumber = !!amount && /^[$\d]/.test(amount.trim());
-          if (amount && !isNumber) {
-            return <T size={11} c={color.muted} lh={17}>{amount}</T>;
-          }
-          return (
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              {amount ? (
-                <T size={11} c={color.muted}>
-                  Your risk <Num size={11} c={color.gold}>{amount}</Num>
-                  {alert.fit.cap_line ? ` · ${alert.fit.cap_line}` : ''}
-                </T>
-              ) : <View />}
-              {alert.fit.conflicts ? <T size={11} c={color.muted}>{alert.fit.conflicts}</T> : null}
-            </View>
-          );
-        })()
-      ) : null}
-
-      {/*
-        The score and how good each part of the trade is, and how long you are
-        meant to be in it — one card, because they answer the same question.
-        The medallion moved here from the top of the card: a 90pt gauge was the
-        most dominant object on a card whose most useful facts were invisible,
-        and a score is evidence for the idea rather than the idea itself.
-      */}
       {alert.score != null || bars.length || holdPlan ? (
         <View
           testID={`bars-${alert.symbol}`}
-          style={{
-            gap: 9, paddingVertical: 11, paddingHorizontal: 12, borderRadius: 13,
-            backgroundColor: alpha.ivory035, borderWidth: 0.5, borderColor: alpha.ivory10,
-          }}
+          style={{ gap: 9, paddingVertical: 11, paddingHorizontal: 12, borderRadius: 13, backgroundColor: alpha.ivory035, borderWidth: 0.5, borderColor: alpha.ivory10 }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
             {alert.score != null ? (
-              <GradeMedallion
-                grade={alert.grade}
-                score={alert.score}
-                size={62}
-                testID={`medallion-${alert.symbol}`}
-              />
+              <GradeMedallion grade={alert.grade} score={alert.score} size={56} testID={`medallion-${alert.symbol}`} />
             ) : null}
             {bars.length ? (
               <View style={{ flex: 1, minWidth: 0, gap: 7 }}>
                 {bars.map((b) => (
-                  <GradeBar
-                    key={b.key}
-                    label={b.label}
-                    pct={b.pct}
-                    readout={b.readout}
-                    mono={b.mono}
-                    testID={`bar-${b.key}-${alert.symbol}`}
-                  />
+                  <GradeBar key={b.key} label={b.label} pct={b.pct} readout={b.readout} mono={b.mono} testID={`bar-${b.key}-${alert.symbol}`} />
                 ))}
               </View>
             ) : null}
@@ -527,100 +466,78 @@ export function StandardAlertCard({ alert, testID, candles }: {
                 ...(alert.score != null || bars.length ? { paddingTop: 8, borderTopWidth: 0.5, borderTopColor: alpha.ivory08 } : null),
               }}
             >
-              <T size={11} c={color.muted} numberOfLines={1} style={{ width: 99 }}>Hold plan</T>
-              <T size={11} c={color.text} style={{ flex: 1 }}>{holdPlan}</T>
+              <T size={typeScale.small.size} c={color.muted} style={{ width: 90 }}>Hold plan</T>
+              <T size={typeScale.small.size} c={color.text} style={{ flex: 1 }}>{holdPlan}</T>
             </View>
           ) : null}
         </View>
       ) : null}
-
-      {/*
-        The words, one more tap away. None of it is deleted — company, Kai's
-        read and what the room is saying are all still here, they just no
-        longer stand between the trader and the levels.
-      */}
-      {hasStory ? (
-        <View style={{ gap: 9, paddingTop: 10, borderTopWidth: 0.5, borderTopColor: alpha.ivory08 }}>
-          <Pressable
-            onPress={() => setStory((v) => !v)}
-            accessibilityRole="button"
-            accessibilityLabel={story ? 'Hide the story' : 'Read the story'}
-            testID={`alert-story-${alert.symbol}`}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-          >
-            <T size={11} weight="semibold" c={color.violetLight}>{story ? 'Hide the story' : 'The story'}</T>
-            <Chevron open={story} />
-          </Pressable>
-
-          {story ? (
-            <>
-              {alert.company_summary ? (
-                <T size={12} c={color.muted} lh={17}>{alert.company_summary}</T>
-              ) : null}
-
-              {/* Kai's read is on the chart now, against the level it is about
-                  — so here it is the rider that keeps it honest, not a second
-                  copy of the same paragraph. */}
-              {alert.kai_interpretation ? (
-                <T size={11.5} c={color.muted} lh={17}>Kai's assessment, not a guarantee.</T>
-              ) : null}
-
-              {alert.community ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <T size={11} weight="semibold" c={color.violetLight}>Community</T>
-                  <T size={11} c={color.muted} style={{ flex: 1 }}>
-                    {[
-                      alert.community.bullish_pct != null ? `${alert.community.bullish_pct}% bullish` : null,
-                      alert.community.sample != null ? `${alert.community.sample} posts` : null,
-                      alert.community.verification ? `volume claim ${alert.community.verification}` : null,
-                    ].filter(Boolean).join(' · ')}
-                  </T>
-                </View>
-              ) : null}
-            </>
-          ) : null}
+      {contractLed ? <ContractSection contracts={contracts} symbol={alert.symbol} /> : null}
+      {alert.company_summary ? <T size={typeScale.small.size} c={color.muted} lh={19}>{alert.company_summary}</T> : null}
+      {alert.kai_interpretation ? (
+        <T size={typeScale.small.size} c={color.muted} lh={19}>Kai's assessment, not a guarantee.</T>
+      ) : null}
+      {alert.community ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <T size={typeScale.small.size} weight="semibold" c={color.violetLight}>Community</T>
+          <T size={typeScale.small.size} c={color.muted} style={{ flex: 1 }}>
+            {[
+              alert.community.bullish_pct != null ? `${alert.community.bullish_pct}% bullish` : null,
+              alert.community.sample != null ? `${alert.community.sample} posts` : null,
+              alert.community.verification ? `volume claim ${alert.community.verification}` : null,
+            ].filter(Boolean).join(' · ') || 'Nobody has written about this one yet.'}
+          </T>
         </View>
       ) : null}
+      {alert.freshness_line ? <T size={typeScale.tiny.size} c={color.muted}>{alert.freshness_line}</T> : null}
     </View>
   ) : null;
 
-  /* Identity, headline, chart, levels, ruler and lifecycle are the kit's now.
-     The two components below are the same object at two depths; everything
-     passed to them is passed to both, so expanding changes depth and not
-     layout. */
-  /*
-    WHAT THE COLLAPSED CARD IS FOR, restated after the owner read a board of
-    them: "the alert cards are good but they are taking up more than full
-    screen without expanding."
+  const frame = {
+    borderRadius: radius.xxxl, borderWidth: 1, borderColor: band.cardBorder, paddingHorizontal: 13, paddingVertical: 10,
+  } as const;
 
-    He was right, and the fix is not smaller type. A board is for COMPARING —
-    three cards a member can see at once beats one card that explains itself —
-    so the natural state carries only what a decision needs: who, what setup,
-    the headline, the three levels, where it is in its life, what it is worth,
-    and one action. The chart, the sentence under the headline, Kai's note and
-    every piece of evidence move behind the expander, which is where audit F06
-    always said the evidence belonged. F06's own requirement is untouched: the
-    entry, the stop and the target are still readable without expanding, which
-    is why the levels had to come out of `TradeMap` rather than go with it.
-  */
-  const shared = {
-    idea,
-    eyebrow,
-    lead,
+  if (!open) {
     /*
-      Collapsed, the ratio rides on the state row above, so the row that would
-      otherwise repeat it is suppressed — but ONLY when there is a ratio to
-      ride there. A family with no exit plan keeps its sentence, because that
-      sentence is the whole of what it has to say about risk.
-    */
-    plan: !open && (zoned ? !!trade.rr : hasPlan) ? <View /> : plan,
-    levelText,
-    status: statusSlot,
-    showMap: open && showMap,
-    unframed: true as const,
-    showSource: false as const,
-    gradeWhenAbsent: 'state' as const,
-  };
+     * COLLAPSED: THE WHOLE CARD IS THE DOOR TO THE REST OF IT.
+     * One 44pt-plus target the size of the card, which opens it in place. The
+     * action that takes the trade is inside, next to the evidence for it —
+     * "explain before plan" holds for every family, not only options.
+     */
+    return (
+      <Pressable
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`${alert.symbol}, ${side}. ${idea.title}. ${alert.state_label}.`}
+        accessibilityHint="Opens the setup details and the action to take it"
+        testID={testID ?? `alert-card-${alert.symbol}`}
+      >
+        <LinearGradient
+          colors={[band.cardVeil, alpha.surface70]}
+          start={gradientAngle.start}
+          end={gradientAngle.end}
+          style={frame}
+          testID={`alert-expand-${alert.symbol}`}
+        >
+          <SetupPreview
+            idea={idea}
+            dense
+            unframed
+            showMap={false}
+            showSource={false}
+            side={side}
+            status={status}
+            levelText={levelText}
+            extra={contractRow}
+            gradeMuted={passes}
+            gradeSuffix="I'd pass"
+            identityRight={chevron}
+            titleRight={rrValue}
+          />
+        </LinearGradient>
+      </Pressable>
+    );
+  }
 
   return (
     <LinearGradient
@@ -628,93 +545,84 @@ export function StandardAlertCard({ alert, testID, candles }: {
       colors={[band.cardVeil, alpha.surface70]}
       start={gradientAngle.start}
       end={gradientAngle.end}
-      style={{ borderRadius: radius.xxxl, borderWidth: 1, borderColor: band.cardBorder, padding: open ? 15 : 13, gap: open ? 11 : 7 }}
+      style={[frame, { gap: 10 }]}
     >
-      {open ? (
-        <TradeDetail
-          {...shared}
-          notes={notes}
-          askLabel={`Ask Kai about this ${alert.symbol} setup ↗`}
-          onAsk={(ctx) => openKaiSheet({
-            context: kaiContextFor(alert),
-            question: ctx.value != null
-              ? `Why is the ${ctx.level} on ${ctx.symbol} at ${price(ctx.value, idea.pricePrecision)}?`
-              : `What should I know about the ${ctx.level} on ${ctx.symbol}?`,
-          })}
-        >
-          {evidence}
-        </TradeDetail>
-      ) : (
-        <SetupPreview {...shared} showSummary={false} dense />
-      )}
+      <TradeDetail
+        compact
+        idea={idea}
+        notes={notes}
+        side={side}
+        status={status}
+        extra={contractOpen}
+        levelText={levelText}
+        showMap={showMap}
+        plan={planLine}
+        gradeWhenAbsent="state"
+        gradeMuted={passes}
+        gradeSuffix="I'd pass"
+        identityRight={(
+          <Pressable
+            onPress={() => { setOpen(false); setWhy(false); }}
+            accessibilityRole="button"
+            accessibilityLabel="Hide setup details"
+            testID={`alert-collapse-${alert.symbol}`}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={{ minWidth: 44, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' }}
+          >
+            {chevron}
+          </Pressable>
+        )}
+      >
+        {verdict}
+      </TradeDetail>
 
       {/*
-        EXPLAIN BEFORE PLAN, FOR THE FAMILY THAT NEEDS IT (audit page 7).
-
-        "A beginner who understands a stock setup should not be assumed to
-        understand a contract." A swing card's object is a price and three
-        levels, which the map teaches by drawing. An options card's object is a
-        strike, an expiry and a premium, and none of those explain themselves —
-        so this family is offered the explanation FIRST, above the button that
-        takes the trade, rather than being asked to decide and ask afterwards.
-
-        Only the contract-led family gets it, and by `contracts.length` rather
-        than a mode check, for the reason ContractSection already documents.
+        THE ACTION SITS DIRECTLY UNDER THE VERDICT, above the evidence.
+        The verdict (what it risks, whether it fits your rules, whether Kai
+        would pass) is read first — explain before plan — and the button is the
+        next thing, so an opened card has its action on screen without a scroll
+        (owner, 21 September). The longer "why" is below it, one tap away.
       */}
-      {/*
-        It stays on the COLLAPSED card, and that is the point of it: the rule is
-        explain before PLAN, and the plan — "Open Trade Portal" — is offered
-        here. Moving the explanation behind the expander would leave a member
-        able to act on a contract without ever being offered the sentence that
-        says what a contract is. It is a line rather than a filled control at
-        this density, so it costs about twenty pixels of the height budget
-        instead of sixty.
-      */}
-      {contractLed ? (
-        <Pressable
-          onPress={() => openKaiSheet({
-            context: kaiContextFor(alert),
-            question: `Explain this options signal on ${alert.symbol} — what was detected, and what would I actually be buying?`,
-          })}
-          accessibilityRole="button"
-          testID={`alert-explain-${alert.symbol}`}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={{ alignSelf: 'center', paddingVertical: 2 }}
-        >
-          <T size={12.5} weight="semibold" c={color.violetLight}>Explain this signal ↗</T>
-        </Pressable>
-      ) : null}
-
-      {/* ONE state-driven primary action */}
       <Pressable
         onPress={openPortal}
         accessibilityRole="button"
         accessibilityHint={`Opens the ${alert.symbol} trade portal with this alert loaded`}
         testID={`alert-cta-${alert.symbol}`}
         style={{
-          height: 46, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
-          ...(acting
-            ? { backgroundColor: color.volt }
-            : { borderWidth: 0.5, borderColor: alpha.ivory24 }),
+          minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+          ...(acting ? { backgroundColor: color.volt } : { borderWidth: 0.5, borderColor: alpha.ivory24 }),
         }}
       >
-        <T size={14.5} weight="bold" c={acting ? color.bg : color.text}>{alert.primary_action.label}</T>
+        <T size={typeScale.row.size} weight="bold" c={acting ? color.bg : color.text}>{alert.primary_action.label}</T>
       </Pressable>
 
-      <Pressable
-        onPress={() => setOpen((v) => !v)}
-        accessibilityRole="button"
-        accessibilityLabel={open ? 'Hide setup details' : 'View setup details'}
-        testID={`alert-expand-${alert.symbol}`}
-        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-      >
-        <T size={11.5} weight="semibold" c={color.muted}>{open ? 'Hide setup details' : 'View setup details'}</T>
-        <Chevron open={open} />
-      </Pressable>
-
-      {open && alert.freshness_line ? (
-        <T size={10} c={color.muted} align="center">{alert.freshness_line}</T>
-      ) : null}
+      {/* Why, and asking Kai — one row of two 44pt targets. For a contract,
+          "Ask Kai" is the explanation of the signal: explain before plan. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+        <Pressable
+          onPress={() => setWhy((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={why ? 'Hide why' : 'Why — the evidence behind this card'}
+          testID={`alert-why-${alert.symbol}`}
+          style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+        >
+          <T size={typeScale.sub.size} weight="semibold" c={color.text}>{why ? 'Hide why' : 'Why'}</T>
+          <Chevron open={why} />
+        </Pressable>
+        <View style={{ flex: 1 }} />
+        <Pressable
+          onPress={() => openKaiSheet({
+            context: kaiContextFor(alert),
+            question: `What should I know about this ${alert.symbol} setup before I take it?`,
+          })}
+          accessibilityRole="button"
+          testID={`alert-ask-${alert.symbol}`}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <T size={typeScale.sub.size} weight="semibold" c={color.violetLight}>Ask Kai ↗</T>
+        </Pressable>
+      </View>
+      {whyBody}
     </LinearGradient>
   );
 }
@@ -806,10 +714,16 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
   if (outcome?.peak) {
     stats.push({ key: 'peak', label: outcome.peak_label ?? 'Peak', value: outcome.peak, size: 14, minWidth: 62 });
   }
+  /*
+   * HOW LONG IT RAN RIDES ON THE RESULT'S OWN LABEL (owner audit, 21 Sept).
+   * "HELD / 5 sessions" was the widest cell in the row, so it wrapped onto a
+   * whole row of its own to say one short fact. The result IS "what it did
+   * over that time", so the label now says both: RESULT · 5 SESSIONS.
+   */
   if (outcome?.value) {
     stats.push({
       key: 'result',
-      label: 'Result',
+      label: alert.held ? `Result · ${alert.held}` : 'Result',
       value: outcome.value,
       tone: outcome.tone === 'bad' ? color.red : outcome.tone === 'good' ? color.green : color.text,
       // A three-figure return ("+242.1%") is three glyphs wider than a normal
@@ -819,9 +733,6 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
       minWidth: 78,
     });
   }
-  // "5 sessions" is the widest value in the row and the least important, so it
-  // is the one that gives up a point of type to keep all four on one line.
-  if (alert.held) stats.push({ key: 'held', label: 'Held', value: alert.held, size: 13, minWidth: 72 });
 
   /**
    * The single muted line. A rehearsal says so before anything else it could
@@ -830,9 +741,12 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
    * neither, the headline, so the row is never a bare set of numbers with no
    * word on it at all.
    */
+  // With no result cell to carry it, how long it ran leads the muted line.
+  const heldLead = alert.held && !outcome?.value ? `Held ${alert.held}` : null;
+  const basisLine = outcome?.basis ?? (stats.length ? null : alert.headline || null);
   const note = alert.replay
     ? 'Rehearsal, not an alert anyone was sent.'
-    : outcome?.basis ?? (stats.length ? null : alert.headline || null);
+    : [heldLead, basisLine].filter(Boolean).join(' · ') || null;
 
   return (
     <Pressable

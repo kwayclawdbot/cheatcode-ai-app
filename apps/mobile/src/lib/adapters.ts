@@ -1477,6 +1477,13 @@ export function adaptAlertCard(raw: unknown, i = 0): AlertCard {
     alert_id: r4nul(o.alert_id) ?? (/^alert:/.test(r4str(o.id)) ? r4str(o.id).slice(6) : null),
     setup_id: r4nul(o.setup_id) ?? (/^setup:/.test(r4str(o.id)) ? r4str(o.id).slice(6) : null),
     grade: r4str(grade.display ?? o.grade_display ?? o.grade, '—'),
+    // SIZED, AND STILL OUTSIDE THE MEMBER'S RULES — Kai's "I would leave this
+    // one". A plan the server could not size at all (shares null) is not a
+    // pass; it is unsized, and is said so elsewhere. See `kaiPasses`.
+    kai_passes: (() => {
+      const size = r4obj(plan.size);
+      return size.within_policy === false && typeof size.shares === 'number';
+    })(),
     score: r4num(grade.score ?? o.score),
     state,
     state_label: r4str(o.state_label, state === 'watching' || state === 'forming' ? 'Watching' : 'Triggered'),
@@ -1513,6 +1520,7 @@ export function adaptAlertCard(raw: unknown, i = 0): AlertCard {
           risk_amount: riskUsd != null ? `$${Math.round(riskUsd).toLocaleString('en-US')}` : r4nul(fit.risk_amount),
           cap_line: fit.fits_cap === true ? 'fits daily cap' : fit.fits_cap === false ? 'over your daily cap' : r4nul(fit.cap_line),
           conflicts: conflicts.length ? conflicts.join(' · ') : 'No conflicts',
+          conflict_list: conflicts,
         }
       : null,
     community: Object.keys(community).length

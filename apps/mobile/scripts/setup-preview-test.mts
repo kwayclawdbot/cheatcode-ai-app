@@ -205,23 +205,32 @@ console.log('\nF06 / the decision essentials are outside the fold');
     The fold picks a COMPONENT, and both sides get the identical prop bundle.
     That is what makes the essentials unconditional rather than merely early.
   */
-  const fold = src.indexOf('{open ? (');
+  /*
+    REWRITTEN 21 September (owner: "the alert cards are way oversized,
+    daytrade is diff from swing card ui, the expanded alert card is way too big
+    for screen"). The fold is now an early return — collapsed is the kit's
+    dense `SetupPreview`, opened is the kit's compact `TradeDetail` — and Swing
+    and Day Trade go through the SAME two calls; the only family difference is
+    the `extra` contract row. Both branches are handed the same idea, status
+    line, level text and extra row, so the essentials (levels, state, time) are
+    on the card at both depths.
+  */
+  const fold = src.indexOf('if (!open) {');
   ok('the fold chooses between the two kit views', fold > 0
-    && src.indexOf('<TradeDetail', fold) > fold
-    && src.indexOf('<SetupPreview', fold) > fold);
-  ok('and hands both the same object', /const shared = \{/.test(src)
-    && /<TradeDetail\s+\{\.\.\.shared\}/.test(src)
-    && /<SetupPreview\s+\{\.\.\.shared\}/.test(src));
+    && src.indexOf('<SetupPreview', fold) > fold
+    && src.indexOf('<TradeDetail', fold) > src.indexOf('<SetupPreview', fold));
+  const count = (needle: string) => src.split(needle).length - 1;
+  ok('and hands both the same object',
+    count('idea={idea}') >= 2 && count('status={status}') >= 2
+    && count('levelText={levelText}') >= 2 && count('extra={contractRow}') >= 1
+    && src.includes('extra={contractOpen}') && /const contractOpen = contractLed \? \(\s*<View[^>]*>\s*\{contractRow\}/.test(src)
+    && count('side={side}') >= 2);
+  ok('one anatomy for every family — no day-trade-only layout branch',
+    !/contractLed \? \(\s*<View style=\{\{ marginTop: 14 \}\}>/.test(src));
 
   /* What IS behind the fold is the evidence, and only the evidence. */
-  ok('the evidence is gated on the fold', /const evidence = open \?/.test(src));
-  /*
-    The USE, and measured against the EVIDENCE block rather than the fold — the
-    evidence is declared as a const above the ternary that renders it, so a
-    position test against `{open ?` would ask the wrong question and fail on a
-    card that is entirely correct.
-  */
-  const evidenceAt = src.indexOf('const evidence = open ?');
+  ok('the evidence is gated on the fold', /const whyBody = why \?/.test(src));
+  const evidenceAt = src.indexOf('const whyBody = why ?');
   ok('the score moved into the evidence with the rest',
     evidenceAt > 0 && src.indexOf('<GradeMedallion') > evidenceAt);
 
@@ -242,7 +251,7 @@ console.log('\nF06 / the decision essentials are outside the fold');
   ok('the options family is offered an explanation first',
     src.indexOf('Explain this signal') > 0
     && src.indexOf('Explain this signal') < src.indexOf('alert-cta-'));
-  ok('and only that family is', /contractLed \? \(/.test(src));
+  ok('and only that family is', /const contractOpen = contractLed \? \(/.test(src));
 }
 
 /* ================================================================== */

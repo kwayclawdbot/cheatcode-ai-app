@@ -875,6 +875,8 @@ export type AlertFit = {
   risk_amount?: string | null;      // "$58"
   cap_line?: string | null;         // "fits daily cap"
   conflicts?: string | null;        // "No conflicts"
+  /** The same conflicts as separate sentences, so a card can stack them. */
+  conflict_list?: string[];
 };
 
 export type AlertCommunity = {
@@ -1028,6 +1030,11 @@ export type AlertCard = {
   alert_id?: string | null;
   /** The setup this card was built from, when it was — a setup card has no alert row. */
   setup_id?: string | null;
+  /**
+   * The server SIZED this plan and said it is outside the member's own rules
+   * ("I would leave this one"). Drives the no-gold rule — see `kaiPasses`.
+   */
+  kai_passes?: boolean;
   symbol: string;
   company: string;
   mode_label: string;               // "Day Trade"

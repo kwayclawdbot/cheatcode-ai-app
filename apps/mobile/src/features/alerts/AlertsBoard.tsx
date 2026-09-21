@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { ScrollView, View, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '../../ui/Screen';
@@ -191,6 +191,13 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
     env.FIXTURES && params.fixture === 'empty' ? 'empty' : 'default',
   );
   const actions = useAlertActions(reload);
+  /** The list, and where each active card starts in it — see `onOpen`. */
+  const listRef = useRef<ScrollView | null>(null);
+  const cardY = useRef<Record<string, number>>({});
+  const cardH = useRef<Record<string, number>>({});
+  const listH = useRef(0);
+  /** How far the action sits above the bottom of an opened card (why + ask row, padding). */
+  const ctaTail = useRef(64);
   const second = secondTab(mode);
   /** This desk's member calls. A separate route, never folded into `/alerts`. */
   const calls = useDeskCalls(mode);
@@ -354,8 +361,10 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
       </View>
 
       <ScrollView
+        ref={listRef}
+        onLayout={(e) => { listH.current = e.nativeEvent.layout.height; }}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 10, gap: 11 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 10, gap: 10 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         testID={`alerts-list-${tab}`}
@@ -410,17 +419,46 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
                   /* The bars are fetched by the board, not the card: one
                      request per symbol however many cards want it, and the card
                      stays a pure function of what it was handed. */
-                  <StandardAlertCard
+                  <View
                     key={a.id}
-                    alert={a}
-                    candles={candles[a.symbol.toUpperCase()]}
-                  />
+                    onLayout={(e) => {
+                      cardY.current[a.id] = e.nativeEvent.layout.y;
+                      cardH.current[a.id] = e.nativeEvent.layout.height;
+                    }}
+                  >
+                    <StandardAlertCard
+                      alert={a}
+                      candles={candles[a.symbol.toUpperCase()]}
+                      onOpen={() => {
+                        /*
+                         * After the card has grown, bring it into view: its top
+                         * at the top of the list when the whole card fits, or —
+                         * when it is taller than the list — far enough that its
+                         * action is on screen. The action sits under the verdict,
+                         * so what scrolls away first is the header row the member
+                         * just tapped, never the reason or the button.
+                         */
+                        setTimeout(() => {
+                          const y = cardY.current[a.id];
+                          const h = cardH.current[a.id] ?? 0;
+                          if (y == null) return;
+                          const room = listH.current || 0;
+                          const ctaFromTop = Math.max(0, h - ctaTail.current);
+                          const extra = room && ctaFromTop + 16 > room ? ctaFromTop + 16 - room : 0;
+                          listRef.current?.scrollTo({ y: Math.max(0, y - 4 + extra), animated: true });
+                        }, 120);
+                      }}
+                    />
+                  </View>
                 ))}
           </>
         )}
 
         {actions.error ? <T size={11} c={color.red} align="center">{actions.error}</T> : null}
-        {isFixture ? <T size={10} c={color.dim} align="center">Sample alerts — the alerts service is not connected here.</T> : null}
+        {isFixture ? <T size={11} c={color.dim} align="center">Sample alerts — the alerts service is not connected here.</T> : null}
+        <T size={11} lh={16} c={color.dim} align="center" style={{ marginTop: 6 }} testID="alerts-not-advice">
+          {NOT_ADVICE_ALERTS}
+        </T>
       </ScrollView>
 
       {/*
@@ -436,32 +474,14 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
         on its own screen, where it is reachable.
       */}
 
-      <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-        {/*
-          THE "TELL ME WHEN TSLA DROPS BELOW 170…" BAR IS GONE FROM HERE.
-
-          It was a violet Kai bar pinned above the disclaimer on every one of
-          the three tabs, so it sat under the board whether you were reading
-          alerts, member calls or history — a permanent input for a thing most
-          visits are not there to do.
-
-          THE CAPABILITY DID NOT GO WITH IT. That bar built an alert out of a
-          sentence, and the same builder is a whole screen at `/alert/new`
-          ("New alert — Tell Kai what to watch"), which was already reachable
-          from a company page and from a plan. What it was NOT reachable from
-          was this board, which is the one place somebody thinking about alerts
-          actually is — so the header now carries a plus that goes there. The
-          bar became a button, and the button is one line instead of a
-          46pt gradient with its own text field.
-
-          THE DISCLAIMER STAYS. It is about the alerts on the board, not about
-          the composer that used to sit above it, and it is the one line here
-          that is not clutter.
-        */}
-        <T size={9.5} lh={14} c={color.dim} align="center" style={{ marginTop: 8 }} testID="alerts-not-advice">
-          {NOT_ADVICE_ALERTS}
-        </T>
-      </View>
+      {/*
+        THE NOT-ADVICE LINE MOVED INTO THE LIST, AT ITS END (owner audit, 21
+        September). Pinned above the tab bar it cost ~90pt of every screen —
+        about half a card — on every visit, to repeat a sentence a member has
+        read before. It is still on every board, still the last thing in the
+        list, and still unmissable to anyone who reaches the end. The note
+        about the removed "Tell me when…" bar lives in git history.
+      */}
 
       {/* NOT ON YOUR PLAN — SAID, NOT SOLD.
           The title used to read "That needs the premium plan" and the action
