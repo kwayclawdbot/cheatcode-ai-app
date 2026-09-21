@@ -13,7 +13,7 @@
  * time somebody new reads either of them, so this one says whose workspace it is.
  */
 export { WorkspaceHost, SurfaceStrip } from './WorkspaceHost';
-export { PanelLauncher, PanelLauncherButton } from './PanelLauncher';
+export { PanelLauncher } from './PanelLauncher';
 export {
   EarningsSurface, OptionsSurface, PortfolioSurface, QuoteSurface, WatchlistSurface,
 } from './surfaces/panels';

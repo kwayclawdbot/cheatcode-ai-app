@@ -25,8 +25,7 @@ import {
 import { homeStanding } from '../../api/src/lib/v5/standing.ts';
 import { capabilityFor, updatedAtLabel, onlineFrom } from '../src/lib/capability-state.ts';
 import { isFresh, cacheKey, MAX_AGE_MS } from '../src/lib/offline-cache.ts';
-import { openingFor } from '../src/features/home/opening.ts';
-import { withBriefingOffer } from '../src/features/home/wake-message.ts';
+import { composeOpening, followUps, learningPlacement } from '../src/features/home/agent.ts';
 
 
 let failures = 0;
@@ -246,60 +245,36 @@ eq(
 );
 
 /* ================================================================== */
-/* 6 — the opening object (audit F03)                                   */
+/* 6 — the opening (redesign V2, "Kai is an agent")                     */
 /* ================================================================== */
 
 console.log('\n[6] what home opens with');
 
-eq('a beginner opens with the lesson', openingFor({ stage: 'beginner', mode: 'day_trade', hasPriority: true }).kind, 'training');
-eq('so does somebody mid-programme', openingFor({ stage: 'developing', mode: 'invest', hasPriority: true }).kind, 'training');
-eq('and on a quiet morning too', openingFor({ stage: 'beginner', mode: 'day_trade', hasPriority: false }).kind, 'training');
-eq('a trade-ready member opens with the setup', openingFor({ stage: 'trade_ready', mode: 'day_trade', hasPriority: true }).kind, 'priority');
-eq('an investor opens with the company', openingFor({ stage: 'trade_ready', mode: 'invest', hasPriority: true }).kind, 'priority');
-eq('with nothing to decide, the standing opens', openingFor({ stage: 'trade_ready', mode: 'swing', hasPriority: false }).kind, 'standing');
-ok('an unknown stage is treated as a beginner', openingFor({ stage: null, mode: 'day_trade', hasPriority: true }).kind === 'training');
+eq('a beginner meets the learning path near the top', learningPlacement('beginner'), 'top');
+eq('an unknown stage is treated as a beginner', learningPlacement(null), 'top');
+eq('a trade-ready member meets the market first', learningPlacement('trade_ready'), 'below');
+eq('so does a developing trader', learningPlacement('developing'), 'below');
+
+const OPEN_AT = new Date(2026, 8, 21, 9, 14);
+const market = { status: 'pre' as const, label: 'Pre-market', freshness: 'live' as const };
+const empty = { priority: null, also_watching: [], agent: null, market };
+const said = (standing: Parameters<typeof composeOpening>[0]['standing']) =>
+  composeOpening({ now: OPEN_AT, name: 'Kway', stage: 'trade_ready', mode: 'swing', data: empty, standing, rows: [] });
 ok(
-  'training is drawn once, never twice',
-  openingFor({ stage: 'beginner', mode: 'day_trade', hasPriority: true }).trainingInOpening === true
-  && openingFor({ stage: 'trade_ready', mode: 'day_trade', hasPriority: true }).trainingInOpening === false,
+  'a verified quiet morning says nothing needs a decision',
+  said({ state: 'quiet', plain: '', checks: [{ key: 'setups', label: 'Your setups', ok: true, count: 0 }] }).includes('Nothing needs a decision right now'),
 );
+const blind = said({ state: 'unverified', plain: '', checks: [{ key: 'positions', label: 'Your positions', ok: false, count: null }] });
+ok('an unverified morning never claims quiet', !blind.includes('Nothing needs a decision'), blind);
+ok('and names the read that failed', blind.includes('could not read your positions'), blind);
 
-/* the prose the compact opening holds back stays one tap away */
-const message = {
-  date: '2026-09-08',
-  greeting: 'Morning, Kway.',
-  state: 'The market is open.',
-  lead: 'META is the one worth looking at.',
-  evidence: null,
-  aside: null,
-  question: 'Where do you want to start?',
-  directions: [
-    { id: 'wd-primary', label: 'Show me META', kind: 'route', route: '/symbol/META' },
-    { id: 'wd-trade', label: 'Find me something', kind: 'route', route: '/trade' },
-    { id: 'wd-alerts', label: 'Check my alerts', kind: 'route', route: '/alerts' },
-  ],
-  at: AT,
-  degraded: false,
-} as const;
-
-const offered = withBriefingOffer({ ...message, directions: [...message.directions] }, true);
-ok('the briefing is always reachable from the compact opening', offered.directions.some((d) => d.kind === 'briefing'));
-eq('and the offer says what it does', offered.directions.find((d) => d.kind === 'briefing')?.label, 'Read the briefing');
-ok('still at most three offers', offered.directions.length <= 3);
-ok('the primary action is never the one dropped', offered.directions[0].id === 'wd-primary');
-eq(
-  'a message with no prose and no report gains nothing',
-  withBriefingOffer({ ...message, state: null, evidence: null, aside: null, directions: [] }, false).directions.length,
-  0,
-);
-eq(
-  'and an existing briefing offer is not duplicated',
-  withBriefingOffer(
-    { ...message, directions: [{ id: 'wd-briefing', label: 'The full report', kind: 'briefing' }] },
-    true,
-  ).directions.length,
-  1,
-);
+/* the report Kai wrote stays one tap away, and costs nothing to open */
+const brief = { id: 'b', dateLabel: 'Mon, Sep 21', footnote: null, rows: [
+  { id: 'r', kind: 'setup' as const, symbol: 'META', title: 'META', label: 'Setup ready', tone: 'action' as const, sub: null, open: null },
+] };
+const chips = followUps({ setups: [], comparison: null, brief, mentioned: [], hasAction: false }, { stage: 'trade_ready', kaiAvailable: false, others: [], hasReport: true });
+ok('the morning report is offered when there is one', chips.some((c) => c.id === 'morning-report'));
+ok('and it opens even while Kai is offline', chips.find((c) => c.id === 'morning-report')?.kind === 'open');
 
 console.log(failures ? `\n${failures} FAILED\n` : '\nall good\n');
 process.exit(failures ? 1 : 0);
