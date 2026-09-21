@@ -30,11 +30,16 @@ mkdirSync(OUT, { recursive: true });
 const failures = [];
 const note = (ok, what) => { console.log(`  ${ok ? '✓' : '✗'} ${what}`); if (!ok) failures.push(what); };
 
-const browser = await chromium.launch();
+// A fake microphone (Chromium's test tone) so the listening state is real:
+// the recorder runs, the web recorder meters it, and the level is genuine.
+const browser = await chromium.launch({
+  args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
+});
 
 async function session({ width, height, scale = 1, reduced = false }) {
   const ctx = await browser.newContext({
     viewport: { width, height }, deviceScaleFactor: 2, colorScheme: 'dark',
+    permissions: ['microphone'],
     reducedMotion: reduced ? 'reduce' : 'no-preference',
   });
   await ctx.addInitScript(({ scale, reduced }) => {
@@ -60,6 +65,14 @@ const open = async (page, route) => {
   await page.waitForTimeout(2600);
 };
 const noSideScroll = async (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
+/** The opening card's main button sits wholly inside the visible conversation, above the composer. */
+const primaryAboveFold = async (page) => page.evaluate(() => {
+  const wall = document.querySelector('[data-testid="kai-wall"]');
+  const btn = [...document.querySelectorAll('[data-testid="home-priority"] [role="button"], [data-testid="home-training"] [role="button"], [data-testid="home-priority"] button, [data-testid="home-training"] button')]
+    .find((el) => el.getBoundingClientRect().height >= 40);
+  if (!wall || !btn) return false;
+  return btn.getBoundingClientRect().bottom <= wall.getBoundingClientRect().bottom + 1;
+});
 const litNow = async (page) => (await page.locator('[data-testid^="kai-brain-lit-"]').evaluateAll(
   (els) => els.map((e) => e.getAttribute('data-testid').replace('kai-brain-lit-', '')),
 ));
@@ -70,6 +83,8 @@ console.log('\n390×844 at 100% — trade ready, at rest');
   const { ctx, page } = await session({ width: 390, height: 844 });
   await open(page, '/home?stage=trade_ready');
   note(await has(page, 'warroom-brain'), 'the brain is drawn at rest');
+  note(!(await page.locator('#root').innerText()).includes('/8 LIT'), 'no "n/8 LIT" counter');
+  note(await primaryAboveFold(page), "the opening card's button is above the fold at 100%");
   note((await tid(page, 'warroom-title').innerText()).includes('WAR ROOM'), 'the bar says KAI · WAR ROOM');
   note((await tid(page, 'kai-status-word').innerText()) === 'READY', 'the status light reads Ready');
   note((await tid(page, 'warroom-stage').innerText()).includes('TRADE READY'), 'the stage is in the bar');
@@ -96,6 +111,8 @@ console.log('\n390×844 at 100% — trade ready, at rest');
   await page.screenshot({ path: path.join(OUT, '02a-390-chart-kai-speaking.png') });
   console.log('  · 02a-390-chart-kai-speaking.png');
   note(word === 'THINKING', `the light says Thinking while he writes (${word})`);
+  const said = (await page.locator('#root').innerText());
+  note(said.includes('15-minute') && !said.includes('on the daily'), 'the reply names the timeframe the chart shows');
   note(lower.length > 0, `Kai's latest line is over the chart ("${lower}")`);
   await page.waitForTimeout(2600);
   note(!(await has(page, 'warroom-chart-caption')), 'and the caption is gone once he has finished');
@@ -159,6 +176,7 @@ console.log('\n390×844 at 130% text');
     return [...bar.querySelectorAll('*')].every((el) => el.getBoundingClientRect().right <= r.right + 1);
   });
   note(barOk, 'nothing in the bar runs off the edge at 130%');
+  note(await primaryAboveFold(page), "the opening card's button is above the fold at 130%");
   await shot(page, '06-390-130pct-rest');
   await ctx.close();
 }
@@ -170,6 +188,7 @@ console.log('\n360×780');
   await open(page, '/home?stage=developing');
   note(await has(page, 'warroom-brain'), 'the brain is drawn');
   note(await noSideScroll(page), 'no sideways scroll at 360');
+  note(await primaryAboveFold(page), "the opening card's button is above the fold at 360×780");
   await shot(page, '07-360-developing-rest');
   await tid(page, 'home-panels-open').click();
   await tid(page, 'panel-launcher-symbol').fill('AMD');
@@ -178,6 +197,43 @@ console.log('\n360×780');
   await page.waitForTimeout(1200);
   note(await noSideScroll(page), 'no sideways scroll with a panel open at 360');
   await shot(page, '08-360-quote-open');
+  await ctx.close();
+}
+
+/* ─────────────────────────────── voice ───────────────────────────────────── */
+console.log('\n390×844 — voice live: the mic is the main control');
+{
+  const { ctx, page } = await session({ width: 390, height: 844 });
+  await open(page, '/home?stage=trade_ready&voice=on');
+  note(await has(page, 'warroom-mic'), 'the big mic is beside the message box');
+  note(await has(page, 'kai-mic'), 'and it is the real mic control');
+  const inComposer = await page.locator('[data-testid="composer"] [data-testid="kai-mic"]').count();
+  note(inComposer === 0, 'the composer does not carry a second, smaller mic');
+  const [mic, send] = await Promise.all([tid(page, 'kai-mic').boundingBox(), tid(page, 'composer-send').boundingBox()]);
+  note(mic && send && mic.width > send.width, `the mic is larger than Send (${mic?.width} vs ${send?.width})`);
+  note((await tid(page, 'warroom-mic-word').innerText()) === 'TAP TO TALK', 'the word under it says TAP TO TALK');
+  note(await primaryAboveFold(page), "the opening card's button is still above the fold");
+  await shot(page, '09-390-voice-mic-primary');
+
+  console.log('\nlistening (Chromium test tone as the microphone)');
+  await tid(page, 'kai-mic').click();
+  await page.waitForSelector('[data-testid="kai-voice-listening"]', { timeout: 15_000 });
+  // Let a few meter readings arrive so the rings have a level to follow.
+  let rings = [];
+  for (let i = 0; i < 12; i++) {
+    await page.waitForTimeout(120);
+    rings.push(await page.evaluate(() => {
+      const r = document.querySelector('[data-testid="kai-mic-ring"]');
+      return r ? Math.round(r.getBoundingClientRect().width) : 0;
+    }));
+  }
+  const word = await tid(page, 'kai-status-word').innerText();
+  note(word === 'LISTENING', `the status light says Listening (${word})`);
+  note((await tid(page, 'warroom-mic-word').innerText()) === 'LISTENING…', 'the word under the mic says LISTENING…');
+  note((await tid(page, 'warroom-caption').innerText()).startsWith('Listening'), 'the brain caption says Listening');
+  note(Math.max(...rings) > 60, `the mic ring grows with the level (${rings.join(',')})`);
+  await page.screenshot({ path: path.join(OUT, '10-390-voice-listening.png') });
+  console.log('  · 10-390-voice-listening.png');
   await ctx.close();
 }
 

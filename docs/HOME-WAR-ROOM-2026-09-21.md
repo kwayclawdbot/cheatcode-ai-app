@@ -50,7 +50,7 @@ states:
 Volt is the member's colour and violet is Kai's, so "Listening" is volt (the
 member is talking) and "Thinking"/"Speaking" are violet (Kai is).
 
-**At rest.** Under the bar, Kai's brain: about 200 points tall, violet, with
+**At rest.** Under the bar, Kai's brain: about 180 points tall in its frame, violet, with
 its eight region labels. It is a frame with a small "KAI · BRAIN" label and a
 caption line under it that says what Kai is doing. Kai's greeting and the
 stage-based opening card sit under the brain, then the conversation and the
@@ -120,8 +120,9 @@ screen. No network gives the same dim brain with "No connection".
 - Proof shots, from `apps/mobile/scripts/proof-home-warroom.mjs` in fixtures
   mode, are in `docs/home-warroom-proof/`: 390×844 at 100% and 130% text, and
   360×780. They cover a Trade Ready and a Beginner member at rest, Kai writing
-  over a chart, two panels as tabs with "close all", Kai offline, and a panel
-  opened by the member at 360.
+  over a chart, two panels as tabs with "close all", Kai offline, a panel
+  opened by the member at 360, and the mic as the main control, idle and
+  listening.
 - The rules (status, lit regions, captions) are in
   `apps/mobile/src/features/home/warroom.ts` and tested by
   `apps/mobile/scripts/war-room-test.mts`, which runs in `npm test`.
@@ -129,8 +130,32 @@ screen. No network gives the same dim brain with "No connection".
   not yet told which tool Kai calls mid-answer, so a region lights when its
   panel opens rather than the instant the tool runs. When the server starts
   sending tool events, `litRegions` is the one place to feed them in.
-- At 130% text the opening card's button falls below the first screen on a
-  390×844 phone; at 100% it stays above it.
 - Fixtures mode gained `?stage=` (preview a stage) and a canned "chart" turn,
   so the stage-aware brain and the chart caption can be photographed. Neither
   does anything on a real stack.
+
+## Polish pass (orchestrator review, same day)
+
+- The "3/8 LIT" counter is gone; members read it as jargon. The regions still
+  light.
+- The brain adapts. At the design's text size on a tall phone it is a
+  124-point drawing in its frame. At larger text (the member's setting or the
+  phone's, 115% and up) or on a screen shorter than 800 points, it shrinks to
+  80 points with tighter labels, drops the "KAI · BRAIN" label row (the bar
+  above already says KAI · WAR ROOM) and keeps the caption to one line.
+  Measured: the opening card's main button now sits above the message box at
+  390×844 at 100% and 130%, at 360×780, and with the mic showing. The
+  proof script checks this on every run.
+- The mic is the main control when voice is live: a 52-point volt button
+  beside the message box, with a status word under it (TAP TO TALK,
+  LISTENING…, SPEAKING). The message box keeps its Send button and reads
+  "Or type to Kai…". Without voice, nothing changes. The Kai sheet still has
+  the smaller mic beside Send.
+- Fixtures gained `?voice=on`, which draws the mic as if the server had said
+  voice is live. It does nothing against a real API. The listening proof uses
+  Chromium's test tone as the microphone, so the recording, the metering and
+  the ring growing with the level are real, not stubbed.
+- The canned chart reply now says "15-minute chart" and opens the chart on
+  15 minutes, matching what the chart shows.
+- The priority card's cut-off status row ("Approac…", "9:41 AM") is left alone
+  on purpose: that card belongs to the alert-card lane.
