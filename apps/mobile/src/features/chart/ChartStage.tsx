@@ -38,7 +38,7 @@ import { allowLandscape, lockPortrait } from './orientation';
 import type { Annotation, PortalTimeframe } from '../portal/types';
 import type { Candle } from '../../lib/types';
 import { T, Num } from '../../ui/Text';
-import { alpha, color, radius } from '../../ui/tokens';
+import { alpha, color, radius, tap, type as typeScale } from '../../ui/tokens';
 import { Pencil } from '../../ui/Icons';
 import { useMotion } from '../a11y/context';
 
@@ -211,6 +211,8 @@ export function ChartStage(props: ChartStageProps) {
 
   const chart = useRef<ChartHandle | null>(null);
   const [ready, setReady] = useState(false);
+  /** The floating header's height, reserved above the chart — see the chart's wrapper. */
+  const [headerH, setHeaderH] = useState(0);
 
   /** Chrome recedes while Kai talks, and comes back when he stops. */
   const chrome = useRef(new Animated.Value(1)).current;
@@ -269,7 +271,15 @@ export function ChartStage(props: ChartStageProps) {
           and the chrome floats over it — rather than the chart being given
           whatever is left after a header and a footer have taken their cut.
         */}
-        <View style={{ flex: 1 }}>
+        {/*
+          THE CHART STARTS UNDER THE HEADER, NOT BEHIND IT (owner audit, 21
+          September). The chart page draws its price readout — the O/H/L/C
+          legend — along its own top edge, and with the chart full-bleed that
+          edge sat under Ask Kai and Done: the numbers ran beneath two buttons
+          and could not be read. The header's measured height is reserved, so
+          the readout begins where the buttons end.
+        */}
+        <View style={{ flex: 1, marginTop: headerH }}>
           <ChartView
             testID="stage-chart"
             ref={(h) => {
@@ -389,6 +399,10 @@ export function ChartStage(props: ChartStageProps) {
         {/* ---- the header, floating ---- */}
         <Animated.View
           pointerEvents={live ? 'none' : 'box-none'}
+          onLayout={(e) => {
+            const h = Math.round(e.nativeEvent.layout.height);
+            if (h && h !== headerH) setHeaderH(h);
+          }}
           style={{
             position: 'absolute',
             top: 0,
@@ -422,8 +436,9 @@ export function ChartStage(props: ChartStageProps) {
               accessibilityLabel="Ask Kai about this chart"
               accessibilityHint="Opens the conversation over the chart. The chart stays full screen."
               style={{
-                paddingHorizontal: 13,
-                paddingVertical: 7,
+                paddingHorizontal: 14,
+                minHeight: tap.min,
+                justifyContent: 'center',
                 borderRadius: radius.pill,
                 // Violet, because it is Kai. It sits beside Done at the same
                 // weight — a peer action, not a promotion.
@@ -432,7 +447,7 @@ export function ChartStage(props: ChartStageProps) {
                 borderColor: alpha.violet50,
               }}
             >
-              <T size={12} weight="semibold" c={color.violetLight}>Ask Kai</T>
+              <T size={typeScale.small.size} weight="semibold" c={color.violetLight}>Ask Kai</T>
             </Pressable>
           ) : null}
           <Pressable
@@ -442,13 +457,14 @@ export function ChartStage(props: ChartStageProps) {
             accessibilityRole="button"
             accessibilityLabel="Close the full chart"
             style={{
-              paddingHorizontal: 13,
-              paddingVertical: 7,
+              paddingHorizontal: 14,
+              minHeight: tap.min,
+              justifyContent: 'center',
               borderRadius: radius.pill,
               backgroundColor: alpha.surface75,
             }}
           >
-            <T size={12} weight="semibold" c={color.muted}>Done</T>
+            <T size={typeScale.small.size} weight="semibold" c={color.muted}>Done</T>
           </Pressable>
         </Animated.View>
 
