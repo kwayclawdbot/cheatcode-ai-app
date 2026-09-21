@@ -124,8 +124,8 @@ export async function POST(req: NextRequest): Promise<Response> {
         mode: 'day_trade',
         valid_until: row.valid_until,
         plain: row.state === 'ready'
-          ? `Stored. It is a live card in the Day Trade section until the close.`
-          : `Stored as a record. It is in the Day Trade history rather than among today's alerts.`,
+          ? `Stored. It is a live card in the Day Trade section until its option expires, at the close on ${new Date(row.valid_until).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' })}.`
+          : `Stored as a record. It is in the Day Trade history rather than among the live alerts.`,
       },
       { status: 200, headers: { 'x-request-id': requestId } },
     );

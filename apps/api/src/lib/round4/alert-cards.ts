@@ -91,7 +91,9 @@ const STATE_LABEL: Record<AlertCardState, string> = {
 };
 
 const EXPECTED_HOLD: Record<AppMode, string> = {
-  day_trade: 'Intraday — out by the close',
+  // Not "out by the close": a Day Trade card now lives until its option
+  // expires (0-7 days), and this family publishes no exit advice at all.
+  day_trade: 'Until the option expires',
   swing: 'Days to a few weeks',
   invest: 'Months to years',
 };

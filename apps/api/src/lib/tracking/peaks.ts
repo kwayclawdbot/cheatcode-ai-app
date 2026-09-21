@@ -600,7 +600,12 @@ export async function runPeakTracking(opts: {
         price = target;
       }
     }
-    if (!kind && s.valid_until && s.valid_until < at) {
+    // A row that named an option contract is ended by THAT contract expiring,
+    // in the contract lane below — its `valid_until` is the same instant, and
+    // letting this clock claim it first recorded a plain 'expired' on NET and
+    // left 'contract_expired' unwritable. Only rows with no contract are ended
+    // by the clock here.
+    if (!kind && !s.contract_ticker && s.valid_until && s.valid_until < at) {
       // Ran out of time without reaching either level. An ending, not a result,
       // and deliberately no price: there is no level that ended it, and a last
       // close standing in for one would read as though something was hit.
@@ -840,6 +845,12 @@ async function runContractLane(opts: {
       patch.resolution_kind = 'contract_expired';
       patch.resolved_at = opts.at;
     }
+    // AND THE CARD LEAVES THE BOARD. The header of this lane has always said a
+    // day trade's `state` leaves 'ready'; nothing ever made it so, which is
+    // how an expired card stayed Active for twelve days. Its contract is graded
+    // and gone, so the row is a record now. The feed already reads the clock
+    // (`uoaDayTradeSetups`); this makes the stored state agree with it.
+    patch.state = 'expired';
 
     const { error } = await db.from('setups').update(patch).eq('id', row.id);
     if (error) {

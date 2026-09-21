@@ -18,7 +18,8 @@
  * WHAT THIS FORMULA MEASURES, AND — MORE IMPORTANTLY — WHAT IT DOES NOT
  *
  * It reads one thing: option flow. Sweeps and blocks paid on the ask, in
- * contracts expiring inside two days, in a name that clears the universe gate.
+ * short-expiry contracts (the engine's window is 0 to 7 days since 21
+ * September; it was 0 to 2 before), in a name that clears the universe gate.
  * That is the whole of it.
  *
  * It does not look at price trend. It does not look at chart structure. It
@@ -134,6 +135,75 @@ function shortDate(iso: string | null): string | null {
 }
 
 /**
+ * 16:00 in New York on an ET calendar date, as a UTC instant.
+ *
+ * The regular session closes at 16:00 America/New_York, which is 20:00Z in
+ * daylight time and 21:00Z in standard time. A hard-coded `T20:00:00Z` is an
+ * hour early for the whole of the winter, so the offset is read from the zone
+ * database for that date rather than assumed.
+ */
+export function nyCloseUtc(dateIso: string): string {
+  const d = dateIso.slice(0, 10);
+  for (const hourZ of [20, 21]) {
+    const candidate = new Date(`${d}T${hourZ}:00:00.000Z`);
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York', hour: '2-digit', hour12: false,
+    }).formatToParts(candidate);
+    const hour = Number(parts.find((p) => p.type === 'hour')?.value);
+    if (hour === 16) return candidate.toISOString();
+  }
+  return new Date(`${d}T20:00:00.000Z`).toISOString();
+}
+
+/**
+ * THE LEAD CONTRACT'S EXPIRY DATE, as YYYY-MM-DD — the date the card lives to.
+ *
+ * "Lead" means the same contract the card draws first: the engine's suggested
+ * contract when it named one, otherwise the first contract the flow bought.
+ * Null when the record names no dated contract at all.
+ */
+export function leadExpiry(record: Record<string, unknown>): string | null {
+  const iso = (v: unknown): string | null => {
+    const t = typeof v === 'string' ? v.slice(0, 10) : '';
+    return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null;
+  };
+  const suggestion = obj(obj(obj(record.suggested_contract).suggestion).base);
+  if (suggestion.option_symbol) {
+    const e = iso(suggestion.expiry);
+    if (e) return e;
+  }
+  for (const raw of arr(record.flow_contract_check)) {
+    const e = iso(obj(raw).expiry);
+    if (e) return e;
+  }
+  for (const raw of arr(obj(record.filters_at_fire).contracts)) {
+    const e = iso(obj(raw).expiry);
+    if (e) return e;
+  }
+  return null;
+}
+
+/**
+ * WHEN A DAY TRADE CARD STOPS BEING LIVE: the close of the day its lead option
+ * expires.
+ *
+ * It used to be the close of the session the alert fired in. That was right
+ * while the engine only followed contracts expiring within two days and the
+ * idea was read the same morning. On 21 September the engine widened to
+ * 0-7 day expiries, and a card that vanished at the first closing bell took a
+ * contract with four sessions left on it off the board. The option is the
+ * trade, so the option's expiry is the card's life.
+ *
+ * Never earlier than the fire session's own close — a record whose contract
+ * somehow expired before the alert fired is still an alert of that session.
+ */
+export function validUntilFor(record: Record<string, unknown>, sessionDate: string): string {
+  const expiry = leadExpiry(record);
+  const day = expiry && expiry >= sessionDate ? expiry : sessionDate;
+  return nyCloseUtc(day);
+}
+
+/**
  * THE ONE BAR THIS FAMILY FILLS, and it is a measurement rather than a score.
  *
  * `ask_side_share` is the fraction of the premium that was paid at the OFFER
@@ -220,7 +290,7 @@ function floorChecksFrom(
   const minVolume = num(floor.min_volume_today);
   if (minVolume !== null && m.volume !== null) {
     checks.push({
-      label: 'Volume today',
+      label: 'Volume on the day',
       value: count(m.volume),
       requirement: minVolume === 0 ? 'no minimum' : `${count(minVolume)} minimum`,
       passes: minVolume === 0 ? true : m.volume >= minVolume,
@@ -275,7 +345,7 @@ function floorChecksFrom(
  *
  * The engine does not credit the multiple when the open interest it is measured
  * against is too thin to mean anything — a 15x on 48 open contracts is not the
- * event a 15x on 5,000 is, and at 0-2 days to expiry a strike is nearly always
+ * event a 15x on 5,000 is, and at a few days to expiry a strike is nearly always
  * in the thin case. When that happens the contract qualifies on its own average
  * daily volume instead, and the engine says so in `spike_evidence`.
  *
@@ -471,14 +541,17 @@ function storyFor(o: {
   ticker: string;
   direction: string;
   filters: Record<string, unknown>;
+  /** "Sep 21" — the session the flow printed in. Not "today": the card now
+   *  outlives the session, and on day three "today" would be false. */
+  sessionLabel: string;
 }): string {
   const f = o.filters;
   const side = o.direction === 'bullish' ? 'calls' : 'puts';
   const bits: string[] = [];
 
   bits.push(
-    `${money(num(f.total_premium))} of ${side} changed hands in ${o.company} today, in contracts `
-    + `that expire within ${num(f.max_dte) ?? 2} day${(num(f.max_dte) ?? 2) === 1 ? '' : 's'}.`,
+    `${money(num(f.total_premium))} of ${side} changed hands in ${o.company} on ${o.sessionLabel}, in contracts `
+    + `that expire within ${num(f.max_dte) ?? 7} day${(num(f.max_dte) ?? 7) === 1 ? '' : 's'}.`,
   );
 
   const share = num(f.ask_side_share);
@@ -581,10 +654,9 @@ export function setupFromUoaRecord(record: Record<string, unknown>): UoaSetupRow
   const contracts = contractsFrom(record);
   const optionsActivity = optionsActivityScore(filters);
 
-  // The session's close, in UTC. A 0-2 day option found in the morning is a
-  // same-day idea; it stops being live when the bell rings, and `valid_until`
-  // is the only thing that says so.
-  const validUntil = `${sessionDate}T20:00:00.000Z`;
+  // Live until the lead contract expires — the close of its expiry day in New
+  // York, DST included. See `validUntilFor`.
+  const validUntil = validUntilFor(record, sessionDate);
   const expired = isReplay || new Date(validUntil).getTime() <= Date.now();
 
   const times = obj(record.print_times);
@@ -620,7 +692,7 @@ export function setupFromUoaRecord(record: Record<string, unknown>): UoaSetupRow
       options_activity_plain:
         optionsActivity === null
           ? null
-          : `${optionsActivity} out of 100 is the share of today's premium in this name that was paid `
+          : `${optionsActivity} out of 100 is the share of that session's premium in this name that was paid `
             + `at the offer rather than sold at the bid. It is that one measurement rescaled, not a `
             + `quality score, and it says nothing about whether this is a good idea.`,
 
@@ -678,8 +750,8 @@ export function setupFromUoaRecord(record: Record<string, unknown>): UoaSetupRow
     // History row — the ONE place a rehearsal is most likely to be mistaken for
     // a delivered alert — saying nothing at all.
     thesis_plain: isReplay
-      ? `${REPLAY_PREFIX} ${storyFor({ company, ticker, direction, filters })}`
-      : storyFor({ company, ticker, direction, filters }),
+      ? `${REPLAY_PREFIX} ${storyFor({ company, ticker, direction, filters, sessionLabel: shortDate(sessionDate) ?? sessionDate })}`
+      : storyFor({ company, ticker, direction, filters, sessionLabel: shortDate(sessionDate) ?? sessionDate }),
     // The engine's own one-line summary, kept verbatim as the technical read.
     thesis_technical: typeof record.alert_text === 'string'
       ? (isReplay ? `${REPLAY_PREFIX} ${record.alert_text}` : record.alert_text)

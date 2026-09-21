@@ -92,18 +92,33 @@ const MORNING_HISTORY_LIMIT = 25;
  */
 async function uoaDayTradeSetups(
   db: ReturnType<typeof serviceClient>,
+  now: Date = new Date(),
 ): Promise<{ live: SetupRow[]; resolved: SetupRow[] }> {
+  /*
+   * LIVE MEANS ITS OPTION HAS NOT EXPIRED YET — read off `valid_until`, not
+   * only off `state`.
+   *
+   * A day-trade card is live until the close of the day its lead contract
+   * expires (`validUntilFor` in the ingest). Nothing flips `state` at that
+   * moment on its own schedule — the tracker ends the row when it grades the
+   * contract, some minutes after the bell, or later if Unusual Whales is slow.
+   * Reading `state` alone is how NET, fired 9 September on a contract that
+   * expired on the 11th, was still sitting on the Active board on the 21st.
+   * So the clock decides which list a row is on, and the state agrees later.
+   */
+  const at = now.toISOString();
   const [live, resolved] = await Promise.all([
     db.from('setups').select(SETUP_COLUMNS)
       .eq('mode', 'day_trade')
       .eq('quote_snapshot->>origin', UOA_ORIGIN)
       .in('state', ['discovered', 'watching', 'forming', 'ready'])
+      .gt('valid_until', at)
       .order('valid_until', { ascending: false })
       .limit(MORNING_ACTIVE_LIMIT),
     db.from('setups').select(SETUP_COLUMNS)
       .eq('mode', 'day_trade')
       .eq('quote_snapshot->>origin', UOA_ORIGIN)
-      .in('state', ['expired', 'invalidated'])
+      .or(`state.in.(expired,invalidated),valid_until.lte.${at}`)
       .order('valid_until', { ascending: false })
       .limit(MORNING_HISTORY_LIMIT),
   ]);
