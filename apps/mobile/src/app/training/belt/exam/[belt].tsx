@@ -268,7 +268,7 @@ export default function BeltExamScreen() {
                       )}
                     </View>
                     <View style={{ flex: 1, gap: 3 }}>
-                      <T variant="meta" c={color.dim} ls={0.6}>
+                      <T variant="meta" c={color.dim}>
                         {r.kind === 'applied' ? 'CHART TASK' : 'QUESTION'}
                       </T>
                       <T variant="meta" lh={19} c={color.muted}>{r.because}</T>

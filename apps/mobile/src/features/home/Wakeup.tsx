@@ -126,7 +126,7 @@ export function Wakeup({
   return (
     <View testID={testID} style={{ gap: compact ? 10 : 12, paddingTop: 6 }}>
       {message && !animate ? (
-        <T variant="meta" weight="bold" ls={0.8} c={color.dim} testID="wakeup-earlier">
+        <T variant="meta" weight="bold" c={color.dim} testID="wakeup-earlier">
           {`EARLIER TODAY · ${shownAtLabel(message.at).toUpperCase()}`}
         </T>
       ) : null}

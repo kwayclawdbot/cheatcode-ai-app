@@ -202,7 +202,7 @@ function FlowVisual({ v }: { v: Extract<ConceptVisual, { kind: 'flow' }> }) {
           >
             <Num variant="meta" weight="bold" c={color.dim}>{`0${i + 1}`}</Num>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <T variant="meta" weight="bold" ls={0.5}>{s.label}</T>
+              <T variant="meta" weight="bold">{s.label}</T>
               {s.detail ? (
                 <T variant="meta" c={color.muted} style={{ marginTop: 2 }}>{s.detail}</T>
               ) : null}
@@ -239,7 +239,7 @@ function SplitVisual({ v }: { v: Extract<ConceptVisual, { kind: 'split' }> }) {
       {[v.left, v.right].map((side) => (
         <ObjectCard key={side.title} r={radius.lg} style={{ flex: 1, padding: 12, gap: 8 }}>
           <View style={{ gap: 2 }}>
-            <T variant="meta" weight="bold" ls={0.6}>{side.title}</T>
+            <T variant="meta" weight="bold">{side.title}</T>
             <T variant="meta" c={color.dim}>{side.caption}</T>
           </View>
           <View style={{ gap: 7 }}>
@@ -256,7 +256,7 @@ function SplitVisual({ v }: { v: Extract<ConceptVisual, { kind: 'split' }> }) {
 function FormulaVisual({ v }: { v: Extract<ConceptVisual, { kind: 'formula' }> }) {
   return (
     <ObjectCard r={radius.xl} style={{ padding: 14, gap: 10 }}>
-      <T variant="meta" weight="bold" c={color.muted} ls={0.8}>{v.lhs.toUpperCase()}</T>
+      <T variant="meta" weight="bold" c={color.muted}>{v.lhs}</T>
       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         {v.terms.map((term, i) => (
           <React.Fragment key={term}>
@@ -458,7 +458,7 @@ export function QuizView({ screen, onAdvance }: ScreenProps<QuizScreen>) {
           r={radius.xl}
           style={{ padding: 13, gap: 7 }}
         >
-          <T variant="meta" weight="bold" c={correct ? color.green : color.gold} ls={0.8}>
+          <T variant="meta" weight="bold" c={correct ? color.green : color.gold}>
             {correct ? 'CORRECT' : 'NOT QUITE'}
           </T>
           <T variant="meta" lh={20} c={color.text}>
@@ -557,7 +557,7 @@ function CuratedSegmentCard({ video }: { video: CuratedVideo }) {
             backgroundColor: approved ? alpha.gold12 : 'transparent',
           }}
         >
-          <T variant="meta" weight="bold" c={approved ? color.gold : color.dim} ls={0.8}>
+          <T variant="meta" weight="bold" c={approved ? color.gold : color.dim}>
             {approved ? 'ASSIGNED SEGMENT' : 'AWAITING REVIEW'}
           </T>
         </View>
@@ -743,7 +743,7 @@ function LadderRow({
           : alpha.red10,
       }}
     >
-      <T variant="meta" weight="bold" c={tint} ls={0.7} style={{ width: 26 }}>
+      <T variant="meta" weight="bold" c={tint} style={{ width: 26 }}>
         {side === 'bid' ? 'BID' : 'ASK'}
       </T>
       <Num variant="body" weight="bold" c={tint} style={{ flex: 1 }}>{`$${price.toFixed(2)}`}</Num>
@@ -829,7 +829,7 @@ export function AuctionView({ screen, onAdvance }: ScreenProps<AuctionScreen>) {
 
       {lifted ? (
         <ObjectCard tone="volt" r={radius.xl} style={{ padding: 13, gap: 7 }}>
-          <T variant="meta" weight="bold" c={color.green} ls={0.8}>{screen.lift.label.toUpperCase()}</T>
+          <T variant="meta" weight="bold" c={color.green}>{screen.lift.label}</T>
           <T variant="meta" lh={20}>{screen.lift.explain}</T>
         </ObjectCard>
       ) : null}
@@ -933,7 +933,7 @@ export function SortingView({ screen, onAdvance }: ScreenProps<SortingScreen>) {
               })}
             >
               <View style={{ gap: 2 }}>
-                <T variant="meta" weight="bold" ls={0.6}>{b.label}</T>
+                <T variant="meta" weight="bold">{b.label}</T>
                 <T variant="meta" c={color.dim}>{b.caption}</T>
               </View>
               {inside.map((c) => (

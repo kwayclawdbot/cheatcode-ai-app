@@ -653,7 +653,7 @@ function StatCell({ label, value, tone, size, minWidth, testID }: {
 }) {
   return (
     <View testID={testID} accessibilityLabel={`${label}, ${value}`} style={{ minWidth }}>
-      <T variant="meta" weight="bold" c={color.dim} ls={0.7}>{label.toUpperCase()}</T>
+      <T variant="meta" weight="bold" c={color.dim}>{label}</T>
       <Num size={size} weight={size >= 18 ? 'bold' : 'semibold'} c={tone ?? color.text} style={{ marginTop: 3 }}>
         {value}
       </Num>

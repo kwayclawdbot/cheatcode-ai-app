@@ -237,7 +237,7 @@ export function NewMessagesRule({ label }: { label: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <View style={{ flex: 1, height: 1, backgroundColor: alpha.red45 }} />
-      <T variant="meta" weight="bold" ls={0.72} c={color.red}>{label}</T>
+      <T variant="meta" weight="bold" c={color.red}>{label}</T>
       <View style={{ flex: 1, height: 1, backgroundColor: alpha.red45 }} />
     </View>
   );

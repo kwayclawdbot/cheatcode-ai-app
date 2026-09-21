@@ -99,8 +99,8 @@ export function ConfirmCard({
       <ObjectCard tone="volt" r={radius.xxl} testID="order-confirmation-card" style={{ padding: 16, gap: 2 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 6 }}>
           <Eyebrow c={color.volt}>Confirm this order</Eyebrow>
-          <T variant="meta" weight="bold" ls={0.8} c={color.muted} testID="confirm-venue">
-            {PAPER_VENUE.label.toUpperCase()}
+          <T variant="meta" weight="bold" c={color.muted} testID="confirm-venue">
+            {PAPER_VENUE.label}
           </T>
         </View>
 

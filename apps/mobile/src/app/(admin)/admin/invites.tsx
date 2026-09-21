@@ -89,7 +89,7 @@ export default function AdminInvites() {
               {i ? <VRule /> : null}
               <View style={{ flex: 1, gap: 3 }}>
                 <Num variant="cardTitle" weight="bold">{n}</Num>
-                <T variant="meta" weight="bold" ls={0.8} c={color.dim} numberOfLines={1}>{l.toUpperCase()}</T>
+                <T variant="meta" weight="bold" c={color.dim} numberOfLines={1}>{l}</T>
               </View>
             </React.Fragment>
           ))}

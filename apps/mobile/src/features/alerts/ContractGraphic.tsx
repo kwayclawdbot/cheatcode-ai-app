@@ -252,7 +252,7 @@ function BandCell({ caption, value, tone, sub, meter, flex = 1, testID, accessib
       accessibilityLabel={accessibilityLabel ?? `${caption}, ${value}${sub ? `, ${sub}` : ''}`}
       style={{ flex, minWidth: 0, gap: 3 }}
     >
-      <T variant="meta" weight="bold" c={color.dim} ls={0.7} numberOfLines={1}>{caption.toUpperCase()}</T>
+      <T variant="meta" weight="bold" c={color.dim} numberOfLines={1}>{caption}</T>
       <Num variant="body" weight="bold" c={tone ?? color.text} style={{ marginTop: -1 }}>{value}</Num>
       {meter ?? null}
       {sub ? <T variant="meta" c={color.dim} numberOfLines={1}>{sub}</T> : null}
@@ -538,8 +538,8 @@ function CheckCell({ check, symbol, i }: { check: AlertContractFloorCheck; symbo
       style={{ width: '47%', flexGrow: 1, gap: 1 }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-        <T variant="meta" weight="bold" c={color.dim} ls={0.7} numberOfLines={1} style={{ flex: 1 }}>
-          {check.label.toUpperCase()}
+        <T variant="meta" weight="bold" c={color.dim} numberOfLines={1} style={{ flex: 1 }}>
+          {check.label}
         </T>
         {/* The word, always. Colour never carries a verdict on its own. */}
         <T variant="meta" weight="semibold" c={tone}>{check.passes ? 'clears' : 'misses'}</T>
@@ -671,8 +671,8 @@ export function ContractGraphic({ c, symbol, compact, testID }: ContractGraphicP
           label that repeats the heading is not a label.
         */}
         {c.label && !sameAsEyebrow(c.label) ? (
-          <T variant="meta" weight="bold" c={color.dim} ls={0.7} numberOfLines={1} style={{ flex: 1 }}>
-            {c.label.toUpperCase()}
+          <T variant="meta" weight="bold" c={color.dim} numberOfLines={1} style={{ flex: 1 }}>
+            {c.label}
           </T>
         ) : <View style={{ flex: 1 }} />}
         {!hasRail ? (

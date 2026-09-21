@@ -56,8 +56,8 @@ export function StageTag({
       accessibilityLabel={`Readiness stage: ${STAGE_LABEL[stage]}`}
       testID={testID}
     >
-      <T variant="meta" weight="bold" ls={0.6} c={color.dim}>
-        {STAGE_LABEL[stage].toUpperCase()}
+      <T variant="meta" weight="bold" c={color.dim}>
+        {STAGE_LABEL[stage]}
       </T>
     </View>
   );

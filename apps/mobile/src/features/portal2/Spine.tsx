@@ -70,8 +70,8 @@ export function Spine({
               >
                 {BEAT_STEP[b]}
               </T>
-              <T variant="meta" weight={active ? 'bold' : 'semibold'} ls={0.6} c={tint}>
-                {BEAT_LABEL[b].toUpperCase()}
+              <T variant="meta" weight={active ? 'bold' : 'semibold'} c={tint}>
+                {BEAT_LABEL[b]}
               </T>
             </Pressable>
           </React.Fragment>

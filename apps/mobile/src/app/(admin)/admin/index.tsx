@@ -114,7 +114,7 @@ export default function AdminOverview() {
                   {i ? <VRule /> : null}
                   <View style={{ flex: 1, gap: 3 }}>
                     <Num variant="cardTitle" weight="bold">{n.toLocaleString('en-US')}</Num>
-                    <T variant="meta" weight="bold" ls={0.8} c={color.dim} numberOfLines={1}>{label.toUpperCase()}</T>
+                    <T variant="meta" weight="bold" c={color.dim} numberOfLines={1}>{label}</T>
                   </View>
                 </React.Fragment>
               ))}

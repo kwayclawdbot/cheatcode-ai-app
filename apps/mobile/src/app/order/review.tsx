@@ -369,8 +369,8 @@ export default function ReviewOrder() {
                   borderWidth: 0.5, borderColor: isBuySide(preview.side) ? alpha.volt40 : alpha.red40,
                 }}
               >
-                <T variant="meta" weight="bold" ls={0.88} c={isBuySide(preview.side) ? color.volt : color.red}>
-                  {SIDE_LABEL[preview.side].toUpperCase()}
+                <T variant="meta" weight="bold" c={isBuySide(preview.side) ? color.volt : color.red}>
+                  {SIDE_LABEL[preview.side]}
                 </T>
               </View>
             </View>

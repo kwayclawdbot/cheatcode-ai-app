@@ -67,7 +67,7 @@ export function ComingSoonPill({ label, testID }: { label: string; testID?: stri
         borderRadius: radius.pill, borderWidth: 0.5, borderColor: alpha.ivory14,
       }}
     >
-      <T variant="meta" weight="bold" c={color.dim} ls={0.6}>{label}</T>
+      <T variant="meta" weight="bold" c={color.dim}>{label}</T>
     </View>
   );
 }
