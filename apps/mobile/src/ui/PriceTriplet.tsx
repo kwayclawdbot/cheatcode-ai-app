@@ -36,7 +36,9 @@ export function PriceTriplet({
     ['Target', fmt(target), color.priceTarget],
   ];
   return (
-    <View testID={testID} style={[{ flexDirection: 'row', alignItems: 'flex-end' }, style]}>
+    // `gap` keeps three mono columns from running into each other in a narrow
+    // card (a chat tool card at 360 wide printed "504.00460.00540.00").
+    <View testID={testID} style={[{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }, style]}>
       {cols.map(([label, value, ink]) => (
         <View key={label} style={{ flex: 1, gap: 2 }} accessible accessibilityLabel={`${label} ${value}`}>
           <T variant="meta" c={color.textSecondary}>{label}</T>
