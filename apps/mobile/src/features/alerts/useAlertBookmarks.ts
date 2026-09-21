@@ -22,11 +22,16 @@ const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
 export function useAlertBookmarks() {
-  const [, bump] = useState(0);
+  /*
+   * A SNAPSHOT IN STATE, not a discarded counter: the React Compiler memoises
+   * on what a render reads, and the module-level set is invisible to it. The
+   * snapshot is what the card reads, so every change re-renders for real.
+   */
+  const [snap, setSnap] = useState<{ ids: Set<string>; persisted: boolean }>(() => ({ ids: saved, persisted }));
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const l = () => bump((n) => n + 1);
+    const l = () => setSnap({ ids: saved, persisted });
     listeners.add(l);
     if (!loaded && api.available()) {
       loaded = true;
@@ -55,11 +60,11 @@ export function useAlertBookmarks() {
   }, []);
 
   return {
-    isSaved: (cardId: string) => saved.has(cardId),
-    savedIds: saved,
+    isSaved: (cardId: string) => snap.ids.has(cardId),
+    savedIds: snap.ids,
     toggle,
     /** False when a save only lasts this session (see header). */
-    persisted,
+    persisted: snap.persisted,
     error,
   };
 }

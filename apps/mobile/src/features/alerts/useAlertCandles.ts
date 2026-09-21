@@ -91,7 +91,14 @@ export const timeframeForHold = (hold?: string | null): '1d' | '5m' =>
 export function useAlertCandles(
   wanted: readonly { symbol: string; tf: '1d' | '5m' }[],
 ): Record<string, Candle[]> {
-  const [, bump] = useState(0);
+  /*
+   * `rev` IS READ BELOW ON PURPOSE. The React Compiler memoises this hook's
+   * result on what the render reads; the bars live in a module-level cache it
+   * cannot see, so a discarded counter left the map memoised on `wanted` alone
+   * and a board whose request list did not change never drew the bars that
+   * arrived. Reading the counter makes each arrival a real input.
+   */
+  const [rev, bump] = useState(0);
   /* The dependency is the request set itself, not the array identity — the
      board rebuilds this list on every refresh and an identity dependency would
      re-run the effect on a tick where nothing was actually asked for. */
@@ -106,6 +113,7 @@ export function useAlertCandles(
   }, [signature]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const out: Record<string, Candle[]> = {};
+  if (rev < 0) return out;
   for (const w of wanted) {
     const bars = cache.get(key(w.symbol, w.tf));
     if (bars?.length) out[w.symbol.toUpperCase()] = bars;
