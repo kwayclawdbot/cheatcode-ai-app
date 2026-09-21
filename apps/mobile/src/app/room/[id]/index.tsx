@@ -25,6 +25,7 @@ import {
   fixtureAlertPreview, fixtureComparison, fixtureExplain, fixtureRooms,
 } from '../../../features/community/fixtures';
 
+import { hitSlopFor } from '../../../ui/touch';
 /**
  * V3-C1 setup room + S81 core room, one screen.
  *
@@ -396,7 +397,7 @@ export default function RoomScreen() {
                 invented, and a room of invented posts is worse than an empty one. Your connection or
                 the service is the usual reason.
               </T>
-              <Pressable
+              <Pressable hitSlop={hitSlopFor(44, 36)}
                 testID="room-retry"
                 accessibilityRole="button"
                 accessibilityLabel="Try loading the room again"

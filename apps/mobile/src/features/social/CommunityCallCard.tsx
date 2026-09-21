@@ -16,6 +16,7 @@ import { MemberName } from './MemberName';
 import { FollowButton } from './FollowButton';
 import type { CommunityCall } from '../../lib/types';
 
+import { hitSlopFor } from '../../ui/touch';
 /**
  * A CALL A MEMBER PUBLISHED. VOLT, AND NEVER MISTAKABLE FOR A HOUSE ALERT.
  *
@@ -406,7 +407,7 @@ export function CommunityCallCard({
                 : `Show the ${call.symbol} chart`
           }
           onPress={toggleChart}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          hitSlop={{ ...hitSlopFor(44, 30), left: 6, right: 6 }}
           style={({ pressed }) => ({
             flexDirection: 'row', alignItems: 'center', gap: 6,
             alignSelf: 'flex-start', minHeight: 30,
@@ -429,7 +430,7 @@ export function CommunityCallCard({
       {/* Withdrawing belongs where you are reading your own record, not in the
           middle of somebody else's conversation. */}
       {!compact && onWithdraw && call.status === 'open' ? (
-        <Pressable
+        <Pressable hitSlop={hitSlopFor(44, 34)}
           testID={`call-withdraw-${call.id}`}
           accessibilityRole="button"
           accessibilityLabel="Withdraw this call"

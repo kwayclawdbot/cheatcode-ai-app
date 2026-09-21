@@ -5,6 +5,7 @@ import { T } from '../../ui/Text';
 import { alpha, color, radius } from '../../ui/tokens';
 import type { SymbolWorkspace } from '../../lib/types';
 
+import { hitSlopFor } from '../../ui/touch';
 /**
  * The persistent Sell / Buy pair (audit §7, V5-W1 footer).
  *
@@ -24,7 +25,7 @@ export function BuySellBar({ w, testID = 'buy-sell' }: { w: SymbolWorkspace; tes
     );
 
   const pill = (label: string, c: string, border: string, id: string, side: string) => (
-    <Pressable
+    <Pressable hitSlop={hitSlopFor(44, 40)}
       testID={id}
       accessibilityRole="button"
       accessibilityLabel={`${label} ${w.symbol}`}

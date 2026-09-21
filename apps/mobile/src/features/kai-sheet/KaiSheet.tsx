@@ -22,6 +22,7 @@ import {
   subscribeKaiSheet, type KaiContext,
 } from './store';
 
+import { hitSlopFor } from '../../ui/touch';
 /**
  * V5-W2 — the global contextual Kai sheet.
  *
@@ -262,7 +263,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
                         <T variant="meta" lh={17} c={color.muted}>{it.action.summary_plain}</T>
                       ) : null}
                       <View style={{ flexDirection: 'row' }}>
-                        <Pressable
+                        <Pressable hitSlop={hitSlopFor(44, 38)}
                           testID="kai-sheet-action"
                           accessibilityRole="button"
                           accessibilityLabel={it.action.label}

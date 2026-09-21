@@ -22,6 +22,7 @@ import { GradeMedallion, Scorecard } from '../portal/grade';
 import type { TradePortal } from '../portal/types';
 import type { ReadLevel, TradeRead } from './read';
 
+import { hitSlopFor } from '../../ui/touch';
 const LEVEL_TINT: Record<ReadLevel['key'], string> = {
   entry: color.cyan,
   stop: color.red,
@@ -241,7 +242,7 @@ export function DecideBeat({
 
       {read.gradeable && components.length ? (
         <View style={{ gap: 10 }}>
-          <Pressable
+          <Pressable hitSlop={hitSlopFor(44, 26)}
             testID="decide-evidence-toggle"
             accessibilityRole="button"
             accessibilityState={{ expanded: evidence }}

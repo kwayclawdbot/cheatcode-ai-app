@@ -18,6 +18,7 @@ import { Image } from 'expo-image';
 import { alpha, color, radius } from './tokens';
 import { T } from './Text';
 
+import { hitSlopFor } from './touch';
 /** One picture the member has picked, and where it is in its journey. */
 export type Attachment = {
   /** Local key while it uploads. Stable for the life of the row. */
@@ -74,7 +75,7 @@ export function AttachmentTray({
               accessibilityRole="button"
               accessibilityLabel="Remove this picture"
               onPress={() => onRemove?.(a.key)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              hitSlop={hitSlopFor(18, 18)}
               style={{
                 position: 'absolute',
                 top: -5,

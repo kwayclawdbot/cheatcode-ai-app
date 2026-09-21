@@ -3,6 +3,7 @@ import { View, Pressable, ScrollView } from 'react-native';
 import { alpha, color, radius } from './tokens';
 import { T } from './Text';
 
+import { hitSlopFor } from './touch';
 /**
  * In-object view switch — Setup-detail.html:
  *   track `padding:4px; background:#17171C; border-radius:12px`
@@ -26,7 +27,7 @@ export function Segmented<T extends string>({
       {options.map((o) => {
         const active = o.key === value;
         return (
-          <Pressable
+          <Pressable hitSlop={hitSlopFor(44, 36)}
             key={o.key}
             testID={`${testID ?? 'seg'}-${o.key}`}
             accessibilityRole="tab"

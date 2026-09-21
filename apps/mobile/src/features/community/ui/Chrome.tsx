@@ -9,6 +9,7 @@ import { ObjectCard } from '../../../ui/Panel';
 import { ChevronLeft, MoreDots, Pin, Slow } from './Icons';
 import { KaiDot } from './KaiDot';
 
+import { hitSlopFor } from '../../../ui/touch';
 /**
  * Shared chrome for the community + debrief stack.
  * New primitives live here because `src/ui/**` belongs to lane MOBILE-A.
@@ -245,7 +246,7 @@ export function NewMessagesRule({ label }: { label: string }) {
 /** "N new since you left" — from room_members.last_read_seq. */
 export function CatchUpPill({ count, onPress, testID }: { count: number; onPress?: () => void; testID?: string }) {
   return (
-    <Pressable
+    <Pressable hitSlop={hitSlopFor(44, 32)}
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={`${count} new since you left. Jump to them.`}

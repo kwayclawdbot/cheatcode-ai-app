@@ -28,6 +28,7 @@ import type { Annotation } from './types';
 import { KIND_LABEL, PROVENANCE_LABEL } from './types';
 import { publishAsk } from './ask-bus';
 
+import { hitSlopFor } from '../../ui/touch';
 const Chevron = ({ size = 11, c = color.muted }: { size?: number; c?: string }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={2.5}>
     <Path d="M6 9l6 6 6-6" />
@@ -107,7 +108,7 @@ export function PortalTopBar({
           So this is a button that looks like a field — the affordance the eye
           wants, the behaviour the screen needs.
         */}
-        <Pressable
+        <Pressable hitSlop={hitSlopFor(44, 34)}
           testID="ticker-switcher"
           accessibilityRole="search"
           accessibilityLabel={`${symbol}${name ? `, ${name}` : ''}. Search for a different symbol`}
@@ -313,7 +314,7 @@ export function AnnotationSheet({
               <Button label="Hide" kind="outline" height={42} testID="annotation-hide" onPress={() => onHide(a)} />
             </View>
           </View>
-          <Pressable
+          <Pressable hitSlop={hitSlopFor(44, 40)}
             testID="annotation-delete"
             accessibilityRole="button"
             accessibilityLabel="Delete this annotation"

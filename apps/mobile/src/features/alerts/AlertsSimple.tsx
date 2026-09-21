@@ -11,6 +11,7 @@ import { alpha, color, gradient, gradientAngle, radius, typeScale } from '../../
 import { openKaiSheet } from '../kai-sheet';
 import type { AlertFilterKey, AttentionAlert, MonitoringRow } from '../../lib/types';
 
+import { hitSlopFor } from '../../ui/touch';
 /** Attention (n) · Monitoring · n · History — filters, not five sections. */
 export function FilterPills({
   value, onChange, counts, testID = 'alert-filters',
@@ -31,7 +32,7 @@ export function FilterPills({
       {items.map((it) => {
         const active = it.key === value;
         return (
-          <Pressable
+          <Pressable hitSlop={hitSlopFor(44, 34)}
             key={it.key}
             testID={`filter-${it.key}`}
             accessibilityRole="button"
@@ -89,7 +90,7 @@ export function AttentionCard({ a, testID }: { a: AttentionAlert; testID?: strin
       ) : null}
 
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Pressable
+        <Pressable hitSlop={hitSlopFor(44, 42)}
           testID="attention-open"
           accessibilityRole="button"
           accessibilityLabel={`Open ${a.symbol}`}
@@ -101,7 +102,7 @@ export function AttentionCard({ a, testID }: { a: AttentionAlert; testID?: strin
         >
           <T variant="meta" weight="bold" c={color.bg}>{`Open ${a.symbol}`}</T>
         </Pressable>
-        <Pressable
+        <Pressable hitSlop={hitSlopFor(44, 42)}
           testID="attention-ask-kai"
           accessibilityRole="button"
           accessibilityLabel="Ask Kai"
@@ -240,7 +241,7 @@ export function AlertComposer({
           ...(({ outlineStyle: 'none' } as unknown) as object),
         }}
       />
-      <Pressable
+      <Pressable hitSlop={hitSlopFor(44, 34)}
         testID="alert-nl-read"
         accessibilityRole="button"
         accessibilityLabel="Read it back"

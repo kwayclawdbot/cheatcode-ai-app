@@ -10,6 +10,7 @@ import { alpha, color, radius } from '../../ui/tokens';
 import { openKaiSheet } from '../kai-sheet';
 import type { Scenario, SetupDetail, SymbolWorkspace } from '../../lib/types';
 
+import { hitSlopFor } from '../../ui/touch';
 const ago = (iso: string | null | undefined) => {
   if (!iso) return '';
   const t = Date.parse(iso);
@@ -36,7 +37,7 @@ export function WorkspaceTabs({
         const active = t.key === value;
         const n = badge?.[t.key];
         return (
-          <Pressable
+          <Pressable hitSlop={hitSlopFor(44, 34)}
             key={t.key}
             testID={`tab-${t.key}`}
             accessibilityRole="tab"

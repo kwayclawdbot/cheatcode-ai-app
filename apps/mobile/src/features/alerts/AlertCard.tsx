@@ -27,6 +27,7 @@ import type {
   AlertCard as AlertCardModel, AlertCardState, AlertOptionContract, AlertScoreComponent, Candle,
 } from '../../lib/types';
 
+import { hitSlopFor } from '../../ui/touch';
 /**
  * The STANDARD actionable alert card — docs/10 §2/§3/§5.
  * One component for Active, Watching and History. The card is understandable
@@ -850,7 +851,7 @@ export function AlertsEmpty({ copy, offers = [] }: {
       {offers.length ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 6 }}>
           {offers.map((o) => (
-            <Pressable
+            <Pressable hitSlop={hitSlopFor(44, 38)}
               key={o.label}
               testID={o.testID}
               accessibilityRole="button"

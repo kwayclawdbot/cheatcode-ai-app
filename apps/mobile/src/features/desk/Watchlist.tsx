@@ -39,6 +39,7 @@ import { secondTab } from '../nav/second-tab';
 import type { DeskWatchRow, DeskWatchlistResponse, WatchState } from '@shared/desk';
 import type { GoalMode } from '../../lib/types';
 
+import { hitSlopFor } from '../../ui/touch';
 export function DeskWatchlist({ variant = 'stack' }: { variant?: 'tab' | 'stack' }) {
   const router = useRouter();
   const { profile } = useSession();
@@ -365,7 +366,7 @@ function WatchRow({ row, onPick, onExplainState }: {
           would be a picture of a guess. */}
       <LevelTrack price={row.price} trigger={row.triggerPrice} invalidation={row.invalidation} />
 
-      <Pressable
+      <Pressable hitSlop={hitSlopFor(44, 40)}
         onPress={onPick}
         accessibilityRole="button"
         accessibilityLabel={`Understand ${row.company ?? row.ticker}`}
@@ -456,7 +457,7 @@ function Empty({ onThemes, onKai }: { onThemes: () => void; onKai: () => void })
 
 function Offer({ label, onPress, testID }: { label: string; onPress: () => void; testID: string }) {
   return (
-    <Pressable
+    <Pressable hitSlop={hitSlopFor(44, 38)}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}

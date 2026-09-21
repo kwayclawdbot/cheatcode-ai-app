@@ -10,6 +10,7 @@ import { useSession } from '../../lib/session';
 import { modeBadge, modeIsLive } from '../nav/second-tab';
 import type { GoalMode } from '../../lib/types';
 
+import { hitSlopFor } from '../../ui/touch';
 export const MODE_LABEL: Record<GoalMode, string> = {
   day_trade: 'Day Trade',
   swing: 'Swing',
@@ -252,7 +253,7 @@ export function ModeSegmented({ mode, onChanged, testID = 'mode-segmented' }: {
       {MODES.map((m) => {
         const active = m === mode;
         return (
-          <Pressable
+          <Pressable hitSlop={hitSlopFor(44, 24)}
             key={m}
             testID={`mode-seg-${m}`}
             accessibilityRole="tab"

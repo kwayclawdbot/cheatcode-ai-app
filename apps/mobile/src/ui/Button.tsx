@@ -12,7 +12,7 @@ export type ButtonKind = 'volt' | 'voltGhost' | 'outline' | 'kai' | 'ghost';
  * touch target stays >= 44 (UX spec §10 accessibility).
  */
 export function Button({
-  label, onPress, kind = 'volt', height = 52, arrow = false, icon, disabled, loading,
+  label, onPress, kind = 'volt', height = 48, arrow = false, icon, disabled, loading,
   style, accessibilityHint, testID, full = true, size,
 }: {
   label: string;
@@ -30,11 +30,11 @@ export function Button({
   size?: number;
 }) {
   const pad = Math.max(0, Math.ceil((44 - height) / 2));
-  const fs = size ?? (height >= 52 ? 16 : height >= 46 ? 15 : 13);
 
   const base: ViewStyle = {
     height,
-    borderRadius: radius.pill,
+    // REDESIGN 2026-09-21: controls take the spec's control radius (14).
+    borderRadius: radius.control,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -51,15 +51,16 @@ export function Button({
       : kind === 'voltGhost'
       ? { borderWidth: 1, borderColor: alpha.volt55, backgroundColor: alpha.volt10 }
       : kind === 'kai'
-      ? { borderWidth: 0.5, borderColor: alpha.violet50, backgroundColor: alpha.violet08 }
+      ? { borderWidth: 1, borderColor: alpha.violet50, backgroundColor: alpha.violet08 }
       : kind === 'outline'
-      ? { borderWidth: 0.5, borderColor: alpha.ivory24 }
+      ? { borderWidth: 1, borderColor: alpha.ivory24 }
       : {};
 
   const fg =
     kind === 'volt' ? color.bg
       : kind === 'voltGhost' ? color.volt
       : kind === 'kai' ? color.violetLight
+      : kind === 'outline' ? color.textPrimary
       : color.muted;
   const weight = kind === 'volt' ? 'bold' : 'semibold';
 
@@ -80,8 +81,8 @@ export function Button({
       ) : (
         <>
           {icon}
-          <T size={fs} weight={weight} c={fg}>{label}</T>
-          {arrow ? <ArrowRight size={fs === 16 ? 15 : 12} color={fg} /> : null}
+          <T variant="body" size={size} weight={weight} c={fg}>{label}</T>
+          {arrow ? <ArrowRight size={15} color={fg} /> : null}
         </>
       )}
     </Pressable>
@@ -116,7 +117,7 @@ export function Chip({
         },
         selected
           ? { backgroundColor: color.volt }
-          : { borderWidth: 0.5, borderColor: alpha.ivory24 },
+          : { borderWidth: 1, borderColor: alpha.border },
       ]}
     >
       <T variant="meta" weight={selected ? 'bold' : 'semibold'} c={selected ? color.bg : muted ? color.muted : color.text}>

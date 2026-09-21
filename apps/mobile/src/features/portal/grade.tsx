@@ -21,6 +21,7 @@ import { T } from '../../ui/Text';
 import { alpha, color } from '../../ui/tokens';
 import type { ScoreComponent } from './types';
 
+import { hitSlopFor } from '../../ui/touch';
 export { GradeMedallion, GradeChip } from '../grade';
 
 function Segments({ strength, c }: { strength: number; c: string }) {
@@ -57,7 +58,7 @@ export function Scorecard({
         const tone = c.strength >= 4 ? color.green : c.strength >= 3 ? color.cyan : color.muted;
         return (
           <View key={c.key}>
-            <Pressable
+            <Pressable hitSlop={hitSlopFor(44, 26)}
               testID={`score-${c.key}`}
               accessibilityRole="button"
               accessibilityLabel={`${c.label}: ${c.status}`}

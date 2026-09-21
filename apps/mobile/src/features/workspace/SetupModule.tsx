@@ -10,6 +10,7 @@ import { openKaiSheet } from '../kai-sheet';
 import type { PositionModule, SetupModule as SetupModuleType } from '../../lib/types';
 import { NOT_ADVICE_SETUP } from '../legal/disclaimers';
 
+import { hitSlopFor } from '../../ui/touch';
 function Level({ label, value, c, bg, border, testID }: {
   label: string; value: string; c: string; bg: string; border: string; testID?: string;
 }) {
@@ -82,7 +83,7 @@ export function SetupModuleCard({
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <Pressable
+        <Pressable hitSlop={hitSlopFor(44, 42)}
           testID="setup-primary"
           accessibilityRole="button"
           accessibilityLabel={primaryLabel}

@@ -11,6 +11,7 @@ import { Avatar } from '../features/community/ui/Chrome';
 import { BeltChip, MemberName, useLeaderboard } from '../features/social';
 import type { LeaderboardPeriod, LeaderboardRow } from '../lib/types';
 
+import { hitSlopFor } from '../ui/touch';
 /**
  * THE BOARD.
  *
@@ -192,7 +193,7 @@ export default function LeaderboardScreen() {
         {/* HOW POINTS WORK — the server's own sentences, opened by choice. */}
         {data?.explainer.lines.length ? (
           <View style={{ gap: 8, paddingTop: 4 }}>
-            <Pressable
+            <Pressable hitSlop={hitSlopFor(44, 40)}
               testID="board-rules-toggle"
               accessibilityRole="button"
               accessibilityLabel={rulesOpen ? 'Hide how points work' : 'How points work'}

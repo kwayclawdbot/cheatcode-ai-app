@@ -7,6 +7,7 @@ import { T, Eyebrow } from '../../ui/Text';
 import { family } from '../../ui/fonts';
 import type { ConversationRow } from '../../lib/types';
 
+import { hitSlopFor } from '../../ui/touch';
 /**
  * The conversations drawer — prototype "Home" board.
  * Search · + New conversation · PINNED · RECENT. It is Kai's history, so the
@@ -117,7 +118,7 @@ export function ConversationsDrawer({
           />
         </View>
 
-        <Pressable
+        <Pressable hitSlop={hitSlopFor(44, 42)}
           onPress={onNew}
           accessibilityRole="button"
           testID="threads-new"
