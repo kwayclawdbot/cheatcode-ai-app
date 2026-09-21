@@ -297,6 +297,9 @@ export default function TradePortalV2() {
   }
 
   const markedCount = annotations.filter((a) => a.status === 'valid').length;
+  // The marks line is for YOUR drawings. Kai's and the plan's marks are already
+  // on the chart and in the overflow, so at rest the line stays out of the way.
+  const userDrawn = annotations.filter((a) => a.status === 'valid' && a.provenance === 'user').length;
   const tradeLevels = onChart.filter(isTradeLevel).length;
   const onChartCount = onChart.filter((a) => !isTradeLevel(a)).length;
   const kind = setupType(data.alert);
@@ -396,6 +399,7 @@ export default function TradePortalV2() {
         {chartShown ? (
           <View style={{ gap: layout.cardGap }} testID="beat-look">
             <MarksLine
+              show={userDrawn > 0 || levelsOpen}
               symbol={data.symbol}
               markedCount={markedCount}
               onChartCount={onChartCount}
@@ -619,6 +623,12 @@ export default function TradePortalV2() {
             hint: 'Choose the size and order type yourself.',
             onPress: () => { setMoreOpen(false); router.push(`/order/new?symbol=${encodeURIComponent(data.symbol)}` as never); },
           },
+          ...(markedCount > 0 ? [{
+            key: 'marks',
+            label: `Marks on the chart (${markedCount})`,
+            hint: 'Lists every mark under the chart. Tap one to put it back on the chart.',
+            onPress: () => { setMoreOpen(false); setTab('chart'); setLevelsOpen(true); },
+          }] : []),
           {
             key: 'drawers',
             label: 'Positions, orders and watchlist',
@@ -673,8 +683,10 @@ export default function TradePortalV2() {
  * rest. Tapping it lists them; tapping any in the list puts it back.
  */
 function MarksLine({
-  symbol, markedCount, onChartCount, tradeLevels, levelsOpen, exact, onToggle,
+  show, symbol, markedCount, onChartCount, tradeLevels, levelsOpen, exact, onToggle,
 }: {
+  /** false at rest: only the coarser-bars note (when true) is drawn */
+  show: boolean;
   symbol: string;
   markedCount: number;
   onChartCount: number;
@@ -683,6 +695,13 @@ function MarksLine({
   exact: boolean;
   onToggle: () => void;
 }) {
+  if (!show) {
+    return exact ? null : (
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: -4 }}>
+        <T variant="meta" c={color.textSecondary} testID="look-coarser">Coarser bars</T>
+      </View>
+    );
+  }
   const text = markedCount === 0
     ? tradeLevels
       ? `The trade's ${tradeLevels === 3 ? 'entry, stop and target are' : 'levels are'} on the chart.`

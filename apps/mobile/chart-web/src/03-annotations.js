@@ -609,9 +609,33 @@ AnnotationLayer.prototype._budget = function (items) {
   var others = [];
   var zones = [];
   var i;
+  /**
+   * A TRIGGER THAT IS THE ENTRY IS ONE MARK, NOT TWO.
+   *
+   * An alert is usually written against the same number the plan enters at:
+   * "Trigger 504" and "Entry 504–507" then put two chips and two price tags on
+   * one row of pixels, and a zone entry is not a rule so the merge below never
+   * sees them together. When a trigger sits on an entry's price, or inside an
+   * entry zone, the entry speaks for both. A trigger somewhere else is still
+   * drawn — it is then saying something the entry does not.
+   */
+  var entries = [];
+  for (i = 0; i < items.length; i++) {
+    var e = items[i];
+    if (e && e.kind === 'entry' && e.provenance !== 'user' && e.status !== 'hidden' && e.status !== 'deleted' && typeof e.price === 'number') entries.push(e);
+  }
+  function onAnEntry(t) {
+    for (var k = 0; k < entries.length; k++) {
+      var en = entries[k];
+      if (Math.abs(t.price - en.price) <= Math.abs(en.price) * MERGE_PCT) return true;
+      if (typeof en.price2 === 'number' && t.price >= Math.min(en.price, en.price2) && t.price <= Math.max(en.price, en.price2)) return true;
+    }
+    return false;
+  }
   for (i = 0; i < items.length; i++) {
     var a = items[i];
     if (!a || a.status === 'hidden' || a.status === 'deleted') continue;
+    if (a.kind === 'trigger' && a.provenance !== 'user' && typeof a.price === 'number' && onAnEntry(a)) continue;
     /**
      * A DRAWING YOU MADE IS NEVER EDITED BY THE BUDGET.
      *
@@ -928,13 +952,22 @@ AnnotationLayer.prototype._draw = function (target) {
         var yA = toY(a.price), yB = toY(a.price2);
         if (yA == null || yB == null) continue;
         var top = Math.min(yA, yB), bot = Math.max(yA, yB);
-        ctx.globalAlpha = 0.13 * pulse * (dead ? 0.4 : 1);
+        /**
+         * AN ENTRY ZONE IS A LINE WITH A WHISPER OF TINT. The number you enter
+         * at is the dashed rule; the rest of the area is only a faint wash, so
+         * it reads as "still fine up to here" rather than as a grey slab or as
+         * two more levels. Any other two-price level keeps both edges.
+         */
+        var entryZone = a.kind === 'entry';
+        ctx.globalAlpha = (entryZone ? 0.05 : 0.13) * pulse * (dead ? 0.4 : 1);
         ctx.fillStyle = col;
         ctx.fillRect(0, top, W * grown, Math.max(2, bot - top));
         ctx.globalAlpha = base * 0.8;
         ctx.setLineDash([4, 4]);
-        ctx.beginPath(); ctx.moveTo(0, top); ctx.lineTo(W * grown, top);
-        ctx.moveTo(0, bot); ctx.lineTo(W * grown, bot); ctx.stroke();
+        ctx.beginPath();
+        if (entryZone) { ctx.moveTo(0, yA); ctx.lineTo(W * grown, yA); }
+        else { ctx.moveTo(0, top); ctx.lineTo(W * grown, top); ctx.moveTo(0, bot); ctx.lineTo(W * grown, bot); }
+        ctx.stroke();
         ctx.setLineDash([]);
         // The label goes on the PRICE it names, not on the top of the band. An
         // "Entry 504-507" chip hanging at 507 next to a tag reading 504.00 puts
