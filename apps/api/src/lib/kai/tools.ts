@@ -58,6 +58,7 @@ import {
 import { DESK_TOOLS, runDeskTool } from './tools-desk';
 import { ROOM_TOOLS, runRoomTool } from './tools-room';
 import { WEB_TOOLS, runWebTool } from './tools-web';
+import { INTEL_TOOLS, runIntelTool } from './tools-intel';
 import { NOT_FOUND, sym, type ToolCtx, type ToolResult } from './tool-kit';
 import type { AppMode } from '@shared/api';
 
@@ -219,7 +220,7 @@ export const MARKET_TOOLS: Anthropic.Tool[] = [
  * only the sentence in SECURITY naming a fetched page as one of the things it
  * covers, which it now does.
  */
-export const KAI_TOOLS: Anthropic.Tool[] = [...MARKET_TOOLS, ...DESK_TOOLS, ...ROOM_TOOLS, ...WEB_TOOLS];
+export const KAI_TOOLS: Anthropic.Tool[] = [...MARKET_TOOLS, ...INTEL_TOOLS, ...DESK_TOOLS, ...ROOM_TOOLS, ...WEB_TOOLS];
 
 /* ------------------------------------------------------------------ */
 /* Running one                                                         */
@@ -525,6 +526,7 @@ export async function runKaiTool(
       // honest sentence at the bottom rather than to a thrown error.
       default:
         out =
+          (await runIntelTool(name, input, ctx)) ??
           (await runDeskTool(name, input, ctx)) ??
           (await runRoomTool(name, input, ctx)) ??
           (await runWebTool(name, input, ctx));
