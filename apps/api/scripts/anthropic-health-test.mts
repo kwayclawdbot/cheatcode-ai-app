@@ -79,6 +79,7 @@ for (const c of CASES) {
     anthropic_status: h.status,
     anthropic_message: h.message,
     anthropic_checked_at: h.checked_at,
+    credit_gate: { fail_open_last_hour: 0, scope: 'this_server_instance' },
   });
   if (c.want === 'no_credit' || c.want === 'invalid_key') check(`  and overall ok is FALSE`, body.ok === false);
 }

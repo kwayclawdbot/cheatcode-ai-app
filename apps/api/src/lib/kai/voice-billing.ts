@@ -65,7 +65,7 @@ export function voiceChargeId(userId: string, dayKey: string, n: number): string
  * credits is told so in Kai's words, not with a generic error.
  */
 export async function gateVoice(userId: string, requestId: string): Promise<CreditState> {
-  const state = await creditState(userId, requestId);
+  const state = await creditState(userId, requestId, 'kai.voice');
   if (state.verdict !== 'allow') {
     throw new ApiError('ENTITLEMENT_REQUIRED', state.refusal_plain ?? 'You have used your Kai credits for now.', {
       status: 402,

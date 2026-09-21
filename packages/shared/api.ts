@@ -957,6 +957,16 @@ export const HealthResponse = z.object({
   /** One plain sentence saying what the status means and what to do. */
   anthropic_message: z.string(),
   anthropic_checked_at: z.string(),
+  /**
+   * How many Kai questions were let through in the last hour because the
+   * credit database could not be read. Those members got a full day and are
+   * never billed for those questions — deliberate, so nobody is locked out —
+   * which is exactly why the number is shown. Counted per server instance.
+   */
+  credit_gate: z.object({
+    fail_open_last_hour: z.number().int().nonnegative(),
+    scope: z.literal('this_server_instance'),
+  }),
 });
 export type HealthResponse = z.infer<typeof HealthResponse>;
 

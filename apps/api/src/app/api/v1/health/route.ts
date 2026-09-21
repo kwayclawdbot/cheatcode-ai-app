@@ -2,6 +2,7 @@
 import { HealthResponse } from '@shared/api';
 import { serviceClient, supabaseConfigured } from '@/lib/db';
 import { anthropicHealth } from '@/lib/kai/anthropic-health';
+import { failOpenLastHour } from '@/lib/kai/credits';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,7 @@ export async function GET() {
       anthropic_status: probe.status,
       anthropic_message: probe.message,
       anthropic_checked_at: probe.checked_at,
+      credit_gate: { fail_open_last_hour: failOpenLastHour(), scope: 'this_server_instance' },
     })
   );
 }
