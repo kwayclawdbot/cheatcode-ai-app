@@ -126,13 +126,17 @@ console.log('\nF13: reading a room does not change what you trade');
     'and does not render one',
     !/<ModeSegmented\b/.test(community),
   );
+  // V2 (owner pack, 21 Sept): Community is the feed plus a rail of rooms, and
+  // opening a room is a push to `/room/[id]` — there is no "current room" on
+  // this screen to remember any more, so the check is that opening one writes
+  // nothing: no mode call at all.
   ok(
-    'the room it opens is remembered by the device, not by the profile',
-    community.includes('useLastRoom'),
+    'opening a room is navigation only: Community never writes the mode',
+    !/\bsetMode\(/.test(community) && !/['"`]\/mode['"`]/.test(community),
   );
   ok(
-    'and the trading goal is still reachable, through the explicit chooser',
-    /<ModeSheet\b/.test(community),
+    'and the trading goal is still reachable, through the explicit chooser (Account)',
+    /<ModeSheet\b/.test(read(COMMUNITY.replace('community.tsx', 'account.tsx'))),
   );
   ok(
     'nothing on this screen patches primary_mode',
