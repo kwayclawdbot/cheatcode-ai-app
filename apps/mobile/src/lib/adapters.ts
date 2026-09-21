@@ -1470,7 +1470,12 @@ export function adaptAlertCard(raw: unknown, i = 0): AlertCard {
     mode_label: r4str(identity.mode_label ?? o.mode_label, 'Day Trade'),
     direction_label: r4str(identity.direction ?? o.direction_label, 'Long'),
     instrument_label: r4nul(identity.instrument ?? o.instrument_label),
-    alert_id: r4nul(o.alert_id) ?? r4nul(o.id),
+    // THE REAL ALERT ROW ONLY. This used to fall back to the card's own id,
+    // so a setup card carried `alert_id: "setup:<uuid>"` and every link built
+    // from it asked the portal for an alert that does not exist — the AMD
+    // "A setup" that opened on "NOT GRADED". See features/alerts/links.ts.
+    alert_id: r4nul(o.alert_id) ?? (/^alert:/.test(r4str(o.id)) ? r4str(o.id).slice(6) : null),
+    setup_id: r4nul(o.setup_id) ?? (/^setup:/.test(r4str(o.id)) ? r4str(o.id).slice(6) : null),
     grade: r4str(grade.display ?? o.grade_display ?? o.grade, '—'),
     score: r4num(grade.score ?? o.score),
     state,

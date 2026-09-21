@@ -1026,6 +1026,8 @@ export type AlertCard = {
   id: string;
   /** The underlying alert row. The card id may be "alert:<uuid>". */
   alert_id?: string | null;
+  /** The setup this card was built from, when it was — a setup card has no alert row. */
+  setup_id?: string | null;
   symbol: string;
   company: string;
   mode_label: string;               // "Day Trade"

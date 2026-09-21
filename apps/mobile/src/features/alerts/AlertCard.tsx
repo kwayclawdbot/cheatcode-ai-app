@@ -21,6 +21,7 @@ import { SetupPreview, TradeStatusStrip, riskReward, price } from '../../ui/trad
 import { TradeDetail } from '../../ui/trade/TradeDetail';
 import { ideaFromAlertCard, isZone, notesFromAlert } from './trade-adapter';
 import { openKaiSheet } from '../kai-sheet';
+import { kaiContextFor, tradeHref } from './links';
 import type {
   AlertCard as AlertCardModel, AlertCardState, AlertScoreComponent, Candle,
 } from '../../lib/types';
@@ -32,7 +33,7 @@ import type {
  * and it always lands in the Trade Portal with the alert context.
  *
  * Route contract with lane MOBILE-B:
- *     /trade/[symbol]?alert=<id>&ctx=alert
+ *     /trade/[symbol]?alert=<alert id>&setup=<setup id>&ctx=alert  (see links.ts)
  */
 
 /** States where acting on the trade is the point → filled volt. */
@@ -282,7 +283,7 @@ export function StandardAlertCard({ alert, testID, candles }: {
     .filter(Boolean).join(' · ');
 
   const openPortal = () =>
-    router.push(`/trade/${encodeURIComponent(alert.symbol)}?alert=${encodeURIComponent(alert.alert_id ?? alert.id)}&ctx=alert`);
+    router.push(tradeHref(alert) as never);
 
   /* The setup type, which the audit asks for by name and the wire already
      knows in the member's own words. */
@@ -635,7 +636,7 @@ export function StandardAlertCard({ alert, testID, candles }: {
           notes={notes}
           askLabel={`Ask Kai about this ${alert.symbol} setup ↗`}
           onAsk={(ctx) => openKaiSheet({
-            context: { kind: 'alert', id: alert.alert_id ?? alert.id, symbol: alert.symbol },
+            context: kaiContextFor(alert),
             question: ctx.value != null
               ? `Why is the ${ctx.level} on ${ctx.symbol} at ${price(ctx.value, idea.pricePrecision)}?`
               : `What should I know about the ${ctx.level} on ${ctx.symbol}?`,
@@ -672,7 +673,7 @@ export function StandardAlertCard({ alert, testID, candles }: {
       {contractLed ? (
         <Pressable
           onPress={() => openKaiSheet({
-            context: { kind: 'alert', id: alert.alert_id ?? alert.id, symbol: alert.symbol },
+            context: kaiContextFor(alert),
             question: `Explain this options signal on ${alert.symbol} — what was detected, and what would I actually be buying?`,
           })}
           accessibilityRole="button"
@@ -835,7 +836,7 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
 
   return (
     <Pressable
-      onPress={() => router.push(`/trade/${encodeURIComponent(alert.symbol)}?alert=${encodeURIComponent(alert.id)}&ctx=alert`)}
+      onPress={() => router.push(tradeHref(alert) as never)}
       accessibilityRole="button"
       accessibilityHint={`Opens the full record for this ${alert.symbol} alert`}
       testID={`alert-history-${alert.symbol}`}

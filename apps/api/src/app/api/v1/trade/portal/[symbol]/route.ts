@@ -208,7 +208,10 @@ export const GET = authedParams<{ symbol: string }>(
       rows[0] ??
       null;
 
-    const openedFromAlert = Boolean((from.cardId || from.alertId) && alertCard);
+    // Opened FROM a card whenever the link named one and it was found — by its
+    // card id, its alert row, or the setup it was built from. The app links a
+    // setup card as `?setup=`, which every server generation understands.
+    const openedFromAlert = Boolean(namedSomething && alertCard);
     const mode = setup?.mode ?? alertCard?.identity.mode ?? profile.primary_mode;
     const requestedTimeframe = normalizeTimeframe(q.timeframe ?? defaultTimeframe(mode), '1d');
 
