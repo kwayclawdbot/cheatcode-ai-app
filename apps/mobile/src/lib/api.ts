@@ -605,6 +605,24 @@ export const api = {
   alertsRound4: async (tab?: AlertTab): Promise<AlertsRound4> =>
     adaptAlertsRound4(await request<unknown>(`/alerts${tab ? `?tab=${tab}` : ''}`)),
 
+  /**
+   * `GET /alerts/bookmarks` — the cards this member saved (V2 bookmark, 0055).
+   * `available: false` is a stack whose table is not there yet; the board then
+   * keeps saves on the device for the session and says nothing it cannot keep.
+   */
+  alertBookmarks: async (): Promise<{ card_ids: string[]; available: boolean }> => {
+    const raw = (await request<unknown>('/alerts/bookmarks')) as { card_ids?: unknown; available?: unknown };
+    const ids = Array.isArray(raw?.card_ids) ? raw.card_ids.filter((x): x is string => typeof x === 'string') : [];
+    return { card_ids: ids, available: raw?.available !== false };
+  },
+
+  /** `PUT /alerts/bookmarks` — save or unsave one card. Idempotent. */
+  setAlertBookmark: (cardId: string, symbol: string, saved: boolean) =>
+    request<unknown>('/alerts/bookmarks', {
+      method: 'PUT',
+      body: JSON.stringify({ card_id: cardId, symbol, saved }),
+    }),
+
   /** `GET /kai/conversations?q=` — the Home drawer's search / pinned / recent. */
   conversations: async (q?: string): Promise<ConversationsPayload> =>
     adaptConversations(await request<unknown>(`/kai/conversations${q ? `?q=${encodeURIComponent(q)}` : ''}`)),
