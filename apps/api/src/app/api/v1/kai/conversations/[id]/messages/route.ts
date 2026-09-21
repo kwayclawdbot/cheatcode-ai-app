@@ -15,6 +15,7 @@
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import {
+  KAI_OFFLINE_PLAIN,
   PostMessageRequest,
   SETUP_CAPS,
   type AppMode,
@@ -885,7 +886,9 @@ ${renderContext(kctx, chartOnScreen, { market: false, quotes: false })}${sheet.p
            * provider says so in plain words. The key, the provider and the
            * status code stay in the server log where they belong.
            */
-          failurePlain = /\b401\b|authentication_error|invalid x-api-key|API key/i.test(detail)
+          failurePlain = /credit balance|purchase credits|billing/i.test(detail) && !narrative.trim()
+            ? KAI_OFFLINE_PLAIN
+            : /\b401\b|authentication_error|invalid x-api-key|API key/i.test(detail)
             ? 'I could not sign in to the service I think with, so I have not answered. That is a setting on my side, not something you did — it needs fixing before I can read a chart or mark anything on it.'
             : narrative.trim()
               ? 'I stopped part way through that answer. Nothing was drawn on the chart and nothing was acted on.'

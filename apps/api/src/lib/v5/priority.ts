@@ -226,6 +226,7 @@ export function alsoWatching(input: {
       id: p.id,
       symbol: p.symbol,
       plain: p.plain,
+      state_label: 'Open position',
       quote: null,
       route: `/position/${p.id}`,
     });
@@ -246,6 +247,13 @@ export function alsoWatching(input: {
             : state === 'forming'
               ? 'Confirmation building'
               : 'Watching',
+      state_label: isDead(state)
+        ? 'Setup failed'
+        : state === 'ready' || state === 'approaching'
+          ? 'Setup ready'
+          : state === 'forming'
+            ? 'Setup forming'
+            : 'Watching',
       quote: quoteFor(s) as Quote,
       route: `/symbol/${s.symbol}?tab=overview&setup=${s.id}`,
     });

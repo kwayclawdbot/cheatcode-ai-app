@@ -22,7 +22,13 @@ export type BriefingResult = {
 export async function getOrCreateBriefing(
   ctx: KaiContext,
   mode: AppMode,
-  requestId: string
+  requestId: string,
+  /**
+   * False when the provider probe already knows Kai cannot answer (no credit,
+   * refused key). A cached report is still returned; a new one is not asked
+   * for, so Home does not spend a failing model call on every open.
+   */
+  opts: { mayGenerate?: boolean } = {},
 ): Promise<BriefingResult> {
   const market_date = marketDate();
   const refs = { user_id: ctx.profile.user_id, market_date };
@@ -36,7 +42,7 @@ export async function getOrCreateBriefing(
     });
   }
 
-  if (!anthropicConfigured()) {
+  if (!anthropicConfigured() || opts.mayGenerate === false) {
     return { briefing: null, degraded: true, reason: 'Kai is offline right now.' };
   }
 

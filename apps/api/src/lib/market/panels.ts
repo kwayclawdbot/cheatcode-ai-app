@@ -540,6 +540,11 @@ async function liveDeps(): Promise<PanelDeps> {
 let loaders: ReturnType<typeof makePanelLoaders> | null = null;
 
 /** The production loaders. Every caller — tool and route — goes through here. */
+/** The live readers on their own — Home's calendar asks `nextEarnings` directly. */
+export function makePanelDeps(): Promise<PanelDeps> {
+  return liveDeps();
+}
+
 export async function panels(): Promise<ReturnType<typeof makePanelLoaders>> {
   if (!loaders) loaders = makePanelLoaders(await liveDeps());
   return loaders;
