@@ -125,8 +125,8 @@ export function Avatar({ initial, size = 34, tone = 'neutral', url = null }: {
     );
   }
   const tint =
-    tone === 'educator' ? 'rgba(255,200,87,0.30)'
-    : tone === 'market' ? 'rgba(50,214,255,0.25)'
+    tone === 'educator' ? alpha.gold40
+    : tone === 'market' ? alpha.ivory25
     : alpha.ivory14;
   return (
     <LinearGradient
@@ -304,7 +304,7 @@ export function Sheet({
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'flex-end' }}>
+      <View style={{ flex: 1, backgroundColor: alpha.black72, justifyContent: 'flex-end' }}>
         <Pressable accessibilityLabel="Close" onPress={onClose} style={{ flex: 1 }} />
         {/* The panel gradient is translucent by design; a sheet floats over live
             content, so it sits on an opaque base or the room reads through it. */}

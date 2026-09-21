@@ -71,7 +71,7 @@ export function LevelChart({
               >
                 <View
                   style={{
-                    width: 58, height: 58, borderRadius: 29, borderWidth: 1.5, borderColor: 'rgba(200,255,0,0.8)',
+                    width: 58, height: 58, borderRadius: 29, borderWidth: 1.5, borderColor: alpha.volt60,
                     backgroundColor: alpha.volt10, alignItems: 'center', justifyContent: 'center',
                     shadowColor: color.volt, shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 0 },
                   }}

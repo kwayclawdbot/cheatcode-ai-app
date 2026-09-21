@@ -195,8 +195,8 @@ export function CommunityBody({
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <View style={{ flex: 1, height: 6, borderRadius: 3, overflow: 'hidden', flexDirection: 'row' }}>
-          <View style={{ width: `${bull}%`, backgroundColor: 'rgba(53,208,127,0.55)' }} />
-          <View style={{ flex: 1, backgroundColor: 'rgba(255,90,95,0.45)' }} />
+          <View style={{ width: `${bull}%`, backgroundColor: alpha.green50 }} />
+          <View style={{ flex: 1, backgroundColor: alpha.red45 }} />
         </View>
         <T size={10.5} c={color.muted}>
           {bull}% bullish{community.sample != null ? ` · sample ${community.sample}` : ''}
@@ -220,7 +220,7 @@ export function TickerSections({
 
   return (
     <LinearGradient
-      colors={['rgba(255,247,232,0.055)', alpha.surface70]}
+      colors={[alpha.ivory05, alpha.surface70]}
       start={gradientAngle.start}
       end={gradientAngle.end}
       style={{ borderRadius: radius.xl, borderWidth: 0.5, borderColor: alpha.ivory14, paddingHorizontal: 15, paddingVertical: 4 }}

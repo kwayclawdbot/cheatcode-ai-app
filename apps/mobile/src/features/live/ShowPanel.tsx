@@ -108,7 +108,7 @@ function Row({ index, children }: { index: number; children: React.ReactNode }) 
 
 /** A hairline, not a card border. The only structure this panel uses. */
 function Rule() {
-  return <View style={{ height: 1, backgroundColor: alpha.ivory06 ?? 'rgba(255,247,232,0.06)' }} />;
+  return <View style={{ height: 1, backgroundColor: alpha.ivory06 }} />;
 }
 
 function Label({ children }: { children: React.ReactNode }) {
@@ -145,7 +145,7 @@ function Bar({ share, delay }: { share: number; delay: number }) {
     return () => t.stop();
   }, [a, delay, duration, stagger]);
   return (
-    <View style={{ height: 3, backgroundColor: 'rgba(255,247,232,0.05)', marginTop: 7 }}>
+    <View style={{ height: 3, backgroundColor: alpha.ivory05, marginTop: 7 }}>
       <Animated.View
         style={{
           height: 3,
@@ -298,7 +298,7 @@ export function ShowPanel({ name, payload }: { name: PanelName; payload: Record<
         // Nearly opaque. At 0.90 the candlesticks read straight through the
         // rows and the panel looked like a bug rather than a graphic; the chart
         // behind it is not context here, it is noise over text.
-        backgroundColor: 'rgba(11,11,14,0.985)',
+        backgroundColor: color.canvas,
         borderLeftWidth: 2,
         borderLeftColor: color.violet,
         opacity: a,

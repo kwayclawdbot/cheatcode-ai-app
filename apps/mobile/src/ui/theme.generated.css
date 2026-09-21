@@ -10,7 +10,7 @@
  *     npx tsx scripts/gen-theme.mts
  *
  * Read the header of scripts/gen-theme.mts for the full mapping and the
- * reasoning behind it (why primary is volt, why accent is violet, and why these
+ * reasoning behind it (why primary is orange, why accent is violet, and why these
  * are complete css colours rather than the rgb-triplet form).
  */
 
@@ -23,86 +23,82 @@
    * nothing. A light palette belongs in tokens.ts, not here.
    */
   :root {
-    --background:                #0B0B0E;          /* the page ground */
-    --foreground:                #FFF7E8;          /* ivory, never pure white */
-    --card:                      #1C1C22;          /* raised object panel */
-    --card-foreground:           #FFF7E8;
-    --popover:                   #17171C;          /* sheets and menus sit a step below a card */
-    --popover-foreground:        #FFF7E8;
-    --primary:                   #C8FF00;          /* VOLT = the user acting */
-    --primary-foreground:        #0B0B0E;          /* dark ink on volt — volt is a light colour */
-    --secondary:                 #111117;          /* recessed well */
-    --secondary-foreground:      #FFF7E8;
-    --muted:                     #17171C;
-    --muted-foreground:          #B9B0A8;          /* dimmed ivory for supporting text */
-    --accent:                    #8B4DFF;          /* VIOLET = Kai. An accent control reads as Kai. */
-    --accent-foreground:         #FFF7E8;
-    --destructive:               #FF5A5F;          /* the same red the P&L uses */
-    --destructive-foreground:    #FFF7E8;
-    --border:                    rgba(255,247,232,0.12);  /* the hairline — ivory at 12%, NOT a flat grey */
-    --input:                     rgba(255,247,232,0.10);  /* input hairline, one step quieter than a border */
-    --ring:                      rgba(200,255,0,0.50);  /* focus ring is volt: focus is the user acting */
-    --kai:                       #8B4DFF;          /* the intelligence layer */
-    --kai-soft:                  #CBB2FF;
-    --kai-deep:                  #3B1685;
-    --market:                    #32D6FF;          /* market data, never decoration */
-    --market-tint:               #0F2733;
-    --gain:                      #35D07F;          /* financial semantics only */
-    --gain-tint:                 #122A1E;
-    --loss:                      #FF5A5F;          /* financial semantics only */
-    --loss-tint:                 #2E1517;
-    --caution:                   #FFC857;          /* needs-attention */
-    --grade-gold:                #FFD75E;          /* A-family grade medallion */
-    --dim:                       #8E867C;          /* the quietest legible ivory */
-    --surface-veil:              rgba(23,23,28,0.60);  /* panel wash over the ground */
-    --volt-veil:                 rgba(200,255,0,0.10);  /* volt tint for a selected surface */
-    --kai-veil:                  rgba(139,77,255,0.14);  /* violet tint for a Kai surface */
-    --belt-white:                #FFF7E8;          /* white belt = the house ivory */
-    --belt-blue:                 #7B9CC6;          /* steel blue, half the chroma of market cyan */
+    --background:                #0C0C0F;          /* the page ground */
+    --foreground:                #F2F2F0;          /* primary ink, never pure white */
+    --card:                      #151518;          /* cards and navigation */
+    --card-foreground:           #F2F2F0;
+    --popover:                   #1C1C20;          /* sheets and menus: the raised surface */
+    --popover-foreground:        #F2F2F0;
+    --primary:                   #FF5A1F;          /* ORANGE = brand and the primary action */
+    --primary-foreground:        #0C0C0F;          /* dark ink on orange — white fails AA */
+    --secondary:                 #1C1C20;          /* a selected or recessed control */
+    --secondary-foreground:      #F2F2F0;
+    --muted:                     #1C1C20;
+    --muted-foreground:          #9A9892;          /* the secondary ink */
+    --accent:                    #7B45F5;          /* VIOLET = Kai. An accent control reads as Kai. */
+    --accent-foreground:         #F2F2F0;
+    --destructive:               #E5484D;          /* the same red a stop and a loss use */
+    --destructive-foreground:    #F2F2F0;
+    --border:                    rgba(242,242,240,0.12);  /* the hairline — ink at 12%, NOT a flat grey */
+    --input:                     rgba(242,242,240,0.1);  /* input hairline, one step quieter than a border */
+    --ring:                      rgba(255,90,31,0.4);  /* focus ring is orange: focus is the member acting */
+    --brand:                     #FF5A1F;          /* the CheatCode mark and active navigation */
+    --kai:                       #7B45F5;          /* the intelligence layer, as a surface or edge */
+    --kai-ink:                   #B9A2FA;          /* Kai as words */
+    --kai-deep:                  #2A1760;
+    --market-up:                 #12A150;          /* targets, gains, confirmations */
+    --market-up-tint:            #0D2118;
+    --market-down:               #E5484D;          /* stops, losses, warnings */
+    --market-down-tint:          #2A1418;
+    --grade:                     #D7A93A;          /* A / A+ setup accent only */
+    --surface-raised:            #1C1C20;          /* selected and modal surfaces */
+    --dock:                      rgba(21,21,24,0.78);  /* translucent dock / composer, under a blur */
+    --action-veil:               rgba(255,90,31,0.1);  /* orange tint for a selected surface */
+    --kai-veil:                  rgba(123,69,245,0.14);  /* violet tint for a Kai surface */
+    --belt-white:                #F2F2F0;          /* white belt = the house primary ink */
+    --belt-blue:                 #7B9CC6;          /* steel blue, low chroma */
     --belt-purple:               #BE9AC8;          /* orchid — a third of Kai violet's chroma */
-    --belt-brown:                #C08C5E;          /* leather tan, browner than financial gold */
+    --belt-brown:                #C08C5E;          /* leather tan, quieter than grade gold */
     --belt-black:                #D6DAE1;          /* polished platinum — black is a finish, not a hue */
   }
 
   :where(.dark, .dark *) {
-    --background:                #0B0B0E;          /* the page ground */
-    --foreground:                #FFF7E8;          /* ivory, never pure white */
-    --card:                      #1C1C22;          /* raised object panel */
-    --card-foreground:           #FFF7E8;
-    --popover:                   #17171C;          /* sheets and menus sit a step below a card */
-    --popover-foreground:        #FFF7E8;
-    --primary:                   #C8FF00;          /* VOLT = the user acting */
-    --primary-foreground:        #0B0B0E;          /* dark ink on volt — volt is a light colour */
-    --secondary:                 #111117;          /* recessed well */
-    --secondary-foreground:      #FFF7E8;
-    --muted:                     #17171C;
-    --muted-foreground:          #B9B0A8;          /* dimmed ivory for supporting text */
-    --accent:                    #8B4DFF;          /* VIOLET = Kai. An accent control reads as Kai. */
-    --accent-foreground:         #FFF7E8;
-    --destructive:               #FF5A5F;          /* the same red the P&L uses */
-    --destructive-foreground:    #FFF7E8;
-    --border:                    rgba(255,247,232,0.12);  /* the hairline — ivory at 12%, NOT a flat grey */
-    --input:                     rgba(255,247,232,0.10);  /* input hairline, one step quieter than a border */
-    --ring:                      rgba(200,255,0,0.50);  /* focus ring is volt: focus is the user acting */
-    --kai:                       #8B4DFF;          /* the intelligence layer */
-    --kai-soft:                  #CBB2FF;
-    --kai-deep:                  #3B1685;
-    --market:                    #32D6FF;          /* market data, never decoration */
-    --market-tint:               #0F2733;
-    --gain:                      #35D07F;          /* financial semantics only */
-    --gain-tint:                 #122A1E;
-    --loss:                      #FF5A5F;          /* financial semantics only */
-    --loss-tint:                 #2E1517;
-    --caution:                   #FFC857;          /* needs-attention */
-    --grade-gold:                #FFD75E;          /* A-family grade medallion */
-    --dim:                       #8E867C;          /* the quietest legible ivory */
-    --surface-veil:              rgba(23,23,28,0.60);  /* panel wash over the ground */
-    --volt-veil:                 rgba(200,255,0,0.10);  /* volt tint for a selected surface */
-    --kai-veil:                  rgba(139,77,255,0.14);  /* violet tint for a Kai surface */
-    --belt-white:                #FFF7E8;          /* white belt = the house ivory */
-    --belt-blue:                 #7B9CC6;          /* steel blue, half the chroma of market cyan */
+    --background:                #0C0C0F;          /* the page ground */
+    --foreground:                #F2F2F0;          /* primary ink, never pure white */
+    --card:                      #151518;          /* cards and navigation */
+    --card-foreground:           #F2F2F0;
+    --popover:                   #1C1C20;          /* sheets and menus: the raised surface */
+    --popover-foreground:        #F2F2F0;
+    --primary:                   #FF5A1F;          /* ORANGE = brand and the primary action */
+    --primary-foreground:        #0C0C0F;          /* dark ink on orange — white fails AA */
+    --secondary:                 #1C1C20;          /* a selected or recessed control */
+    --secondary-foreground:      #F2F2F0;
+    --muted:                     #1C1C20;
+    --muted-foreground:          #9A9892;          /* the secondary ink */
+    --accent:                    #7B45F5;          /* VIOLET = Kai. An accent control reads as Kai. */
+    --accent-foreground:         #F2F2F0;
+    --destructive:               #E5484D;          /* the same red a stop and a loss use */
+    --destructive-foreground:    #F2F2F0;
+    --border:                    rgba(242,242,240,0.12);  /* the hairline — ink at 12%, NOT a flat grey */
+    --input:                     rgba(242,242,240,0.1);  /* input hairline, one step quieter than a border */
+    --ring:                      rgba(255,90,31,0.4);  /* focus ring is orange: focus is the member acting */
+    --brand:                     #FF5A1F;          /* the CheatCode mark and active navigation */
+    --kai:                       #7B45F5;          /* the intelligence layer, as a surface or edge */
+    --kai-ink:                   #B9A2FA;          /* Kai as words */
+    --kai-deep:                  #2A1760;
+    --market-up:                 #12A150;          /* targets, gains, confirmations */
+    --market-up-tint:            #0D2118;
+    --market-down:               #E5484D;          /* stops, losses, warnings */
+    --market-down-tint:          #2A1418;
+    --grade:                     #D7A93A;          /* A / A+ setup accent only */
+    --surface-raised:            #1C1C20;          /* selected and modal surfaces */
+    --dock:                      rgba(21,21,24,0.78);  /* translucent dock / composer, under a blur */
+    --action-veil:               rgba(255,90,31,0.1);  /* orange tint for a selected surface */
+    --kai-veil:                  rgba(123,69,245,0.14);  /* violet tint for a Kai surface */
+    --belt-white:                #F2F2F0;          /* white belt = the house primary ink */
+    --belt-blue:                 #7B9CC6;          /* steel blue, low chroma */
     --belt-purple:               #BE9AC8;          /* orchid — a third of Kai violet's chroma */
-    --belt-brown:                #C08C5E;          /* leather tan, browner than financial gold */
+    --belt-brown:                #C08C5E;          /* leather tan, quieter than grade gold */
     --belt-black:                #D6DAE1;          /* polished platinum — black is a finish, not a hue */
   }
 }
@@ -128,20 +124,18 @@
   --color-border:                  var(--border);
   --color-input:                   var(--input);
   --color-ring:                    var(--ring);
+  --color-brand:                   var(--brand);
   --color-kai:                     var(--kai);
-  --color-kai-soft:                var(--kai-soft);
+  --color-kai-ink:                 var(--kai-ink);
   --color-kai-deep:                var(--kai-deep);
-  --color-market:                  var(--market);
-  --color-market-tint:             var(--market-tint);
-  --color-gain:                    var(--gain);
-  --color-gain-tint:               var(--gain-tint);
-  --color-loss:                    var(--loss);
-  --color-loss-tint:               var(--loss-tint);
-  --color-caution:                 var(--caution);
-  --color-grade-gold:              var(--grade-gold);
-  --color-dim:                     var(--dim);
-  --color-surface-veil:            var(--surface-veil);
-  --color-volt-veil:               var(--volt-veil);
+  --color-market-up:               var(--market-up);
+  --color-market-up-tint:          var(--market-up-tint);
+  --color-market-down:             var(--market-down);
+  --color-market-down-tint:        var(--market-down-tint);
+  --color-grade:                   var(--grade);
+  --color-surface-raised:          var(--surface-raised);
+  --color-dock:                    var(--dock);
+  --color-action-veil:             var(--action-veil);
   --color-kai-veil:                var(--kai-veil);
   --color-belt-white:              var(--belt-white);
   --color-belt-blue:               var(--belt-blue);
@@ -153,6 +147,8 @@
    * Corner radii, straight off tokens.radius. gluestack's rounded-* utilities
    * therefore round exactly the way the hand-rolled panels do.
    */
+  --radius-card:    18px;
+  --radius-control: 14px;
   --radius-xs:      4px;
   --radius-sm:      6px;
   --radius-md:      8px;
@@ -176,12 +172,12 @@
    * chrome degrades to the platform sans exactly as the hand-rolled layer does
    * instead of to a serif.
    */
-  --font-ui:            'SpaceGrotesk_400Regular', "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-ui-medium:     'SpaceGrotesk_500Medium', "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-ui-semibold:   'SpaceGrotesk_600SemiBold', "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-ui-bold:       'SpaceGrotesk_700Bold', "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-num:           'JetBrainsMono_400Regular', "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  --font-num-medium:    'JetBrainsMono_500Medium', "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  --font-num-semibold:  'JetBrainsMono_600SemiBold', "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  --font-num-bold:      'JetBrainsMono_700Bold', "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-ui:            'Geist_400Regular', "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-ui-medium:     'Geist_500Medium', "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-ui-semibold:   'Geist_600SemiBold', "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-ui-bold:       'Geist_700Bold', "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-num:           'GeistMono_400Regular', "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-num-medium:    'GeistMono_500Medium', "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-num-semibold:  'GeistMono_600SemiBold', "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-num-bold:      'GeistMono_700Bold', "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }

@@ -164,21 +164,27 @@ if (built) {
   // which is the exact failure the bridge exists to prevent.
   const { color, alpha } = await import('../src/ui/tokens.ts');
 
-  check('primary is volt (the user acting), not a default brand blue', () => {
+  check('primary is action orange (the brand + primary action), not a default blue', () => {
     assert(
-      built.includes(color.volt),
-      `expected volt ${color.volt} in the compiled output as --color-primary`,
+      built.includes(color.action),
+      `expected action ${color.action} in the compiled output as --color-primary`,
     );
   });
 
-  check('accent is violet (Kai)', () => {
-    assert(built.includes(color.violet), `expected violet ${color.violet} in the compiled output`);
+  check('accent is Kai violet', () => {
+    assert(built.includes(color.kai), `expected Kai violet ${color.kai} in the compiled output`);
   });
 
-  check('the hairline kept its alpha (a border is ivory at 12%, not flat grey)', () => {
+  check('the retired lime and cyan are nowhere in the chrome palette', () => {
+    for (const gone of ['#C8FF00', '#32D6FF', '#c8ff00', '#32d6ff']) {
+      assert(!built.includes(gone), `found retired colour ${gone} in the compiled chrome palette`);
+    }
+  });
+
+  check('the hairline kept its alpha (a border is ink at 12%, not flat grey)', () => {
     assert(
-      built.includes(alpha.ivory12),
-      `expected the border token to be ${alpha.ivory12}. If this failed with a\n` +
+      built.includes(alpha.border),
+      `expected the border token to be ${alpha.border}. If this failed with a\n` +
         `       6-digit hex instead, the generator was switched to the rgb-triplet\n` +
         `       form, which cannot carry alpha — see the note in gen-theme.mts.`,
     );
@@ -188,7 +194,7 @@ if (built) {
     // uniwind.css ships `@theme { --color-background: unset }` so a host app can
     // define it. That only works if our palette is imported AFTER uniwind.
     assert(
-      built.includes(color.bg),
+      built.includes(color.canvas),
       `--color-background resolved to nothing. theme.generated.css must be\n` +
         `       imported AFTER 'uniwind' in global.css, or uniwind's "unset" wins.`,
     );

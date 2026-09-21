@@ -136,7 +136,7 @@ export function GradeMedallion({ grade, score, size = 90, style, testID }: Grade
         </Defs>
 
         {/* The face. Dark enough to seat the letter on any card veil. */}
-        <Circle cx={c} cy={c} r={r} fill="#17171C" fillOpacity={0.62} />
+        <Circle cx={c} cy={c} r={r} fill={color.raised} fillOpacity={0.62} />
         <Circle cx={c} cy={c} r={r} fill={`url(#${gradientId})`} />
 
         {graded ? (

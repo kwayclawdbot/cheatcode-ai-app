@@ -114,7 +114,7 @@ function RoomSummary({ o }: { o: Extract<KaiRoomObject, { type: 'room_summary' }
           style={{
             flexDirection: 'row', alignItems: 'center', gap: 8,
             paddingVertical: 8, paddingHorizontal: 11, borderRadius: 10,
-            backgroundColor: 'rgba(11,11,14,0.40)', borderWidth: 0.5, borderColor: alpha.ivory08,
+            backgroundColor: alpha.bg40, borderWidth: 0.5, borderColor: alpha.ivory08,
           }}
         >
           <T size={12} weight="bold" c={color.violetLight}>Kai</T>
@@ -182,7 +182,7 @@ function AlertPreview({
       <KaiHeader title={o.title} />
       <T size={14} lh={20}>{o.natural_language}</T>
 
-      <View style={{ gap: 6, padding: 11, borderRadius: 10, backgroundColor: 'rgba(11,11,14,0.40)', borderWidth: 0.5, borderColor: alpha.ivory08 }}>
+      <View style={{ gap: 6, padding: 11, borderRadius: 10, backgroundColor: alpha.bg40, borderWidth: 0.5, borderColor: alpha.ivory08 }}>
         <Eyebrow>WHAT KAI WILL WATCH</Eyebrow>
         {o.condition_lines.map((l, i) => (
           <View key={i} style={{ flexDirection: 'row', gap: 7 }}>

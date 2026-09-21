@@ -262,7 +262,7 @@ export default function Compose() {
               <>
                 <T size={13} lh={19}>{assist.feedback}</T>
                 {showDraft ? (
-                  <View style={{ gap: 8, padding: 12, borderRadius: radius.lg, backgroundColor: 'rgba(11,11,14,0.40)', borderWidth: 0.5, borderColor: alpha.ivory08 }}>
+                  <View style={{ gap: 8, padding: 12, borderRadius: radius.lg, backgroundColor: alpha.bg40, borderWidth: 0.5, borderColor: alpha.ivory08 }}>
                     {STRUCTURED_FIELDS.map((f) => (
                       <View key={f.key} style={{ gap: 2 }}>
                         <T size={10} c={color.muted}>{f.label}</T>

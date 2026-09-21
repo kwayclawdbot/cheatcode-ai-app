@@ -193,8 +193,8 @@ export function ScenarioTile({
   return (
     <LinearGradient
       colors={(up
-        ? ['rgba(53,208,127,0.10)', alpha.surface60]
-        : ['rgba(255,90,95,0.10)', alpha.surface60]) as unknown as readonly [string, string]}
+        ? [alpha.green12, alpha.surface60]
+        : [alpha.red10, alpha.surface60]) as unknown as readonly [string, string]}
       start={gradientAngle.start}
       end={gradientAngle.end}
       style={{

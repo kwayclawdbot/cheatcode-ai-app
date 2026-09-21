@@ -21,39 +21,48 @@ export type GradeBand = {
   letter: string;
   /** medallion inner radial wash (top colour) */
   wash: string;
-  /** card border + card gradient veil for a card carrying this grade */
+  /**
+   * card border + card veil for a card carrying this grade.
+   * REDESIGN 2026-09-21: "do not tint the whole card by grade" — both are the
+   * NEUTRAL card border and the flat card surface for every band now. The
+   * grade shows as the badge plus `edge`, a subtle left-edge indicator.
+   */
   cardBorder: string;
   cardVeil: string;
+  /** The left-edge indicator colour: gold for A/A+, Kai ink for B, grey below. */
+  edge: string;
   /** does the medallion carry the emphasis glow */
   glow: boolean;
   /** spoken/label form — grade is never colour alone */
   quality: string;
 };
 
+const NEUTRAL_CARD = { cardBorder: alpha.border, cardVeil: color.surface } as const;
+
 const BANDS: Record<GradeFamily, GradeBand> = {
   'a-high': {
-    family: 'a-high', ring: color.gradeGold, letter: color.gradeGold, wash: alpha.gradeGold20,
-    cardBorder: alpha.gradeGold55, cardVeil: alpha.gradeGold12, glow: true, quality: 'High quality',
+    family: 'a-high', ring: color.grade, letter: color.grade, wash: alpha.grade14,
+    ...NEUTRAL_CARD, edge: color.grade, glow: false, quality: 'High quality',
   },
   'a-low': {
-    family: 'a-low', ring: color.gradeGold, letter: color.gradeGold, wash: alpha.gradeGold20,
-    cardBorder: alpha.gradeGold55, cardVeil: alpha.gradeGold12, glow: true, quality: 'High quality',
+    family: 'a-low', ring: color.grade, letter: color.grade, wash: alpha.grade14,
+    ...NEUTRAL_CARD, edge: color.grade, glow: false, quality: 'High quality',
   },
   'b-high': {
-    family: 'b-high', ring: '#8B5CF6', letter: color.violetLight, wash: alpha.violet20,
-    cardBorder: alpha.violet50, cardVeil: alpha.violet09, glow: false, quality: 'Good quality',
+    family: 'b-high', ring: color.kaiInk, letter: color.kaiInk, wash: alpha.kai08,
+    ...NEUTRAL_CARD, edge: color.kaiInk, glow: false, quality: 'Good quality',
   },
   b: {
-    family: 'b', ring: color.violetLight, letter: color.violetLight, wash: alpha.violetLight14,
-    cardBorder: alpha.violetLight50, cardVeil: alpha.violetLight14, glow: false, quality: 'Fair quality',
+    family: 'b', ring: alpha.ivory24, letter: color.textPrimary, wash: alpha.ivory06,
+    ...NEUTRAL_CARD, edge: alpha.ivory24, glow: false, quality: 'Fair quality',
   },
   c: {
-    family: 'c', ring: color.gold, letter: color.gold, wash: alpha.gold16,
-    cardBorder: alpha.gold50, cardVeil: alpha.gold12, glow: false, quality: 'Weak quality',
+    family: 'c', ring: alpha.ivory20, letter: color.textSecondary, wash: alpha.ivory05,
+    ...NEUTRAL_CARD, edge: alpha.ivory16, glow: false, quality: 'Weak quality',
   },
   unqualified: {
-    family: 'unqualified', ring: alpha.ivory24, letter: color.muted, wash: alpha.ivory08,
-    cardBorder: alpha.ivory14, cardVeil: alpha.ivory05, glow: false, quality: 'Not qualified',
+    family: 'unqualified', ring: alpha.ivory16, letter: color.textSecondary, wash: alpha.ivory04,
+    ...NEUTRAL_CARD, edge: alpha.ivory12, glow: false, quality: 'Not qualified',
   },
 };
 

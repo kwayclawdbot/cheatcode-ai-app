@@ -10,7 +10,7 @@
  *
  * The obvious way to do that is to write the hex values into `global.css`.
  * That is forbidden here, and the reason is drift: a second copy of the palette
- * has no way of knowing when the first one changes. Someone retunes `volt` in
+ * has no way of knowing when the first one changes. Someone retunes `action` in
  * `src/ui/tokens.ts`, every hand-rolled screen moves, and every gluestack
  * surface silently keeps the old colour. The two halves of the app would come
  * apart one token at a time, and nothing would fail while it happened.
@@ -32,34 +32,34 @@
  * ---------------------------------------------------------------------------
  * THE MAPPING — house grammar onto gluestack's semantic names
  * ---------------------------------------------------------------------------
- * The palette grammar is non-negotiable (tokens.ts says so at the top):
- *     volt = USER action     violet = KAI intelligence
- *     cyan = MARKET data     green/red/gold = financial semantics only
+ * The palette grammar is non-negotiable (tokens.ts says so at the top, and
+ * docs/design/redesign-2026-09-21 is where it comes from):
+ *     orange = brand + primary action     violet = KAI only
+ *     green/red = market meaning only     gold = an A/A+ grade only
  *
  * gluestack's semantic set is mapped to keep that grammar intact:
  *
- *   primary      <- volt        the user's action colour. Every affirmative
- *                               button, every focus ring. NOT "brand blue".
+ *   primary      <- action      orange. Every affirmative button, every
+ *                               focus ring, active navigation.
  *   accent       <- violet      Kai. Reserved for the intelligence layer, so
  *                               an accent-coloured control reads as "Kai did
  *                               this", exactly as it does on hand-rolled cards.
- *   background   <- bg          the page ground (#0B0B0E).
- *   card         <- surface     the raised object panel.
- *   popover      <- surface2    sheets and menus sit one step darker than a
- *                               card, matching Sheet.tsx.
- *   secondary    <- surface3    the recessed well.
- *   muted        <- surface2 / muted   background + the dimmed ivory for text.
- *   foreground   <- text        ivory #FFF7E8, never pure white.
- *   border/input <- ivory12/ivory10   the hairline ladder. These are genuinely
- *                               ALPHA colours in this app — a border is ivory
- *                               at 12%, not a flat grey — see the note below.
- *   destructive  <- red         loss / danger, the same red the P&L uses.
+ *   background   <- canvas      the page ground.
+ *   card         <- surface     cards and navigation.
+ *   popover      <- raised      sheets and menus: the spec's modal surface.
+ *   secondary    <- raised      a selected or recessed control.
+ *   muted        <- raised / textSecondary   background + the secondary ink.
+ *   foreground   <- textPrimary never pure white.
+ *   border/input <- border / ink@10%   the hairline ladder. These are genuinely
+ *                               ALPHA colours in this app — a border is the
+ *                               ink at 12%, not a flat grey — see below.
+ *   destructive  <- marketDown  the same red a stop and a loss use.
  *
  * Plus the house semantics gluestack has no name for. These are still semantic
  * (they say what the colour MEANS, never what it looks like), so they satisfy
  * the skill's "semantic tokens only" rule:
  *
- *   kai / market / gain / loss / caution  <- violet / cyan / green / red / gold
+ *   brand / kai / kai-ink / market-up / market-down / grade
  *
  * DELIBERATE DEVIATION from the skill's `global.css` example: that example
  * stores each token as a bare `R G B` triplet consumed as `rgb(var(--token))`.
@@ -183,50 +183,48 @@ const family = readFontFamilies();
 /** name -> css colour. Order here is the order in the emitted file. */
 const semantic: Array<[string, string, string]> = [
   // [token, value, why]
-  ['background', color.bg, 'the page ground'],
-  ['foreground', color.text, 'ivory, never pure white'],
+  ['background', color.canvas, 'the page ground'],
+  ['foreground', color.textPrimary, 'primary ink, never pure white'],
 
-  ['card', color.surface, 'raised object panel'],
-  ['card-foreground', color.text, ''],
+  ['card', color.surface, 'cards and navigation'],
+  ['card-foreground', color.textPrimary, ''],
 
-  ['popover', color.surface2, 'sheets and menus sit a step below a card'],
-  ['popover-foreground', color.text, ''],
+  ['popover', color.raised, 'sheets and menus: the raised surface'],
+  ['popover-foreground', color.textPrimary, ''],
 
-  ['primary', color.volt, 'VOLT = the user acting'],
-  ['primary-foreground', color.bg, 'dark ink on volt — volt is a light colour'],
+  ['primary', color.action, 'ORANGE = brand and the primary action'],
+  ['primary-foreground', color.onAction, 'dark ink on orange — white fails AA'],
 
-  ['secondary', color.surface3, 'recessed well'],
-  ['secondary-foreground', color.text, ''],
+  ['secondary', color.raised, 'a selected or recessed control'],
+  ['secondary-foreground', color.textPrimary, ''],
 
-  ['muted', color.surface2, ''],
-  ['muted-foreground', color.muted, 'dimmed ivory for supporting text'],
+  ['muted', color.raised, ''],
+  ['muted-foreground', color.textSecondary, 'the secondary ink'],
 
-  ['accent', color.violet, 'VIOLET = Kai. An accent control reads as Kai.'],
-  ['accent-foreground', color.text, ''],
+  ['accent', color.kai, 'VIOLET = Kai. An accent control reads as Kai.'],
+  ['accent-foreground', color.textPrimary, ''],
 
-  ['destructive', color.red, 'the same red the P&L uses'],
-  ['destructive-foreground', color.text, ''],
+  ['destructive', color.marketDown, 'the same red a stop and a loss use'],
+  ['destructive-foreground', color.textPrimary, ''],
 
-  ['border', alpha.ivory12, 'the hairline — ivory at 12%, NOT a flat grey'],
+  ['border', alpha.border, 'the hairline — ink at 12%, NOT a flat grey'],
   ['input', alpha.ivory10, 'input hairline, one step quieter than a border'],
-  ['ring', alpha.volt50, 'focus ring is volt: focus is the user acting'],
+  ['ring', alpha.action40, 'focus ring is orange: focus is the member acting'],
 
   // ---- house semantics gluestack has no name for -------------------------
-  ['kai', color.violet, 'the intelligence layer'],
-  ['kai-soft', color.violetLight, ''],
-  ['kai-deep', color.violetDeep, ''],
-  ['market', color.cyan, 'market data, never decoration'],
-  ['market-tint', color.cyanTint, ''],
-  ['gain', color.green, 'financial semantics only'],
-  ['gain-tint', color.greenTint, ''],
-  ['loss', color.red, 'financial semantics only'],
-  ['loss-tint', color.redTint, ''],
-  ['caution', color.gold, 'needs-attention'],
-  ['grade-gold', color.gradeGold, 'A-family grade medallion'],
-  ['dim', color.dim, 'the quietest legible ivory'],
-  ['surface-veil', alpha.surface60, 'panel wash over the ground'],
-  ['volt-veil', alpha.volt10, 'volt tint for a selected surface'],
-  ['kai-veil', alpha.violet14, 'violet tint for a Kai surface'],
+  ['brand', color.brand, 'the CheatCode mark and active navigation'],
+  ['kai', color.kai, 'the intelligence layer, as a surface or edge'],
+  ['kai-ink', color.kaiInk, 'Kai as words'],
+  ['kai-deep', color.kaiDeep, ''],
+  ['market-up', color.marketUp, 'targets, gains, confirmations'],
+  ['market-up-tint', color.marketUpTint, ''],
+  ['market-down', color.marketDown, 'stops, losses, warnings'],
+  ['market-down-tint', color.marketDownTint, ''],
+  ['grade', color.grade, 'A / A+ setup accent only'],
+  ['surface-raised', color.raised, 'selected and modal surfaces'],
+  ['dock', alpha.dock, 'translucent dock / composer, under a blur'],
+  ['action-veil', alpha.action10, 'orange tint for a selected surface'],
+  ['kai-veil', alpha.kai14, 'violet tint for a Kai surface'],
 
   /*
    * The belt ladder. A member's rank, and the only colours in this file that
@@ -238,14 +236,16 @@ const semantic: Array<[string, string, string]> = [
    * sheet, a member picker — can colour the name the same way the hand-rolled
    * layer does. They are never a fill, a control or a chart series.
    */
-  ['belt-white', belt.white, 'white belt = the house ivory'],
-  ['belt-blue', belt.blue, 'steel blue, half the chroma of market cyan'],
+  ['belt-white', belt.white, 'white belt = the house primary ink'],
+  ['belt-blue', belt.blue, 'steel blue, low chroma'],
   ['belt-purple', belt.purple, 'orchid — a third of Kai violet\'s chroma'],
-  ['belt-brown', belt.brown, 'leather tan, browner than financial gold'],
+  ['belt-brown', belt.brown, 'leather tan, quieter than grade gold'],
   ['belt-black', belt.black, 'polished platinum — black is a finish, not a hue'],
 ];
 
 const radii: Array<[string, number]> = [
+  ['card', radius.card],
+  ['control', radius.control],
   ['xs', radius.xs],
   ['sm', radius.sm],
   ['md', radius.md],
@@ -296,7 +296,7 @@ const banner = `/*
  *     npx tsx scripts/gen-theme.mts
  *
  * Read the header of scripts/gen-theme.mts for the full mapping and the
- * reasoning behind it (why primary is volt, why accent is violet, and why these
+ * reasoning behind it (why primary is orange, why accent is violet, and why these
  * are complete css colours rather than the rgb-triplet form).
  */`;
 

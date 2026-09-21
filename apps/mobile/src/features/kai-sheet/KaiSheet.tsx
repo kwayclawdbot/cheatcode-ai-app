@@ -193,7 +193,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
             // The artboard reaches near-opacity with backdrop-blur, which RN
             // has no equivalent for on web — a translucent sheet there just
             // bleeds the screen's text through the conversation. Opaque.
-            colors={['#1C1A26', '#0F0E14']}
+            colors={[color.raised, color.surface]}
             start={{ x: 0.5, y: 0 }}
             end={{ x: 0.5, y: 1 }}
             style={{
@@ -201,7 +201,7 @@ function KaiSheet({ context, question, nonce }: { context: KaiContext; question?
               borderTopLeftRadius: 28,
               borderTopRightRadius: 28,
               borderTopWidth: 0.5,
-              borderColor: 'rgba(196,181,253,0.35)',
+              borderColor: alpha.violet45,
               overflow: 'hidden',
             }}
           >

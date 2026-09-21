@@ -6,13 +6,15 @@ import { alpha, gradient, gradientAngle, radius } from './tokens';
 export type PanelTone = 'default' | 'volt' | 'kai' | 'gold' | 'live' | 'kaiCard' | 'voltCard';
 
 const TONES: Record<PanelTone, { colors: readonly string[]; locations?: readonly number[]; border: string; borderWidth: number }> = {
-  default:  { colors: gradient.panel,     locations: gradient.panelLocations,     border: alpha.ivory16,  borderWidth: 0.5 },
+  // REDESIGN 2026-09-21: one card system — flat surface, 1px border. Only a
+  // SELECTED card (volt) takes the orange edge, and only Kai's cards take violet.
+  default:  { colors: gradient.panel,     locations: gradient.panelLocations,     border: alpha.border,   borderWidth: 1 },
   volt:     { colors: gradient.voltPanel, locations: gradient.voltPanelLocations, border: alpha.volt60,   borderWidth: 1 },
-  kai:      { colors: gradient.kai,                                               border: alpha.violet50, borderWidth: 0.5 },
-  gold:     { colors: gradient.gold,      locations: gradient.goldLocations,      border: alpha.gold60,   borderWidth: 0.5 },
-  live:     { colors: gradient.live,                                              border: alpha.red45,    borderWidth: 0.5 },
-  kaiCard:  { colors: gradient.kaiCard,                                           border: alpha.violet45, borderWidth: 0.5 },
-  voltCard: { colors: gradient.voltCard,                                          border: alpha.volt50,   borderWidth: 0.5 },
+  kai:      { colors: gradient.kai,                                               border: alpha.violet45, borderWidth: 1 },
+  gold:     { colors: gradient.gold,      locations: gradient.goldLocations,      border: alpha.border,   borderWidth: 1 },
+  live:     { colors: gradient.live,                                              border: alpha.border,   borderWidth: 1 },
+  kaiCard:  { colors: gradient.kaiCard,                                           border: alpha.violet45, borderWidth: 1 },
+  voltCard: { colors: gradient.voltCard,                                          border: alpha.border,   borderWidth: 1 },
 };
 
 /**
@@ -21,7 +23,7 @@ const TONES: Record<PanelTone, { colors: readonly string[]; locations?: readonly
  * RN can't do inset box-shadow; the top hairline highlight is a 1px overlay row.
  */
 export function ObjectCard({
-  children, tone = 'default', r = radius.xl, style, highlight = true, testID,
+  children, tone = 'default', r = radius.card, style, highlight = false, testID,
 }: {
   children?: React.ReactNode;
   tone?: PanelTone;
@@ -46,7 +48,7 @@ export function ObjectCard({
       {highlight ? (
         <View
           pointerEvents="none"
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: tone === 'volt' ? 'rgba(222,255,102,0.24)' : alpha.ivory16 }}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: alpha.ivory16 }}
         />
       ) : null}
       {children}
@@ -68,8 +70,8 @@ export function Row({ children, last = false, style }: { children: React.ReactNo
           alignItems: 'center',
           gap: 10,
           paddingVertical: 12,
-          borderBottomWidth: last ? 0 : 0.5,
-          borderBottomColor: alpha.ivory08,
+          borderBottomWidth: last ? 0 : 1,
+          borderBottomColor: alpha.divider,
         },
         style,
       ]}

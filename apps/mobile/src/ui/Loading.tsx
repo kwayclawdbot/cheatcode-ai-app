@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { color } from './tokens';
+import { alpha, color } from './tokens';
 import { T } from './Text';
 
 /**
@@ -31,7 +31,7 @@ export function NotConnected({ what, testID }: { what: string; testID?: string }
       testID={testID ?? 'not-connected'}
       style={{
         borderWidth: 0.5,
-        borderColor: 'rgba(255,247,232,0.12)',
+        borderColor: alpha.border,
         borderRadius: 16,
         padding: 18,
         gap: 7,

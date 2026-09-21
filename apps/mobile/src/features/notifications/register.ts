@@ -24,6 +24,7 @@
 import { Platform } from 'react-native';
 import type { PushDevice } from '../../lib/types';
 import { api } from '../../lib/api';
+import { color } from '../../ui/tokens';
 import { deviceLabel, easProjectId, isExpoGo } from './capability';
 
 /** The subset of expo-notifications this app uses. */
@@ -78,7 +79,7 @@ export async function ensureAndroidChannel(): Promise<void> {
       importance: N.AndroidImportance.HIGH,
       lockscreenVisibility: N.AndroidNotificationVisibility.PRIVATE,
       vibrationPattern: [0, 200, 120, 200],
-      lightColor: '#C8FF00',
+      lightColor: color.action,
     });
   } catch {
     /* a missing channel degrades the banner, it does not break registration */

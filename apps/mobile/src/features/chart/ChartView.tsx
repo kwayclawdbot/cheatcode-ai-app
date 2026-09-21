@@ -32,7 +32,7 @@ import React, {
   forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from 'react';
 import { Image, Platform, StyleSheet, View } from 'react-native';
-import { color, radius } from '../../ui/tokens';
+import { alpha, color, radius } from '../../ui/tokens';
 import type { Candle } from '../../lib/types';
 import type { Annotation, PortalTimeframe } from '../portal/types';
 import { PORTAL_TIMEFRAMES } from '../portal/types';
@@ -441,7 +441,7 @@ export const ChartView = forwardRef<ChartHandle, ChartViewProps>(function ChartV
     // all already this colour.
     backgroundColor: color.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,247,232,0.08)',
+    borderColor: alpha.ivory08,
   };
 
   if (Platform.OS === 'web') {

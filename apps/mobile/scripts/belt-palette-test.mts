@@ -85,42 +85,63 @@ function hueGap(a: string, b: string): number {
 console.log('\nA name is legible at every rung (WCAG AA on the ground)');
 for (const b of BELT_ORDER) {
   const ratio = contrast(belt[b], color.bg);
-  ok(`${b} belt reads on #0B0B0E (${ratio.toFixed(2)}:1)`, ratio >= 4.5, ratio);
+  ok(`${b} belt reads on the canvas ${color.canvas} (${ratio.toFixed(2)}:1)`, ratio >= 4.5, ratio);
 }
 
 console.log('\nSignal is lit, belt is dyed');
 {
-  // The colours that MEAN something. If any of these ever stops being fully
-  // saturated the rule below gets easier to pass by accident, so they are
-  // asserted too rather than merely used as a yardstick.
-  const signal = { cyan: color.cyan, violet: color.violet, gold: color.gold, volt: color.volt, red: color.red };
+  /*
+   * REDESIGN 2026-09-21. The signal colours are the owner's spec palette now,
+   * and they are not all fully saturated the way volt and cyan were: orange is
+   * 100%, Kai violet ~90%, market green ~80%, market red ~75%, grade gold
+   * ~66%. So the line between "lit" and "dyed" moved, and it is re-stated
+   * honestly rather than loosened silently:
+   *
+   *   every signal colour is at 60% saturation or more,
+   *   every hued belt is at 45% or less (they run 15–44%).
+   *
+   * That keeps a clear 15-point gap between the quietest signal and the
+   * loudest belt, and the per-pair checks below still demand a hue shift AND
+   * a chroma drop against each near neighbour.
+   */
+  const signal = {
+    action: color.action, kai: color.kai, marketUp: color.marketUp,
+    marketDown: color.marketDown, grade: color.grade,
+  };
   for (const [name, hex] of Object.entries(signal)) {
-    ok(`${name} is a full-chroma signal colour (${saturation(hex).toFixed(0)}%)`, saturation(hex) >= 95, saturation(hex));
+    ok(`${name} is a signal colour (${saturation(hex).toFixed(0)}% ≥ 60%)`, saturation(hex) >= 60, saturation(hex));
   }
 
-  // White is the house ivory — a near-white, where HSL saturation stops being
-  // a meaningful number — so the dyed rule is asserted over the four rungs
-  // that actually carry a hue.
+  // White is the house primary ink — a near-white, where HSL saturation stops
+  // being a meaningful number — so the dyed rule is asserted over the four
+  // rungs that actually carry a hue.
   for (const b of ['blue', 'purple', 'brown', 'black'] as const) {
     const s = saturation(belt[b]);
-    ok(`${b} belt is dyed, not lit (${s.toFixed(0)}% < 70%)`, s < 70, s);
+    ok(`${b} belt is dyed, not lit (${s.toFixed(0)}% ≤ 45%)`, s <= 45, s);
   }
+  const loudestBelt = Math.max(...(['blue', 'purple', 'brown', 'black'] as const).map((b) => saturation(belt[b])));
+  const quietestSignal = Math.min(...Object.values(signal).map(saturation));
+  ok(`the quietest signal is well above the loudest belt (${quietestSignal.toFixed(0)}% vs ${loudestBelt.toFixed(0)}%)`,
+    quietestSignal - loudestBelt >= 15, { quietestSignal, loudestBelt });
 }
 
 console.log('\nNo belt is mistakable for a colour that already means something');
 {
-  // The three genuinely near pairs. Each must be separated on BOTH axes: a
-  // different hue AND a large drop in chroma. Either one alone is a colour
-  // somebody squints at.
-  const pairs: Array<[string, string, string, string]> = [
-    ['blue belt', belt.blue, 'market cyan', color.cyan],
-    ['purple belt', belt.purple, 'Kai violet', color.violet],
-    ['brown belt', belt.brown, 'financial gold', color.gold],
+  // The genuinely near pairs in the new palette. Each must be separated on
+  // BOTH axes: a different hue AND a clear drop in chroma. Either alone is a
+  // colour somebody squints at. The brown/gold pair is the tightest one
+  // (grade gold is itself a muted gold), so its chroma bar is 20 points; the
+  // others clear 30 comfortably and are held to it.
+  const pairs: Array<[string, string, string, string, number]> = [
+    ['purple belt', belt.purple, 'Kai violet', color.kai, 30],
+    ['blue belt', belt.blue, 'Kai violet', color.kai, 30],
+    ['brown belt', belt.brown, 'grade gold', color.grade, 20],
+    ['brown belt', belt.brown, 'action orange', color.action, 30],
   ];
-  for (const [aName, a, bName, b] of pairs) {
+  for (const [aName, a, bName, b, minDrop] of pairs) {
     ok(`${aName} is off ${bName}'s hue (${hueGap(a, b).toFixed(0)} deg)`, hueGap(a, b) >= 10, hueGap(a, b));
     const drop = saturation(b) - saturation(a);
-    ok(`${aName} is far quieter than ${bName} (${drop.toFixed(0)}pp less chroma)`, drop >= 30, drop);
+    ok(`${aName} is far quieter than ${bName} (${drop.toFixed(0)}pp less chroma, needs ${minDrop})`, drop >= minDrop, drop);
   }
 }
 
@@ -166,7 +187,7 @@ console.log('\nThe helpers agree with the palette');
     BELT_ORDER.every((b) => beltEdge(b).startsWith('rgba(')));
   ok('isBelt accepts the five rungs', BELT_ORDER.every(isBelt));
   ok('isBelt rejects anything else', !isBelt('gold') && !isBelt(null) && !isBelt(3) && !isBelt('WHITE'));
-  ok('white belt is the house ivory, so most names did not change colour', belt.white === color.text);
+  ok('white belt is the house primary ink, so most names did not change colour', belt.white === color.textPrimary);
 }
 
 console.log(failures === 0 ? '\nbelt palette OK\n' : `\n${failures} FAILED\n`);

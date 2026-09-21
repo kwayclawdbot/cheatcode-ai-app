@@ -100,7 +100,7 @@ export function ConversationsDrawer({
         testID="threads-drawer"
         style={{
           position: 'absolute', top: 0, bottom: 0, left: 0, width: 300,
-          backgroundColor: '#121216', borderRightWidth: 1, borderRightColor: alpha.ivory10,
+          backgroundColor: color.surface, borderRightWidth: 1, borderRightColor: alpha.ivory10,
           paddingTop: Math.max(insets.top, 66), paddingHorizontal: 14, paddingBottom: Math.max(insets.bottom, 24),
         }}
       >

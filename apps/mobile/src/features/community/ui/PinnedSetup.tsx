@@ -91,7 +91,7 @@ export function PinnedSetup({
             <Line x1={0} y1={yFor(target, top, bottom)} x2={330} y2={yFor(target, top, bottom)} stroke={color.green} strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />
           ) : null}
           {entry != null ? (
-            <Rect x={0} y={yFor(entry, top, bottom) - 4.5} width={330} height={9} fill="rgba(50,214,255,0.12)" />
+            <Rect x={0} y={yFor(entry, top, bottom) - 4.5} width={330} height={9} fill={alpha.ivory10} />
           ) : null}
           {invalid != null ? (
             <Line x1={0} y1={yFor(invalid, top, bottom)} x2={330} y2={yFor(invalid, top, bottom)} stroke={color.red} strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />

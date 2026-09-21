@@ -176,7 +176,7 @@ export function ComposerActions({
           testID="composer-plus-backdrop"
           accessibilityLabel="Close"
           onPress={hide}
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.28)' }}
+          style={{ flex: 1, backgroundColor: alpha.black28 }}
         />
         <Animated.View
           testID="composer-plus-menu"
@@ -193,7 +193,7 @@ export function ComposerActions({
             paddingVertical: 4,
             // Depth, not drama: the panel sits ABOVE the feed and the shadow is
             // the only thing that says so once the shade behind it is this light.
-            shadowColor: '#000',
+            shadowColor: alpha.black50,
             shadowOpacity: 0.45,
             shadowRadius: 24,
             shadowOffset: { width: 0, height: 10 },
