@@ -44,6 +44,23 @@ export function sizeFor(read: TradeRead, portal: TradePortal): TakeSize {
   if (perShare == null || perShare <= 0) {
     return { shares: null, plain: 'I cannot size this without an entry and a stop.', risk_usd: null };
   }
+  /*
+   * THE SERVER'S SIZE FIRST. `/trade/portal` sizes the plan against the
+   * member's own rules and sends the share count with the sentence that
+   * explains it. Re-deriving it here from a budget the wire does not carry is
+   * how a fully sized plan reached the Take beat as "not priced". Only a
+   * whole, positive count is taken; anything else falls through to the
+   * budget arithmetic below, which refuses rather than guesses.
+   */
+  const served = portal.plan?.shares;
+  if (typeof served === 'number' && Number.isInteger(served) && served >= 1) {
+    return {
+      shares: served,
+      plain: portal.plan?.size_plain
+        ?? `${served} share${served === 1 ? '' : 's'}, sized to your rules.`,
+      risk_usd: Math.round(served * perShare * 100) / 100,
+    };
+  }
   if (budget == null || budget <= 0) {
     return {
       shares: null,

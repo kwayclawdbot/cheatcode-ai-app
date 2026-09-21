@@ -34,7 +34,15 @@ import { receiptLine, sizeFor, ticketFor, type TakeSize } from './order-math';
 export { receiptLine, sizeFor, ticketFor } from './order-math';
 export type { TakeSize } from './order-math';
 
-export type TakePhase = 'idle' | 'preparing' | 'confirm' | 'sending' | 'receipt' | 'failed';
+/**
+ * `unsized` and `failed` are different facts and the card says different
+ * things for them (owner audit, 21 September: "NOT PRICED" sat over the
+ * sentence "1 share keeps the loss near $44.65 — inside your rules").
+ *   unsized  no order could be built — no size, or nothing takeable. Nothing
+ *            was asked of the paper engine.
+ *   failed   an order was built and the engine could not price it.
+ */
+export type TakePhase = 'idle' | 'preparing' | 'confirm' | 'sending' | 'receipt' | 'unsized' | 'failed';
 
 export type TakeState = {
   phase: TakePhase;
@@ -65,11 +73,17 @@ export function useTake(read: TradeRead | null, portal: TradePortal | null) {
 
   /** Build the confirmation card. Nothing is sent by this. */
   const prepare = useCallback(async () => {
-    if (!read || !portal || !read.takeable) return;
+    if (!read || !portal) return;
+    if (!read.takeable) {
+      // Reached by a `?beat=take` link on something with nothing to take. It
+      // used to return silently and leave "Pricing it…" on screen for good.
+      setState({ phase: 'unsized', preview: null, order: null, size: null, receipt_plain: null, error: read.blocked_plain });
+      return;
+    }
     const size = sizeFor(read, portal);
     const ticket = ticketFor(read, portal, size.shares);
     if (!ticket) {
-      setState({ phase: 'failed', preview: null, order: null, size, receipt_plain: null, error: size.plain });
+      setState({ phase: 'unsized', preview: null, order: null, size, receipt_plain: null, error: size.plain });
       return;
     }
     setState((s) => ({ ...s, phase: 'preparing', size, error: null }));

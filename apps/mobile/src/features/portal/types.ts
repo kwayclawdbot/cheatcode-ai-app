@@ -182,6 +182,14 @@ export type PortalPlan = {
   rr: string | null;
   size_plain: string | null;
   risk_dollars: number | null;
+  /**
+   * The share count the SERVER sized this plan to, against the member's own
+   * risk rules. Present on a portal that sent `suggested.size.shares`; absent
+   * (undefined) on fixtures and older payloads, which size from `risk_dollars`.
+   */
+  shares?: number | null;
+  /** The server's verdict on that size: inside the member's rules, or not. */
+  within_policy?: boolean | null;
   daily_cap: { used: number | null; cap: number | null } | null;
   stop_attaches_plain: string | null;
   /** what the CTA under the plan does next */

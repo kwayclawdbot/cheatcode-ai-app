@@ -1183,6 +1183,12 @@ function adaptPortalPlan(v: unknown, symbol: string): PortalPlan | null {
     rr: str(pick(suggested, 'rr_plain')) || (rr != null ? `${rr.toFixed(1)} : 1` : null),
     size_plain: str(pick(size, 'plain')) || str(pick(suggested, 'size_plain')) || null,
     risk_dollars: num(pick(size, 'risk_usd', 'est_risk_usd')) ?? num(pick(suggested, 'risk_dollars', 'max_loss')),
+    // THE SIZE THE SERVER ALREADY WORKED OUT. The Take beat used to ignore it
+    // and re-derive a size from `risk_dollars`, which this wire never sends —
+    // so every real plan came back unsized and the card said "NOT PRICED"
+    // over the server's own sentence "1 share … inside your rules".
+    shares: num(pick(size, 'shares')),
+    within_policy: typeof pick(size, 'within_policy') === 'boolean' ? (pick(size, 'within_policy') as boolean) : null,
     daily_cap: Object.keys(cap).length ? { used: num(pick(cap, 'used')), cap: num(pick(cap, 'cap')) } : null,
     stop_attaches_plain: str(pick(suggested, 'stop_attaches_plain')) || null,
     action: str(pick(action, 'label'))

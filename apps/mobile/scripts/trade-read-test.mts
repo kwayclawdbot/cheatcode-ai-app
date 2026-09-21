@@ -174,6 +174,31 @@ console.log('\nSizing comes from the risk budget, and refuses rather than guessi
   ok('one share over the cap sizes to nothing', tooRich.shares === null, tooRich);
 }
 
+console.log('\nThe server already sized it — the Take beat uses that size (owner audit 21 Sept)');
+{
+  // The real AMD wire: `suggested.size = { shares: 1, max_loss_usd: 44.65,
+  // plain: '1 share keeps the loss near $44.65 …' }` and no `risk_dollars`.
+  // Before the fix this came back unsized and the card said NOT PRICED.
+  const portal = base({
+    alert: { ...gradedAlert, entry: 578.75, entry_high: null, stop: 534.1, target: 712.71 } as never,
+    plan: {
+      id: null, entry: 578.75, stop: 534.1, targets: [712.71], rr: null,
+      size_plain: '1 share keeps the loss near $44.65 if the level fails — inside your rules.',
+      risk_dollars: null, shares: 1, within_policy: true,
+      daily_cap: null, stop_attaches_plain: null, action: null, empty_plain: null,
+    } as never,
+  });
+  const r = readPortal(portal);
+  const s = sizeFor(r, portal);
+  ok('the served share count is used', s.shares === 1, s);
+  ok('with the server\'s own sentence', s.plain.startsWith('1 share keeps the loss'), s.plain);
+  ok('and the risk is the distance to the stop', s.risk_usd === 44.65, s.risk_usd);
+  ok('so an order can be built and priced', ticketFor(r, portal, s.shares)?.qty === 1);
+
+  const fraction = sizeFor(r, base({ ...portal, plan: { ...portal.plan, shares: 1.5 } as never }));
+  ok('a fractional served count is not trusted', fraction.shares === null, fraction);
+}
+
 console.log('\nThe receipt never says filled before the engine does');
 {
   const accepted = { id: 'o1', symbol: 'META', side: 'buy_to_open', side_label: 'Buy', qty: 9, filled_qty: 0, order_type: 'market', limit_price: null, stop_price: null, duration: 'day', status: 'accepted', status_label: 'Accepted — waiting to fill', status_detail: null, avg_fill_price: null, submitted_at: null, filled_at: null, position_id: null, paper: true } as OrderRow;
