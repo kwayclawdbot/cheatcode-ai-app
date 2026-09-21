@@ -38,16 +38,19 @@ export function PriceTriplet({
   return (
     // `gap` keeps three mono columns from running into each other in a narrow
     // card (a chat tool card at 360 wide printed "504.00460.00540.00").
+    // A price never breaks across lines: each column is at least as wide as its
+    // number (large text at 360 wide printed "504." over "00"). The R column
+    // gives way instead, its label wrapping under itself.
     <View testID={testID} style={[{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }, style]}>
       {cols.map(([label, value, ink]) => (
-        <View key={label} style={{ flex: 1, gap: 2 }} accessible accessibilityLabel={`${label} ${value}`}>
+        <View key={label} style={{ flexGrow: 1, flexShrink: 0, flexBasis: 'auto', gap: 2 }} accessible accessibilityLabel={`${label} ${value}`}>
           <T variant="meta" c={color.textSecondary}>{label}</T>
           <Num variant={size} weight="semibold" c={ink} testID={`${testID}-${label.toLowerCase()}`}>{value}</Num>
         </View>
       ))}
       {r != null && Number.isFinite(r) ? (
-        <View style={{ alignItems: 'flex-end', gap: 2 }} accessible accessibilityLabel={`${r.toFixed(1)} R`}>
-          <T variant="meta" c={color.textSecondary}>Risk / reward</T>
+        <View style={{ flexShrink: 1, minWidth: 0, alignItems: 'flex-end', gap: 2 }} accessible accessibilityLabel={`${r.toFixed(1)} R`}>
+          <T variant="meta" c={color.textSecondary} style={{ textAlign: 'right' }}>Risk / reward</T>
           <Num variant={size} weight="semibold" c={color.textPrimary} testID={`${testID}-r`}>{`${r.toFixed(1)}R`}</Num>
         </View>
       ) : null}
