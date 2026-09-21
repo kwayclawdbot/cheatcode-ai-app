@@ -55,7 +55,7 @@ export const fixtureSetups: GradedSetup[] = [
     invalid: '< 460',
     risk_line: 'Waiting for volume · risk $58 if wrong',
     next_action: 'Open setup',
-    quote: { symbol: 'META', price: 508.4, source_ts: SOURCE_TS, freshness: 'delayed' },
+    quote: { symbol: 'META', price: 508.4, change: 10.56, change_pct: 2.12, source_ts: SOURCE_TS, freshness: 'delayed' },
   },
   {
     id: 'seed-nvda',
@@ -628,12 +628,29 @@ export const fixtureHomeV5: HomeV5 = {
     primary_action: { label: 'Review setup', route: '/symbol/META?tab=overview&setup=seed-meta' },
   },
   also_watching: [
-    { id: 'aw1', symbol: 'NVDA', text: '1% from invalidation · B−', tone: 'attention', action: { label: 'Review', route: '/symbol/NVDA?tab=overview&setup=seed-nvda' } },
-    { id: 'aw2', symbol: 'AAPL', text: 'Earnings in 9 days · reminder set', tone: 'neutral', action: null },
-    { id: 'aw3', symbol: 'CPI', text: "10:00 print · the day's main risk", tone: 'neutral', action: null },
+    { id: 'aw-amd', symbol: 'AMD', text: 'Watching the 180 level', tone: 'neutral', kind: 'setup', state_label: 'Resistance nearby', route: '/symbol/AMD?tab=overview&setup=seed-amd', action: null },
+    { id: 'aw1', symbol: 'NVDA', text: '1% from invalidation', tone: 'attention', kind: 'position', state_label: 'Open position', route: '/symbol/NVDA?tab=overview&setup=seed-nvda', action: { label: 'Review', route: '/symbol/NVDA?tab=overview&setup=seed-nvda' } },
   ],
   briefing: fixtureBriefing,
   daily_risk: { cap: 60, used: 0, remaining: 60 },
+  /**
+   * The agent block as the server sends it. Only things the live server can
+   * produce: an earnings date from the per-company calendar (never a CPI row —
+   * there is no economic-calendar source), and an alert the member switched on.
+   */
+  agent: {
+    kai: { available: true, status: 'ok' },
+    positions_open: 2,
+    monitoring: [
+      { id: 'al-meta', symbol: 'META', plain: 'Alert me when META breaks 504 on volume', clause: 'when META breaks 504 on volume' },
+    ],
+    calendar: {
+      state: 'ok',
+      plain: '1 report in the next 7 days on your names.',
+      events: [{ kind: 'earnings', symbol: 'NVDA', date: '2026-09-23', when: 'postmarket', confirmed: true, days_away: 2 }],
+    },
+  },
+  conversation: null,
 };
 
 /**
@@ -652,6 +669,13 @@ export const fixtureHomeV5Quiet: HomeV5 = {
   also_watching: [],
   briefing: null,
   daily_risk: { cap: 60, used: 0, remaining: 60 },
+  agent: {
+    kai: { available: true, status: 'ok' },
+    positions_open: 0,
+    monitoring: [],
+    calendar: { state: 'ok', plain: 'No reports in the next 7 days on your names.', events: [] },
+  },
+  conversation: null,
 };
 
 /** V5-W1 — the one META workspace, setup as a module inside it. */

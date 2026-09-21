@@ -44,7 +44,13 @@ import type { WallItem } from './types';
  * instant it is chosen — before a single word is sent.
  */
 export type ThreadTarget =
-  | { kind: 'today' }
+  /**
+   * `resume` (redesign V2, "each session feels continuous rather than reset"):
+   * the id of the conversation the member was already in today. Today then
+   * continues it — its transcript is restored under Kai's opening and the next
+   * turn goes to it — instead of starting a blank one on every open.
+   */
+  | { kind: 'today'; resume?: string | null }
   | { kind: 'new'; nonce: number }
   | { kind: 'saved'; id: string };
 
@@ -52,7 +58,14 @@ export type ThreadTarget =
 export function targetKey(t: ThreadTarget): string {
   if (t.kind === 'saved') return `saved:${t.id}`;
   if (t.kind === 'new') return `new:${t.nonce}`;
-  return 'today';
+  return t.resume ? `today:${t.resume}` : 'today';
+}
+
+/** The server conversation a target already IS, before anything is sent. */
+function boundId(t: ThreadTarget): string | null {
+  if (t.kind === 'saved') return t.id;
+  if (t.kind === 'today' && t.resume) return t.resume;
+  return null;
 }
 
 export function sameTarget(a: ThreadTarget, b: ThreadTarget): boolean {
@@ -107,13 +120,14 @@ export function createThreadBinding(): ThreadBinding {
       }
       generation += 1;
       target = next;
-      // A saved thread IS its server id. Everything else earns one on first use.
-      conversationId = next.kind === 'saved' ? next.id : null;
+      // A saved thread IS its server id, and so is a resumed today. Everything
+      // else earns one on first use.
+      conversationId = boundId(next);
       return {
         changed: true,
         generation,
         abort: streaming,
-        load: next.kind === 'saved' ? next.id : null,
+        load: boundId(next),
       };
     },
 
@@ -129,7 +143,7 @@ export function createThreadBinding(): ThreadBinding {
 /* Saved messages                                                        */
 /* ==================================================================== */
 
-export type SavedTurn = { seq: number; role: 'user' | 'kai'; text: string };
+export type SavedTurn = { seq: number; role: 'user' | 'kai'; text: string; at?: string | null };
 
 /**
  * `conversation_messages` rows, whatever shape they arrive in. `content` is
@@ -143,7 +157,7 @@ export function readTranscript(rows: unknown): SavedTurn[] {
   const out: SavedTurn[] = [];
   for (const raw of rows) {
     if (!raw || typeof raw !== 'object') continue;
-    const row = raw as { seq?: unknown; role?: unknown; content?: unknown };
+    const row = raw as { seq?: unknown; role?: unknown; content?: unknown; created_at?: unknown };
     const seq = typeof row.seq === 'number' ? row.seq : Number(row.seq);
     if (!Number.isFinite(seq)) continue;
     const content = row.content;
@@ -154,7 +168,12 @@ export function readTranscript(rows: unknown): SavedTurn[] {
           ? (content as { text: string }).text
           : '';
     if (!text.trim()) continue;
-    out.push({ seq, role: row.role === 'user' ? 'user' : 'kai', text });
+    out.push({
+      seq,
+      role: row.role === 'user' ? 'user' : 'kai',
+      text,
+      at: typeof row.created_at === 'string' ? row.created_at : null,
+    });
   }
   return out.sort((a, b) => a.seq - b.seq);
 }
@@ -167,8 +186,8 @@ export function readTranscript(rows: unknown): SavedTurn[] {
 export function transcriptItems(conversationId: string, turns: SavedTurn[]): WallItem[] {
   return turns.map((t) =>
     t.role === 'user'
-      ? { kind: 'user_text', id: `h:${conversationId}:${t.seq}`, text: t.text }
-      : { kind: 'kai_text', id: `h:${conversationId}:${t.seq}`, text: t.text },
+      ? { kind: 'user_text', id: `h:${conversationId}:${t.seq}`, text: t.text, at: t.at ?? null }
+      : { kind: 'kai_text', id: `h:${conversationId}:${t.seq}`, text: t.text, at: t.at ?? null },
   );
 }
 

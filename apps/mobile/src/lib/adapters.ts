@@ -23,7 +23,7 @@ import type {
 import type {
   AlertRow, AlertsPayload, Briefing, BriefingLine, CreditPlan, Credits,
   CreditsPayload, Freshness, GradedSetup,
-  HomePayload, Identity, KaiActionPreview, MarketStatus, NotificationCategory,
+  HomePayload, Identity, KaiActionPreview, KaiComparison, MarketStatus, NotificationCategory,
   NotificationCategoryMap, PushDevice, PushPlatform, PushRegistry,
   PushSubscriptionState, PushSuppression, PushTestResult, PushTransport, Quote,
   SetupState, WatchingItem,
@@ -1179,6 +1179,32 @@ const ACTION_LABEL: Record<string, string> = {
  * `action_preview` (and the older `alert_preview`) → a tappable proposal.
  * Kai never executes; the sheet calls the real endpoint when the user taps.
  */
+/**
+ * A `comparison` object's payload. Both sides must carry something and there
+ * must be a conclusion; a half-filled comparison is dropped, not drawn with
+ * blanks that read as "Kai found nothing against it".
+ */
+export function adaptComparison(payload: unknown): KaiComparison | null {
+  const p = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
+  const side = (v: unknown) => {
+    const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+    const points = Array.isArray(o.points) ? o.points.filter((x): x is string => typeof x === 'string' && !!x.trim()) : [];
+    return { points, plain: typeof o.plain === 'string' ? o.plain : '' };
+  };
+  const subject = typeof p.subject === 'string' ? p.subject.trim() : '';
+  const bull = side(p.bull);
+  const bear = side(p.bear);
+  const conclusion = typeof p.kai_conclusion_plain === 'string' ? p.kai_conclusion_plain.trim() : '';
+  if (!subject || !conclusion || (!bull.points.length && !bull.plain) || (!bear.points.length && !bear.plain)) return null;
+  return {
+    subject,
+    bull,
+    bear,
+    kai_conclusion_plain: conclusion,
+    confidence_limits: typeof p.confidence_limits === 'string' ? p.confidence_limits : '',
+  };
+}
+
 export function adaptActionPreview(env: KaiObjectEnvelope | null): KaiActionPreview | null {
   if (!env) return null;
   const p = (env.payload ?? {}) as Record<string, unknown>;

@@ -13,7 +13,7 @@ import { adaptCandles, adaptQuoteLoose, adaptSetupCard, freshnessOf } from './ad
 import { suggestedLevels } from '../features/orders/plan-read';
 import type {
   AlertRow, AlertsSimple, AlsoWatchingRow, AttentionAlert, Candle, GoalMode, GradedSetup,
-  HomePriority, HomeV5, MarketStatus, MonitoringRow, PlanNumbers, PositionModule,
+  HomeAgent, HomeConversation, HomePriority, HomeV5, MarketStatus, MonitoringRow, PlanNumbers, PositionModule,
   PrimaryAction, PriorityKind, Quote, ResearchRef, Scenario, SetupDetail, SetupModule,
   SetupState, SymbolWorkspace, WorkspaceHistoryItem,
 } from './types';
@@ -201,11 +201,15 @@ function adaptAlsoWatching(v: unknown): AlsoWatchingRow[] {
     const tone: AlsoWatchingRow['tone'] =
       str(w.tone) === 'attention' || /invalid|attention|risk|slipp|needs/i.test(text) ? 'attention' : 'neutral';
     const route = nStr(w.route) ?? (obj(w.action).route ? str(obj(w.action).route) : null);
+    const kind = str(w.kind);
     out.push({
       id: str(w.id, `${symbol}-${i}`),
       symbol,
       text,
       tone,
+      kind: kind === 'setup' || kind === 'alert' || kind === 'position' ? kind : null,
+      state_label: nStr(w.state_label),
+      route,
       // Only an item that needs a decision gets a word next to it — the rest
       // are context, not chores (audit §9).
       action: tone === 'attention'
@@ -222,6 +226,68 @@ function adaptAlsoWatching(v: unknown): AlsoWatchingRow[] {
  * otherwise builds the same three things out of the round-2 briefing +
  * lead_setup + watching that the endpoint already returns.
  */
+const KAI_STATUS = new Set(['ok', 'invalid_key', 'no_credit', 'rate_limited', 'unreachable']);
+
+/**
+ * The agent block (redesign V2). Anything missing or malformed is dropped
+ * rather than defaulted into a claim: no block → null, no calendar → an
+ * 'unavailable' calendar with no events, never an empty 'ok' one.
+ */
+export function adaptHomeAgent(v: unknown): HomeAgent | null {
+  const a = obj(v);
+  if (!Object.keys(a).length) return null;
+  const k = obj(a.kai);
+  const status = str(k.status, 'ok');
+  const cal = obj(a.calendar);
+  const calState = str(cal.state);
+  const events: HomeAgent['calendar']['events'] = [];
+  arr(cal.events).forEach((raw) => {
+    const e = obj(raw);
+    const symbol = str(e.symbol).toUpperCase();
+    const date = str(e.date);
+    if (!symbol || !/^\d{4}-\d{2}-\d{2}/.test(date)) return;
+    const when = str(e.when);
+    events.push({
+      kind: 'earnings',
+      symbol,
+      date: date.slice(0, 10),
+      when: when === 'premarket' || when === 'postmarket' ? when : 'unknown',
+      confirmed: bool(e.confirmed),
+      days_away: nNum(e.days_away) ?? 0,
+    });
+  });
+  return {
+    kai: {
+      available: bool(k.available, true),
+      status: (KAI_STATUS.has(status) ? status : 'ok') as HomeAgent['kai']['status'],
+    },
+    positions_open: nNum(a.positions_open),
+    monitoring: arr(a.monitoring)
+      .map((raw) => {
+        const m = obj(raw);
+        const plain = str(m.plain).trim();
+        return {
+          id: str(m.id),
+          symbol: nStr(m.symbol)?.toUpperCase() ?? null,
+          plain,
+          clause: nStr(m.clause),
+        };
+      })
+      .filter((m) => m.id && m.plain),
+    calendar: {
+      state: calState === 'ok' || calState === 'not_connected' ? calState : 'unavailable',
+      plain: str(cal.plain),
+      events: calState === 'ok' ? events : [],
+    },
+  };
+}
+
+export function adaptHomeConversation(v: unknown): HomeConversation | null {
+  const c = obj(v);
+  if (!Object.keys(c).length) return null;
+  return { id: nStr(c.id), title: str(c.title), last_message_at: nStr(c.last_message_at) };
+}
+
 export function adaptHomeV5(
   v: unknown,
   fallback: { mode: GoalMode; market: MarketStatus; briefing: HomeV5['briefing']; leadSetup: GradedSetup | null; watching: { id: string; symbol: string; label: string; value?: string | null }[]; dailyRisk: HomeV5['daily_risk']; degraded?: boolean; degradedReason?: string | null; investNotice?: string | null },
@@ -271,6 +337,8 @@ export function adaptHomeV5(
     degraded: fallback.degraded,
     degraded_reason: fallback.degradedReason ?? null,
     invest_notice: fallback.investNotice ?? null,
+    agent: adaptHomeAgent(r.agent),
+    conversation: adaptHomeConversation(r.conversation),
   };
 }
 

@@ -166,15 +166,26 @@ export type Profile = {
 export type RiskPolicy = { daily_loss_cap: number; max_position_pct: number; involvement: Involvement };
 
 export type WallItem =
-  | { kind: 'kai_text'; id: string; text: string; streaming?: boolean }
-  | { kind: 'user_text'; id: string; text: string }
+  | { kind: 'kai_text'; id: string; text: string; streaming?: boolean; at?: string | null }
+  | { kind: 'user_text'; id: string; text: string; at?: string | null }
   | { kind: 'briefing'; id: string; briefing: Briefing }
   | { kind: 'setup'; id: string; setup: GradedSetup }
   | { kind: 'typing'; id: string }
   | { kind: 'action'; id: string; action: KaiActionPreview }
   | { kind: 'notice'; id: string; text: string }
   /** The "also watching" rows, revealed on request rather than stacked on open. */
-  | { kind: 'watching'; id: string; rows: AlsoWatchingRow[] };
+  | { kind: 'watching'; id: string; rows: AlsoWatchingRow[] }
+  /** Kai's bull/bear read on one subject (`comparison` object). */
+  | { kind: 'comparison'; id: string; comparison: KaiComparison };
+
+/** `ComparisonPayload` from packages/shared/api.ts, as the wall draws it. */
+export type KaiComparison = {
+  subject: string;
+  bull: { points: string[]; plain: string };
+  bear: { points: string[]; plain: string };
+  kai_conclusion_plain: string;
+  confidence_limits: string;
+};
 
 /**
  * action_preview frame (packages/shared ActionPreviewPayload) — a Kai-proposed
@@ -657,7 +668,40 @@ export type AlsoWatchingRow = {
   text: string;
   tone: 'attention' | 'neutral';
   action?: PrimaryAction | null;
+  /** What the row is — the server says; absent on an older server. */
+  kind?: 'setup' | 'alert' | 'position' | null;
+  /** "Setup ready" / "Open position" — the server's short state words. */
+  state_label?: string | null;
+  /** Where the row opens. */
+  route?: string | null;
 };
+
+/**
+ * HOME AS AN AGENT (redesign V2) — what Kai's opening brief is built from,
+ * with no model call. Mirrors `HomeAgentBlock` in packages/shared/api.ts.
+ * Null when the server predates it: the brief is then built from the
+ * priority and the watch rows alone and says nothing about a calendar.
+ */
+export type HomeAgent = {
+  kai: { available: boolean; status: 'ok' | 'invalid_key' | 'no_credit' | 'rate_limited' | 'unreachable' };
+  positions_open: number | null;
+  monitoring: { id: string; symbol: string | null; plain: string; clause: string | null }[];
+  calendar: {
+    state: 'ok' | 'unavailable' | 'not_connected';
+    plain: string;
+    events: {
+      kind: 'earnings';
+      symbol: string;
+      date: string;
+      when: 'premarket' | 'postmarket' | 'unknown';
+      confirmed: boolean;
+      days_away: number;
+    }[];
+  };
+};
+
+/** Which conversation today's opening continues (round 4 `conversation`). */
+export type HomeConversation = { id: string | null; title: string; last_message_at: string | null };
 
 export type HomeV5 = {
   mode: GoalMode;
@@ -672,6 +716,10 @@ export type HomeV5 = {
   degraded?: boolean;
   degraded_reason?: string | null;
   invest_notice?: string | null;
+  /** Redesign V2. Null on a server that predates it. */
+  agent?: HomeAgent | null;
+  /** The conversation the server last saw this member in. */
+  conversation?: HomeConversation | null;
 };
 
 /* ---------------- Asset workspace ---------------- */

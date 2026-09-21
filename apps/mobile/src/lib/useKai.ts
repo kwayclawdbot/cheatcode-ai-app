@@ -5,7 +5,7 @@ import { offlineMode } from './env';
 import { fixtureReply, fixtureSetups, fixtureSheetReply } from './fixtures';
 import { fixtureWorkspaceTurn } from '../features/kai-workspace/panels-read';
 import type { KaiFrame, KaiObjectEnvelope, KaiWorkspaceAction, WorkspaceState } from '@cheatcode/shared';
-import { adaptActionPreview, adaptCredits, adaptGradedSetup } from './adapters';
+import { adaptActionPreview, adaptComparison, adaptCredits, adaptGradedSetup } from './adapters';
 import {
   createThreadBinding, readTranscript, retryableTurn, suggestedQuestions, targetKey, transcriptItems,
   type FailedTurn, type SuggestionSubject, type ThreadBinding, type ThreadTarget,
@@ -283,7 +283,7 @@ function useKaiEngine(opts: EngineOpts) {
       if (!owns()) return;
       started = true;
       setLive((p) => p.map((it) => (it.id === typingId
-        ? { kind: 'kai_text', id: replyId, text: '', streaming: true }
+        ? { kind: 'kai_text', id: replyId, text: '', streaming: true, at: new Date().toISOString() }
         : it)));
     };
 
@@ -328,7 +328,7 @@ function useKaiEngine(opts: EngineOpts) {
     // the chart. Two answers racing for one canvas supersede each other's
     // gestures half-finished.
     optsRef.current.onTurnStart?.();
-    setLive((p) => [...p, { kind: 'user_text', id: userId, text: body }, { kind: 'typing', id: typingId }]);
+    setLive((p) => [...p, { kind: 'user_text', id: userId, text: body, at: new Date().toISOString() }, { kind: 'typing', id: typingId }]);
     setStreaming(true);
     streamingRef.current = true;
     setFailed(null);
@@ -395,6 +395,11 @@ function useKaiEngine(opts: EngineOpts) {
               if (envelope?.type === 'graded_setup') {
                 const setup = adaptGradedSetup(envelope);
                 if (setup) setLive((p) => [...p, { kind: 'setup', id: nextId(), setup }]);
+              } else if (envelope?.type === 'comparison') {
+                // Kai's bull/bear read. Drawn as a tool card on Home; a wall
+                // that does not know the kind simply skips it.
+                const comparison = adaptComparison(envelope.payload);
+                if (comparison) setLive((p) => [...p, { kind: 'comparison', id: nextId(), comparison }]);
               } else if (envelope?.type === 'action_preview' || envelope?.type === 'alert_preview') {
                 const act = adaptActionPreview(envelope);
                 if (act) setLive((p) => [...p, { kind: 'action', id: nextId(), action: act }]);

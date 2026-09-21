@@ -1115,7 +1115,7 @@ const TranscriptQuery = z.object({
   limit: z.coerce.number().int().min(1).max(TRANSCRIPT_LIMIT_MAX).optional(),
 });
 
-type TranscriptRow = { seq: number; role: string; content: unknown };
+type TranscriptRow = { seq: number; role: string; content: unknown; created_at: string | null };
 
 /**
  * GET /api/v1/kai/conversations/:id/messages?since=&limit=
@@ -1164,7 +1164,7 @@ export const GET = authedParams<{ id: string }>(
     // One row over the page size, so `more` is known rather than guessed.
     const { data, error } = await db
       .from('conversation_messages')
-      .select('seq,role,content')
+      .select('seq,role,content,created_at')
       .eq('conversation_id', ctx.params.id)
       .gt('seq', since)
       .order('seq', { ascending: true })
@@ -1185,6 +1185,8 @@ export const GET = authedParams<{ id: string }>(
         seq: Number(r.seq),
         role: r.role === 'user' ? 'user' : 'kai',
         content: r.content,
+        // When it was said — the thread shows Kai's and the member's times.
+        created_at: r.created_at ?? null,
       })),
       cursor: page.length ? Number(page[page.length - 1].seq) : since,
       more,
