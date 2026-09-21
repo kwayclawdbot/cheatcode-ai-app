@@ -8,12 +8,12 @@ import { ObjectCard } from '../../../ui/Panel';
 import { color, radius, alpha } from '../../../ui/tokens';
 import { RoomAvatar, roomImageUrl } from '../../../ui/RoomAvatar';
 import { communityApi } from '../../../lib/community-api';
-import { useSession } from '../../../lib/session';
 import { subscribeRoom, transportLabel, type RealtimeMode } from '../../../lib/realtime';
 import {
   CatchUpPill, NewMessagesRule, PinnedStrip, RoomStateNote, Sheet, SheetRow, StackHeader, SentimentBar,
 } from '../../../features/community/ui/Chrome';
 import { MessageRow } from '../../../features/community/ui/Message';
+import { continuesTurn } from '../../../features/community/ui/ChatRow';
 import { MessageListSkeleton } from '../../../features/community/ui/Skeleton';
 import { KaiObjectView } from '../../../features/community/ui/KaiObjects';
 import { CasePair, PinnedSetup } from '../../../features/community/ui/PinnedSetup';
@@ -82,9 +82,6 @@ export default function RoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const roomId = String(id ?? '');
   const router = useRouter();
-  /** Whose posts are somebody else's — the only thing the follow control needs. */
-  const { session } = useSession();
-  const myUserId = session?.user?.id ?? null;
   const scroller = useRef<ScrollView | null>(null);
 
   const [room, setRoom] = useState<Room | null>(null);
@@ -476,10 +473,9 @@ export default function RoomScreen() {
                   onReply={() => router.push(`/thread/${encodeURIComponent(m.id)}?quote=${encodeURIComponent(m.id)}` as never)}
                   onTicker={(sym) => router.push(`/symbol/${encodeURIComponent(sym)}` as never)}
                   onOpenQuote={(qid) => router.push(`/thread/${encodeURIComponent(qid)}` as never)}
-                  // Follow, right where you meet the person — a room is where
-                  // you decide somebody is worth reading. Never on your own
-                  // post; the component refuses Kai's on its own.
-                  showFollow={!!myUserId && m.author.user_id !== myUserId && m.author.user_id !== 'me'}
+                  // The same person still talking — unless the "new messages"
+                  // rule sits between the two lines, which starts a new turn.
+                  continued={i !== firstUnreadIdx && continuesTurn(decorated[i - 1], m)}
                 />
               </View>
             ))

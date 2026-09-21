@@ -749,9 +749,12 @@ try {
     // a signed-in id to build a profile route, so this is the only kind of run
     // that can prove it is there.
     ok('and "Your calls" survived the feed it used to live in', await has(blake.page, 'community-my-calls'));
+    // 21 Sept (owner: "had follow button on each chat text, doesnt feel
+    // community"): Follow left the chat line. It lives on the profile, which
+    // the author's name opens — the graph is unchanged, only the entry point.
     ok(
-      'Follow is still on an author line in the room — following lost a page, not the graph',
-      (await blake.page.locator('[data-testid^="club-follow-"]').count()) > 0,
+      'no Follow button on any chat line',
+      (await blake.page.locator('[data-testid^="club-follow-"]').count()) === 0,
     );
 
     // Changing rooms is now the headbar mode control, and only that. This is
