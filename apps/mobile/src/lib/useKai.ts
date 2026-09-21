@@ -3,6 +3,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { api } from './api';
 import { offlineMode } from './env';
 import { fixtureReply, fixtureSetups, fixtureSheetReply } from './fixtures';
+import { fixtureWorkspaceTurn } from '../features/kai-workspace/panels-read';
 import type { KaiFrame, KaiObjectEnvelope, KaiWorkspaceAction, WorkspaceState } from '@cheatcode/shared';
 import { adaptActionPreview, adaptCredits, adaptGradedSetup } from './adapters';
 import {
@@ -95,7 +96,12 @@ async function fetchTranscript(conversationId: string): Promise<WallItem[]> {
 /* The engine both entry points run on                                   */
 /* ==================================================================== */
 
-type FixtureTurn = { reply: string; tail: WallItem | null };
+type FixtureTurn = {
+  reply: string;
+  tail: WallItem | null;
+  /** Fixtures only: a canned `workspace_action`, applied as the reply starts — where a live one lands. */
+  workspace?: KaiWorkspaceAction | null;
+};
 
 type EngineOpts = {
   mode: GoalMode;
@@ -323,6 +329,7 @@ function useKaiEngine(opts: EngineOpts) {
         kick = null;
         if (cancelled || !owns()) return;
         startReply();
+        if (canned.workspace) optsRef.current.onWorkspaceAction?.(canned.workspace);
         timer.current = setInterval(() => {
           if (cancelled || !owns()) { finish(); return; }
           if (i >= words.length) {
@@ -539,10 +546,14 @@ export function useKaiWall(
     [pinnedSetupId, pinnedSymbol],
   );
 
-  const fixture = useCallback((): FixtureTurn => ({
-    reply: fixtureReply,
-    tail: { kind: 'setup', id: nextId(), setup: fixtureSetups[0] as GradedSetup },
-  }), []);
+  const fixture = useCallback((text: string): FixtureTurn => {
+    const opened = fixtureWorkspaceTurn(text);
+    if (opened) return { reply: opened.reply, tail: null, workspace: opened.action };
+    return {
+      reply: fixtureReply,
+      tail: { kind: 'setup', id: nextId(), setup: fixtureSetups[0] as GradedSetup },
+    };
+  }, []);
 
   const engine = useKaiEngine({
     mode,

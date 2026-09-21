@@ -24,7 +24,7 @@ import { Button } from '../../ui/Button';
 import { DEFAULT_MODE } from '../../features/nav/second-tab';
 import { useSession } from '../../lib/session';
 import { useKaiWall } from '../../lib/useKai';
-import { WorkspaceHost, useActiveSurface, useWorkspaceBridge, workspace } from '../../features/kai-workspace';
+import { PanelLauncher, PanelLauncherButton, WorkspaceHost, useActiveSurface, useWorkspaceBridge, workspace } from '../../features/kai-workspace';
 import type { FailedTurn, ThreadTarget } from '../../lib/kai-continuity';
 import { env } from '../../lib/env';
 import { useMe } from '../../features/account/useAccount';
@@ -33,6 +33,9 @@ import { fixtureCreditsCeiling, fixtureCreditsOut, fixtureCreditsWarning } from 
 import { ContinueTrainingObject } from '../../features/training/HomeObject';
 import { homeOrderFor, useStageEvolution } from '../../features/stage';
 import type { ConversationRow, GoalMode, WallItem } from '../../lib/types';
+
+/** The five read-only panels, which get a taller band than the object surfaces. */
+const PANEL_KINDS = new Set<string>(['quote', 'earnings', 'options', 'watchlist', 'portfolio']);
 
 const Hamburger = ({ onPress }: { onPress: () => void }) => (
   <Pressable
@@ -280,7 +283,15 @@ export default function Home() {
    * smear — so it gets a fixed band and the conversation keeps the rest.
    */
   const activeSurface = useActiveSurface();
-  const workspaceHeight = activeSurface?.kind === 'chart' ? 360 : 300;
+  /** The member's own way to open a panel — the same actions Kai emits. */
+  const [panelsOpen, setPanelsOpen] = useState(false);
+  const workspaceHeight =
+    activeSurface?.kind === 'chart' ? 360
+      // The panels are ledgers: a price card or an options ladder cut off at
+      // 300 hides the half the question was about, so they get a taller band.
+      // The conversation keeps the rest, and the composer never moves.
+      : activeSurface && PANEL_KINDS.has(activeSurface.kind) ? 400
+        : 300;
 
   /** A new conversation is a clean desk. */
   useEffect(() => {
@@ -549,8 +560,10 @@ export default function Home() {
             </T>
           </Pressable>
         )}
+        <PanelLauncherButton onPress={() => setPanelsOpen(true)} />
         <NewThread onPress={newThread} />
       </View>
+      <PanelLauncher visible={panelsOpen} onClose={() => setPanelsOpen(false)} />
 
       {/*
         THE WORKSPACE, WHICH IS NOT THERE UNTIL KAI PUTS SOMETHING IN IT.

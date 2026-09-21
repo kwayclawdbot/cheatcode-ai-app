@@ -424,6 +424,17 @@ export const api = {
   addToWatchlist: (symbol: string) =>
     request<unknown>('/watchlist', { method: 'POST', body: JSON.stringify({ symbol }) }),
 
+  /**
+   * One of the workspace's symbol panels — quote card, earnings, options.
+   * Raw on purpose: `features/kai-workspace/panels-data.ts` owns the reading,
+   * so the panels and their proof share one adapter.
+   */
+  symbolPanel: (symbol: string, kind: 'quote' | 'earnings' | 'options') =>
+    request<unknown>(`/symbols/${encodeURIComponent(symbol)}/panel?kind=${kind}`),
+
+  /** The member's own watchlist, priced — `GET /watchlist`. */
+  watchlist: () => request<unknown>('/watchlist'),
+
   removeFromWatchlist: (symbol: string) =>
     request<unknown>(`/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' }),
 

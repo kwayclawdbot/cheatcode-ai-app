@@ -27,8 +27,9 @@
  * That is what lets the same host sit on Home, on Trade and on an alert detail
  * without three of them fighting over one conversation.
  */
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { T } from '../../ui/Text';
 import { alpha, color, radius } from '../../ui/tokens';
 import type { GoalMode } from '../../lib/types';
@@ -39,6 +40,9 @@ import { ChartSurface } from './surfaces/ChartSurface';
 import {
   AlertSurface, CommunitySurface, NewsSurface, SetupSurface, WebSurface,
 } from './surfaces/objects';
+import {
+  EarningsSurface, OptionsSurface, PortfolioSurface, QuoteSurface, WatchlistSurface,
+} from './surfaces/panels';
 import { useWorkspaceSurfaces, workspace, type Surface } from './store';
 import type { WorkspaceSurfaceKind } from '@cheatcode/shared';
 
@@ -50,6 +54,9 @@ const LABEL: Record<WorkspaceSurfaceKind, string> = {
   community: 'Room',
   news: 'News',
   web: 'Page',
+  quote: 'Quote',
+  earnings: 'Earnings',
+  options: 'Options',
   watchlist: 'Watchlist',
   portfolio: 'Positions',
   training: 'Lesson',
@@ -86,9 +93,16 @@ export function SurfaceStrip({
   onFocus: (id: WorkspaceSurfaceKind) => void;
   onClose: (id: WorkspaceSurfaceKind) => void;
 }) {
+  // Newest is last, and newest is usually the one on the canvas — so when a
+  // chip is added the strip slides to show it rather than leaving the active
+  // one scrolled off the edge. Focusing an older chip changes no widths, so
+  // this never yanks the strip out from under a thumb.
+  const strip = useRef<ScrollView>(null);
   if (surfaces.length < 2) return null;
   return (
     <ScrollView
+      ref={strip}
+      onContentSizeChange={() => strip.current?.scrollToEnd({ animated: false })}
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ gap: 6, paddingHorizontal: 12, paddingVertical: 6 }}
@@ -167,6 +181,16 @@ function Render({
       return <CommunitySurface roomId={surface.roomId} onRoute={onRoute} />;
     case 'web':
       return surface.url ? <WebSurface url={surface.url} title={surface.title} /> : null;
+    case 'quote':
+      return surface.symbol ? <QuoteSurface symbol={surface.symbol} /> : null;
+    case 'earnings':
+      return surface.symbol ? <EarningsSurface symbol={surface.symbol} /> : null;
+    case 'options':
+      return surface.symbol ? <OptionsSurface symbol={surface.symbol} /> : null;
+    case 'watchlist':
+      return <WatchlistSurface />;
+    case 'portfolio':
+      return <PortfolioSurface onRoute={onRoute} />;
     /**
      * DEFINED IN THE CONTRACT, NOT BUILT YET.
      *
@@ -194,7 +218,36 @@ export function WorkspaceHost(props: WorkspaceHostProps) {
 
   return (
     <View style={{ height: props.height }} testID="workspace-host">
-      <SurfaceStrip surfaces={surfaces} activeId={activeId} onFocus={focus} onClose={close} />
+      {/*
+        THE HEADER: the strip when there is more than one thing open, the
+        surface's name when there is one — and always a way to put it away.
+        Kai can close a surface with an action; the member needs the same
+        power with a thumb, or a panel they opened by tapping would stay on
+        their screen until the conversation ended.
+      */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 34 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          {surfaces.length > 1 ? (
+            <SurfaceStrip surfaces={surfaces} activeId={activeId} onFocus={focus} onClose={close} />
+          ) : (
+            <T size={12} weight="semibold" c={color.dim} style={{ paddingHorizontal: 16 }} numberOfLines={1}>
+              {`${LABEL[active.kind]}${active.symbol ? ` · ${active.symbol}` : ''}`}
+            </T>
+          )}
+        </View>
+        <Pressable
+          onPress={() => close(active.id)}
+          accessibilityRole="button"
+          accessibilityLabel={`Close ${LABEL[active.kind]}`}
+          testID="workspace-close"
+          hitSlop={10}
+          style={({ pressed }) => ({ paddingHorizontal: 14, paddingVertical: 6, opacity: pressed ? 0.6 : 1 })}
+        >
+          <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+            <Path d="M6 6l12 12M18 6L6 18" stroke={color.muted} strokeWidth={2.2} strokeLinecap="round" />
+          </Svg>
+        </Pressable>
+      </View>
       <View style={{ flex: 1 }}>
         <Render {...props} key={`${active.id}:${active.nonce}`} surface={active} />
       </View>

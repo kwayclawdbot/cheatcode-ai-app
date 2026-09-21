@@ -159,6 +159,27 @@ export const workspace = {
       case 'show_web':
         put('web', { url: action.url, title: action.title ?? null });
         return true;
+      /**
+       * THE PANELS. A symbol panel is one surface per kind, like the chart: a
+       * quote card for NVDA then one for AMD is the same card walking to a new
+       * ticker, not two cards to tell apart. The watchlist and the portfolio
+       * have no subject — they are always the member's own.
+       */
+      case 'show_quote':
+        put('quote', { symbol: action.symbol.toUpperCase() });
+        return true;
+      case 'show_earnings':
+        put('earnings', { symbol: action.symbol.toUpperCase() });
+        return true;
+      case 'show_options':
+        put('options', { symbol: action.symbol.toUpperCase() });
+        return true;
+      case 'show_watchlist':
+        put('watchlist', {});
+        return true;
+      case 'show_portfolio':
+        put('portfolio', {});
+        return true;
       case 'focus_surface': {
         const found = state.surfaces.find((s) => s.id === action.surface_id);
         if (!found) return false;
