@@ -1215,7 +1215,7 @@ export function adaptActionPreview(env: KaiObjectEnvelope | null): KaiActionPrev
 /* partially-deployed API still renders.                                 */
 /* ==================================================================== */
 import type {
-  AlertCard, AlertCardState, AlertContractFloorCheck, AlertFamilyPerformance,
+  AlertCard, AlertCardState, AlertTracking, AlertContractFloorCheck, AlertFamilyPerformance,
   AlertOptionContract, AlertScoreComponent,
   AlertScores, AlertsRound4,
   ConversationRow, ConversationsPayload, Experience, FocusKey, KaiProfile, RuleAdherence,
@@ -1568,7 +1568,33 @@ export function adaptAlertCard(raw: unknown, i = 0): AlertCard {
     resolved_label: r4nul(o.resolved_label ?? o.resolved_at_label),
     held: r4nul(o.held),
     replay: o.replay === true,
+    triggered_at: r4nul(event.triggered_at ?? o.triggered_at ?? o.created_at),
+    tracking: adaptAlertTracking(o.tracking),
+    analytics: (() => {
+      const a = r4obj(o.analytics);
+      const pattern = r4nul(a.pattern);
+      const ratio = r4num(a.volume_ratio);
+      return pattern || ratio != null ? { pattern, volume_ratio: ratio } : null;
+    })(),
   };
+}
+
+/** The tracker block, or null when the server sent nothing measured. */
+export function adaptAlertTracking(raw: unknown): AlertTracking | null {
+  const t = r4obj(raw);
+  if (!Object.keys(t).length) return null;
+  const hit = r4num(t.targets_hit);
+  const out: AlertTracking = {
+    peak_price: r4num(t.peak_price),
+    peak_at: r4nul(t.peak_at),
+    peak_gain_pct: r4num(t.peak_gain_pct),
+    targets_hit: hit == null ? null : Math.max(0, Math.floor(hit)),
+    stop_hit: t.stop_hit === true ? true : t.stop_hit === false ? false : null,
+    contract_cost: r4num(t.contract_cost),
+    contract_peak: r4num(t.contract_peak),
+    contract_peak_multiple: r4num(t.contract_peak_multiple),
+  };
+  return Object.values(out).some((v) => v != null) ? out : null;
 }
 
 /**

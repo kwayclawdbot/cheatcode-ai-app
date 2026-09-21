@@ -4292,6 +4292,61 @@ export const AlertCardOutcome = z.object({
 export type AlertCardOutcome = z.infer<typeof AlertCardOutcome>;
 
 /**
+ * WHAT THE CALL HAS DONE SO FAR, for a LIVE card (V2 Alerts, 2026-09-21).
+ *
+ * The same peak-tracker columns (0041, 0048) the History row reads, handed to
+ * the live card so its state can be said as a verb that is true — "Target 1
+ * hit" only when the tracked favourable extreme actually reached target one,
+ * "Stop hit" only when the tracked adverse extreme actually crossed the stop.
+ * Every field is null when it was not measured, and the whole block is null
+ * when nothing was: a verb is never guessed from the setup's own state.
+ */
+export const AlertCardTracking = z.object({
+  /** The favourable extreme since the call (GENERATED column, 0041). */
+  peak_price: z.number().nullable().default(null),
+  peak_at: z.string().nullable().default(null),
+  peak_gain_pct: z.number().nullable().default(null),
+  /** How many of the published targets the favourable extreme has reached. Null without targets or a peak. */
+  targets_hit: z.number().int().nullable().default(null),
+  /** Whether the adverse extreme has crossed the stop. Null without a stop or an extreme. */
+  stop_hit: z.boolean().nullable().default(null),
+  /** The option the day-trade engine named: what it cost at the alert, and the best it traded after (0048). */
+  contract_cost: z.number().nullable().default(null),
+  contract_peak: z.number().nullable().default(null),
+  contract_peak_multiple: z.number().nullable().default(null),
+});
+export type AlertCardTracking = z.infer<typeof AlertCardTracking>;
+
+/**
+ * The secondary analytics row on a V2 card — ONLY facts a producer recorded.
+ * `pattern` is the scanner's own setup label (`setups.annotations.pattern`);
+ * `volume_ratio` is the scanner's measured volume against its average, read
+ * back from the composed technical line that printed it. Null when absent —
+ * the card then omits the cell rather than filling it.
+ */
+export const AlertCardAnalytics = z.object({
+  pattern: z.string().nullable().default(null),
+  volume_ratio: z.number().nullable().default(null),
+});
+export type AlertCardAnalytics = z.infer<typeof AlertCardAnalytics>;
+
+/** GET /alerts/bookmarks — the card ids this member saved. Private to them. */
+export const AlertBookmarksResponse = z.object({
+  card_ids: z.array(z.string()),
+  /** False when the table (0055) is not in this database yet — the client then keeps saves locally. */
+  available: z.boolean(),
+});
+export type AlertBookmarksResponse = z.infer<typeof AlertBookmarksResponse>;
+
+/** PUT /alerts/bookmarks — save or unsave one card. Idempotent. */
+export const AlertBookmarkRequest = z.object({
+  card_id: z.string().trim().min(1).max(200),
+  symbol: z.string().trim().min(1).max(12),
+  saved: z.boolean(),
+});
+export type AlertBookmarkRequest = z.infer<typeof AlertBookmarkRequest>;
+
+/**
  * The bars on the trade card. Each is 0-100 on the same scale the grade bands
  * use, so a bar reads as a grade rather than as progress.
  *
@@ -4479,8 +4534,17 @@ export const AlertCard = z.object({
   /** Two sentences maximum. */
   company_summary: z.string().nullable(),
 
-  quote: Quote.extend({ label_plain: z.string() }),
+  /**
+   * `change_pct` is the day's move on the same quote (V2: "current price and
+   * daily change"). Null when the feed had no previous close to measure from.
+   */
+  quote: Quote.extend({ label_plain: z.string(), change_pct: z.number().nullable().default(null) }),
   trade_plan: AlertTradePlan,
+
+  /** Live-card tracking (see AlertCardTracking). Null when nothing was measured. */
+  tracking: AlertCardTracking.nullable().default(null),
+  /** Secondary analytics the producer recorded (see AlertCardAnalytics). */
+  analytics: AlertCardAnalytics.nullable().default(null),
 
   /** One line. Labelled as analysis, never as a guarantee (spec §8). */
   kai_interpretation: z.string(),

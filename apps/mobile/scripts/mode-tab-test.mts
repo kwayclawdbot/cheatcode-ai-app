@@ -47,14 +47,17 @@ eq('swing is alerts', secondTab('swing').desk, false);
 eq('invest is the desk', secondTab('invest').desk, true);
 eq('day trade keeps the bell', secondTab('day_trade').icon, 'bell');
 eq('swing keeps the bell', secondTab('swing').icon, 'bell');
-eq('invest gets the desk glyph', secondTab('invest').icon, 'desk');
+// V2 (2026-09-21): the dock is identical on every screen, so Invest keeps the
+// bell — Invest is a segment of the Alerts board, not a different tab.
+eq('invest keeps the bell (V2 dock)', secondTab('invest').icon, 'bell');
 
 console.log('\n[3] the label never lies about the screen');
 eq('day trade says Alerts', secondTab('day_trade').label, 'Alerts');
 eq('swing says Alerts', secondTab('swing').label, 'Alerts');
-eq('invest says Research', secondTab('invest').label, 'Research');
-truthy('invest never says Alerts', !secondTab('invest').label.includes('Alert'));
-truthy('invest heading is the watchlist', secondTab('invest').title.toLowerCase().includes('watchlist'));
+// V2: the board is "Alerts" in every mode; what changes under Invest is the
+// BODY (the research list), which the note and `desk` say.
+eq('invest says Alerts on the dock (V2)', secondTab('invest').label, 'Alerts');
+truthy('invest note says the body is the research desk', /research desk/.test(secondTab('invest').note));
 
 console.log('\n[4] no mode is a one-way door');
 // Whatever mode you are in, the line on screen names ANOTHER mode you can move

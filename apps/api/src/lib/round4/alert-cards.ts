@@ -47,6 +47,8 @@ import {
   type AlertCard,
   type AlertCardState,
   type AlertCardOutcome,
+  type AlertCardAnalytics,
+  type AlertCardTracking,
   type AlertCommunity,
   type AlertEvent,
   type AlertFit,
@@ -1066,6 +1068,74 @@ function barScoresOf(setup: SetupRow | null): AlertScores | null {
     : scores;
 }
 
+/**
+ * WHAT THE LIVE CALL HAS DONE — the V2 card's verbs, from measurements only.
+ *
+ * `peak_price` is the tracker's favourable extreme (a GENERATED column that
+ * already chose high or low by direction), so a target counts as HIT only when
+ * that extreme reached it. The stop reads the ADVERSE extreme — `low_price` on
+ * a long, `high_price` on a short — for the same reason. Nothing here looks at
+ * the setup's own state: a verb on the card is a claim about price, and price
+ * is what the tracker watched.
+ *
+ * Null when the row carries none of it, so "not measured" never renders as
+ * "nothing happened".
+ */
+export function trackingOf(setup: SetupRow | null): AlertCardTracking | null {
+  if (!setup) return null;
+  const peak = finiteOrNull(setup.peak_price);
+  const long = isLong(setup.intent);
+  const lv = levels(setup);
+  const adverse = finiteOrNull(long ? setup.low_price : setup.high_price);
+
+  const targetsHit = peak !== null && peak > 0 && lv.targets.length
+    ? lv.targets.filter((t) => (long ? peak >= t.price : peak <= t.price)).length
+    : null;
+  const stopHit = adverse !== null && adverse > 0 && lv.stop !== null
+    ? (long ? adverse <= lv.stop : adverse >= lv.stop)
+    : null;
+
+  const out: AlertCardTracking = {
+    peak_price: peak !== null && peak > 0 ? peak : null,
+    peak_at: typeof setup.peak_at === 'string' && setup.peak_at ? setup.peak_at : null,
+    peak_gain_pct: finiteOrNull(setup.peak_gain_pct),
+    targets_hit: targetsHit,
+    stop_hit: stopHit,
+    contract_cost: positiveOrNull(setup.contract_cost),
+    contract_peak: positiveOrNull(setup.contract_peak),
+    contract_peak_multiple: positiveOrNull(setup.contract_peak_multiple),
+  };
+  const measured = Object.values(out).some((v) => v !== null);
+  return measured ? out : null;
+}
+
+function positiveOrNull(v: unknown): number | null {
+  const n = finiteOrNull(v);
+  return n !== null && n > 0 ? n : null;
+}
+
+/**
+ * The analytics row, from what the producer recorded and nothing else.
+ *
+ * `pattern` is the swing scanner's own setup label, which the ingest keeps in
+ * `annotations.pattern` (see `lib/swing/ingest.ts`). `volume_ratio` has no
+ * column of its own — the ingest prints the scanner's measured `volume_ratio`
+ * into `thesis_technical` as "volume 1.9x its average", verbatim, and this
+ * reads that one number back. Anything else stays null and the card omits it.
+ */
+export function analyticsOf(setup: SetupRow | null): AlertCardAnalytics | null {
+  if (!setup) return null;
+  const ann = (setup.annotations ?? {}) as Record<string, unknown>;
+  const rawPattern = typeof ann.pattern === 'string' ? ann.pattern.trim() : '';
+  const pattern = rawPattern
+    ? rawPattern.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())
+    : null;
+  const m = (setup.thesis_technical ?? '').match(/volume (\d+(?:\.\d+)?)x its average/i);
+  const ratio = m ? Number(m[1]) : NaN;
+  const volume_ratio = Number.isFinite(ratio) && ratio > 0 ? ratio : null;
+  return pattern || volume_ratio !== null ? { pattern, volume_ratio } : null;
+}
+
 /** Assemble one card. Pure — every input has already been loaded. */
 export function buildCard(input: BuildCardInput): AlertCard {
   const setup = input.setup;
@@ -1155,8 +1225,12 @@ export function buildCard(input: BuildCardInput): AlertCard {
       received_ts: input.quote.received_ts,
       freshness: input.quote.freshness,
       label_plain: input.quote.label_plain,
+      change_pct: input.quote.change_pct ?? null,
     },
     trade_plan: plan,
+    // Live only: a resolved card's record is `outcome`, not this.
+    tracking: input.state === 'closed' || input.state === 'invalidated' ? null : trackingOf(setup),
+    analytics: analyticsOf(setup),
 
     kai_interpretation: interpretationFor(input, plan),
     kai_disclosure: NOT_A_GUARANTEE_PLAIN,

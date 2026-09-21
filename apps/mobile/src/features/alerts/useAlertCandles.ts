@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
+import { env } from '../../lib/env';
+import { fixtureBarsFor } from '../../lib/fixtures';
 import type { Candle } from '../../lib/types';
 
 /**
@@ -57,7 +59,11 @@ const key = (symbol: string, tf: '1d' | '5m') => `${symbol.toUpperCase()}:${tf}`
 
 function ensure(symbol: string, tf: '1d' | '5m') {
   const k = key(symbol, tf);
-  if (cache.has(k) || inflight.has(k) || !api.available()) return;
+  if (cache.has(k) || inflight.has(k)) return;
+  // FIXTURES PREVIEW ONLY: deterministic sample bars, so the offline board
+  // draws the same microcharts a live one would. Never reached without the flag.
+  if (env.FIXTURES) { cache.set(k, fixtureBarsFor(symbol, tf)); return; }
+  if (!api.available()) return;
   inflight.set(
     k,
     api
@@ -85,7 +91,14 @@ export const timeframeForHold = (hold?: string | null): '1d' | '5m' =>
 export function useAlertCandles(
   wanted: readonly { symbol: string; tf: '1d' | '5m' }[],
 ): Record<string, Candle[]> {
-  const [, bump] = useState(0);
+  /*
+   * `rev` IS READ BELOW ON PURPOSE. The React Compiler memoises this hook's
+   * result on what the render reads; the bars live in a module-level cache it
+   * cannot see, so a discarded counter left the map memoised on `wanted` alone
+   * and a board whose request list did not change never drew the bars that
+   * arrived. Reading the counter makes each arrival a real input.
+   */
+  const [rev, bump] = useState(0);
   /* The dependency is the request set itself, not the array identity — the
      board rebuilds this list on every refresh and an identity dependency would
      re-run the effect on a tick where nothing was actually asked for. */
@@ -95,10 +108,12 @@ export function useAlertCandles(
     const listener = () => bump((n) => n + 1);
     listeners.add(listener);
     for (const w of wanted) ensure(w.symbol, w.tf);
+    if (env.FIXTURES) listener();
     return () => { listeners.delete(listener); };
   }, [signature]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const out: Record<string, Candle[]> = {};
+  if (rev < 0) return out;
   for (const w of wanted) {
     const bars = cache.get(key(w.symbol, w.tf));
     if (bars?.length) out[w.symbol.toUpperCase()] = bars;

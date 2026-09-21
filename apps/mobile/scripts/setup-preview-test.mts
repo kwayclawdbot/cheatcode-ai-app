@@ -173,85 +173,52 @@ console.log('\nF06 / idea or order — answered in a sentence, not inferred from
 /* F06 — the card, as source                                           */
 /* ================================================================== */
 
-console.log('\nF06 / the decision essentials are outside the fold');
+console.log('\nF06 / the decision essentials are on the card, not behind a tap');
 {
   const src = read('src/features/alerts/AlertCard.tsx');
+  const model = read('src/features/alerts/card-model.ts');
 
   /*
-    REWRITTEN 8 September, when the owner ruled between two lanes that had both
-    migrated this card. The card is now `SetupPreview` collapsed and
-    `TradeDetail` expanded — the kit's components, not the kit's parts
-    re-composed here — so the testIDs this block used to look for (`alert-map-`,
-    `alert-levels-`, `alert-rr-`) belong to a card that no longer exists.
+    REWRITTEN 21 September for the V2 card (owner pack, "alert cards are market
+    instruments"). The in-card fold is gone: the whole card opens the Trade
+    detail, so nothing on an alert card is reachable only by expanding it any
+    more. What F06 asks — entry, stop, target, R and the state visible at a
+    glance — is now checked on the two DENSITIES instead:
 
-    The FINDING is unchanged and so is what is checked: the decision essentials
-    must not be reachable only by expanding. What changed is how the source
-    makes that true, and it is now stronger than an ordering check. The levels,
-    the map and the ruler are not drawn by this file at all; they are drawn by
-    whichever kit component the fold selects, and BOTH branches are handed the
-    same props. There is no arrangement of `open` in which they disappear,
-    which is a better guarantee than "the levels appear earlier in the file
-    than the `{open ?` that used to hide them".
+      priority  the stop – entry – target rail (RangeRail), R in the header
+      compact   the same three levels as one Entry · Stop · Target row
+                (the kit's PriceTriplet), R in the header
+
+    The level CHART stays the kit's, on the detail screen. The card owns a
+    microchart of candles (instruments.tsx) and no level geometry of its own.
   */
-  ok('the card draws the kit, not a fourth private chart',
-    /from '\.\.\/\.\.\/ui\/trade'/.test(src)
-    && src.includes('SetupPreview') && src.includes('TradeDetail'));
-  /* It still imports `Svg` for a chevron glyph, so the check is that it owns no
-     chart GEOMETRY — the thing a fourth private chart would need. */
-  ok('and owns no chart geometry of its own',
+  ok('there is no in-card fold any more — the card opens the detail',
+    !/const \[open, setOpenState\]/.test(src) && src.includes('tradeHref(alert)'));
+  ok('the priority card draws the stop – entry – target rail', src.includes('<RangeRail'));
+  ok('the compact card draws the three levels as one kit row', src.includes('<PriceTriplet'));
+  ok('the R sits in the header on both densities', src.includes('alert-r-'));
+  ok('and owns no level-chart geometry of its own',
     !src.includes('tradeGeometry') && !/<Line[\s/>]/.test(src) && !/<Circle[\s/>]/.test(src));
-
-  /*
-    The fold picks a COMPONENT, and both sides get the identical prop bundle.
-    That is what makes the essentials unconditional rather than merely early.
-  */
-  /*
-    REWRITTEN 21 September (owner: "the alert cards are way oversized,
-    daytrade is diff from swing card ui, the expanded alert card is way too big
-    for screen"). The fold is now an early return — collapsed is the kit's
-    dense `SetupPreview`, opened is the kit's compact `TradeDetail` — and Swing
-    and Day Trade go through the SAME two calls; the only family difference is
-    the `extra` contract row. Both branches are handed the same idea, status
-    line, level text and extra row, so the essentials (levels, state, time) are
-    on the card at both depths.
-  */
-  const fold = src.indexOf('if (!open) {');
-  ok('the fold chooses between the two kit views', fold > 0
-    && src.indexOf('<SetupPreview', fold) > fold
-    && src.indexOf('<TradeDetail', fold) > src.indexOf('<SetupPreview', fold));
-  const count = (needle: string) => src.split(needle).length - 1;
-  ok('and hands both the same object',
-    count('idea={idea}') >= 2 && count('status={status}') >= 2
-    && count('levelText={levelText}') >= 2 && count('extra={contractRow}') >= 1
-    && src.includes('extra={contractOpen}') && /const contractOpen = contractLed \? \(\s*<View[^>]*>\s*\{contractRow\}/.test(src)
-    && count('side={side}') >= 2);
-  ok('one anatomy for every family — no day-trade-only layout branch',
-    !/contractLed \? \(\s*<View style=\{\{ marginTop: 14 \}\}>/.test(src));
-
-  /* What IS behind the fold is the evidence, and only the evidence. */
-  ok('the evidence is gated on the fold', /const whyBody = why \?/.test(src));
-  const evidenceAt = src.indexOf('const whyBody = why ?');
-  ok('the score moved into the evidence with the rest',
-    evidenceAt > 0 && src.indexOf('<GradeMedallion') > evidenceAt);
+  ok('one anatomy for every family — the contract is one extra row, not a layout',
+    src.includes('contract-row-') && !/isContractLed\(alert\) \? \(\s*<StandardAlertCard/.test(src));
 
   /*
     THE REFUSALS, which are the half of F06 that a beautiful template loses
-    first. A card with no computed plan says so; a card with no grade says so;
-    neither is filled in to keep the shape.
+    first. A card with no computed plan says so; a zone is never shown as one
+    price; nothing is filled in to keep the shape.
   */
   ok('a family with no plan gets a stated absence', src.includes('alert-no-plan-'));
   ok('a zone shows the server ratio rather than a computed one',
-    src.includes('alert-rr-stated-') && src.includes('isZone'));
+    /isZoneText\(alert\.trade\.entry\)/.test(model) && /numbersIn\(alert\.trade\.rr\)/.test(model));
+  ok('and a zone is never printed as a single price in the triplet', src.includes('.some(isZoneText)'));
 
   /*
     "A beginner who understands a stock setup should not be assumed to
-    understand a contract." The options family is offered the explanation
-    BEFORE the button that takes the trade.
+    understand a contract." V2 moves the explanation to the detail the card
+    opens (bookmark is the card's only trailing control); the card still
+    refuses to invent a contract peak, and says what was paid.
   */
-  ok('the options family is offered an explanation first',
-    src.indexOf('Explain this signal') > 0
-    && src.indexOf('Explain this signal') < src.indexOf('alert-cta-'));
-  ok('and only that family is', /const contractOpen = contractLed \? \(/.test(src));
+  ok('the contract row prints a peak only from the tracker', /t\?\.contract_peak \?\? null/.test(model));
 }
 
 /* ================================================================== */

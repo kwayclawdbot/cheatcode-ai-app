@@ -67,6 +67,8 @@ export type SetupRow = {
   contract_peak?: number | null;
   contract_peak_multiple?: number | null;
   contract_expiry_value?: number | null;
+  /** Producer annotations — the swing scanner keeps its setup label here as `pattern`. */
+  annotations?: Record<string, unknown> | null;
 };
 
 export type ProfileRow = {

@@ -65,7 +65,9 @@ const SETUP_COLUMNS =
   // What the peak tracker wrote while the call was running (0041). These are
   // what let a History row print "peak $27.91" instead of a bare percentage.
   'call_price,high_price,high_basis,low_price,low_basis,peak_price,peak_at,peak_gain_pct,' +
-  'resolution_kind,resolution_price,contract_cost,contract_peak,contract_peak_multiple,contract_expiry_value';
+  'resolution_kind,resolution_price,contract_cost,contract_peak,contract_peak_multiple,contract_expiry_value,' +
+  // The scanner's setup label — the V2 card's Pattern cell (`analyticsOf`).
+  'annotations';
 
 /**
  * How many of the sent alerts each tab carries. Active is the live window (a
