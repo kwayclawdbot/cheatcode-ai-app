@@ -287,7 +287,7 @@ function callBucket(path: string): string {
     .replace(/\/(?:ticker|tickers)\/[^/]+/, '/…');
 }
 
-async function polyGet<T>(path: string, params: Record<string, string | number | boolean> = {}): Promise<PolyResult<T>> {
+export async function polyGet<T>(path: string, params: Record<string, string | number | boolean> = {}): Promise<PolyResult<T>> {
   const key = env('POLYGON_API_KEY');
   if (!key) return { ok: false, reason: 'not_configured' };
   if (!(await acquireSlot())) return { ok: false, reason: 'rate_limited' };
