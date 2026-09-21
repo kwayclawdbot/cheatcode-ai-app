@@ -1021,3 +1021,10 @@ export const api = {
 };
 
 export type { ExplainLevel };
+
+/**
+ * LANE C (Kai voice). The two doors, exported for `features/voice/api.ts` so
+ * the voice calls get the same auth, retry and error envelope as everything
+ * else rather than a second copy of them.
+ */
+export { request as apiRequest, upload as apiUpload };
