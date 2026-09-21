@@ -142,7 +142,7 @@ export default function RoomScreen() {
         communityApi.messages(roomId, 0, 50),
       ]);
       if (!alive) return;
-      const found = page.room ?? rooms.find((r) => r.id === roomId) ?? fixtureRooms.find((r) => r.id === roomId) ?? null;
+      const found = page.room ?? rooms.find((r) => r.id === roomId) ?? fixtureRooms.find((r) => r.id === roomId || roomId === `fx-${r.slug}`) ?? null;
       if (found && page.catchUp) found.unread = page.catchUp.count;
       setRoom(found);
       // A setup room's object lives on the setup, not on the room row.
