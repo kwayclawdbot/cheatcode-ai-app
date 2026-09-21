@@ -69,6 +69,25 @@ function kindColor(kind) {
   }
 }
 
+/**
+ * The colour a mark is drawn in: meaning first, then who placed it.
+ *
+ *   the member's own drawing ... action orange (theirs, not the app's analysis)
+ *   Kai's marks ................ Kai violet — "violet appears only when Kai is
+ *                                speaking, thinking, or taking an AI action", and
+ *                                a mark Kai drew is Kai acting
+ *   the trade's levels ......... always their meaning, whoever placed them:
+ *                                entry off-white, stop red, target green
+ *
+ * Mirrors `annotationColor` in src/features/chart/semantics.ts.
+ */
+var TRADE_KINDS = { entry: true, stop: true, invalidation: true, target: true };
+function annotationColor(a) {
+  if (a.provenance === 'user') return TOKENS.volt;
+  if (a.provenance === 'kai' && !TRADE_KINDS[a.kind] && a.kind !== 'indicator') return TOKENS.violetLight;
+  return kindColor(a.kind);
+}
+
 /** rgba() from a #rrggbb token plus an alpha. Tokens stay hex; fills need alpha. */
 function withAlpha(hex, a) {
   var h = String(hex).replace('#', '');

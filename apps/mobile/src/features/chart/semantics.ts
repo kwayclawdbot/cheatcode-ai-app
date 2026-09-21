@@ -79,3 +79,20 @@ export const gradeColor = (grade: string | null | undefined): string => {
   if (g.startsWith('C')) return color.gold;
   return color.muted;
 };
+
+const TRADE_KINDS: ReadonlySet<AnnotationKind> = new Set<AnnotationKind>(['entry', 'stop', 'invalidation', 'target']);
+
+/**
+ * The colour a whole mark is drawn in: meaning first, then who placed it.
+ * Mirrors `annotationColor` in chart-web/src/01-theme.js, so the list under the
+ * chart and the chart itself never disagree about a mark.
+ *
+ *   the member's own drawing ... action orange
+ *   Kai's marks ................ Kai violet (redesign: violet is Kai acting)
+ *   the trade's levels ......... their meaning, whoever placed them
+ */
+export const annotationColor = (a: { kind: AnnotationKind; provenance: string }): string => {
+  if (a.provenance === 'user') return color.action;
+  if (a.provenance === 'kai' && !TRADE_KINDS.has(a.kind) && a.kind !== 'indicator') return color.kaiInk;
+  return kindColor(a.kind);
+};
