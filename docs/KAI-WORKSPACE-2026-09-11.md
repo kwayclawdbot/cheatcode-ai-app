@@ -191,7 +191,12 @@ two-line frame handler on Home.
 | `news` | `api.symbolDetail().evidence.news` | live |
 | `community` | `communityApi.messages` | live, read-only |
 | `web` | the source + a handoff to the phone's browser | live |
-| `watchlist`, `portfolio`, `training`, `plan` | — | **defined, not offered** |
+| `quote` | `GET /symbols/:s/panel?kind=quote` (same loader as `read_quote_card`) | live — added 09-21 |
+| `earnings` | `…?kind=earnings` (`read_earnings`) | partial — no earnings calendar on the plan; next date only when the flow engine recorded one |
+| `options` | `…?kind=options` (`read_options_chain`) | partial — listed strikes only; no live option prices; recorded flow prices marked as recorded |
+| `watchlist` | `GET /watchlist` (what `read_watchlist` reads) | live — added 09-21 |
+| `portfolio` | `tradeApi.positions('open')` (what `read_positions` reads) | live — added 09-21 |
+| `training`, `plan` | — | **defined, not offered** |
 
 The last row is the rule that keeps this honest: a kind exists in the type so the
 client's switch is exhaustive, but it is **absent from `KAI_OFFERED_ACTIONS`**, so
@@ -234,8 +239,11 @@ applier, the bridge handling `chart_answer`.
 
 ## WHAT IS NOT DONE
 
-- **Phase 2–4 surfaces**: watchlist, portfolio, plan, training, market regime,
-  earnings, options. Each is a surface plus one line in `KAI_OFFERED_ACTIONS`.
+- **Phase 2–4 surfaces**: plan, training and market regime. (Quote, earnings,
+  options, watchlist and portfolio landed 09-21 — see
+  `apps/api/src/lib/market/panels.ts` and `surfaces/panels.tsx`; the member can
+  open any of them from the panel button in Home's top bar, and the workspace
+  has a close button.)
 - **`focus_surface` / `close_surface` take a KIND, not an instance id.** That is
   deliberate for a phone — one chart, one news panel — and would need revisiting
   if a surface ever needs two instances.
