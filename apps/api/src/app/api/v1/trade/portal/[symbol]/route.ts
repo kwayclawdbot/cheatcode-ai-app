@@ -68,6 +68,7 @@ import { action, communitySentiment, verifiedClaims } from '@/lib/v5/workspace';
 import { listAnnotations, markPlanLevels } from '@/lib/round4/annotations';
 import { listCircles } from '@/lib/round4/circles';
 import { loadAlertCards } from '@/lib/round4/alerts-feed';
+import { findOpenedCard, openedFrom } from '@/lib/round4/opened-from';
 import { experienceOf, speak } from '@/lib/kai/voice';
 
 export const dynamic = 'force-dynamic';
@@ -159,39 +160,58 @@ export const GET = authedParams<{ symbol: string }>(
     ]);
 
     const rows = (setupsRes.data ?? []) as unknown as SetupRow[];
-    const setup =
-      (q.setup ? rows.find((r) => r.id === q.setup) : null) ??
-      rows.find((r) => r.mode === profile.primary_mode) ??
-      rows[0] ??
-      null;
 
-    /* ---- the alert we were opened from ------------------------------- */
+    /* ---- the card we were opened from --------------------------------
+     * Read by its OWN id — see `lib/round4/opened-from.ts` for the AMD "A
+     * setup" that opened on "NOT GRADED" because a setup card's id was being
+     * looked up as an alert row. `from.alertId` is the only value that may
+     * reach a column referencing `alerts`; `from.cardId` is what finds the
+     * card the member actually tapped. */
+    const from = openedFrom(q);
     let alertCard: AlertCard | null = null;
     let alertRowData: Record<string, unknown> | null = null;
-    if (q.alert) {
+    let staleAlert = false;
+    if (from.alertId) {
       const found = await db
         .from('alerts')
         .select('id,status,natural_language,condition,refs,expires_at,created_at,updated_at')
         .eq('user_id', ctx.user.id)
-        .eq('id', q.alert)
+        .eq('id', from.alertId)
         .maybeSingle();
       alertRowData = (found.data as Record<string, unknown> | null) ?? null;
-      if (!alertRowData) {
-        // Opening a stale link is not an error the user caused. The portal
-        // opens on the symbol and says the alert is gone, rather than 404ing
-        // a chart the user can plainly see should exist.
-        alertCard = null;
-      } else {
-        const feed = await loadAlertCards({ userId: ctx.user.id, requestId: ctx.requestId });
-        alertCard = feed.cards.find((c) => c.alert_id === q.alert) ?? null;
-      }
+      // Opening a stale link is not an error the user caused. The portal
+      // opens on the symbol and says the alert is gone, rather than 404ing
+      // a chart the user can plainly see should exist.
+      staleAlert = !alertRowData;
     }
-    if (!alertCard && !q.alert) {
+    const namedSomething = Boolean(from.cardId || from.alertId || from.setupId);
+    if (!staleAlert) {
       const feed = await loadAlertCards({ userId: ctx.user.id, requestId: ctx.requestId });
-      alertCard = feed.cards.find((c) => c.identity.symbol === symbol) ?? null;
+      alertCard = namedSomething
+        ? findOpenedCard(feed.cards, from)
+        : feed.cards.find((c) => c.identity.symbol === symbol) ?? null;
+      // A card for a different ticker is not this chart's card, whatever the
+      // link said. The symbol in the path is the one on screen.
+      if (alertCard && alertCard.identity.symbol.toUpperCase() !== symbol) alertCard = null;
     }
 
-    const openedFromAlert = Boolean(q.alert && alertCard);
+    /* ---- the setup behind it -----------------------------------------
+     * The one the link or the card names, even when its state has moved out
+     * of the live list above (a setup that has triggered is still the setup
+     * the member is looking at). Otherwise the best live one for the mode. */
+    const wantedSetupId = from.setupId ?? alertCard?.setup_id ?? null;
+    let named: SetupRow | null = wantedSetupId ? rows.find((r) => r.id === wantedSetupId) ?? null : null;
+    if (wantedSetupId && !named) {
+      const one = await db.from('setups').select(SETUP_COLUMNS).eq('id', wantedSetupId).eq('symbol', symbol).maybeSingle();
+      named = (one.data as unknown as SetupRow | null) ?? null;
+    }
+    const setup =
+      named ??
+      rows.find((r) => r.mode === profile.primary_mode) ??
+      rows[0] ??
+      null;
+
+    const openedFromAlert = Boolean((from.cardId || from.alertId) && alertCard);
     const mode = setup?.mode ?? alertCard?.identity.mode ?? profile.primary_mode;
     const requestedTimeframe = normalizeTimeframe(q.timeframe ?? defaultTimeframe(mode), '1d');
 
@@ -237,7 +257,7 @@ export const GET = authedParams<{ symbol: string }>(
         invalidation: stop,
         targets,
         long,
-        sourceAlertId: q.alert ?? null,
+        sourceAlertId: from.alertId,
         sourceSetupId: setup?.id ?? null,
         sourcePlanId: existingPlan?.id ?? null,
         triggerTs,
@@ -308,7 +328,7 @@ export const GET = authedParams<{ symbol: string }>(
         .limit(30);
       const match = ((existing.data ?? []) as Record<string, unknown>[]).find((r) => {
         const chart = ((r.context as Record<string, unknown>) ?? {}).chart as Record<string, unknown> | undefined;
-        return chart?.symbol === symbol && (chart?.alert_id ?? null) === (q.alert ?? null);
+        return chart?.symbol === symbol && (chart?.alert_id ?? null) === from.alertId;
       });
       if (match) conversationId = String(match.id);
     } catch {
@@ -325,14 +345,14 @@ export const GET = authedParams<{ symbol: string }>(
           title: `${symbol} ${mode === 'day_trade' ? 'Day Trade' : mode === 'swing' ? 'Swing' : 'Invest'}`,
           context: {
             pinned: { symbols: [symbol], setup_ids: setup ? [setup.id] : [] },
-            sheet: q.alert ? { kind: 'alert', id: q.alert, symbol } : { kind: 'symbol', symbol },
+            sheet: from.alertId ? { kind: 'alert', id: from.alertId, symbol } : { kind: 'symbol', symbol },
             // The chart block is what lets Kai issue chart_command frames that
             // resolve against real levels. See lib/kai/chart-commands.ts.
             chart: {
               symbol,
               timeframe,
               setup_id: setup?.id ?? null,
-              alert_id: q.alert ?? null,
+              alert_id: from.alertId,
               plan_id: existingPlan?.id ?? null,
               trigger_ts: triggerTs,
             },
@@ -482,7 +502,7 @@ export const GET = authedParams<{ symbol: string }>(
           },
         },
         restored: {
-          alert_id: q.alert ?? null,
+          alert_id: from.alertId,
           setup_id: setup?.id ?? null,
           symbol,
           instrument: 'equity',
