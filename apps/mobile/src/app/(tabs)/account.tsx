@@ -100,7 +100,7 @@ const DEV_BUILD = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
 
 /** What the goal actually changes, in one line each. Mirrors `ModeSheet`. */
 const GOAL_HINT: Record<GoalMode, string> = {
-  day_trade: 'Intraday charts and same-day ideas.',
+  day_trade: 'Intraday charts and options-flow alerts that live until the contract expires.',
   swing: 'Multi-day charts and ideas that need days to work.',
   invest: 'Long charts and language about businesses.',
 };

@@ -27,7 +27,7 @@ export const MODE_LABEL: Record<GoalMode, string> = {
 
 /** What actually changes when you switch — stated, not implied. */
 const MODE_EFFECT: Record<GoalMode, string> = {
-  day_trade: 'Intraday charts, same-day ideas, tighter stops, and a daily loss cap that matters today.',
+  day_trade: 'Intraday charts, options-flow alerts that live until the contract expires, and a daily loss cap that matters today.',
   swing: 'Multi-day charts, ideas that need days to work, wider stops, risk measured across the week.',
   invest: 'Long charts, position ideas measured in months, and language about businesses rather than levels.',
 };
