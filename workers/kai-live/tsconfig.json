@@ -13,5 +13,5 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "../../packages/shared/live.ts", "../../packages/shared/api.ts"]
+  "include": ["src/**/*.ts", "../../packages/shared/live.ts", "../../packages/shared/api.ts", "scripts/effort-test.ts"]
 }

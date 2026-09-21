@@ -40,6 +40,7 @@ import {
 } from './voice.ts';
 import type { Candidate, MarketBundle, MarketTf } from './api.ts';
 import { parseMarkers } from '../../../packages/shared/live.ts';
+import { createCapabilityLookup, isEffortRejection } from '../../../packages/shared/model-capabilities.ts';
 
 let client: Anthropic | null = null;
 function anthropic(): Anthropic {
@@ -49,6 +50,22 @@ function anthropic(): Anthropic {
     client = new Anthropic({ apiKey: key });
   }
   return client;
+}
+
+/**
+ * WHETHER TO SEND `effort` IS ASKED, NOT ASSUMED. The same lookup the API uses
+ * (`packages/shared/model-capabilities.ts`): Haiku 4.5 rejects
+ * `output_config.effort` with a 400, so sending it unconditionally made every
+ * show call fail the moment KAI_MODEL pointed at Haiku.
+ */
+export const capabilities = createCapabilityLookup({
+  apiKey: () => config.anthropicKey(),
+  log: (level, event, fields) => log(level, event, fields),
+});
+
+/** The request body's effort part for this model — present only when accepted. */
+export function effortFor(model: string): { output_config?: { effort: 'low' } } {
+  return capabilities.supportsEffort(model) ? { output_config: { effort: 'low' } } : {};
 }
 
 export function anthropicConfigured(): boolean {
@@ -309,13 +326,22 @@ export async function ask<T>(opts: {
   let usd = 0;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const res = await anthropic().messages.create({
+    const request = {
       model,
       max_tokens: opts.maxTokens,
-      output_config: { effort: 'low' },
       system: opts.system ?? system(),
-      messages: [{ role: 'user', content: attempt === 0 ? opts.user : `${opts.user}\n\nYour last answer was not valid JSON. Answer with JSON only.` }],
-    });
+      messages: [{ role: 'user' as const, content: attempt === 0 ? opts.user : `${opts.user}\n\nYour last answer was not valid JSON. Answer with JSON only.` }],
+    };
+    let res: Anthropic.Message;
+    try {
+      res = await anthropic().messages.create({ ...request, ...effortFor(model) });
+    } catch (e) {
+      // The table said yes and the provider said no. Believe the provider, for
+      // the rest of the process, and ask once more without it.
+      if (!isEffortRejection(e) || !effortFor(model).output_config) throw e;
+      capabilities.noteEffortRejected(model);
+      res = await anthropic().messages.create(request);
+    }
 
     const cost = anthropicCostUsd(model, res.usage as unknown as import("./budget.ts").Usage);
     usd += cost;

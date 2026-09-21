@@ -7,7 +7,7 @@
   "scripts": {
     "show:review": "tsx src/run.ts --mode review",
     "show:market": "tsx src/run.ts --mode market",
-    "test": "tsx scripts/contracts-live2.ts",
+    "test": "tsx scripts/contracts-live2.ts && tsx scripts/effort-test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
