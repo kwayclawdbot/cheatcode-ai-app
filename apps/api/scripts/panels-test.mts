@@ -290,11 +290,11 @@ const L = makePanelLoaders(deps());
   check('quote card: the freshness is Kai\'s to repeat', out?.how_fresh_plain === 'Live · last trade 10:29 AM ET' && /Say which session/.test(String(out?.must_say)));
 }
 {
-  const out = await runPanelToolWith(L, 'read_earnings', { symbol: 'NVDA' });
+  const out = await runPanelToolWith(L, 'read_earnings_history', { symbol: 'NVDA' });
   check('earnings: found', out?.found === true);
   check('earnings: the next date comes with its source', (out?.next_report as { where_this_date_came_from?: string })?.where_this_date_came_from?.includes('options-flow') === true);
   check('earnings: Kai is told there is no beat/miss', /no beat or miss/.test(String(out?.must_say)));
-  const none = await runPanelToolWith(makePanelLoaders(deps({ earningsHint: async () => null })), 'read_earnings', { symbol: 'NVDA' });
+  const none = await runPanelToolWith(makePanelLoaders(deps({ earningsHint: async () => null })), 'read_earnings_history', { symbol: 'NVDA' });
   check('earnings: with no date, Kai is told not to guess one', none?.next_report === null && /rather than guessing/.test(String(none?.must_say)));
 }
 {

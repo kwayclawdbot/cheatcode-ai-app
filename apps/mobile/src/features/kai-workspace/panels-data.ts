@@ -2,7 +2,7 @@
  * WHERE THE PANELS GET THEIR DATA — one loader per panel.
  *
  * The three symbol panels read `GET /symbols/:symbol/panel`, which is the same
- * loader Kai's `read_quote_card`, `read_earnings` and `read_options_chain` go
+ * loader Kai's `read_quote_card`, `read_earnings_history` and `read_options_chain` go
  * through on the server. The watchlist reads `GET /watchlist` (what Kai's
  * `read_watchlist` reads) and the portfolio reads `tradeApi.positions('open')`
  * — the Trade tab's own loader, so the P/L here is the P/L there.

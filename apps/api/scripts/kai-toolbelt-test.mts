@@ -35,6 +35,7 @@ import { DESK_TOOLS } from '../src/lib/kai/tools-desk.ts';
 import { PANEL_TOOLS } from '../src/lib/kai/tools-panels.ts';
 import { ROOM_TOOLS } from '../src/lib/kai/tools-room.ts';
 import { WEB_TOOLS, __test as web } from '../src/lib/kai/tools-web.ts';
+import { INTEL_TOOLS } from '../src/lib/kai/tools-intel.ts';
 import { contextNumbers, renderMemory, type KaiContext, type MemoryRow } from '../src/lib/kai/context.ts';
 
 let failures = 0;
@@ -117,12 +118,20 @@ check(
 
 console.log('\nREGISTRY');
 const names = KAI_TOOLS.map((t) => t.name);
-check('seventeen tools', KAI_TOOLS.length === 17, KAI_TOOLS.length);
+check('twenty-four tools', KAI_TOOLS.length === 24, KAI_TOOLS.length);
 check('names are unique', new Set(names).size === names.length);
 check(
-  'the registry is exactly its five groups',
-  KAI_TOOLS.length === MARKET_TOOLS.length + PANEL_TOOLS.length + DESK_TOOLS.length + ROOM_TOOLS.length + WEB_TOOLS.length,
-  { market: MARKET_TOOLS.length, panels: PANEL_TOOLS.length, desk: DESK_TOOLS.length, room: ROOM_TOOLS.length, web: WEB_TOOLS.length }
+  'the registry is exactly its six groups',
+  KAI_TOOLS.length ===
+    MARKET_TOOLS.length + PANEL_TOOLS.length + INTEL_TOOLS.length + DESK_TOOLS.length + ROOM_TOOLS.length + WEB_TOOLS.length,
+  {
+    market: MARKET_TOOLS.length,
+    panels: PANEL_TOOLS.length,
+    intel: INTEL_TOOLS.length,
+    desk: DESK_TOOLS.length,
+    room: ROOM_TOOLS.length,
+    web: WEB_TOOLS.length,
+  }
 );
 
 /**

@@ -192,7 +192,7 @@ two-line frame handler on Home.
 | `community` | `communityApi.messages` | live, read-only |
 | `web` | the source + a handoff to the phone's browser | live |
 | `quote` | `GET /symbols/:s/panel?kind=quote` (same loader as `read_quote_card`) | live — added 09-21 |
-| `earnings` | `…?kind=earnings` (`read_earnings`) | partial — no earnings calendar on the plan; next date only when the flow engine recorded one |
+| `earnings` | `…?kind=earnings` (`read_earnings_history`) | partial — no earnings calendar on the plan; next date only when the flow engine recorded one |
 | `options` | `…?kind=options` (`read_options_chain`) | partial — listed strikes only; no live option prices; recorded flow prices marked as recorded |
 | `watchlist` | `GET /watchlist` (what `read_watchlist` reads) | live — added 09-21 |
 | `portfolio` | `tradeApi.positions('open')` (what `read_positions` reads) | live — added 09-21 |

@@ -2,7 +2,7 @@
  * GET /api/v1/symbols/:symbol/panel?kind=quote|earnings|options
  *
  * The phone's way into the three symbol panels of the Kai workspace. Kai reads
- * the same three through `read_quote_card`, `read_earnings` and
+ * the same three through `read_quote_card`, `read_earnings_history` and
  * `read_options_chain`; both go through `lib/market/panels.ts`, so a panel and
  * the sentence Kai says about it are one read.
  *

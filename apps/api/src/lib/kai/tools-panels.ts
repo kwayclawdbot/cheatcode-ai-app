@@ -39,13 +39,13 @@ export const PANEL_TOOLS: Anthropic.Tool[] = [
     strict: true,
   },
   {
-    name: 'read_earnings',
+    name: 'read_earnings_history',
     description:
-      "Read a company's recent reported quarters — earnings per share, revenue, net income, the period and " +
-      'when it was filed — and its next report date ONLY when a source this app has names one. Call this ' +
-      'when the user asks about earnings, when a company reports, or how its last quarters went. There are ' +
-      'no analyst estimates, so never say a quarter beat or missed. If no next date comes back, say that the ' +
-      'date is not known rather than estimating one.',
+      "Read one company's recent reported quarters — earnings per share, revenue, net income, the period and " +
+      'when it was filed — plus its next report date when one is known. This is the same record the earnings ' +
+      'panel shows. Call it when the user asks how the last quarters went or wants the numbers behind them. ' +
+      'For "when does X report" across several tickers or the watchlist, use read_earnings. If no next date ' +
+      'comes back, say that the date is not known rather than estimating one.',
     input_schema: symbolOnly('The ticker whose earnings you want.'),
     strict: true,
   },
@@ -105,7 +105,7 @@ export async function runPanelToolWith(
     };
   }
 
-  if (name === 'read_earnings') {
+  if (name === 'read_earnings_history') {
     const r = await loaders.earnings(symbol);
     if (!r.ok) return NOT_FOUND(r.plain);
     const v = r.value;
