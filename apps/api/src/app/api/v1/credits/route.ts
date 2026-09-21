@@ -91,7 +91,7 @@ function appBlurb(p: Plan): string {
 }
 
 export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
-  const state = await creditState(ctx.user.id, ctx.requestId);
+  const state = await creditState(ctx.user.id, ctx.requestId, 'credits');
   const storefront = isStorefrontClient(req);
 
   if (storefront) {

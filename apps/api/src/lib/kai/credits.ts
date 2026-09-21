@@ -295,8 +295,83 @@ async function loadPlanAndZone(userId: string): Promise<{ plan: Plan; timezone: 
   return { plan: PLANS[key], timezone: tz };
 }
 
+/* ------------------------------------------------------------------ */
+/* Fail-open visibility                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * HOW OFTEN THE DOOR WAS LEFT OPEN. Failing open is right (rule 3) and it is
+ * also invisible: a member gets a full day's credits and is never billed for
+ * what they asked. So every fail-open is counted here and the count is shown
+ * in `/api/v1/health` as `credit_gate.fail_open_last_hour`.
+ *
+ * IN MEMORY, PER SERVER INSTANCE, ON PURPOSE. It exists for the moment the
+ * database cannot be reached, so it cannot be stored in the database. The
+ * structured log line is the durable record; this is the dial.
+ */
+const failOpens: number[] = [];
+const HOUR_MS = 3_600_000;
+
+export function recordFailOpen(
+  fields: { route: string; userId: string; reason: string; plan: PlanKey },
+  requestId = '-',
+  now = Date.now()
+): void {
+  failOpens.push(now);
+  while (failOpens.length && now - failOpens[0] > HOUR_MS) failOpens.shift();
+  // Capped so a long outage cannot grow this without bound; the count still
+  // reads "at least this many".
+  if (failOpens.length > 10_000) failOpens.splice(0, failOpens.length - 10_000);
+  log('error', requestId, 'credit_gate.fail_open', {
+    metric: 'credit_gate_fail_open',
+    route: fields.route,
+    user_id: fields.userId,
+    plan: fields.plan,
+    reason: fields.reason,
+    fail_open_last_hour: failOpens.length,
+    note: 'credit database unreachable; allowed with a full day and this question will not be billed',
+  });
+}
+
+export function failOpenLastHour(now = Date.now()): number {
+  let n = 0;
+  for (const t of failOpens) if (now - t <= HOUR_MS) n += 1;
+  return n;
+}
+
+/** For tests. */
+export function resetFailOpenCounter(): void {
+  failOpens.length = 0;
+}
+
+/**
+ * The arguments `kai_credit_state` is called with. Pure, so the test can hand
+ * the exact same object to the SQL.
+ *
+ * `p_ceiling_since` is ALWAYS sent, including on free. A free plan has no
+ * ceiling of its own, but a period that was downgraded to free mid-day keeps
+ * the paid plan's ceiling (0051), and the month's spend must be added up for
+ * it — sending NULL here is what used to make that spend read as $0.
+ */
+export function creditStateArgs(userId: string, plan: Plan, period: Period, basis: CreditBasis) {
+  return {
+    p_user_id: userId,
+    p_period_kind: 'day',
+    p_period_key: period.key,
+    p_period_start: period.start,
+    p_period_end: period.end,
+    p_plan_key: plan.key,
+    p_granted_credits: plan.daily_credits,
+    p_cost_ceiling_usd: plan.monthly_cost_ceiling_usd,
+    p_basis_usd_per_credit: basis.usd_per_credit,
+    p_basis_source: basis.source,
+    p_day_start: period.start,
+    p_ceiling_since: period.ceilingSince,
+  };
+}
+
 /** The state everything else is built from. Never throws. */
-export async function creditState(userId: string, requestId = '-'): Promise<CreditState> {
+export async function creditState(userId: string, requestId = '-', route = 'unknown'): Promise<CreditState> {
   const now = new Date();
   let plan = PLANS.free;
   let timezone: string | null = null;
@@ -312,24 +387,7 @@ export async function creditState(userId: string, requestId = '-'): Promise<Cred
   const period = periodFor(now, timezone);
   const basis = await measureBasis(requestId);
 
-  const out = await callRpc<StateRow>(
-    'kai_credit_state',
-    {
-      p_user_id: userId,
-      p_period_kind: 'day',
-      p_period_key: period.key,
-      p_period_start: period.start,
-      p_period_end: period.end,
-      p_plan_key: plan.key,
-      p_granted_credits: plan.daily_credits,
-      p_cost_ceiling_usd: plan.monthly_cost_ceiling_usd,
-      p_basis_usd_per_credit: basis.usd_per_credit,
-      p_basis_source: basis.source,
-      p_day_start: period.start,
-      p_ceiling_since: plan.monthly_cost_ceiling_usd === null ? null : period.ceilingSince,
-    },
-    requestId
-  );
+  const out = await callRpc<StateRow>('kai_credit_state', creditStateArgs(userId, plan, period, basis), requestId);
 
   if (!out.ok) {
     /**
@@ -339,11 +397,10 @@ export async function creditState(userId: string, requestId = '-'): Promise<Cred
      * are paying. The message goes through; the log carries the reason; the
      * admin view counts how often it happened.
      */
-    log('error', requestId, 'credits.unavailable_allowing', {
-      user_id: userId,
-      plan: plan.key,
-      reason: out.missing ? 'rpc_missing' : out.message,
-    });
+    recordFailOpen(
+      { route, userId, plan: plan.key, reason: out.missing ? 'rpc_missing' : out.message },
+      requestId
+    );
     return {
       plan,
       period,

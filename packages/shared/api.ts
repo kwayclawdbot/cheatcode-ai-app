@@ -940,10 +940,33 @@ export type AlertsResponse = z.infer<typeof AlertsResponse>;
 /* GET /api/v1/health                                                   */
 /* ------------------------------------------------------------------ */
 
+/**
+ * `anthropic` stays a boolean for anything already reading it. The detail is
+ * `anthropic_status`: a real one-token model call, so an empty credit balance
+ * shows up as `no_credit` instead of hiding behind a key that still works.
+ * `ok` is false on `invalid_key` and `no_credit`.
+ */
+export const AnthropicStatus = z.enum(['ok', 'invalid_key', 'no_credit', 'rate_limited', 'unreachable']);
+export type AnthropicStatus = z.infer<typeof AnthropicStatus>;
+
 export const HealthResponse = z.object({
   ok: z.boolean(),
   supabase: z.boolean(),
   anthropic: z.boolean(),
+  anthropic_status: AnthropicStatus,
+  /** One plain sentence saying what the status means and what to do. */
+  anthropic_message: z.string(),
+  anthropic_checked_at: z.string(),
+  /**
+   * How many Kai questions were let through in the last hour because the
+   * credit database could not be read. Those members got a full day and are
+   * never billed for those questions — deliberate, so nobody is locked out —
+   * which is exactly why the number is shown. Counted per server instance.
+   */
+  credit_gate: z.object({
+    fail_open_last_hour: z.number().int().nonnegative(),
+    scope: z.literal('this_server_instance'),
+  }),
 });
 export type HealthResponse = z.infer<typeof HealthResponse>;
 

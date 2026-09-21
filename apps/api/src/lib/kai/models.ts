@@ -36,6 +36,11 @@
 import { env } from '../env';
 import { log } from '../log';
 import type { UsageFeature } from './usage';
+import {
+  createCapabilityLookup,
+  isEffortRejection as sharedIsEffortRejection,
+  type ModelCapabilities,
+} from '@shared/model-capabilities';
 
 export const SONNET_5 = 'claude-sonnet-5';
 export const HAIKU_4_5 = 'claude-haiku-4-5';
@@ -208,33 +213,22 @@ export function minCacheablePrefix(model: string): number {
  * costs slightly more thinking than it needed to, which is a bill, where the
  * other way round is a dead product.
  */
-type Capabilities = {
-  effort: boolean;
-  /** How we know. 'assumed' means nobody has told us yet. */
-  source: 'seed' | 'provider' | 'assumed' | 'rejected';
-};
+type Capabilities = ModelCapabilities;
 
-const capabilities = new Map<string, Capabilities>([
-  // Verified 2026-09-05 against GET /v1/models/{id}.
-  [SONNET_5, { effort: true, source: 'seed' }],
-  [HAIKU_4_5, { effort: false, source: 'seed' }],
-  ['claude-opus-5', { effort: true, source: 'seed' }],
-]);
-
-const inFlight = new Set<string>();
+/**
+ * The lookup itself lives in `packages/shared/model-capabilities.ts` so the
+ * show worker (`workers/kai-live`) asks the same question the same way. This
+ * process supplies its key and its logger; the functions below keep their old
+ * names so nothing that imports them changed.
+ */
+const lookup = createCapabilityLookup({
+  apiKey: () => env('ANTHROPIC_API_KEY'),
+  log: (level, event, fields) => log(level, 'models', event, fields),
+});
 
 /** Does this model accept `output_config.effort`? Never throws, never blocks. */
 export function supportsEffort(model: string): boolean {
-  const known = capabilities.get(model);
-  if (known) return known.effort;
-  capabilities.set(model, { effort: false, source: 'assumed' });
-  log('warn', 'models', 'model.capabilities_unknown', {
-    model,
-    assumed_effort: false,
-    note: 'asking the provider; effort is omitted until it answers',
-  });
-  void refreshCapabilities(model);
-  return false;
+  return lookup.supportsEffort(model);
 }
 
 /**
@@ -244,44 +238,8 @@ export function supportsEffort(model: string): boolean {
  * fired and forgotten on the request path, where the cautious default already
  * made the call safe.
  */
-export async function refreshCapabilities(model: string): Promise<Capabilities> {
-  const current = capabilities.get(model) ?? { effort: false, source: 'assumed' as const };
-  if (current.source === 'provider' || current.source === 'rejected') return current;
-  if (inFlight.has(model)) return current;
-  const key = env('ANTHROPIC_API_KEY');
-  if (!key) return current;
-  inFlight.add(model);
-  try {
-    const res = await fetch(`https://api.anthropic.com/v1/models/${encodeURIComponent(model)}`, {
-      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) {
-      log('warn', 'models', 'model.capabilities_lookup_failed', { model, status: res.status });
-      return current;
-    }
-    const body = (await res.json()) as {
-      capabilities?: { effort?: { supported?: unknown } };
-    };
-    const supported = body?.capabilities?.effort?.supported;
-    if (typeof supported !== 'boolean') {
-      // The field is absent rather than false. Say nothing we cannot support.
-      log('warn', 'models', 'model.capabilities_incomplete', { model });
-      return current;
-    }
-    const next: Capabilities = { effort: supported, source: 'provider' };
-    capabilities.set(model, next);
-    log('info', 'models', 'model.capabilities', { model, effort: supported, source: 'provider' });
-    return next;
-  } catch (e) {
-    log('warn', 'models', 'model.capabilities_lookup_threw', {
-      model,
-      message: e instanceof Error ? e.message : String(e),
-    });
-    return current;
-  } finally {
-    inFlight.delete(model);
-  }
+export function refreshCapabilities(model: string): Promise<Capabilities> {
+  return lookup.refreshCapabilities(model);
 }
 
 /**
@@ -293,19 +251,13 @@ export async function refreshCapabilities(model: string): Promise<Capabilities> 
  * the process.
  */
 export function noteEffortRejected(model: string): void {
-  capabilities.set(model, { effort: false, source: 'rejected' });
-  log('warn', 'models', 'model.effort_rejected', { model });
+  lookup.noteEffortRejected(model);
 }
 
 /** Is this error the provider refusing `output_config.effort`? */
-export function isEffortRejection(err: unknown): boolean {
-  const status = (err as { status?: unknown } | null)?.status;
-  if (status !== 400) return false;
-  const message = err instanceof Error ? err.message : String(err ?? '');
-  return /effort/i.test(message);
-}
+export const isEffortRejection = sharedIsEffortRejection;
 
 /** For tests and probes: what we currently believe, and how we came to. */
 export function capabilitySnapshot(): Record<string, Capabilities> {
-  return Object.fromEntries(capabilities);
+  return lookup.snapshot();
 }

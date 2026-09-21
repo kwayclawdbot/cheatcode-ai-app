@@ -29,6 +29,7 @@ import { authedParams, ok, parseQuery, type Ctx } from '@/lib/http';
 import { serviceClient } from '@/lib/db';
 import { ApiError, errorResponse } from '@/lib/errors';
 import { log, newRequestId } from '@/lib/log';
+import { allowKaiQuestion, SLOW_DOWN_PLAIN } from '@/lib/kai/rate-guard';
 import { emitUserEvent } from '@/lib/events';
 import { assembleContext, contextNumbers, renderContext, renderMarketLine, renderQuoteLines } from '@/lib/kai/context';
 import { buildSystemPrompt } from '@/lib/kai/system-prompt';
@@ -154,7 +155,15 @@ export async function POST(req: NextRequest, route: { params: Promise<{ id: stri
      * lets the message through and shouts in the log — and that the charge
      * happens after the answer, never before.
      */
-    const credits = await creditState(user.id, requestId);
+    // THE RUNAWAY-LOOP GUARD (lib/kai/rate-guard.ts). Before the credit read
+    // and before anything is written, so a refused burst costs nothing.
+    const pace = allowKaiQuestion(user.id);
+    if (!pace.allowed) {
+      log('warn', requestId, 'kai.rate_guard', { user_id: user.id, retry_after_sec: pace.retryAfterSec });
+      throw new ApiError('RATE_LIMITED', SLOW_DOWN_PLAIN, { detail: { retry_after_sec: pace.retryAfterSec } });
+    }
+
+    const credits = await creditState(user.id, requestId, 'kai.messages');
 
     // --- persist the user turn -------------------------------------------
     // The question is written down even when there are no credits for it. It
@@ -1071,7 +1080,7 @@ Never include a price. Never invent a command they did not ask for.`,
          * thing that knows what the question actually came to.
          */
         try {
-          sse.frame('credits', { type: 'credits', credits: creditBlock(await creditState(user.id, requestId)) });
+          sse.frame('credits', { type: 'credits', credits: creditBlock(await creditState(user.id, requestId, 'kai.messages.after_answer')) });
         } catch {
           /* the balance strip can wait for the next read; the answer cannot */
         }

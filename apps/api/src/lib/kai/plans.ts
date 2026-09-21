@@ -166,7 +166,8 @@ export type Plan = {
    * Daily on all three, not just on free, and that is deliberate: a daily grant
    * keeps the blast radius of a runaway loop or a shared login to one day for
    * everybody. A monthly grant means the first bad afternoon can take the whole
-   * month with it.
+   * month with it. (How FAST a loop can spend is capped separately: 12
+   * questions a minute per person, in `./rate-guard.ts`.)
    *
    * The numbers are DERIVED FROM MEASURED BEHAVIOUR, not chosen. The owner
    * asked for "about 20-30 runs a day" on Pro and 50 on VIP. Measured against

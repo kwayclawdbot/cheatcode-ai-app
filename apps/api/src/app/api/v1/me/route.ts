@@ -55,7 +55,7 @@ export const GET = authed(async (_req: NextRequest, ctx: Ctx) => {
     loadStaffRole(ctx.user.id),
     // The Account tab draws the credit strip from this. It is the same call the
     // message route makes, so the two can never disagree about the balance.
-    creditState(ctx.user.id, ctx.requestId),
+    creditState(ctx.user.id, ctx.requestId, 'me'),
   ]);
 
   // Needs `profile`, so it is not in the Promise.all above. One read at most,
