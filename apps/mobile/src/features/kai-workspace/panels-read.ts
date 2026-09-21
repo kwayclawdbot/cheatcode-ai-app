@@ -329,7 +329,7 @@ export function fixtureOptionsChain(symbol: string): OptionsChainResponse {
     const half = mid < 1 ? 0.02 : 0.05;
     return {
       option_symbol: occ(t, k), bid: +(mid - half).toFixed(2), ask: +(mid + half).toFixed(2), last: mid,
-      volume: Math.round(9000 * Math.exp(-Math.abs(spot - k) / 5)), open_interest: Math.round(4000 + 300 * Math.abs(spot - k)),
+      volume: Math.round((t === 'C' ? 9000 : 5600) * Math.exp(-Math.abs(spot - k) / 5)), open_interest: Math.round(4000 + 300 * Math.abs(spot - k)),
       iv: +(0.38 + Math.abs(spot - k) / 400).toFixed(3), last_trade_at: '2026-09-21T14:29:41Z',
     };
   };

@@ -2,8 +2,8 @@
  * THE FIVE WORKSPACE PANELS, PHOTOGRAPHED ON HOME AT 390×844.
  *
  *   cd apps/mobile
- *   EXPO_PUBLIC_FIXTURES=1 npx expo start --web --port 8096
- *   PROOF_BASE=http://localhost:8096 PROOF_OUT=/some/dir node scripts/proof-workspace-panels.mjs
+ *   EXPO_PUBLIC_FIXTURES=1 npx expo start --web --port 8099
+ *   PROOF_BASE=http://localhost:8099 PROOF_OUT=/some/dir node scripts/proof-workspace-panels.mjs
  *
  * FIXTURES MODE, ON PURPOSE. There is no model to ask (and no credit to ask it
  * with), so Kai's side is the fixtures-mode stand-in: a canned turn that carries
@@ -71,9 +71,10 @@ note(await tid('earnings-quarters').count(), 'earnings: reported quarters table'
 note(await tid('earnings-no-estimates').count(), 'earnings: says there is no beat/miss');
 await shot('02-earnings-by-kai');
 
-await ask('What options are listed on NVDA', 'panel-options');
+await ask('What does the NVDA option chain look like', 'panel-options');
 note(await tid('options-row-nearest').count(), 'options: the strike nearest the price is marked');
-note(await tid('options-no-live-prices').count(), 'options: says there are no live option prices');
+note(await tid('options-prices-source').count(), 'options: says the prices are from Unusual Whales and how fresh');
+note(await tid('options-quote-cell').count(), 'options: each listed side carries a bid / ask');
 note(await tid('options-flow').count(), 'options: the recorded flow contract is listed');
 await shot('03-options-by-kai');
 
