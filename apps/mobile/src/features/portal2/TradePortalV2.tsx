@@ -25,8 +25,8 @@
  *   LOOK   -> the Chart tab. Same chart, same tools, same full screen.
  *   DECIDE -> the Details tab: the grade, the levels that justify it (tap one to
  *             mark it), what would prove it wrong, Kai's read, the scorecard.
- *   TAKE   -> the paper order, opened from the overflow ("Paper trade this
- *             setup", its first row) or from the outline button on Details. It
+ *   TAKE   -> the paper order, opened from the overflow ("Review paper
+ *             order", its first row — the F08 vocabulary) or from the outline button on Details. It
  *             replaces the tabs while it is open, exactly as step 3 replaced the
  *             chart, and it still prices itself however it was reached.
  *
@@ -81,6 +81,7 @@ import { ConfirmCard, Receipt } from './Take';
 import { readPortal, type ReadLevel } from './read';
 import { useTake } from './useTake';
 import { useMe } from '../account/useAccount';
+import { ACTION_LABEL } from '../orders/vocabulary';
 import { DiscussionTab } from './Discussion';
 import { MoreSheet } from './MoreSheet';
 import {
@@ -466,7 +467,7 @@ export default function TradePortalV2() {
             <Button
               kind="outline"
               height={48}
-              label="Paper trade this setup"
+              label={ACTION_LABEL.review_paper_order}
               disabled={!read.takeable}
               onPress={openTake}
               testID="details-paper-trade"
@@ -607,7 +608,7 @@ export default function TradePortalV2() {
         rows={[
           {
             key: 'paper',
-            label: 'Paper trade this setup',
+            label: ACTION_LABEL.review_paper_order,
             blocked: read.takeable ? null : read.blocked_plain,
             hint: 'Prices a practice order from these levels. Nothing is sent until you confirm.',
             onPress: openTake,

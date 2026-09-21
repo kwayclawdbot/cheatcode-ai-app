@@ -75,7 +75,7 @@ export function TradeHeader({
         testID="trade-more"
         accessibilityRole="button"
         accessibilityLabel={`More for ${symbol}`}
-        accessibilityHint="Paper trade this setup, your positions and orders, and search."
+        accessibilityHint="Review a paper order, your positions and orders, and search."
         onPress={onMore}
         style={{ width: tap.min, height: tap.min, alignItems: 'center', justifyContent: 'center' }}
       >

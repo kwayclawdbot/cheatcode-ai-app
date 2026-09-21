@@ -3,7 +3,7 @@
  *
  * The spec allows one dominant action per screen and gives it to "Add to
  * watchlist". The paper order is the other real thing a person does here, so it
- * is the FIRST row of this sheet — one tap from the "…" in the header — and it
+ * is the FIRST row of this sheet ("Review paper order", the F08 wording) — one tap from the "…" in the header — and it
  * is also offered as a quiet outline button on the Details tab, where the
  * levels it would be built from are on screen. It is never orange and never
  * competes with the watchlist button.
