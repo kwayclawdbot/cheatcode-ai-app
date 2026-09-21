@@ -36,7 +36,7 @@ import React from 'react';
 import { Pressable, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { T } from './Text';
-import { alpha, color, radius } from './tokens';
+import { alpha, color, radius, tap, type as typeScale } from './tokens';
 /**
  * The rule lives beside the component, not inside it — same arrangement as
  * `FreshnessMark` and `lib/freshness-decay.ts`, and for the same reason: the
@@ -131,6 +131,16 @@ export function CapabilityNotice({
 }) {
   const s = SPEC[state];
   const retryable = (state === 'failed' || state === 'stale' || state === 'offline') && !!onRetry;
+  /*
+   * THE BUTTON GOES UNDER THE SENTENCE, NOT BESIDE IT (owner audit, 21 Sept).
+   *
+   * Beside it, "Check again" took a third of a 390pt row, the sentence got the
+   * rest, and at the owner's 130% text size "There is something below that
+   * needs you…" ran to six lines in a column two words wide — so on Home the
+   * card was taller than the space it had and read as cut off mid-sentence.
+   * The sentence now has the full width and the one action sits beneath it,
+   * at a real 44pt target.
+   */
   return (
     <View
       testID={testID ?? `capability-${state}`}
@@ -145,31 +155,34 @@ export function CapabilityNotice({
         borderColor: alpha.ivory08,
       }}
     >
-      <View style={{ paddingTop: 1 }}><CapabilityMark state={state} /></View>
-      <View style={{ flex: 1, gap: 4 }}>
-        <T size={13} lh={19} c={state === 'quiet' ? color.text : s.c}>{plain}</T>
-        {detail ? <T size={12} lh={17} c={color.muted}>{detail}</T> : null}
-        {at ? <T size={11} c={color.dim} testID="capability-at">{at}</T> : null}
+      <View style={{ paddingTop: 2 }}><CapabilityMark state={state} /></View>
+      <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+        <T size={typeScale.subLh.size} lh={typeScale.subLh.lh} c={state === 'quiet' ? color.text : s.c}>{plain}</T>
+        {detail ? <T size={typeScale.small.size} lh={19} c={color.muted}>{detail}</T> : null}
+        {at ? <T size={typeScale.tiny.size} c={color.dim} testID="capability-at">{at}</T> : null}
+        {retryable ? (
+          <Pressable
+            testID="capability-retry"
+            accessibilityRole="button"
+            accessibilityLabel={retryLabel}
+            onPress={onRetry}
+            style={({ pressed }) => ({
+              alignSelf: 'flex-start',
+              marginTop: 6,
+              minHeight: tap.min,
+              justifyContent: 'center',
+              paddingHorizontal: 16,
+              borderRadius: radius.pill,
+              borderWidth: 0.5,
+              borderColor: alpha.volt40,
+              backgroundColor: alpha.volt08,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <T size={typeScale.small.size} weight="bold" c={color.volt}>{retryLabel}</T>
+          </Pressable>
+        ) : null}
       </View>
-      {retryable ? (
-        <Pressable
-          testID="capability-retry"
-          accessibilityRole="button"
-          accessibilityLabel={retryLabel}
-          onPress={onRetry}
-          style={({ pressed }) => ({
-            paddingVertical: 7,
-            paddingHorizontal: 12,
-            borderRadius: radius.pill,
-            borderWidth: 0.5,
-            borderColor: alpha.volt40,
-            backgroundColor: alpha.volt08,
-            opacity: pressed ? 0.7 : 1,
-          })}
-        >
-          <T size={12} weight="bold" c={color.volt}>{retryLabel}</T>
-        </Pressable>
-      ) : null}
     </View>
   );
 }
