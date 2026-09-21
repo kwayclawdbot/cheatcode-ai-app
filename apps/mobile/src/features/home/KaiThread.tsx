@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View } from 'react-native';
 import { alpha, color, layout, radius } from '../../ui/tokens';
 import { T } from '../../ui/Text';
@@ -6,7 +6,7 @@ import { RichText } from '../../ui/RichText';
 import { KaiAvatar } from '../../ui/KaiAvatar';
 import { ContextChip } from '../../ui/Chips';
 import { Bars, Bell, DocLines, Question, Spark, Calendar } from '../../ui/Icons';
-import { clockLabel, type FollowUp } from './agent';
+import { chipsThatFit, clockLabel, MAX_FOLLOWUPS, type FollowUp } from './agent';
 
 /**
  * THE THREAD'S PIECES — redesign V2, panel 1.
@@ -137,20 +137,44 @@ export function FollowUpChips({ chips, onPress, testID = 'kai-followups' }: {
   onPress: (f: FollowUp) => void;
   testID?: string;
 }) {
-  if (!chips.length) return null;
+  // Wrapping is fine; a third row is not. Every chip is measured where it
+  // stands, and any that would start a third row is laid aside (still measured,
+  // never seen or read out) — so large text drops the last chip, not the row cap.
+  const [rowW, setRowW] = useState(0);
+  const [widths, setWidths] = useState<Record<string, number>>({});
+  const list = chips.slice(0, MAX_FOLLOWUPS);
+  if (!list.length) return null;
+  const shown = chipsThatFit(list.map((f) => widths[f.id] ?? 0), rowW);
   return (
-    <View testID={testID} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-      {chips.map((f) => (
-        <ContextChip
-          key={f.id}
-          testID={`kai-followup-${f.id}`}
-          label={f.label}
-          icon={ICON[f.icon](color.textPrimary)}
-          accessibilityHint={f.kind === 'ask' ? 'Sends this to Kai.' : 'Opens it above the conversation.'}
-          onPress={() => onPress(f)}
-          style={{ paddingHorizontal: 12 }}
-        />
-      ))}
+    <View
+      testID={testID}
+      onLayout={(e) => setRowW(Math.floor(e.nativeEvent.layout.width))}
+      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+    >
+      {list.map((f, i) => {
+        const aside = i >= shown;
+        return (
+          <View
+            key={f.id}
+            onLayout={(e) => {
+              const w = Math.ceil(e.nativeEvent.layout.width);
+              setWidths((m) => (m[f.id] === w ? m : { ...m, [f.id]: w }));
+            }}
+            accessibilityElementsHidden={aside}
+            importantForAccessibility={aside ? 'no-hide-descendants' : 'auto'}
+            style={aside ? { position: 'absolute', opacity: 0, pointerEvents: 'none', left: 0, top: 0 } : { maxWidth: '100%' }}
+          >
+            <ContextChip
+              testID={aside ? undefined : `kai-followup-${f.id}`}
+              label={f.label}
+              icon={ICON[f.icon](color.textPrimary)}
+              accessibilityHint={f.kind === 'ask' ? 'Sends this to Kai.' : 'Opens it above the conversation.'}
+              onPress={() => onPress(f)}
+              style={{ paddingHorizontal: 12 }}
+            />
+          </View>
+        );
+      })}
     </View>
   );
 }

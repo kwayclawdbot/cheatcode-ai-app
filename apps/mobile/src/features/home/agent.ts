@@ -421,6 +421,34 @@ export function mentionedSymbols(text: string, known: readonly string[]): string
   return out;
 }
 
+/** The most follow-up chips a response shows, and the most rows they may take. */
+export const MAX_FOLLOWUPS = 3;
+export const MAX_FOLLOWUP_ROWS = 2;
+
+/**
+ * How many chips, in order, fit in `maxRows` wrapped rows of `width`.
+ *
+ * The chips wrap like words; this packs them the same way and stops before the
+ * first one that would start a third row. Before anything is measured (a width
+ * of 0) every chip up to the cap is allowed, so nothing flashes missing on the
+ * first frame. The first chip always shows, even alone and too wide.
+ */
+export function chipsThatFit(widths: readonly number[], width: number, gap = 8, maxRows = MAX_FOLLOWUP_ROWS): number {
+  const capped = Math.min(widths.length, MAX_FOLLOWUPS);
+  if (!width || widths.slice(0, capped).some((w) => !w)) return capped;
+  let rows = 1;
+  let used = 0;
+  for (let i = 0; i < capped; i++) {
+    const w = Math.min(widths[i], width);
+    if (used === 0) { used = w; continue; }
+    if (used + gap + w <= width) { used += gap + w; continue; }
+    rows += 1;
+    if (rows > maxRows) return i;
+    used = w;
+  }
+  return capped;
+}
+
 /**
  * Up to three follow-ups for one response. Every one is built from something
  * in the response — a setup, a comparison, the brief's rows, a ticker Kai
@@ -477,7 +505,7 @@ export function followUps(
     if (!learning) push({ id: `alert:${lead}`, label: 'Set alert', icon: 'alert', kind: 'ask', task: `Set an alert on ${lead}.` });
   }
 
-  return out.filter((f) => f.kind === 'open' || ctx.kaiAvailable).slice(0, 3);
+  return out.filter((f) => f.kind === 'open' || ctx.kaiAvailable).slice(0, MAX_FOLLOWUPS);
 }
 
 /* ==================================================================== */

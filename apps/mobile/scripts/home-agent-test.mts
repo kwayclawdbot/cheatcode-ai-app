@@ -9,7 +9,7 @@
  * wording has to be looked at on purpose.
  */
 import {
-  KAI_OFFLINE_PLAIN, briefRows, chartCaption, composeBrief, composeOpening, followUps, mentionedSymbols,
+  KAI_OFFLINE_PLAIN, MAX_FOLLOWUPS, briefRows, chipsThatFit, chartCaption, composeBrief, composeOpening, followUps, mentionedSymbols,
   monitoringLine, rMultiple, resumeToday, statusLine,
 } from '../src/features/home/agent.ts';
 import { fixtureHomeV5, fixtureHomeV5Quiet } from '../src/lib/fixtures.ts';
@@ -131,6 +131,15 @@ const home = readFileSync(path.resolve(HERE, '../src/app/(tabs)/home.tsx'), 'utf
 ok('no brain, no HUD frame, no status light', !/KaiBrain|HudFrame|KaiStatusLight|warroom/.test(home));
 ok('the composer says it takes tasks', readFileSync(path.resolve(HERE, '../src/features/home/KaiComposer.tsx'), 'utf8').includes('Ask Kai or give Kai a task…'));
 ok('the mic is drawn in Kai\'s violet', /tone="kai"/.test(home));
+
+console.log('\n[9] follow-up chips never take more than two rows');
+eq('three short chips share one row', chipsThatFit([100, 90, 80], 350), 3);
+eq('three chips over two rows all show', chipsThatFit([200, 140, 250], 350), 3);
+eq('a chip that would start a third row is dropped', chipsThatFit([300, 300, 300], 350), 2);
+eq('a first chip wider than the row still shows', chipsThatFit([500, 300], 350), 2);
+eq('never more than three, however narrow they are', chipsThatFit([40, 40, 40, 40], 350), 3);
+eq('before measuring, every chip up to the cap is allowed', chipsThatFit([0, 0, 0, 0], 0), 3);
+eq('the cap is three', MAX_FOLLOWUPS, 3);
 
 console.log(failures ? `\n${failures} FAILED\n` : '\nall good\n');
 process.exit(failures ? 1 : 0);
