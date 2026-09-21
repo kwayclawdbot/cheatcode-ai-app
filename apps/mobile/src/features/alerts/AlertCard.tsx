@@ -44,7 +44,7 @@ import { hitSlopFor } from '../../ui/touch';
  * only controls inside it. They cannot be nested inside the card's own button
  * (react-native-web renders `role=button` as a real <button>, which may not
  * contain another), so the card's door is a full-bleed Pressable UNDER the
- * content; the content ignores touches (`pointerEvents="none"`) and only the
+ * content; the content ignores touches (`pointerEvents: 'none'`) and only the
  * two controls take them.
  *
  * GRADE, NEVER A TINT. The grade is the compact badge plus the kit Card's
@@ -64,6 +64,11 @@ import { hitSlopFor } from '../../ui/touch';
 export type AlertCardDensity = 'priority' | 'compact';
 
 const TONE: Record<VerbTone, ChipTone> = { neutral: 'neutral', action: 'action', up: 'up', down: 'down' };
+
+/** Content ignores touches so they fall through to the card's door (see header). */
+const NONE = { pointerEvents: 'none' } as const;
+/** A container whose own box ignores touches but whose children (the controls) do not. */
+const BOX_NONE = { pointerEvents: 'box-none' } as const;
 
 const money = (n: number) => `$${n.toFixed(2)}`;
 const pct = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(1)}%`;
@@ -98,7 +103,7 @@ export function StandardAlertCard({
   const ago = timeAgo(alert.triggered_at);
   const range = rangeOf(alert, now);
   const r = rMultiple(alert, range);
-  const cells = useMemo(() => analyticsCells(alert, r), [alert, r]);
+  const cells = useMemo(() => analyticsCells(alert, r, { rInHeader: true }), [alert, r]);
   const contract = contractLine(alert);
   const shown = useMemo(() => windowBars(bars, hours), [bars, hours]);
   const hasChart = shown.length >= 2;
@@ -113,6 +118,56 @@ export function StandardAlertCard({
     router.push(tradeHref(alert) as never);
   };
 
+  const contractRow = contract ? (
+    <View
+      style={[NONE, {
+        flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 8, rowGap: 2,
+        paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.lg,
+        backgroundColor: alpha.ivory04, borderWidth: 1, borderColor: alpha.divider,
+      }]}
+      testID={`contract-row-${sym}`}
+      accessibilityLabel={[
+        `${contract.strike} ${contract.side.toLowerCase()}`, `expires ${contract.expiry}`,
+        contract.paid ? `paid ${contract.paid}` : null,
+        contract.peak ? `peak after the alert ${contract.peak}${contract.multiple ? `, ${contract.multiple} cost` : ''}` : null,
+      ].filter(Boolean).join(', ')}
+    >
+      <Num variant="meta" weight="semibold" c={color.textPrimary}>{`${contract.strike} ${contract.side}`}</Num>
+      <T variant="meta" c={color.textSecondary}>{`· exp ${contract.expiry}`}</T>
+      {contract.paid ? (
+        <>
+          <T variant="meta" c={color.textSecondary}>· paid</T>
+          <Num variant="meta" weight="semibold" c={color.textPrimary}>{contract.paid}</Num>
+        </>
+      ) : null}
+      {contract.peak ? (
+        <>
+          <T variant="meta" c={color.textSecondary}>· peak</T>
+          <Num variant="meta" weight="semibold" c={color.marketUp} testID={`contract-peak-${sym}`}>
+            {contract.multiple ? `${contract.peak} (${contract.multiple})` : contract.peak}
+          </Num>
+        </>
+      ) : null}
+    </View>
+  ) : null;
+
+  /* A plan with no numbers says so in the server's own words (never for the options family, whose contract is the plan). */
+  const noPlan = !range && !hasLevels && !isContractLed(alert) && alert.trade.note ? (
+    <View style={NONE}>
+      <T variant="meta" c={color.textSecondary} numberOfLines={2} testID={`alert-no-plan-${sym}`}>{alert.trade.note}</T>
+    </View>
+  ) : null;
+
+  const bookmark = onToggleBookmark ? (
+    <BookmarkButton
+      saved={bookmarked}
+      emphasis={expanded}
+      symbol={sym}
+      onPress={onToggleBookmark}
+      testID={`alert-bookmark-${sym}`}
+    />
+  ) : null;
+
   const a11y = [
     sym, sideOf(alert), graded ? `grade ${displayGrade(alert.grade)}` : null,
     r != null ? `${r.toFixed(1)} R` : null, verb.label, ago,
@@ -124,7 +179,7 @@ export function StandardAlertCard({
       edge={graded ? band.edge : null}
       priority={priority}
       testID={testID ?? `alert-card-${sym}`}
-      style={{ gap: expanded ? 14 : 12 }}
+      style={{ gap: expanded ? 12 : 10 }}
     >
       {/* THE DOOR — under everything, the size of the card. */}
       <Pressable
@@ -137,8 +192,8 @@ export function StandardAlertCard({
       />
 
       {/* identity */}
-      <View pointerEvents="none" style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <TickerMark symbol={sym} size={expanded ? 40 : 36} />
+      <View style={{ pointerEvents: 'none', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <TickerMark symbol={sym} size={36} />
         <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 8 }}>
           <T variant="cardTitle" weight="bold" numberOfLines={1}>{sym}</T>
           <T variant="meta" c={color.textSecondary} numberOfLines={1} testID={`alert-side-${sym}`}>{sideOf(alert)}</T>
@@ -154,8 +209,8 @@ export function StandardAlertCard({
       </View>
 
       {/* what happened · where it is · the shape of it */}
-      <View pointerEvents="box-none" style={{ flexDirection: 'row', gap: 12 }}>
-        <View pointerEvents="none" style={{ flexShrink: 1, gap: 8, minWidth: 0, flex: hasChart ? undefined : 1 }}>
+      <View style={{ pointerEvents: 'box-none', flexDirection: 'row', gap: 12 }}>
+        <View style={{ pointerEvents: 'none', flexGrow: hasChart ? 0 : 1, flexShrink: 1, flexBasis: 'auto', gap: 8, minWidth: 0 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <StatusChip label={verb.label} tone={TONE[verb.tone]} testID={`alert-verb-${sym}`} />
             {ago ? <T variant="meta" c={color.textSecondary} testID={`alert-ago-${sym}`}>{ago}</T> : null}
@@ -178,117 +233,80 @@ export function StandardAlertCard({
           </View>
         </View>
         {hasChart ? (
-          <View pointerEvents="box-none" style={{ flex: 1, minWidth: 110, gap: 4 }}>
+          <View style={{ pointerEvents: 'box-none', flex: 1, minWidth: 110, gap: 4 }}>
             <WindowToggle value={hours} onChange={setHours} testID={`alert-window-${sym}`} />
-            <View pointerEvents="none">
-              <MicroChart bars={shown} height={expanded ? 56 : 44} testID={`alert-chart-${sym}`} />
+            <View style={NONE}>
+              <MicroChart bars={shown} height={expanded ? 52 : 36} testID={`alert-chart-${sym}`} />
             </View>
           </View>
         ) : null}
       </View>
 
-      {/* Day Trade: the one contract row */}
-      {contract ? (
-        <View
-          pointerEvents="none"
-          testID={`contract-row-${sym}`}
-          accessibilityLabel={[
-            `${contract.strike} ${contract.side.toLowerCase()}`, `expires ${contract.expiry}`,
-            contract.paid ? `paid ${contract.paid}` : null,
-            contract.peak ? `peak after the alert ${contract.peak}${contract.multiple ? `, ${contract.multiple} cost` : ''}` : null,
-          ].filter(Boolean).join(', ')}
-          style={{
-            flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 8, rowGap: 2,
-            paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.lg,
-            backgroundColor: alpha.ivory04, borderWidth: 1, borderColor: alpha.divider,
-          }}
-        >
-          <Num variant="meta" weight="semibold" c={color.textPrimary}>{`${contract.strike} ${contract.side}`}</Num>
-          <T variant="meta" c={color.textSecondary}>·</T>
-          <T variant="meta" c={color.textSecondary}>{`exp ${contract.expiry}`}</T>
-          {contract.paid ? (
-            <>
-              <T variant="meta" c={color.textSecondary}>· paid</T>
-              <Num variant="meta" weight="semibold" c={color.textPrimary}>{contract.paid}</Num>
-            </>
+      {expanded ? (
+        <>
+          {contractRow}
+          {/* the stop – entry – target rail */}
+          {range ? (
+            <View style={NONE}>
+              <RangeRail
+                range={range}
+                current={now}
+                labels={{
+                  stop: alert.trade.stop ?? range.stop.toFixed(2),
+                  entry: alert.trade.entry ?? range.entry.toFixed(2),
+                  target: alert.trade.target ?? range.target.toFixed(2),
+                }}
+                testID={`alert-range-${sym}`}
+              />
+            </View>
           ) : null}
-          {contract.peak ? (
-            <>
-              <T variant="meta" c={color.textSecondary}>· peak</T>
-              <Num variant="meta" weight="semibold" c={color.marketUp} testID={`contract-peak-${sym}`}>
-                {contract.multiple ? `${contract.peak} (${contract.multiple})` : contract.peak}
-              </Num>
-            </>
+          {noPlan}
+          {cells.length ? (
+            <View style={[NONE, { gap: 12 }]}>
+              <Divider />
+              <AnalyticsRow cells={cells} testID={`alert-analytics-${sym}`} />
+            </View>
           ) : null}
+          {/* act: the screen's one filled orange action, and the bookmark */}
+          <View style={[BOX_NONE, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
+            <View style={[BOX_NONE, { flex: 1 }]}>
+              <Button
+                label="View setup"
+                arrow
+                height={44}
+                onPress={open}
+                accessibilityHint={`Opens the ${sym} setup`}
+                testID={`alert-cta-${sym}`}
+              />
+            </View>
+            {bookmark}
+          </View>
+        </>
+      ) : (
+        /*
+         * COMPACT: one bottom row — the three levels (the spec's card order
+         * ends in entry / stop / target), or the contract for the options
+         * family, or the secondary facts when there are no levels — and the
+         * bookmark trailing it. No second button: the whole card is the door
+         * ("entire card opens detail; bookmark remains the only separate
+         * trailing control"), which is what keeps two or three on a screen.
+         */
+        <View style={[BOX_NONE, { flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+          <View style={[NONE, { flex: 1, minWidth: 0 }]}>
+            {contract ? contractRow : hasLevels ? (
+              <PriceTriplet
+                entry={levelOf(alert.trade.entry)}
+                stop={levelOf(alert.trade.stop)}
+                target={levelOf(alert.trade.target)}
+                testID={`alert-levels-${sym}`}
+              />
+            ) : cells.length ? (
+              <AnalyticsRow cells={cells.slice(0, 3)} testID={`alert-analytics-${sym}`} />
+            ) : noPlan}
+          </View>
+          {bookmark}
         </View>
-      ) : null}
-
-      {/* priority: the stop – entry – target rail */}
-      {expanded && range ? (
-        <View pointerEvents="none">
-          <RangeRail
-            range={range}
-            current={now}
-            labels={{
-              stop: alert.trade.stop ?? range.stop.toFixed(2),
-              entry: alert.trade.entry ?? range.entry.toFixed(2),
-              target: alert.trade.target ?? range.target.toFixed(2),
-            }}
-            testID={`alert-range-${sym}`}
-          />
-        </View>
-      ) : null}
-
-      {/* compact: the three levels as one row — the spec's card order ends in
-          entry / stop / target, and a supporting card must not hide them */}
-      {!expanded && hasLevels ? (
-        <View pointerEvents="none">
-          <PriceTriplet
-            entry={levelOf(alert.trade.entry)}
-            stop={levelOf(alert.trade.stop)}
-            target={levelOf(alert.trade.target)}
-            testID={`alert-levels-${sym}`}
-          />
-        </View>
-      ) : null}
-
-      {/* a plan with no numbers says so in the server's own words (Day Trade has none) */}
-      {!range && !hasLevels && !isContractLed(alert) && alert.trade.note ? (
-        <View pointerEvents="none">
-          <T variant="meta" c={color.textSecondary} testID={`alert-no-plan-${sym}`}>{alert.trade.note}</T>
-        </View>
-      ) : null}
-
-      {cells.length && (expanded || !hasLevels) ? (
-        <View pointerEvents="none" style={{ gap: 12 }}>
-          <Divider />
-          <AnalyticsRow cells={cells} testID={`alert-analytics-${sym}`} />
-        </View>
-      ) : null}
-
-      {/* act */}
-      <View pointerEvents="box-none" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View pointerEvents="box-none" style={{ flex: 1 }}>
-          <Button
-            label="View setup"
-            arrow={expanded}
-            kind={expanded ? 'volt' : 'outline'}
-            height={44}
-            onPress={open}
-            accessibilityHint={`Opens the ${sym} setup`}
-            testID={`alert-cta-${sym}`}
-          />
-        </View>
-        {onToggleBookmark ? (
-          <BookmarkButton
-            saved={bookmarked}
-            emphasis={expanded}
-            symbol={sym}
-            onPress={onToggleBookmark}
-            testID={`alert-bookmark-${sym}`}
-          />
-        ) : null}
-      </View>
+      )}
     </Card>
   );
 }
@@ -348,7 +366,7 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
         testID={`alert-history-open-${alert.symbol}`}
         style={({ pressed }) => [StyleSheet.absoluteFill, { backgroundColor: pressed ? color.raised : 'transparent' }]}
       />
-      <View pointerEvents="none" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <View style={{ pointerEvents: 'none', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <TickerMark symbol={alert.symbol} size={32} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
@@ -358,11 +376,11 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
           {alert.resolved_label ? <T variant="meta" c={color.textSecondary}>{alert.resolved_label}</T> : null}
         </View>
         {graded ? <GradeBadge grade={alert.grade} score={alert.score} size="sm" /> : null}
-        <StatusChip label={verb.label} tone={verb.tone} />
+        <StatusChip label={verb.label} tone={verb.tone} style={{ alignSelf: 'center' }} />
       </View>
 
       {stats.length ? (
-        <View pointerEvents="none" testID={`stats-${alert.symbol}`} style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 20, rowGap: 8 }}>
+        <View testID={`stats-${alert.symbol}`} style={{ pointerEvents: 'none', flexDirection: 'row', flexWrap: 'wrap', columnGap: 20, rowGap: 8 }}>
           {stats.map((s) => (
             <View
               key={s.key}
@@ -377,7 +395,7 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
       ) : null}
 
       {contract ? (
-        <View pointerEvents="none">
+        <View style={NONE}>
           <T variant="meta" c={color.textSecondary} testID={`history-contract-${alert.symbol}`}>
             {[`${contract.strike} ${contract.side}`, `exp ${contract.expiry}`, contract.paid ? `paid ${contract.paid}` : null]
               .filter(Boolean).join(' · ')}
@@ -385,7 +403,7 @@ export function HistoryAlertRow({ alert }: { alert: AlertCardModel }) {
         </View>
       ) : null}
 
-      {note ? <View pointerEvents="none"><T variant="meta" c={color.textSecondary}>{note}</T></View> : null}
+      {note ? <View style={NONE}><T variant="meta" c={color.textSecondary}>{note}</T></View> : null}
     </Card>
   );
 }

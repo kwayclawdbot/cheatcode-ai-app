@@ -107,27 +107,29 @@ function InvestCard({ item, bars, onOpen }: { item: InvestItem; bars: readonly C
         testID={`invest-open-${item.ticker}`}
         style={({ pressed }) => [StyleSheet.absoluteFill, { backgroundColor: pressed ? color.raised : 'transparent' }]}
       />
-      <View pointerEvents="none" style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <View style={{ pointerEvents: 'none', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <TickerMark symbol={item.ticker} size={36} />
         <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 8 }}>
           <T variant="cardTitle" weight="bold">{item.ticker}</T>
           <T variant="meta" c={color.textSecondary} numberOfLines={1}>Invest · Long</T>
         </View>
         {item.grade ? (
-          <View style={{ alignItems: 'flex-end', gap: 2 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {/* "Idea grade", in words: it is the desk's grade of a business, not a trade grade (desk/plain.ts). */}
+            <T variant="meta" c={color.textSecondary}>Idea grade</T>
             <GradeBadge grade={item.grade} testID={`invest-grade-${item.ticker}`} />
           </View>
         ) : null}
       </View>
 
-      <View pointerEvents="none" style={{ gap: 2 }}>
+      <View style={{ pointerEvents: 'none', gap: 2 }}>
         {item.company ? <T variant="body" weight="semibold" numberOfLines={1}>{item.company}</T> : null}
         {item.businessLine ? (
           <T variant="meta" c={color.textSecondary} numberOfLines={2} testID={`invest-line-${item.ticker}`}>{item.businessLine}</T>
         ) : null}
       </View>
 
-      <View pointerEvents="none" style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
+      <View style={{ pointerEvents: 'none', flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
         <View style={{ flexShrink: 1, gap: 2 }}>
           {item.price != null ? (
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
@@ -151,13 +153,7 @@ function InvestCard({ item, bars, onOpen }: { item: InvestItem; bars: readonly C
         ) : null}
       </View>
 
-      <View pointerEvents="none" style={{ flexDirection: 'row', gap: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: alpha.divider }}>
-        {item.grade ? (
-          <View style={{ flexShrink: 0 }}>
-            <T variant="meta" c={color.textSecondary}>Idea grade</T>
-            <T variant="meta" weight="semibold">{item.grade.replace('-', '−')}</T>
-          </View>
-        ) : null}
+      <View style={{ pointerEvents: 'none', flexDirection: 'row', gap: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: alpha.divider }}>
         {theme ? (
           <View style={{ flex: 1, minWidth: 0 }}>
             <T variant="meta" c={color.textSecondary}>Theme</T>

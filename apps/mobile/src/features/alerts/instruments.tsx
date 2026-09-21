@@ -186,7 +186,7 @@ export function RangeRail({ range, labels, current, testID }: {
     current != null ? `price now ${fmt(current)}${range.currentOutside ? ', beyond the range' : ''}` : null,
   ].filter(Boolean).join(', ');
   return (
-    <View testID={testID} accessibilityRole="image" accessibilityLabel={a11y} style={{ gap: 6 }}>
+    <View testID={testID} accessibilityRole="image" accessibilityLabel={a11y} style={{ gap: 4 }}>
       <View style={{ height: H }} onLayout={(e) => setW(Math.round(e.nativeEvent.layout.width))}>
         {w > 0 ? (
           <Svg width={w} height={H}>

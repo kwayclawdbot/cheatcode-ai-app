@@ -116,6 +116,8 @@ console.log('\n4 · analytics: only facts that exist');
 {
   const cells = analyticsCells(card({ analytics: { pattern: 'Breakout', volume_ratio: 2.4 } }), 3);
   eq('R, pattern and volume, in that order', cells.map((c) => `${c.label}=${c.value}`), ['Risk / Reward=3.0R', 'Pattern=Breakout', 'Volume=2.4×']);
+  eq('no duplicate R cell when the header already shows it',
+    analyticsCells(card({ analytics: { pattern: 'Breakout', volume_ratio: 2.4 } }), 3, { rInHeader: true }).map((c) => c.key), ['pattern', 'volume']);
   eq('nothing measured → no cells', analyticsCells(card(), null), []);
   eq('no Confidence cell is ever invented', analyticsCells(card({ analytics: { pattern: 'x', volume_ratio: 1 } }), 2).some((c) => /confidence/i.test(c.label)), false);
   const scored = analyticsCells(card({ score_components: [{ key: 'volume', label: 'Volume', status: 'Healthy', strength: 3, explanation: '1.6× the 20-day average at this time of day.' }] }), null);
@@ -123,7 +125,7 @@ console.log('\n4 · analytics: only facts that exist');
   const unknown = analyticsCells(card({ score_components: [{ key: 'volume', label: 'Volume', status: 'Unknown', strength: 0, explanation: '1.6× something' }] }), null);
   eq('an Unknown reading is not a measurement', unknown, []);
   const flow = analyticsCells(card({ recommended_options: [{ type: 'put', strike: '607.5', expiry: 'Sep 23', premium: 262667, ask_side_share: 0.998, volume_vs_own_adv: 135.66 }] }), null);
-  eq('an options card: volume vs its own average, premium, share at the ask', flow.map((c) => `${c.label}=${c.value}`), ['Volume vs avg=136×', 'Premium=$263K', 'Paid at ask=100%']);
+  eq('an options card: volume vs its own average, premium, share at the ask', flow.map((c) => `${c.label}=${c.value}`), ['Volume=136× avg', 'Premium=$263K', 'Paid at ask=100%']);
 }
 
 console.log('\n5 · the Day Trade contract row');

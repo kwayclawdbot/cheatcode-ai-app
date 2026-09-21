@@ -341,7 +341,8 @@ const times = (n: number): string => (n >= 100 ? `${Math.round(n).toLocaleString
  * The secondary analytics row — at most four cells, each one a fact the card
  * already carries. Nothing is derived to fill the row out:
  *
- *   Risk / Reward  from the levels (or the stated ratio on a zone)
+ *   Risk / Reward  from the levels (or the stated ratio on a zone) — only
+ *                  when the header is not already showing the same R
  *   Pattern        the scanner's own setup label
  *   Volume         the scanner's measured ratio; else a number the scorer
  *                  wrote into its volume reading ("1.6× the 20-day average");
@@ -352,9 +353,11 @@ const times = (n: number): string => (n >= 100 ? `${Math.round(n).toLocaleString
  * The board's "Confidence" cell is not here: no producer writes a confidence,
  * and relabelling the grade would print the same fact twice.
  */
-export function analyticsCells(alert: AlertCard, r: number | null): AnalyticsCell[] {
+export function analyticsCells(alert: AlertCard, r: number | null, opts: { rInHeader?: boolean } = {}): AnalyticsCell[] {
   const cells: AnalyticsCell[] = [];
-  if (r != null && Number.isFinite(r) && r > 0) cells.push({ key: 'rr', label: 'Risk / Reward', value: `${r.toFixed(1)}R`, icon: 'rr' });
+  // Risk / Reward is only a cell when the header has no R to show it — the
+  // spec's "remove duplicated labels" (the header already prints "3.0R").
+  if (!opts.rInHeader && r != null && Number.isFinite(r) && r > 0) cells.push({ key: 'rr', label: 'Risk / Reward', value: `${r.toFixed(1)}R`, icon: 'rr' });
   const pattern = alert.analytics?.pattern?.trim();
   if (pattern) cells.push({ key: 'pattern', label: 'Pattern', value: pattern, icon: 'pattern' });
 
@@ -367,7 +370,7 @@ export function analyticsCells(alert: AlertCard, r: number | null): AnalyticsCel
     if (said && comp && comp.status.trim().toLowerCase() !== 'unknown') volume = `${Number(said[1]).toFixed(1)}×`;
   }
   if (!volume && c?.volume_vs_own_adv != null && c.volume_vs_own_adv > 0) volume = times(c.volume_vs_own_adv);
-  if (volume) cells.push({ key: 'volume', label: c && !ratio ? 'Volume vs avg' : 'Volume', value: volume, icon: 'volume' });
+  if (volume) cells.push({ key: 'volume', label: 'Volume', value: c && !ratio ? `${volume} avg` : volume, icon: 'volume' });
 
   if (c?.premium != null && c.premium > 0) cells.push({ key: 'premium', label: 'Premium', value: compactUsd(c.premium), icon: 'premium' });
   if (c?.ask_side_share != null && c.ask_side_share > 0) {
