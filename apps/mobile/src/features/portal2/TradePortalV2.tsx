@@ -50,6 +50,7 @@ import { KaiPanel, PortalNotice } from '../portal/panels';
 import { useChartRuntime } from '../kai-workspace';
 import { useKaiPortal } from '../portal/useKaiPortal';
 import { rememberSymbol } from '../portal/last-symbol';
+import { isTradeLevel } from '../portal/visible-annotations';
 import { SymbolOfferCard } from '../portal/SymbolOfferCard';
 import type { SymbolOffer } from '../portal/plan-command';
 import type { Annotation, PortalTimeframe } from '../portal/types';
@@ -244,6 +245,22 @@ export default function TradePortalV2() {
   const read = useMemo(() => (data ? readPortal(data) : null), [data]);
   const take = useTake(read, data);
   /**
+   * STEP 3 PRICES ITSELF, HOWEVER IT WAS REACHED.
+   *
+   * Pricing used to start only from the footer button in step 2. Tapping
+   * "3 TAKE" on the step bar — or opening a `?beat=take` link — changed the
+   * step without asking for a price, and the card said "Pricing it…" forever.
+   * Now showing step 3 is what asks, once per visit to it; leaving and coming
+   * back asks again, because the price may have moved.
+   */
+  const { phase: takePhase, prepare: takePrepare, reset: takeReset } = take;
+  useEffect(() => {
+    if (beat === 'take' && takePhase === 'idle' && read) void takePrepare();
+  }, [beat, takePhase, takePrepare, read]);
+  useEffect(() => {
+    if (beat !== 'take' && (takePhase === 'unsized' || takePhase === 'failed')) takeReset();
+  }, [beat, takePhase, takeReset]);
+  /**
    * Read only for the sharing default on the confirmation card. It is the
    * account-level answer; the card's own switch is what actually travels with
    * the order, so a `/me` that has not landed yet means "not shared", which is
@@ -419,7 +436,8 @@ export default function TradePortalV2() {
           <LookBeat
             symbol={data.symbol}
             markedCount={markedCount}
-            onChartCount={onChart.length}
+            onChartCount={onChart.filter((a) => !isTradeLevel(a)).length}
+            tradeLevels={onChart.filter(isTradeLevel).length}
             levelsOpen={levelsOpen}
             annotations={annotations}
             exact={exact}
@@ -470,14 +488,36 @@ export default function TradePortalV2() {
                   onCancel={() => { take.reset(); setBeat('decide'); }}
                 />
               ) : null
-            ) : take.phase === 'failed' ? (
-              <ObjectCard r={radius.xl} style={{ padding: 16, gap: 10 }} testID="take-failed">
-                <Eyebrow c={color.muted}>NOT PRICED</Eyebrow>
-                <T size={13} lh={19}>{take.error}</T>
+            ) : take.phase === 'unsized' ? (
+              /* NOTHING WAS PRICED BECAUSE NO ORDER COULD BE BUILT — said as
+                 that, with the reason, rather than as a pricing failure. */
+              <ObjectCard r={radius.xl} style={{ padding: 16, gap: 10 }} testID="take-unsized">
+                <Eyebrow c={color.muted}>NO ORDER TO PRICE</Eyebrow>
+                <T size={15} lh={21}>{take.error}</T>
                 <Button
                   label="Open the full ticket"
                   kind="outline"
-                  height={42}
+                  height={44}
+                  onPress={() => router.push(`/order/new?symbol=${encodeURIComponent(data.symbol)}` as never)}
+                  testID="take-full-ticket"
+                />
+              </ObjectCard>
+            ) : take.phase === 'failed' ? (
+              <ObjectCard r={radius.xl} style={{ padding: 16, gap: 10 }} testID="take-failed">
+                <Eyebrow c={color.muted}>NOT PRICED</Eyebrow>
+                <T size={15} lh={21}>{take.error}</T>
+                {take.size?.plain ? <T size={13} lh={19} c={color.muted}>{take.size.plain}</T> : null}
+                <Button
+                  label="Try again"
+                  kind="outline"
+                  height={44}
+                  onPress={() => { take.reset(); }}
+                  testID="take-retry"
+                />
+                <Button
+                  label="Open the full ticket"
+                  kind="outline"
+                  height={44}
                   onPress={() => router.push(`/order/new?symbol=${encodeURIComponent(data.symbol)}` as never)}
                   testID="take-full-ticket"
                 />
@@ -485,7 +525,7 @@ export default function TradePortalV2() {
             ) : (
               <ObjectCard r={radius.xl} style={{ padding: 16, gap: 8 }} testID="take-preparing">
                 <Eyebrow c={color.muted}>PRICING IT</Eyebrow>
-                <T size={13} lh={19} c={color.muted}>Working out the size and what it costs…</T>
+                <T size={15} lh={21} c={color.muted}>Working out the size and what it costs…</T>
               </ObjectCard>
             )}
           </View>
@@ -547,7 +587,7 @@ export default function TradePortalV2() {
         <SpineFooter
           label={ACTION_LABEL.review_paper_order}
           blocked={read.takeable ? null : read.blocked_plain}
-          onPress={() => { setBeat('take'); void take.prepare(); }}
+          onPress={() => setBeat('take')}
           testID="spine-next-take"
         />
       ) : null}
@@ -579,8 +619,10 @@ export default function TradePortalV2() {
       <AnnotationSheet
         annotation={inspecting}
         onClose={() => setInspecting(null)}
-        onHide={(a) => { setAnnotationStatus(a.id, 'hidden'); setInspecting(null); }}
-        onDelete={(a) => { setAnnotationStatus(a.id, 'deleted'); setInspecting(null); }}
+        // A level drawn from the trade itself is not a stored mark — there is
+        // nothing to hide or delete on the server, so these only close.
+        onHide={(a) => { if (!isTradeLevel(a)) setAnnotationStatus(a.id, 'hidden'); setInspecting(null); }}
+        onDelete={(a) => { if (!isTradeLevel(a)) setAnnotationStatus(a.id, 'deleted'); setInspecting(null); }}
         onExplain={(a) => {
           setInspecting(null);
           narrate(a.reason ?? `${a.kind} at ${a.price ?? '—'}.`);
@@ -628,13 +670,15 @@ export default function TradePortalV2() {
 /* ------------------------------------------------------------------ */
 
 function LookBeat({
-  symbol, markedCount, onChartCount, levelsOpen, annotations, exact,
+  symbol, markedCount, onChartCount, tradeLevels, levelsOpen, annotations, exact,
   onToggleLevels, onInspect,
 }: {
   symbol: string;
   markedCount: number;
   /** How many of them are actually drawn right now. */
   onChartCount: number;
+  /** The trade's own entry / stop / target drawn from the trade, not stored. */
+  tradeLevels: number;
   levelsOpen: boolean;
   annotations: Annotation[];
   exact: boolean;
@@ -659,20 +703,22 @@ function LookBeat({
       */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <T
-          size={12.5}
+          size={13}
           c={color.muted}
           onPress={onToggleLevels}
           testID="look-levels-toggle"
           accessibilityRole="button"
           accessibilityLabel={
             markedCount === 0
-              ? `Nothing marked on ${symbol} yet.`
+              ? (tradeLevels ? "The trade's levels are on the chart." : `Nothing marked on ${symbol} yet.`)
               : `${onChartCount} of ${markedCount} marks on the chart. ${levelsOpen ? 'Hide' : 'Show'} the list. Tap any of them to put it back on the chart.`
           }
           style={{ flex: 1 }}
         >
           {markedCount === 0
-            ? `Nothing marked on ${symbol} yet.`
+            ? tradeLevels
+              ? `The trade's ${tradeLevels === 3 ? 'entry, stop and target are' : 'levels are'} on the chart.`
+              : `Nothing marked on ${symbol} yet.`
             : onChartCount === markedCount
               ? `${markedCount} mark${markedCount === 1 ? '' : 's'} on the chart \u00b7 ${levelsOpen ? 'hide' : 'show'}`
               : `${onChartCount} on the chart \u00b7 ${markedCount} saved \u00b7 ${levelsOpen ? 'hide' : 'show'}`}

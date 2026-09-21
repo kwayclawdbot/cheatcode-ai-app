@@ -113,6 +113,36 @@ ok('the full set is untouched, so the rail still lists everything',
   { stored: stored.length, atStart: STORED_AT_START });
 
 /* ------------------------------------------------------------------ */
+section("Arriving from an alert, the trade's levels are drawn even when none were stored");
+
+// The owner's AMD case, 21 September: a graded card, a Decide step listing
+// entry 578.75 / stop 534.10 / target 712.71, and a chart saying "Nothing
+// marked on AMD yet" because no annotation row had been written for it.
+const amd = {
+  symbol: 'AMD', plan: null,
+  alert: { id: 'setup:3ed7', entry: 578.75, entry_high: null, stop: 534.1, target: 712.71, condition: 'Above $578.75 — reached.' },
+} as unknown as TradePortal;
+const fromAlert = visibleAnnotations([], amd, new Set());
+ok('entry, stop and target all reach the canvas', fromAlert.map((a) => a.kind).join(',') === 'entry,stop,target', fromAlert.map((a) => a.kind));
+ok('at the alert\'s own prices', fromAlert.map((a) => a.price).join(',') === '578.75,534.1,712.71', fromAlert.map((a) => a.price));
+ok('on every timeframe', fromAlert.every((a) => a.timeframe === null));
+ok('and named as drawn-from-the-trade, never as a stored mark', fromAlert.every((a) => a.id.startsWith('trade-level:') && a.provenance === 'plan'));
+
+const withStoredStop = visibleAnnotations(
+  [ann({ id: 'kai-stop', symbol: 'AMD', kind: 'stop', price: 534.1, text: 'Stop' })], amd, new Set(),
+);
+ok('a stored mark of the same kind wins — nothing is drawn twice',
+  withStoredStop.filter((a) => a.kind === 'stop').length === 1 && withStoredStop.some((a) => a.id === 'kai-stop'),
+  withStoredStop.map((a) => a.id));
+
+const planFirst = visibleAnnotations([], { ...amd, plan: { id: 'p1', entry: 580, stop: 540, targets: [700] } } as unknown as TradePortal, new Set());
+ok('a saved plan outranks the alert, as in the Decide step', planFirst.map((a) => a.price).join(',') === '580,540,700', planFirst.map((a) => a.price));
+
+const bareEntry = visibleAnnotations([], { symbol: 'KO', plan: { id: null, entry: 61.2, stop: null, targets: [] }, alert: null } as unknown as TradePortal, new Set());
+ok('an entry with no stop draws nothing — it is the last price, not a plan', bareEntry.length === 0, bareEntry);
+ok('and a chart with no trade still opens with nothing of the trade\'s', visibleAnnotations([], noTrade, new Set()).length === 0);
+
+/* ------------------------------------------------------------------ */
 section('And on the real chart page, in a real browser');
 
 const url = 'file://' + path.resolve('assets/chart/index.html');

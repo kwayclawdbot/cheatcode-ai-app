@@ -108,5 +108,74 @@ export function visibleAnnotations(
   revealed: ReadonlySet<string>,
 ): Annotation[] {
   const base = defaultVisibleIds(annotations, portal);
-  return annotations.filter((a) => base.has(a.id) || revealed.has(a.id));
+  const stored = annotations.filter((a) => base.has(a.id) || revealed.has(a.id));
+  return [...stored, ...tradeLevelAnnotations(portal, stored)];
+}
+
+/** The id prefix of a level drawn from the trade itself rather than stored. */
+export const TRADE_LEVEL_PREFIX = 'trade-level:';
+
+export const isTradeLevel = (a: Pick<Annotation, 'id'>): boolean => a.id.startsWith(TRADE_LEVEL_PREFIX);
+
+/**
+ * THE TRADE'S OWN LEVELS, DRAWN FROM THE TRADE — whether or not a mark was
+ * ever stored for them.
+ *
+ * THE BUG (owner audit, 21 September): arriving on Trade from an alert, the
+ * chart said "Nothing marked on AMD yet" while the Decide step listed entry
+ * 578.75, stop 534.10 and target 712.71. The levels only reached the canvas if
+ * the server had already WRITTEN them as annotations for this member, which it
+ * does on one particular kind of arrival and not otherwise. So whether the
+ * member saw their own stop depended on how they got to the screen.
+ *
+ * Now the entry, the stop and the target of the trade on screen are drawn from
+ * the same numbers the Decide step reads — the saved plan first, the alert
+ * second, exactly `readPortal`'s order — in every step and on the full-screen
+ * stage, because both surfaces draw through `visibleAnnotations`. A stored mark
+ * of the same kind for this trade wins, so nothing is ever drawn twice.
+ *
+ * These are never saved and never counted: `annotations` (the rail, the count,
+ * the inspector's list) is untouched, and their ids say what they are.
+ */
+export function tradeLevelAnnotations(portal: TradePortal | null, onCanvas: Annotation[]): Annotation[] {
+  if (!portal || !hasLiveTrade(portal)) return [];
+  const plan = portal.plan;
+  const alert = portal.alert;
+  const n = (v: number | null | undefined): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const entry = n(plan?.entry) ?? n(alert?.entry);
+  const stop = n(plan?.stop) ?? n(alert?.stop);
+  const target = (plan?.targets?.length ? n(plan.targets[0]) : null) ?? n(alert?.target);
+  // RULE 2 of `portal2/read.ts`: an entry with no stop is not a plan — the
+  // route fills a bare entry with the last traded price. Nothing is drawn.
+  if (entry === null || stop === null) return [];
+
+  const have = new Set(onCanvas.filter((a) => a.status === 'valid').map((a) => a.kind));
+  const drawn: Annotation[] = [];
+  const add = (kind: 'entry' | 'stop' | 'target', price: number, price2: number | null, text: string, reason: string) => {
+    if (have.has(kind) || (kind === 'stop' && have.has('invalidation'))) return;
+    drawn.push({
+      id: `${TRADE_LEVEL_PREFIX}${portal.symbol}:${kind}`,
+      symbol: portal.symbol,
+      timeframe: null,
+      kind,
+      price,
+      price2,
+      ts_from: null,
+      ts_to: null,
+      text,
+      reason,
+      provenance: 'plan',
+      status: 'valid',
+      source_alert_id: null,
+      source_setup_id: null,
+      source_plan_id: plan?.id ?? null,
+      created_at: null,
+      updated_at: null,
+    });
+  };
+  add('entry', entry, plan?.entry == null ? n(alert?.entry_high) : null, 'Entry',
+    alert?.condition ?? 'Where the idea is still worth paying for.');
+  add('stop', stop, null, 'Stop', 'Past this the reason for the trade is gone.');
+  if (target !== null) add('target', target, null, 'Target', 'The first place the move has somewhere to stop.');
+  return drawn;
 }
