@@ -271,6 +271,55 @@ export function ReactionBar({
 
   return (
     <View testID={testID ?? 'reaction-bar'} style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+      {/*
+        WHAT PEOPLE HAVE SAID COMES FIRST, then the two quiet words.
+
+        The row used to open with two outlined buttons, Like and Reply, under
+        EVERY message — two boxes per line, the whole way down the room, which
+        is a large part of what made the chat read like a form. They are plain
+        words now (still 44pt-reachable through hitSlop), and the reactions
+        people actually gave sit in front of them as soft filled pills, the way
+        every group chat shows them.
+      */}
+      {shown.map(({ r, count, on }) => {
+        const tint = on ? toneColor(r) : color.muted;
+        return (
+          <Pressable
+            key={r.id}
+            testID={`react-${r.id}`}
+            accessibilityRole="button"
+            accessibilityLabel={`${r.label}${count ? `, ${count}` : ''}`}
+            accessibilityHint={on ? 'You gave this one. Tap to take it back.' : r.plain}
+            accessibilityState={{ selected: on, disabled: !!disabled }}
+            disabled={disabled || !onToggle}
+            onPress={() => onToggle?.(r.id)}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 5,
+              paddingHorizontal: 9,
+              paddingVertical: 3,
+              borderRadius: radius.pill,
+              // The user's own reaction is the one that has to be legible at a
+              // glance: its tone's fill AND edge, against a soft neutral fill
+              // for everybody else's.
+              borderWidth: on ? 0.5 : 0,
+              borderColor: on ? toneBorder(r) : 'transparent',
+              backgroundColor: on ? toneFill(r) : alpha.ivory08,
+              opacity: disabled ? 0.5 : pressed ? 0.75 : 1,
+            })}
+          >
+            <T size={13}>{r.emoji}</T>
+            {count > 0 ? (
+              <T size={12} weight={on ? 'semibold' : 'medium'} c={on ? tint : color.muted}>
+                {String(count)}
+              </T>
+            ) : null}
+          </Pressable>
+        );
+      })}
+
       <Pressable
         ref={trigger}
         testID="react-open"
@@ -289,42 +338,21 @@ export function ReactionBar({
           flexDirection: 'row',
           alignItems: 'center',
           gap: 5,
-          paddingHorizontal: 8,
+          paddingHorizontal: 4,
           paddingVertical: 3,
-          borderRadius: radius.md,
-          borderWidth: 0.5,
-          borderColor: anyMine ? alpha.volt50 : alpha.ivory12,
-          opacity: disabled ? 0.5 : pressed ? 0.75 : 1,
+          opacity: disabled ? 0.5 : pressed ? 0.6 : 1,
         })}
       >
         {/*
-          GREY UNTIL YOU HAVE SAID SOMETHING, THEN YOUR OWN WORD FOR IT.
-
-          Unreacted it is the word "Like" set in `color.dim` on a plain ivory
-          hairline — deliberately the quietest thing in the row, because under a
-          feed of posts this button repeats more than any other object on the
-          screen and a lit control on every one of them is the clutter the row
-          was just cleared of.
-
-          Reacted, it stops saying "Like" and SHOWS WHAT YOU GAVE. The word is
-          a prompt and is only useful before you have answered it; afterwards
-          the honest label is the emoji itself, which is also the fastest way to
-          read your own state back at a glance. Somebody with more than one
-          reaction gets the first and a count, rather than a row of emoji that
-          would grow the button every time they tapped again — the pills below
-          already carry the full picture, and this button only has to answer
-          "have I reacted, and with what".
+          A PLAIN WORD, THE QUIETEST THING IN THE ROW. Under a feed of posts
+          this button repeats more than any other object on the screen, so it
+          carries no outline and no fill. It used to swap itself for your own
+          emoji once you had reacted; now that the pills sit in front of it and
+          yours is lit, that would say the same thing twice.
         */}
-        {anyMine ? (
-          <>
-            <T size={11}>{reactionDef(reactions.mine[0])?.emoji ?? '👍'}</T>
-            {reactions.mine.length > 1 ? (
-              <Num size={10} weight="medium" c={color.volt}>{`+${reactions.mine.length - 1}`}</Num>
-            ) : null}
-          </>
-        ) : (
-          <T size={10.5} c={color.dim}>Like</T>
-        )}
+        {/* Always the word. What you gave is already lit in the pills in
+            front of this, so repeating your emoji here would say it twice. */}
+        <T size={12} weight="medium" c={color.muted}>Like</T>
       </Pressable>
 
       {onReply ? (
@@ -338,56 +366,14 @@ export function ReactionBar({
           onPress={onReply}
           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
           style={({ pressed }) => ({
-            paddingHorizontal: 8,
+            paddingHorizontal: 4,
             paddingVertical: 3,
-            borderRadius: radius.md,
-            borderWidth: 0.5,
-            borderColor: alpha.ivory12,
-            opacity: disabled ? 0.5 : pressed ? 0.75 : 1,
+            opacity: disabled ? 0.5 : pressed ? 0.6 : 1,
           })}
         >
-          <T size={10.5} c={color.dim}>Reply</T>
+          <T size={12} weight="medium" c={color.muted}>Reply</T>
         </Pressable>
       ) : null}
-
-      {shown.map(({ r, count, on }) => {
-        const tint = on ? toneColor(r) : color.muted;
-        return (
-          <Pressable
-            key={r.id}
-            testID={`react-${r.id}`}
-            accessibilityRole="button"
-            accessibilityLabel={`${r.label}${count ? `, ${count}` : ''}`}
-            accessibilityHint={on ? 'You gave this one. Tap to take it back.' : r.plain}
-            accessibilityState={{ selected: on, disabled: !!disabled }}
-            disabled={disabled || !onToggle}
-            onPress={() => onToggle?.(r.id)}
-            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-            style={({ pressed }) => ({
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 5,
-              paddingHorizontal: 7,
-              paddingVertical: 3,
-              borderRadius: radius.md,
-              borderWidth: 0.5,
-              // The user's own reaction is the one that has to be legible at a
-              // glance: tinted ground AND coloured edge, against a plain
-              // hairline for everybody else's.
-              borderColor: on ? toneBorder(r) : alpha.ivory12,
-              backgroundColor: on ? toneFill(r) : 'transparent',
-              opacity: disabled ? 0.5 : pressed ? 0.75 : 1,
-            })}
-          >
-            <T size={11}>{r.emoji}</T>
-            {count > 0 ? (
-              <Num size={10} weight={on ? 'medium' : 'regular'} c={tint}>
-                {String(count)}
-              </Num>
-            ) : null}
-          </Pressable>
-        );
-      })}
 
       {anchor && onToggle ? (
         <ReactionPicker
@@ -644,7 +630,7 @@ export function ThreadLine({
       })}
     >
       <View style={{ width: 14, height: 0.5, backgroundColor: alpha.ivory24 }} />
-      <T size={11} weight="semibold" c={color.text}>{label}</T>
+      <T size={12} weight="semibold" c={color.text}>{label}</T>
     </Pressable>
   );
 }
