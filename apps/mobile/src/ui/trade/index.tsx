@@ -17,7 +17,7 @@ import Svg, {
   Text as SvgText,
 } from "react-native-svg";
 import { T, Num } from "../Text";
-import { Ticker } from "../Ticker";
+import { Ticker, TickerMark } from "../Ticker";
 import { KaiOrb } from "../KaiOrb";
 import { family, fontStack } from "../fonts";
 import { color, alpha, belt, radius, type as typeScale } from "../tokens";
@@ -61,9 +61,24 @@ export function GradeBadge({
   grade,
   word = true,
   whenAbsent = "hide",
+  muted = false,
+  suffix,
 }: {
   grade?: string | null;
   word?: boolean;
+  /**
+   * THE LETTER WITHOUT THE GOLD.
+   *
+   * Gold says "this is the best of what I grade — look at it". On a card whose
+   * own plan fails the member's rules, Kai is saying the opposite in the same
+   * breath ("I would leave this one"), and a gold A beside that sentence is the
+   * card contradicting itself. The letter is still the real grade and is still
+   * printed — it is never hidden or changed — but it is drawn muted, with the
+   * caller's word for why. See `kaiPasses` in features/alerts/AlertCard.tsx.
+   */
+  muted?: boolean;
+  /** Said after the letter when muted, e.g. "I'd pass". Caller's words. */
+  suffix?: string;
   /**
    * What to draw when there is no grade. `hide` is the default because the
    * room's pinned setup has always drawn nothing there and changing a shipped
@@ -100,11 +115,14 @@ export function GradeBadge({
       </View>
     );
   }
-  const top = grade.startsWith("A");
+  const top = grade.startsWith("A") && !muted;
   return (
-    <View style={[s.grade, { borderColor: top ? alpha.gold40 : alpha.ivory20 }]}>
-      <T c={top ? color.gold : color.muted} size={13}>
-        {word ? `${grade} setup` : grade}
+    <View
+      testID={muted ? "grade-muted" : undefined}
+      style={[s.grade, { borderColor: top ? alpha.gold40 : alpha.ivory20 }]}
+    >
+      <T c={top ? color.gold : color.muted} size={typeScale.small.size} numberOfLines={1}>
+        {muted && suffix ? `${grade} · ${suffix}` : word ? `${grade} setup` : grade}
       </T>
     </View>
   );
@@ -405,7 +423,7 @@ export function TradeMap({
         </View>
       )}
       {g && !g.candles.length && (
-        <T c={color.muted}>Price history unavailable</T>
+        <T size={typeScale.small.size} c={color.muted}>Price history unavailable</T>
       )}
       {beforeLevels}
       {!compact && showLevels && (
@@ -460,10 +478,10 @@ export function TradeLevels({
         const shown = levelText?.[kind] ?? price(idea[kind], idea.pricePrecision);
         const content = (
           <>
-            <T size={12} c={ink[kind]}>
+            <T size={dense ? typeScale.tiny.size : 12} c={ink[kind]}>
               {LEVEL_LABEL[kind]}
             </T>
-            <Num size={dense ? 15 : 16} c={ink[kind]} style={{ marginTop: dense ? 3 : 6 }}>
+            <Num size={dense ? 15 : 16} c={ink[kind]} style={{ marginTop: dense ? 0 : 6 }}>
               {shown}
             </Num>
           </>
@@ -484,7 +502,7 @@ export function TradeLevels({
             {content}
           </Focusable>
         ) : (
-          <View key={kind} style={[s.level, dense && { paddingVertical: 7 }]}>
+          <View key={kind} style={[s.level, dense && { paddingTop: 4, paddingBottom: 1 }]}>
             {content}
           </View>
         );
@@ -547,7 +565,14 @@ export function TradeStatusStrip({
   trailing,
 }: {
   status: TradeStatus;
-  variant?: "steps" | "pill";
+  /**
+   * `line` is the pill's facts without the pill's box: a dot, the word, the
+   * time, and the trailing value, on one line that WRAPS rather than cuts.
+   * The boxed pill cost 34-44pt of card height to say twelve words, and at 360
+   * wide it truncated the one fact a member most needs from it — when
+   * ("Sep 2…"). A time is never cut; it drops to the next line instead.
+   */
+  variant?: "steps" | "pill" | "line";
   /** Board density: shorter, since a non-tappable pill needs no 44pt target. */
   dense?: boolean;
   /**
@@ -577,6 +602,39 @@ export function TradeStatusStrip({
 }) {
   const word = label ?? STATUS_LABEL[status];
   const index = STATUS_STEPS.indexOf(status);
+  if (variant === "line") {
+    const live = index >= 0 && status !== "closed";
+    const tone = live
+      ? color.volt
+      : status === "invalidated" || status === "expired"
+        ? color.red
+        : color.muted;
+    return (
+      <View
+        accessible
+        accessibilityLabel={`Trade status: ${word}${hint ? `. ${hint}` : ""}`}
+        testID={testID}
+        style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+      >
+        <View style={{ flex: 1, minWidth: 0, flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 6, rowGap: 1 }}>
+          <View style={[s.pillDot, { width: 11, height: 11, borderRadius: 6, borderColor: tone }]}>
+            {(status === "active" || status === "entry_reached") && (
+              <View style={[s.pillDotCore, { width: 5, height: 5, backgroundColor: tone }]} />
+            )}
+          </View>
+          <T size={typeScale.small.size} weight="semibold" c={tone}>
+            {word}
+          </T>
+          {hint ? (
+            <T size={typeScale.small.size} c={color.muted}>
+              · {hint}
+            </T>
+          ) : null}
+        </View>
+        {trailing}
+      </View>
+    );
+  }
   if (variant === "pill") {
     const live = index >= 0 && status !== "closed";
     const tone = live
@@ -595,7 +653,7 @@ export function TradeStatusStrip({
           {word}
         </T>
         {hint ? (
-          <T size={14} c={color.muted} style={s.flex} numberOfLines={1}>
+          <T size={14} c={color.muted} style={s.flex}>
             · {hint}
           </T>
         ) : (
@@ -679,6 +737,67 @@ export function TradeStatusStrip({
   );
 }
 /**
+ * ONE IDENTITY ROW FOR EVERY ALERT CARD — the stock first.
+ *
+ * Owner audit, 21 September: the headline sat ABOVE the logo and symbol and
+ * repeated the symbol ("AMD reached $578.75" over "AMD"), and a card with no
+ * company name printed "P / P". Now the row a member reads first is who: the
+ * logo, the symbol, which kind of idea and which way round — then the grade,
+ * when there is a real one. Swing and Day Trade draw this same row; nothing
+ * about the family changes the header.
+ */
+export function CompactIdentity({
+  idea,
+  side,
+  gradeWhenAbsent = "hide",
+  gradeMuted = false,
+  gradeSuffix,
+  right,
+}: {
+  idea: TradeIdea;
+  /** "Swing · Long", "Day Trade · Short". Caller's words. */
+  side?: string;
+  gradeWhenAbsent?: "hide" | "state";
+  gradeMuted?: boolean;
+  gradeSuffix?: string;
+  /** A control at the far end — the card's expand chevron. */
+  right?: ReactNode;
+}) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <TickerMark symbol={idea.symbol} size={30} />
+      <View
+        style={{
+          flex: 1,
+          minWidth: 0,
+          flexDirection: "row",
+          flexWrap: "wrap",
+          alignItems: "baseline",
+          columnGap: 8,
+        }}
+      >
+        <T size={typeScale.tickerSm.size} weight="bold" testID={`card-symbol-${idea.symbol}`}>
+          {idea.symbol}
+        </T>
+        {/* Each part whole, wrapping between parts — never "Day Trad…". The
+            family's name is the one word on this row that must survive. */}
+        {(side ?? "").split(" · ").filter(Boolean).map((part, i) => (
+          <T key={part} size={typeScale.small.size} c={color.muted} numberOfLines={1}>
+            {i ? `· ${part}` : part}
+          </T>
+        ))}
+      </View>
+      <GradeBadge
+        grade={idea.grade}
+        whenAbsent={gradeWhenAbsent}
+        muted={gradeMuted}
+        suffix={gradeSuffix}
+      />
+      {right}
+    </View>
+  );
+}
+/**
  * THE DEFAULT TRADE OBJECT (audit F06).
  *
  * The order below is the owner's board, and it is an argument, not a taste:
@@ -721,6 +840,12 @@ export function SetupPreview({
   testID,
   levelText,
   gradeWhenAbsent = "hide",
+  side,
+  extra,
+  gradeMuted = false,
+  gradeSuffix,
+  identityRight,
+  titleRight,
 }: {
   idea: TradeIdea;
   onExplore?: (idea: TradeIdea) => void;
@@ -762,8 +887,55 @@ export function SetupPreview({
   /** See `TradeMap`. The caller's words for a level the number cannot hold. */
   levelText?: Partial<Record<LevelKind, string | null>>;
   gradeWhenAbsent?: "hide" | "state";
+  /** Dense only: "Swing · Long" beside the symbol. */
+  side?: string;
+  /** Dense only: a row drawn under the levels — the Day Trade contract. */
+  extra?: ReactNode;
+  /** Dense only: the grade drawn without gold — see `GradeBadge`. */
+  gradeMuted?: boolean;
+  gradeSuffix?: string;
+  /** Dense only: the control at the end of the identity row. */
+  identityRight?: ReactNode;
+  /** Dense only: drawn at the end of the headline line — the reward ratio. */
+  titleRight?: ReactNode;
 }) {
   const hasPlan = riskReward(idea) !== null;
+  /*
+   * DENSE IS THE BOARD CARD, AND IT IS ONE ANATOMY FOR EVERY FAMILY.
+   *
+   * Owner, 21 September: "the alert cards are way oversized, daytrade is diff
+   * from swing card ui." So the collapsed card is: who (logo, symbol, kind,
+   * grade when real) · one line of what happened · where it is in its life and
+   * when · the levels · and, for a Day Trade, one compact contract row. No
+   * chart, no button, no evidence — tapping the card opens the rest, and the
+   * action to take it lives there. Swing and Day Trade differ only by the
+   * `extra` row; everything else is the same code at the same sizes.
+   */
+  if (dense) {
+    return (
+      <View testID={testID} style={{ gap: 4 }}>
+        <CompactIdentity
+          idea={idea}
+          side={side}
+          gradeWhenAbsent="hide"
+          gradeMuted={gradeMuted}
+          gradeSuffix={gradeSuffix}
+          right={identityRight}
+        />
+        {idea.title || titleRight ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <T size={typeScale.body.size} lh={20} weight="semibold" numberOfLines={1} style={s.flex}>
+              {idea.title}
+            </T>
+            {titleRight}
+          </View>
+        ) : null}
+        {status}
+        <TradeLevels idea={idea} levelText={levelText} dense />
+        {extra}
+      </View>
+    );
+  }
   return (
     <View style={unframed ? undefined : s.setup} testID={testID}>
       {/*

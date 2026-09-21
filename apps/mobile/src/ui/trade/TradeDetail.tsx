@@ -8,9 +8,14 @@ import {
   RiskRewardRuler,
   TradeStatusStrip,
   GradeBadge,
+  CompactIdentity,
+  KaiAnnotation,
+  TradeLevels,
+  riskReward,
   type TradeIdea,
   type LevelKind,
 } from "./index";
+import { validCandles } from "../../../../../packages/trade-ui/model";
 
 /**
  * THE TRADE IDEA, EXPANDED.
@@ -48,6 +53,12 @@ export function TradeDetail({
   unframed = false,
   showIdentity = true,
   gradeWhenAbsent = "hide",
+  compact = false,
+  side,
+  extra,
+  gradeMuted = false,
+  gradeSuffix,
+  identityRight,
   testID,
 }: {
   idea: TradeIdea;
@@ -90,10 +101,74 @@ export function TradeDetail({
   /** See `TradeMap`. The caller's words for a level the number cannot hold. */
   levelText?: Partial<Record<LevelKind, string | null>>;
   gradeWhenAbsent?: "hide" | "state";
+  /**
+   * THE ALERT CARD, OPENED — sized to fit ONE screen with its action visible.
+   *
+   * Owner, 21 September: "the expanded alert card is way too big for screen."
+   * The full layout here is a page (a 28pt heading, a paragraph, a 292-high
+   * chart, a 48pt Ask button); on a card it put the button two screens down.
+   * Compact keeps the same identity row as the collapsed card so nothing jumps,
+   * draws the short chart with the SAME selectable levels, and leaves long
+   * prose to the caller's "Why" disclosure in `children`.
+   */
+  compact?: boolean;
+  side?: string;
+  /** Drawn under the status line — the Day Trade contract row. */
+  extra?: ReactNode;
+  gradeMuted?: boolean;
+  gradeSuffix?: string;
+  identityRight?: ReactNode;
   testID?: string;
 }) {
   const [selected, setSelected] = useState<LevelKind>("entry");
+  /** Compact only: Kai's sentence about a level waits until a level is chosen. */
+  const [touched, setTouched] = useState(false);
   const note = notes?.[selected];
+  if (compact) {
+    return (
+      <View testID={testID} style={{ gap: 8 }}>
+        <CompactIdentity
+          idea={idea}
+          side={side}
+          gradeWhenAbsent={gradeWhenAbsent}
+          gradeMuted={gradeMuted}
+          gradeSuffix={gradeSuffix}
+          right={identityRight}
+        />
+        {idea.title ? (
+          <T size={typeScale.choiceTitle.size} lh={23} weight="semibold" numberOfLines={2}>
+            {idea.title}
+          </T>
+        ) : null}
+        {status}
+        {extra}
+        {/*
+          THE CHART ONLY WHEN THERE IS A PRICE PATH TO DRAW. With no bars the
+          map is three dashed lines that repeat the level row under it, and on
+          a phone that repetition was the difference between the action being
+          on screen or not. The levels themselves are ALWAYS here — the same
+          row as the collapsed card, now tappable for Kai's note on each.
+        */}
+        {showMap && validCandles(idea.candles).length ? (
+          <TradeMap idea={idea} compact selectedLevel={selected} levelText={levelText} showLevels={false} />
+        ) : null}
+        <TradeLevels
+          idea={idea}
+          levelText={levelText}
+          dense
+          // Nothing is highlighted until the member picks a level.
+          selectedLevel={touched ? selected : ("" as LevelKind)}
+          onLevelSelect={notes && Object.keys(notes).length ? (l) => { setSelected(l); setTouched(true); } : undefined}
+        />
+        {/* Kai's note is a paragraph, and on a card it arrived open by default
+            and pushed the action off the screen. It now appears when the member
+            picks a level — the same sentence, asked for. */}
+        {touched && note ? <KaiAnnotation note={{ level: selected, text: note }} /> : null}
+        {plan ?? (riskReward(idea) ? <RiskRewardRuler idea={idea} dense /> : null)}
+        {children}
+      </View>
+    );
+  }
   return (
     <View style={unframed ? undefined : s.root} testID={testID}>
       {eyebrow ? (
