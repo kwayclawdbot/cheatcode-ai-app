@@ -1976,6 +1976,9 @@ export const ReactionKind = z.enum([
   // Legacy, still accepted so an old client's tap is not rejected. See above.
   'watching',
   'useful',
+  // The feed's heart (0050). Not in the room picker; a feed post's like_count
+  // is reaction_counts.like. It can appear in a room's counts on a call post.
+  'like',
 ]);
 export type ReactionKind = z.infer<typeof ReactionKind>;
 

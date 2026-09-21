@@ -54,7 +54,7 @@ const INCLUDE_SETUP_ROOMS = false;
  * Anything not in the list sorts last rather than being hidden — a room this
  * file has not heard of is still a room somebody can open.
  */
-const ROOM_ORDER = ['traders', 'investors', 'beginners'];
+const ROOM_ORDER = ['traders', 'investors', 'beginners', 'wins', 'ask-kai']; // wins + ask-kai: 0052
 const rank = (slug: string | null) => {
   const i = ROOM_ORDER.indexOf(String(slug));
   return i === -1 ? ROOM_ORDER.length : i;
@@ -73,7 +73,11 @@ export const GET = authed(async (req: NextRequest, ctx: Ctx) => {
   const query = db.from('rooms').select(ROOM_COLUMNS).order('created_at', { ascending: true });
   const { data } = await (INCLUDE_SETUP_ROOMS ? query : query.eq('type', 'core'));
 
-  const rows = (data ?? []) as Record<string, unknown>[];
+  // The feed room (0050) is a core room so the room machinery applies to it,
+  // but it is the feed, not a chat: `config.directory = false` keeps it out.
+  const rows = ((data ?? []) as Record<string, unknown>[]).filter(
+    (r) => (r.config as Record<string, unknown> | null)?.directory !== false
+  );
   const ids = rows.map((r) => String(r.id));
 
   const [stats, memberships] = await Promise.all([
