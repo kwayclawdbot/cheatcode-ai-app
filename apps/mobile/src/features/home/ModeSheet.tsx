@@ -24,12 +24,22 @@ export const MODE_LABEL: Record<GoalMode, string> = {
  * that arrived with the research desk: in Invest, the second tab stops being
  * alerts and becomes the desk.
  */
+/** What Day Trade says when its alerts are not publishing (DAY_TRADE_LIVE false). */
+export const MODE_EFFECT_DAY_TRADE_ARCHIVED =
+  'Not live yet · the tab says so and nothing is deleted · Swing is running today';
+
+/**
+ * What Day Trade says while the options-flow engine is publishing.
+ *
+ * The sheet said "Not live yet" for weeks after `DAY_TRADE_LIVE` flipped to
+ * true (owner audit, 21 September) — the line was a constant and the flag was
+ * never consulted. It is chosen from the flag now, below.
+ */
+export const MODE_EFFECT_DAY_TRADE_LIVE =
+  'Options-flow alerts, live until the contract expires · 5-minute charts · risk measured per trade';
+
 const MODE_EFFECT: Record<GoalMode, string> = {
-  // Day Trade is archived as coming soon (see nav/second-tab.ts). The line has
-  // to describe what picking it ACTUALLY does today, which is not "same-day
-  // ideas" — there are none — but a tab that says so. When DAY_TRADE_LIVE
-  // flips, `MODE_EFFECT_DAY_TRADE_LIVE` below is what it goes back to saying.
-  day_trade: 'Not live yet · the tab says so and nothing is deleted · Swing is running today',
+  day_trade: modeIsLive('day_trade') ? MODE_EFFECT_DAY_TRADE_LIVE : MODE_EFFECT_DAY_TRADE_ARCHIVED,
   swing: 'Multi-day ideas · daily charts · #swing-ideas · risk measured per position',
   // Invest also changes what the second tab IS — it becomes the research desk
   // instead of today's alerts. That is the one effect a person can see from
@@ -37,9 +47,6 @@ const MODE_EFFECT: Record<GoalMode, string> = {
   invest: 'Long-horizon ideas · weekly charts · the research desk on your second tab · risk measured per portfolio',
 };
 
-/** What Day Trade says again the moment the same-day picker is publishing. */
-export const MODE_EFFECT_DAY_TRADE_LIVE =
-  'Same-day ideas · 5-minute charts · #market-open · risk measured per trade';
 
 const MODES: GoalMode[] = ['day_trade', 'swing', 'invest'];
 
