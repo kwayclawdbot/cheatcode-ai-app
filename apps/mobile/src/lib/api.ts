@@ -6,6 +6,11 @@ import type {
 import type {
   DeskPickResponse, DeskThemeResponse, DeskThemesResponse, DeskWatchlistResponse,
 } from '@shared/desk';
+import type {
+  BookmarkResponse, BookmarksResponse, ChartLevel, ChartTimeframe, DeletePostResponse, FeedResponse,
+  FeedTab, LiveRoomsResponse, PostToggleResponse, PostTradeCallInput, PostWriteResponse,
+  PresenceResponse, ThreadResponse,
+} from '@shared/community';
 /**
  * TYPE-ONLY, like every other import from the contract. zod stays server-side
  * (see the header of `adapters.ts`): a value import here would ask Metro to
@@ -1029,6 +1034,82 @@ export const api = {
   /** `GET /contributors/:id` — the community half of a member's profile. */
   contributorSocial: async (userId: string): Promise<ContributorSocial> =>
     adaptContributorSocial(await request<unknown>(`/contributors/${encodeURIComponent(userId)}`), userId),
+
+  /* ------------------------------------------------------------------ */
+  /* V2 Community: the feed, posts, threads and the Live Rooms strip.     */
+  /* Contract: packages/shared/community.ts. Server: docs/COMMUNITY-FEED- */
+  /* 2026-09-21.md. Type-only imports, like everything else in this file. */
+  /* ------------------------------------------------------------------ */
+
+  /** `GET /community/feed` — one page of a tab. Pass `next_cursor` back for the next. */
+  communityFeed: (tab: FeedTab, cursor?: string | null, limit = 20): Promise<FeedResponse> => {
+    const qs = new URLSearchParams({ tab, limit: String(limit) });
+    if (cursor) qs.set('cursor', cursor);
+    return request<FeedResponse>(`/community/feed?${qs.toString()}`);
+  },
+
+  /** `GET /community/posts/:id` — the post and its first replies, oldest first. */
+  communityPost: (id: string): Promise<ThreadResponse> =>
+    request<ThreadResponse>(`/community/posts/${encodeURIComponent(id)}`),
+
+  /** `GET /community/posts/:id/replies?cursor=` — the next page of a thread. */
+  communityReplies: (id: string, cursor?: string | null): Promise<ThreadResponse> =>
+    request<ThreadResponse>(
+      `/community/posts/${encodeURIComponent(id)}/replies${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+    ),
+
+  /** `POST /community/posts` — text, pictures (ids from `POST /media`), charts, a call. */
+  createCommunityPost: (body: NewPostBody): Promise<PostWriteResponse> =>
+    request<PostWriteResponse>('/community/posts', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** `POST /community/posts/:id/replies` — one level deep. */
+  replyToCommunityPost: (id: string, body: { body: string; attachment_ids?: string[] }): Promise<PostWriteResponse> =>
+    request<PostWriteResponse>(`/community/posts/${encodeURIComponent(id)}/replies`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+
+  /** `DELETE /community/posts/:id` — your own post or reply. */
+  deleteCommunityPost: (id: string): Promise<DeletePostResponse> =>
+    request<DeletePostResponse>(`/community/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  /** Like / unlike. Idempotent both ways; the answer carries the live count. */
+  setPostLike: (id: string, on: boolean): Promise<PostToggleResponse> =>
+    request<PostToggleResponse>(`/community/posts/${encodeURIComponent(id)}/like`, { method: on ? 'POST' : 'DELETE' }),
+
+  /** Repost / undo. Your own post is refused by the server. */
+  setPostRepost: (id: string, on: boolean): Promise<PostToggleResponse> =>
+    request<PostToggleResponse>(`/community/posts/${encodeURIComponent(id)}/repost`, { method: on ? 'POST' : 'DELETE' }),
+
+  /** Save / unsave. Private: nobody else sees it and there is no count. */
+  setPostBookmark: (id: string, on: boolean): Promise<BookmarkResponse> =>
+    request<BookmarkResponse>(`/community/posts/${encodeURIComponent(id)}/bookmark`, { method: on ? 'POST' : 'DELETE' }),
+
+  /** `GET /community/bookmarks` — your saved posts, most recently saved first. */
+  communityBookmarks: (cursor?: string | null): Promise<BookmarksResponse> =>
+    request<BookmarksResponse>(`/community/bookmarks${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
+
+  /** `GET /community/live-rooms` — the strip, and `online_total` for the header. */
+  liveRooms: (): Promise<LiveRoomsResponse> => request<LiveRoomsResponse>('/community/live-rooms'),
+
+  /** `POST /community/presence` — "I am here". Null/absent room = the feed. */
+  communityPresence: (roomId?: string | null): Promise<PresenceResponse> =>
+    request<PresenceResponse>('/community/presence', {
+      method: 'POST', body: JSON.stringify(roomId ? { room_id: roomId } : {}),
+    }),
+};
+
+/**
+ * The body `POST /community/posts` accepts, as the phone writes it. The shared
+ * `CreatePostBody` is the server's parsed OUTPUT (defaults filled in), so the
+ * request side is spelled here with everything optional that the schema lets
+ * the caller leave out.
+ */
+export type NewPostBody = {
+  body?: string;
+  attachment_ids?: string[];
+  charts?: Array<{ symbol: string; timeframe: ChartTimeframe; levels?: ChartLevel[] }>;
+  trade_call?: PostTradeCallInput;
+  result_call_id?: string;
 };
 
 export type { ExplainLevel };
