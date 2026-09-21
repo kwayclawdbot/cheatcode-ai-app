@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { alpha, color, gradient, gradientAngle, radius, typeScale } from '../../../ui/tokens';
 import { family, fontStack } from '../../../ui/fonts';
 import { T } from '../../../ui/Text';
-import { Send } from './Icons';
+import { SendIcon } from '../feed/icons';
 import { AttachmentTray, type Attachment } from '../../../ui/AttachmentTray';
 import { ComposerActions, type ComposerAction } from '../../../ui/ComposerActions';
 import { QuoteBlock } from './Social';
@@ -187,23 +187,6 @@ export function RoomComposer({
             borderRadius: radius.pill, borderWidth: 0.5, borderColor: alpha.ivory20,
           }}
         >
-          <Pressable
-            testID="composer-kai"
-            accessibilityRole="button"
-            accessibilityLabel="Ask Kai in this room"
-            accessibilityHint="Summarise, verify a claim, mark levels, turn an idea into an alert, compare, or explain."
-            disabled={disabled}
-            onPress={onKai}
-            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-            style={({ pressed }) => ({
-              paddingHorizontal: 9, paddingVertical: 4, borderRadius: radius.pill,
-              borderWidth: 0.5, borderColor: alpha.violet50, backgroundColor: alpha.violet14,
-              opacity: disabled ? 0.45 : pressed ? 0.8 : 1,
-            })}
-          >
-            <T variant="meta" weight="bold" c={color.violetLight}>@Kai</T>
-          </Pressable>
-
           <TextInput
             testID="composer-input"
             accessibilityLabel={`Message ${roomLabel}`}
@@ -228,6 +211,23 @@ export function RoomComposer({
           />
 
           <Pressable
+            testID="composer-kai"
+            accessibilityRole="button"
+            accessibilityLabel="Ask Kai in this room"
+            accessibilityHint="Summarise, verify a claim, mark levels, turn an idea into an alert, compare, or explain."
+            disabled={disabled}
+            onPress={onKai}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+            style={({ pressed }) => ({
+              paddingHorizontal: 9, paddingVertical: 4, borderRadius: radius.pill,
+              borderWidth: 0.5, borderColor: alpha.violet50, backgroundColor: alpha.violet14,
+              opacity: disabled ? 0.45 : pressed ? 0.8 : 1,
+            })}
+          >
+            <T variant="meta" weight="bold" c={color.violetLight}>@Kai</T>
+          </Pressable>
+
+          <Pressable
             testID="composer-send"
             accessibilityRole="button"
             accessibilityLabel="Send message"
@@ -237,12 +237,12 @@ export function RoomComposer({
             hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
             style={({ pressed }) => ({
               width: 40, height: 40, borderRadius: 20,
-              backgroundColor: color.volt,
+              backgroundColor: color.action,
               alignItems: 'center', justifyContent: 'center',
               opacity: canSend ? (pressed ? 0.82 : 1) : 0.55,
             })}
           >
-            <Send size={15} color={color.bg} />
+            <SendIcon size={18} c={color.onAction} />
           </Pressable>
         </LinearGradient>
       </View>

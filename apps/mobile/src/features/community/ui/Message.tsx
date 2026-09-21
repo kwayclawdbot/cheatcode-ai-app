@@ -8,7 +8,7 @@ import type { MessageMedia, ReactionKind, RoomMessage } from '../types';
 import { MediaStrip, QuoteBlock, ReactionBar, ThreadLine } from './Social';
 import { PostBody } from './PostBody';
 import { MemberName } from '../../social/MemberName';
-import { CommunityCallCard } from '../../social/CommunityCallCard';
+import { CallObject } from '../feed/PostObjects';
 import { CHAT, ChatRow, RoleWord, chatTime } from './ChatRow';
 
 /**
@@ -169,7 +169,10 @@ export function MessageRow({
               {/* A member's call is drawn as its card below, IN PLACE of the
                   sentence it arrived with — both describe the same trade, and
                   printing the two says the idea twice. */}
-              {m.body && !m.community_call ? (
+              {/* A call's words are its thesis, and the card under them is the
+                  plan: the compact call object carries only the levels, so the
+                  sentence stays (V1 board: the talk, then the structured call). */}
+              {m.body ? (
                 <PostBody text={m.body} size={CHAT.body} lineHeight={CHAT.bodyLh} onTicker={onTicker} />
               ) : null}
               {m.structured_idea && showStructured ? <StructuredBlock idea={m.structured_idea} /> : null}
@@ -182,7 +185,11 @@ export function MessageRow({
           {/* Outside the selection Pressable: the card holds its own buttons. */}
           {m.community_call ? (
             <View style={{ marginTop: 6 }} testID={`message-call-${m.id}`}>
-              <CommunityCallCard call={m.community_call} compact />
+              <CallObject
+                call={m.community_call}
+                testID={`message-call-object-${m.id}`}
+                onOpen={onTicker ? () => onTicker(m.community_call!.symbol) : undefined}
+              />
             </View>
           ) : null}
           {/* Pictures sit OUTSIDE the selection Pressable: tapping a photo opens

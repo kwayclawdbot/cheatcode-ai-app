@@ -10,7 +10,7 @@ import { RoomAvatar, roomImageUrl } from '../../../ui/RoomAvatar';
 import { communityApi } from '../../../lib/community-api';
 import { subscribeRoom, transportLabel, type RealtimeMode } from '../../../lib/realtime';
 import {
-  CatchUpPill, NewMessagesRule, PinnedStrip, RoomStateNote, Sheet, SheetRow, StackHeader, SentimentBar,
+  CatchUpPill, NewMessagesRule, PinnedStrip, RoomStateNote, Sheet, SheetRow, SentimentBar,
 } from '../../../features/community/ui/Chrome';
 import { MessageRow } from '../../../features/community/ui/Message';
 import { continuesTurn } from '../../../features/community/ui/ChatRow';
@@ -26,6 +26,9 @@ import {
 } from '../../../features/community/fixtures';
 
 import { hitSlopFor } from '../../../ui/touch';
+import { FeedStackHeader } from '../../../features/community/feed/Chrome';
+import { MoreIcon } from '../../../features/community/feed/icons';
+import { useLiveRooms, usePresence } from '../../../features/community/feed/usePresence';
 /**
  * V3-C1 setup room + S81 core room, one screen.
  *
@@ -114,6 +117,10 @@ export default function RoomScreen() {
   const lastSeq = useRef(0);
   const focusedOnce = useRef(false);
   const media = useAttachments();
+
+  /** "I am here" for this room while it is on screen, and its here-now count. */
+  const live = useLiveRooms();
+  usePresence(roomId || null, () => { void live.reload(); });
 
   const merge = useCallback((incoming: RoomMessage[]) => {
     if (!incoming.length) return;
@@ -216,7 +223,7 @@ export default function RoomScreen() {
 
   const selectedMessage = decorated.find((m) => m.id === selected) ?? null;
   const isSetupRoom = room?.type === 'setup' && !!room.setup;
-  const title = room ? (room.type === 'setup' ? `${room.setup?.symbol ?? room.name} room` : `# ${room.name}`) : 'Room';
+  const title = room ? (room.type === 'setup' ? `${room.setup?.symbol ?? room.name} room` : room.name) : 'Room';
 
   /*
    * THE ROOM'S PICTURE.
@@ -232,11 +239,12 @@ export default function RoomScreen() {
     : null;
   const roomImage = roomImageUrl(room?.config);
 
+  const hereNow = live.data?.rooms.find((r) => r.id === roomId)?.listener_count ?? 0;
   const subtitle = room
     ? [
-        room.discussing_count ? `${room.discussing_count} discussing` : null,
-        room.unread > 0 ? `${room.unread} new since you left` : null,
-        transportLabel(transport),
+        room.member_count ? `${room.member_count.toLocaleString()} ${room.member_count === 1 ? 'member' : 'members'}` : null,
+        hereNow > 0 ? `${hereNow.toLocaleString()} here now` : null,
+        transport === 'realtime' ? transportLabel(transport) : null,
       ].filter(Boolean).join(' · ')
     : '';
 
@@ -339,28 +347,34 @@ export default function RoomScreen() {
     <View style={{ flex: 1, backgroundColor: color.bg }} testID="screen-room">
       <Wash variant="corner" />
 
-      <StackHeader
+      {/*
+        THE V1 CHAT HEADER (redesign board, panel 3): the room's own name, how
+        many members it has and how many are here right now — the second number
+        is the server's heartbeat count for this room, never a guess — and the
+        room's options. The brand mark belongs to the tab screens; a pushed
+        room leads with the way back.
+      */}
+      <FeedStackHeader
+        testID="room-header"
         title={title}
-        subtitle={
-          <View style={{ alignItems: 'center', gap: 2 }}>
-            <T variant="meta" c={color.muted}>{subtitle || ' '}</T>
-            <RoomStateNote slowModeS={room?.config.slow_mode_s} restricted={room?.config.posting_restricted} />
-          </View>
-        }
-        onBack={() => router.back()}
-        leading={room ? (
-          <RoomAvatar
-            symbol={roomSymbol}
-            name={room.name}
-            imageUrl={roomImage}
-            size={28}
-            testID="room-avatar"
-          />
+        subtitle={subtitle || null}
+        leading={room && (roomSymbol || roomImage) ? (
+          <RoomAvatar symbol={roomSymbol} name={room.name} imageUrl={roomImage} size={30} testID="room-avatar" />
         ) : undefined}
-        right={room?.setup?.grade_display ? <T variant="body" weight="bold" c={color.violet}>{room.setup.grade_display}</T> : undefined}
-        onRight={() => setMoreSheet(true)}
-        rightLabel="Room options"
+        onBack={() => (router.canGoBack() ? router.back() : router.replace('/community' as never))}
+        right={(
+          <Pressable
+            testID="room-options"
+            accessibilityRole="button"
+            accessibilityLabel="Room options"
+            onPress={() => setMoreSheet(true)}
+            style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <MoreIcon size={22} c={color.textPrimary} />
+          </Pressable>
+        )}
       />
+      <RoomStateNote slowModeS={room?.config.slow_mode_s} restricted={room?.config.posting_restricted} />
 
       {/*
         A SKELETON, NOT A SPINNER. The spinner that was here was centred in an
@@ -515,7 +529,7 @@ export default function RoomScreen() {
           </View>
         ) : null}
         <RoomComposer
-          roomLabel={room?.type === 'setup' ? `${room.setup?.symbol ?? room.name} room` : `# ${room?.name ?? 'room'}`}
+          roomLabel={room?.type === 'setup' ? `${room.setup?.symbol ?? room.name} room` : (room?.name ?? 'room')}
           onSend={send}
           onKai={() => setKaiSheet(true)}
           onStructured={() => router.push(`/room/${roomId}/compose`)}
