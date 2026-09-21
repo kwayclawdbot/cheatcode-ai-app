@@ -222,6 +222,15 @@ export const workspace = {
     workspace.apply({ type: 'close_surface', surface_id: id } as KaiWorkspaceAction);
   },
 
+  /**
+   * The member's "close all" on the tab row. The same end state as `reset`,
+   * kept as its own name because it is a different decision: this one is a
+   * thumb, that one is a new conversation.
+   */
+  closeAll() {
+    if (state.surfaces.length || state.activeId) commit(EMPTY);
+  },
+
   /** Everything goes. Used when the member starts a new conversation. */
   reset() {
     if (state.surfaces.length || state.activeId) commit(EMPTY);

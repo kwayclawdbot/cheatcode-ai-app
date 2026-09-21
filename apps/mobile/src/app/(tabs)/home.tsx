@@ -5,6 +5,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Screen } from '../../ui/Screen';
 import { T } from '../../ui/Text';
 import { KaiOrb } from '../../ui/KaiOrb';
+import { HudFrame, KaiBrain, KaiStatusLight } from '../../ui/KaiBrain';
 import { KaiBubble, UserBubble, TypingDots } from '../../ui/Bubble';
 import { BriefingCard } from '../../ui/Briefing';
 import { RichText } from '../../ui/RichText';
@@ -28,11 +29,13 @@ import { PanelLauncher, PanelLauncherButton, WorkspaceHost, useActiveSurface, us
 import type { FailedTurn, ThreadTarget } from '../../lib/kai-continuity';
 import { env } from '../../lib/env';
 import { useMe } from '../../features/account/useAccount';
-import { CreditStrip } from '../../features/account/credit-instruments';
+import { CreditStrip, resetsLine } from '../../features/account/credit-instruments';
 import { fixtureCreditsCeiling, fixtureCreditsOut, fixtureCreditsWarning } from '../../lib/fixtures';
 import { ContinueTrainingObject } from '../../features/training/HomeObject';
 import { homeOrderFor, useStageEvolution } from '../../features/stage';
-import type { ConversationRow, GoalMode, WallItem } from '../../lib/types';
+import { STAGE_LABEL } from '../../features/stage/labels';
+import { brainCaption, chartCaption, kaiStateFor, litRegions } from '../../features/home/warroom';
+import type { ConversationRow, GoalMode, Stage, WallItem } from '../../lib/types';
 import { useKaiVoice } from '../../features/voice'; // LANE C voice
 
 /** The five read-only panels, which get a taller band than the object surfaces. */
@@ -127,7 +130,17 @@ export default function Home() {
    * The "Today's Beginner Pick" object the funnel note describes is a separate
    * lane with its own data behind it and is not built here.
    */
-  const homeOrder = homeOrderFor(profile?.stage);
+  const params = useLocalSearchParams<{ fixture?: string; credits?: string; ask?: string; stage?: string }>();
+  /**
+   * Fixtures preview only: `?stage=beginner|developing|trade_ready` shows Home
+   * as that member would see it, so the stage-aware brain can be photographed.
+   * On a real stack the parameter does nothing — the stage is the profile's.
+   */
+  const fixtureStage: Stage | null =
+    env.FIXTURES && (params.stage === 'beginner' || params.stage === 'developing' || params.stage === 'trade_ready')
+      ? params.stage : null;
+  const stage: Stage | undefined = fixtureStage ?? profile?.stage ?? undefined;
+  const homeOrder = homeOrderFor(stage);
   // Training progress lives on the device, so the server cannot see a
   // graduation on its own. This reports the evidence and refreshes the profile
   // if the server decides it was worth a promotion — which is what makes the
@@ -138,7 +151,6 @@ export default function Home() {
   const { online } = useConnectivity();
 
   /** Fixtures preview only — lets the owner and Playwright see the quiet day. */
-  const params = useLocalSearchParams<{ fixture?: string; credits?: string; ask?: string }>();
   const fixture: HomeFixture =
     env.FIXTURES && (params.fixture === 'quiet' || params.fixture === 'down') ? params.fixture : 'default';
 
@@ -169,7 +181,7 @@ export default function Home() {
    * The opening object (audit F03): a lesson for beginners, a setup or a
    * position for traders, the standing when there is neither.
    */
-  const opening = openingFor({ stage: profile?.stage, mode, hasPriority: !!shown?.priority });
+  const opening = openingFor({ stage, mode, hasPriority: !!shown?.priority });
   const priorityCandles = usePriorityCandles(shown?.priority?.symbol, shown?.priority?.candles ?? []);
   const threads = useConversations();
   const [threadsOpen, setThreadsOpen] = useState(false);
@@ -395,6 +407,28 @@ export default function Home() {
     if (meCredits) setCredits((prev) => prev ?? meCredits);
   }, [meCredits, setCredits]);
 
+  /**
+   * THE WAR ROOM (docs/HOME-WAR-ROOM-2026-09-21.md).
+   *
+   * One state for Kai — ready, thinking, speaking, listening or offline — read
+   * off things this screen already knows: the network, the balance, the stream
+   * and the mic. The brain, the status light and the caption all draw from it,
+   * so they can never disagree with each other. `warroom.ts` holds the rules.
+   */
+  const kaiState = kaiStateFor({ online, credits: credits ?? meCredits, streaming, voicePhase: voice.phase });
+  const lit = useMemo(
+    () => litRegions({ state: kaiState, stage, surfaceKind: activeSurface?.kind }),
+    [kaiState, stage, activeSurface?.kind],
+  );
+  const blocked = credits ?? meCredits;
+  const caption = brainCaption({
+    state: kaiState, stage, lit, online,
+    credits: blocked,
+    resets: blocked?.resets_at ? resetsLine(blocked.resets_at) : null,
+  });
+  /** Kai's latest line over the chart while he draws on it (the workspace host draws it). */
+  const onChart = chartCaption(items, streaming && activeSurface?.kind === 'chart');
+
   const seedCount = seed.length;
   useEffect(() => {
     if (items.length <= seedCount) return;
@@ -539,32 +573,55 @@ export default function Home() {
   return (
     <Screen variant="corner" layout="tab" testID="screen-home">
       {/*
-        The only chrome. Two dim controls and no bar: no rule, no title, no
-        market chip, no mode label. A title appears ONLY when you are inside
-        another conversation, because then you genuinely need to know which.
+        THE WAR ROOM BAR. Two short rows: the name of the room and its controls,
+        then Kai's status light and the member's stage. The existing three
+        controls (conversations, panels, new conversation) are where they were.
+        When a panel has the canvas, Kai's brain shrinks to the orb here.
+        Inside another conversation its title sits on the second row, and
+        tapping it goes back to today.
       */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 4, paddingHorizontal: 16, paddingBottom: 4 }}>
-        {/* Re-read on open: a conversation started in this sitting only exists
-            on the server after its first turn, and the drawer is where somebody
-            goes to come back to it. */}
-        <Hamburger onPress={() => { setThreadsOpen(true); threads.reload(); }} />
-        {thread.kind === 'today' ? (
-          <View style={{ flex: 1 }} />
-        ) : (
-          <Pressable
-            testID="home-thread-title"
-            accessibilityRole="button"
-            accessibilityLabel={`${thread.kind === 'saved' ? thread.row.title : 'New conversation'}. Back to today.`}
-            onPress={backToToday}
-            style={({ pressed }) => ({ flex: 1, minWidth: 0, opacity: pressed ? 0.7 : 1 })}
-          >
-            <T size={13} weight="semibold" c={color.muted} numberOfLines={1} align="center">
-              {thread.kind === 'saved' ? thread.row.title : 'New conversation'}
+      <View style={{ paddingTop: 4, paddingHorizontal: 16, paddingBottom: 6, gap: 4 }} testID="warroom-bar">
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          {/* Re-read on open: a conversation started in this sitting only exists
+              on the server after its first turn, and the drawer is where somebody
+              goes to come back to it. */}
+          <Hamburger onPress={() => { setThreadsOpen(true); threads.reload(); }} />
+          <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {activeSurface ? (
+              <View testID="warroom-orb" style={{ opacity: kaiState === 'offline' ? 0.4 : 1 }}>
+                <KaiOrb size={18} glow={kaiState !== 'offline'} />
+              </View>
+            ) : null}
+            <T mono size={11} weight="bold" ls={1.3} c={color.muted} numberOfLines={1} testID="warroom-title">
+              KAI · WAR ROOM
             </T>
-          </Pressable>
-        )}
-        <PanelLauncherButton onPress={() => setPanelsOpen(true)} />
-        <NewThread onPress={newThread} />
+          </View>
+          <PanelLauncherButton onPress={() => setPanelsOpen(true)} />
+          <NewThread onPress={newThread} />
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 18 }}>
+          <KaiStatusLight state={kaiState} />
+          {stage ? (
+            <T mono size={11} ls={0.6} c={color.dim} numberOfLines={1} testID="warroom-stage">
+              {`· ${STAGE_LABEL[stage].toUpperCase()}`}
+            </T>
+          ) : null}
+          {thread.kind === 'today' ? (
+            <View style={{ flex: 1 }} />
+          ) : (
+            <Pressable
+              testID="home-thread-title"
+              accessibilityRole="button"
+              accessibilityLabel={`${thread.kind === 'saved' ? thread.row.title : 'New conversation'}. Back to today.`}
+              onPress={backToToday}
+              style={({ pressed }) => ({ flex: 1, minWidth: 0, opacity: pressed ? 0.7 : 1 })}
+            >
+              <T size={12} weight="semibold" c={color.muted} numberOfLines={1} align="right">
+                {thread.kind === 'saved' ? thread.row.title : 'New conversation'}
+              </T>
+            </Pressable>
+          )}
+        </View>
       </View>
       <PanelLauncher visible={panelsOpen} onClose={() => setPanelsOpen(false)} />
 
@@ -584,6 +641,7 @@ export default function Home() {
         mode={mode}
         height={workspaceHeight}
         busy={streaming}
+        caption={onChart}
         onChartRuntime={bridge.bindApply}
         onRoute={(r) => router.push(r as never)}
       />
@@ -603,6 +661,36 @@ export default function Home() {
         */}
         {thread.kind === 'today' ? (
           <OfflineBanner online={online} fetchedAt={fetchedAt} onRetry={retryEverything} retrying={home.loading} />
+        ) : null}
+
+        {/*
+          KAI'S BRAIN, AT REST. It is the first thing in the conversation and
+          scrolls away with it, so it never squeezes the thread. When a panel
+          takes the canvas it is not drawn here at all — the orb in the bar
+          stands in for it — because a panel and a brain both on a phone is
+          two things too small to read.
+        */}
+        {!activeSurface ? (
+          <HudFrame
+            testID="warroom-brain"
+            label="KAI · BRAIN"
+            dim={kaiState === 'offline'}
+            right={
+              <T mono size={11} ls={0.6} c={color.dim}>{`${lit.length}/8 LIT`}</T>
+            }
+          >
+            <KaiBrain state={kaiState} lit={lit} level={voice.level} height={150} />
+            <T
+              size={12.5}
+              lh={17}
+              c={kaiState === 'offline' ? color.muted : color.violetLight}
+              align="center"
+              style={{ marginTop: 6 }}
+              testID="warroom-caption"
+            >
+              {caption}
+            </T>
+          </HudFrame>
         ) : null}
 
         {/* The one message, and then the one thing to do. */}
