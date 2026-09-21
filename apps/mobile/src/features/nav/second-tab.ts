@@ -106,12 +106,14 @@ const SWING: SecondTab = {
 export function secondTab(mode: GoalMode): SecondTab {
   switch (mode) {
     case 'invest':
+      // V2 (owner pack, 2026-09-21): the dock is Home · Alerts · Community ·
+      // Trade · Account on every screen, and Invest is a SEGMENT of the Alerts
+      // board rather than a different tab. So the label, glyph and heading
+      // stay "Alerts"; `desk` still says the body is the research list (the
+      // desk's graded companies), not alerts — no trigger, no badge.
       return {
         ...ALERTS,
-        label: 'Research',
-        icon: 'desk',
-        title: 'The watchlist',
-        note: "You're in Invest mode, so this tab is the research desk. Today's alerts are in Swing — change the mode to see them.",
+        note: "You're in Invest mode, so this board shows the research desk. Today's alerts are in Swing — change the mode to see them.",
         desk: true,
       };
     case 'day_trade':

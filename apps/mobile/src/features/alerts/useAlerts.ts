@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { useResource } from '../../lib/useResource';
 import { useMarketRefresh } from '../../lib/useMarketRefresh';
 import {
-  fixtureAlertDetail, fixtureAlertLifecycle, fixtureAlertsRound4, fixtureAlertsRound4Empty,
+  fixtureAlertDetail, fixtureAlertLifecycle, fixtureAlertsForMode, fixtureAlertsRound4Empty,
   fixtureAlertsSimple,
 } from '../../lib/fixtures';
 import { mergeAlertsTab } from '../../lib/adapters';
@@ -186,7 +186,11 @@ export function useAlertsSimple() {
 export function useAlertsRound4(mode: GoalMode, fixture: 'default' | 'empty' = 'default') {
   const offline = !api.available();
   // Fixtures preview only — lets the owner and Playwright see the quiet day.
-  const seed = fixture === 'empty' ? fixtureAlertsRound4Empty : fixtureAlertsRound4;
+  // The V2 board draws one mode's board, so the fixtures are one per mode too.
+  const seed = useMemo(
+    () => (fixture === 'empty' ? fixtureAlertsRound4Empty : fixtureAlertsForMode(mode)),
+    [fixture, mode],
+  );
   const [tab, setTab] = useState<AlertBoardTab>('active');
   const [data, setData] = useState<AlertsRound4 | null>(offline ? seed : null);
   const [loading, setLoading] = useState(!offline);

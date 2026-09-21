@@ -762,7 +762,7 @@ export const fixtureAlertsSimple: AlertsSimple = {
 /* ==================================================================== */
 
 import type {
-  AlertCard, AlertsRound4, ConversationsPayload, Experience, FocusKey,
+  AlertCard, AlertOptionContract, AlertsRound4, ConversationsPayload, Experience, FocusKey,
   KaiProfile, RuleAdherence, TickerPage,
 } from './types';
 import { EXPERIENCE_LABEL, EXPERIENCE_VOICE, MODE_LABEL, focusList, kaiVoice } from '../features/account/profile';
@@ -2017,3 +2017,213 @@ export const fixtureContributorSocial: ContributorSocial = {
   ],
   trades: [{ ...fixtureSharedTrades[1], id: 'shared-jordan-1', author: FIXTURE_JORDAN }],
 };
+
+/* ==================================================================== */
+/* V2 Alerts board (redesign 2026-09-21) — one fixture board per mode.   */
+/*                                                                      */
+/* FIXTURES PREVIEW ONLY (EXPO_PUBLIC_FIXTURES=1). The swing board mirrors */
+/* the owner's V2 board (PURR · AMD · UMC) so a fixture screenshot can be */
+/* laid beside it; the day-trade board is the options-flow family, the    */
+/* only producer that mode has. The tracker fields are what the peak      */
+/* tracker writes (0041/0048) — the card derives "Target 1 hit" and the   */
+/* contract's peak from them, never from a label.                         */
+/* ==================================================================== */
+
+const minsAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+const noTracking = null;
+const fixtureQuote = (price: number, change_pct: number) => ({
+  price, change_pct, freshness: 'delayed' as const, delay_reason: 'seed' as const, source_ts: null,
+});
+
+const V2_SWING_ACTIVE: AlertCard[] = [
+  {
+    id: 'setup:fx-purr', setup_id: 'fx-purr', symbol: 'PURR', company: 'Purr Technologies',
+    mode_label: 'Swing', direction_label: 'Long', instrument_label: 'equity',
+    grade: 'A', score: 92, state: 'entry_reached', state_label: 'Entry reached',
+    triggered_at: minsAgo(2), triggered_at_label: 'Sep 21, 9:39 AM ET',
+    headline: 'PURR reached $24.40', what_changed: 'Cleared the $24.40 shelf on 2.4× its average volume.',
+    trade: { direction: 'Long', current: '24.40', entry: '24.40', stop: '22.37', target: '30.49', rr: '3.0:1', hold: '3-15 sessions' },
+    analytics: { pattern: 'Breakout', volume_ratio: 2.4 },
+    tracking: noTracking,
+    score_components: SWING_COMPONENTS,
+    primary_action: { label: 'Open Trade Portal', kind: 'entry_reached' },
+    quote: fixtureQuote(24.4, 4.8),
+  },
+  {
+    id: 'setup:fx-amd', setup_id: 'fx-amd', symbol: 'AMD', company: 'Advanced Micro Devices',
+    mode_label: 'Swing', direction_label: 'Long', instrument_label: 'equity',
+    grade: 'A', score: 90, state: 'watching', state_label: 'Watching',
+    triggered_at: minsAgo(15), triggered_at_label: 'Sep 21, 9:26 AM ET',
+    headline: 'AMD — I am watching this', what_changed: 'Waiting on a close through $180.00.',
+    trade: { direction: 'Long', current: '178.75', entry: '180.00', stop: '164.20', target: '212.00', rr: '2.0:1', hold: '3-15 sessions' },
+    analytics: { pattern: 'Consolidation', volume_ratio: 1.1 },
+    tracking: noTracking,
+    score_components: SWING_COMPONENTS,
+    primary_action: { label: 'Open chart', kind: 'watching' },
+    quote: fixtureQuote(178.75, -1.2),
+  },
+  {
+    id: 'setup:fx-umc', setup_id: 'fx-umc', symbol: 'UMC', company: 'United Microelectronics',
+    mode_label: 'Swing', direction_label: 'Long', instrument_label: 'equity',
+    grade: 'B', score: 76, state: 'entry_reached', state_label: 'Entry reached',
+    triggered_at: minsAgo(120), triggered_at_label: 'Sep 21, 7:41 AM ET',
+    headline: 'UMC reached $8.12', what_changed: 'Target one printed on the open.',
+    trade: { direction: 'Long', current: '8.93', entry: '8.12', stop: '7.72', target: '8.92', rr: '2.0:1', hold: '3-15 sessions' },
+    analytics: { pattern: 'Pullback', volume_ratio: null },
+    tracking: {
+      peak_price: 8.97, peak_at: minsAgo(40), peak_gain_pct: 10.5, targets_hit: 1, stop_hit: false,
+      contract_cost: null, contract_peak: null, contract_peak_multiple: null,
+    },
+    score_components: SWING_COMPONENTS,
+    primary_action: { label: 'Open Trade Portal', kind: 'entry_reached' },
+    quote: fixtureQuote(8.93, 3.1),
+  },
+];
+
+const V2_SWING_WATCHING: AlertCard[] = [
+  { ...fixtureWatchingCards[0], id: 'setup:fx-nvda', triggered_at: minsAgo(44), tracking: null, analytics: { pattern: 'Base', volume_ratio: null }, quote: fixtureQuote(921, -0.4) },
+];
+
+const V2_SWING_HISTORY: AlertCard[] = [
+  {
+    ...fixtureHistoryCards[0], id: 'setup:fx-tsla-h', mode_label: 'Swing',
+  },
+  fixtureHistoryCards[1],
+];
+
+const uoaContract = (over: Partial<AlertOptionContract>): AlertOptionContract => ({
+  label: 'The contract the flow bought', type: 'call', strike: '120', expiry: 'Sep 23', dte: 2, cost: '$5.60',
+  liquidity: 'good', ...over,
+});
+
+const V2_DAY_ACTIVE: AlertCard[] = [
+  {
+    ...fixtureAlertCards[0],
+    id: 'setup:fx-mrna', setup_id: 'fx-mrna',
+    triggered_at: minsAgo(12),
+    recommended_options: [{ ...fixtureAlertCards[0].recommended_options![0], expiry: 'Sep 23' }],
+    tracking: {
+      peak_price: null, peak_at: null, peak_gain_pct: null, targets_hit: null, stop_hit: null,
+      contract_cost: 5.6, contract_peak: 27.91, contract_peak_multiple: 4.98,
+    },
+    quote: fixtureQuote(118.9, 2.9),
+  },
+  {
+    id: 'setup:fx-meta-dt', setup_id: 'fx-meta-dt', symbol: 'META', company: 'Meta Platforms',
+    mode_label: 'Day Trade', direction_label: 'Short', instrument_label: 'options',
+    grade: '—', score: null, state: 'ready', state_label: 'Triggered',
+    triggered_at: minsAgo(38), triggered_at_label: 'Sep 21, 9:03 AM ET',
+    headline: 'Unusual options flow on Meta', what_changed: 'Put buying at 38.6× open interest, nearly all at the ask.',
+    trade: { direction: 'Short', current: '604.10', note: 'This engine reads options flow and nothing else, so it publishes no risk plan.' },
+    recommended_options: [uoaContract({ type: 'put', strike: '607.5', cost: '$5.25', premium: 262667, ask_side_share: 0.998, volume_vs_own_adv: 135.66 })],
+    tracking: {
+      peak_price: null, peak_at: null, peak_gain_pct: null, targets_hit: null, stop_hit: null,
+      contract_cost: 5.25, contract_peak: 8.4, contract_peak_multiple: 1.6,
+    },
+    score_components: [],
+    primary_action: { label: 'Open Trade Portal', kind: 'ready' },
+    quote: fixtureQuote(604.1, -0.9),
+  },
+  {
+    id: 'setup:fx-net-dt', setup_id: 'fx-net-dt', symbol: 'NET', company: 'Cloudflare',
+    mode_label: 'Day Trade', direction_label: 'Long', instrument_label: 'options',
+    grade: '—', score: null, state: 'ready', state_label: 'Triggered',
+    triggered_at: minsAgo(3), triggered_at_label: 'Sep 21, 9:38 AM ET',
+    headline: 'Unusual options flow on Cloudflare', what_changed: 'Call sweep at 9.1× open interest.',
+    trade: { direction: 'Long', current: '211.40', note: 'This engine reads options flow and nothing else, so it publishes no risk plan.' },
+    recommended_options: [uoaContract({ strike: '215', expiry: 'Sep 26', dte: 5, cost: '$3.10', premium: 88400, ask_side_share: 0.91, volume_vs_own_adv: 22.4 })],
+    tracking: null,
+    score_components: [],
+    primary_action: { label: 'Open Trade Portal', kind: 'ready' },
+    quote: fixtureQuote(211.4, 1.6),
+  },
+];
+
+const V2_DAY_HISTORY: AlertCard[] = [fixtureHistoryCards[2]];
+
+/** The V2 board's fixture for one mode. Invest has no alerts — its tab is the research list. */
+export function fixtureAlertsForMode(mode: 'day_trade' | 'swing' | 'invest'): AlertsRound4 {
+  if (mode === 'day_trade') {
+    return {
+      active: V2_DAY_ACTIVE, watching: [], history: V2_DAY_HISTORY,
+      counts: { active: V2_DAY_ACTIVE.length, watching: 0, history: V2_DAY_HISTORY.length },
+      empty_copy: 'No unusual options flow has fired today.', mode: 'day_trade',
+    };
+  }
+  return {
+    active: V2_SWING_ACTIVE, watching: V2_SWING_WATCHING, history: V2_SWING_HISTORY,
+    counts: { active: V2_SWING_ACTIVE.length, watching: V2_SWING_WATCHING.length, history: V2_SWING_HISTORY.length },
+    empty_copy: 'Nothing here yet. Kai will put an alert here the moment something changes.', mode: 'swing',
+  };
+}
+
+/** Where each fixture symbol's tape ends, and its day's move — the bars below walk to it. */
+const FIXTURE_TAPE: Record<string, { last: number; chg: number }> = {
+  PURR: { last: 24.4, chg: 4.8 }, AMD: { last: 178.75, chg: -1.2 }, UMC: { last: 8.93, chg: 3.1 },
+  NVDA: { last: 921, chg: -0.4 }, MRNA: { last: 118.9, chg: 2.9 }, META: { last: 604.1, chg: -0.9 },
+  NET: { last: 211.4, chg: 1.6 }, SITM: { last: 219.8, chg: 1.1 }, VRT: { last: 141.07, chg: 0.8 },
+  TER: { last: 171.2, chg: -0.6 },
+};
+
+/**
+ * Deterministic bars for a fixture symbol: three sessions of five-minute bars
+ * (or 90 daily bars) ending at the tape above, the previous session closing
+ * where the day's move says it did. No Math.random — every screenshot is the
+ * same screenshot. FIXTURES ONLY: `useAlertCandles` reads this behind
+ * `env.FIXTURES` and nowhere else.
+ */
+export function fixtureBarsFor(symbol: string, tf: '1d' | '5m'): Candle[] {
+  const sym = symbol.toUpperCase();
+  const seed = [...sym].reduce((a, ch) => a + ch.charCodeAt(0), 0);
+  const tape = FIXTURE_TAPE[sym] ?? { last: 50 + (seed % 200), chg: ((seed % 7) - 3) * 0.6 };
+  const prevClose = tape.last / (1 + tape.chg / 100);
+  const out: Candle[] = [];
+  const wobble = (i: number) => Math.sin(i * 0.7 + seed) * 0.5 + Math.cos(i * 0.23 + seed / 3) * 0.35;
+  if (tf === '1d') {
+    const n = 90;
+    const start = prevClose * (1 - 0.12 + (seed % 5) * 0.01);
+    let p = start;
+    const end = Date.parse('2026-09-19T20:00:00.000Z');
+    for (let i = 0; i < n; i += 1) {
+      const target = i === n - 1 ? tape.last : start + ((prevClose - start) * i) / (n - 2);
+      const o = p;
+      const c = target + wobble(i) * tape.last * 0.012;
+      const cl = i === n - 1 ? tape.last : c;
+      out.push({
+        t: new Date(end - (n - 1 - i) * 86_400_000).toISOString(),
+        o: +o.toFixed(2), h: +(Math.max(o, cl) * 1.006).toFixed(2), l: +(Math.min(o, cl) * 0.994).toFixed(2), c: +cl.toFixed(2),
+        v: 1_000_000,
+      });
+      p = cl;
+    }
+    return out;
+  }
+  const sessions = ['2026-09-17', '2026-09-18', '2026-09-19'];
+  const perSession = 78;
+  const total = sessions.length * perSession;
+  const base = prevClose * 0.97;
+  let p = base;
+  sessions.forEach((day, s) => {
+    const open = Date.parse(`${day}T13:30:00.000Z`);
+    for (let k = 0; k < perSession; k += 1) {
+      const i = s * perSession + k;
+      const last = i === total - 1;
+      const endOfPrev = s === sessions.length - 2 && k === perSession - 1;
+      const drift = s < sessions.length - 1
+        ? base + ((prevClose - base) * i) / (total - perSession)
+        : prevClose + ((tape.last - prevClose) * k) / (perSession - 1);
+      const o = p;
+      const c = last ? tape.last : endOfPrev ? prevClose : drift + wobble(i) * tape.last * 0.004;
+      out.push({
+        t: new Date(open + k * 5 * 60_000).toISOString(),
+        o: +o.toFixed(2),
+        h: +(Math.max(o, c) + Math.abs(wobble(i + 1)) * tape.last * 0.002).toFixed(2),
+        l: +(Math.min(o, c) - Math.abs(wobble(i + 2)) * tape.last * 0.002).toFixed(2),
+        c: +c.toFixed(2),
+        v: 200_000,
+      });
+      p = c;
+    }
+  });
+  return out;
+}

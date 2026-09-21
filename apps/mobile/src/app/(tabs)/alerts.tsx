@@ -1,6 +1,12 @@
 /**
  * The second tab, which is three screens.
  *
+ * V2 (owner pack, 2026-09-21): ONE board for all three modes, with a
+ * Day Trade | Swing | Invest segmented control at the top. Invest still means
+ * the research desk — the board draws the desk's graded companies in the
+ * alert card's visual language, with no triggers (investing picks are not
+ * alerts). The full desk stays at /desk.
+ *
  * `primary_mode` has been stored since onboarding and Invest has meant nothing
  * until now. Here is what it means: a swing trader gets today's alerts, an
  * investor gets the research desk — the same slot, the same route, a different
@@ -21,14 +27,14 @@ import { useSession } from '../../lib/session';
 import { DEFAULT_MODE, secondTab } from '../../features/nav/second-tab';
 import { AlertsBoard } from '../../features/alerts/AlertsBoard';
 import { DayTradeComingSoon } from '../../features/alerts/DayTradeComingSoon';
-import { DeskWatchlist } from '../../features/desk/Watchlist';
 import type { GoalMode } from '../../lib/types';
 
 export default function SecondTabScreen() {
   const { profile } = useSession();
   const mode: GoalMode = (profile?.primary_mode as GoalMode) ?? DEFAULT_MODE;
   const second = secondTab(mode);
-  if (second.desk) return <DeskWatchlist variant="tab" />;
+  // Invest is a segment of the same board now (V2, 2026-09-21): the board
+  // draws the research list for it, in the alert card's visual language.
   if (second.comingSoon) return <DayTradeComingSoon mode={mode} />;
   return <AlertsBoard mode={mode} />;
 }

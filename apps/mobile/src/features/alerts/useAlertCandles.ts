@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
+import { env } from '../../lib/env';
+import { fixtureBarsFor } from '../../lib/fixtures';
 import type { Candle } from '../../lib/types';
 
 /**
@@ -57,7 +59,11 @@ const key = (symbol: string, tf: '1d' | '5m') => `${symbol.toUpperCase()}:${tf}`
 
 function ensure(symbol: string, tf: '1d' | '5m') {
   const k = key(symbol, tf);
-  if (cache.has(k) || inflight.has(k) || !api.available()) return;
+  if (cache.has(k) || inflight.has(k)) return;
+  // FIXTURES PREVIEW ONLY: deterministic sample bars, so the offline board
+  // draws the same microcharts a live one would. Never reached without the flag.
+  if (env.FIXTURES) { cache.set(k, fixtureBarsFor(symbol, tf)); return; }
+  if (!api.available()) return;
   inflight.set(
     k,
     api
@@ -95,6 +101,7 @@ export function useAlertCandles(
     const listener = () => bump((n) => n + 1);
     listeners.add(listener);
     for (const w of wanted) ensure(w.symbol, w.tf);
+    if (env.FIXTURES) listener();
     return () => { listeners.delete(listener); };
   }, [signature]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -1,312 +1,309 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ScrollView, View, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '../../ui/Screen';
-import { T } from '../../ui/Text';
-import { ObjectCard } from '../../ui/Panel';
-import { Button } from '../../ui/Button';
 import { Sheet } from '../../ui/Sheet';
 import { ScreenLoading } from '../../ui/Loading';
-import { Num } from '../../ui/Text';
+import {
+  AppBar, IconButton, SegmentedControl, SectionTabs, Button, T, color, layout, alpha, radius,
+} from '../../ui/kit';
 // The six ways a surface can have nothing to show — audit F18, one vocabulary
 // for the whole app rather than a private empty state per board.
 import { CapabilityNotice, capabilityFor, updatedAtLabel } from '../../ui/CapabilityState';
-import { alpha, color, radius } from '../../ui/tokens';
 import { env } from '../../lib/env';
+import { api } from '../../lib/api';
+import { useSession } from '../../lib/session';
 import { AlertsEmpty, HistoryAlertRow, StandardAlertCard } from './AlertCard';
 import { useAlertActions, useAlertsRound4 } from './useAlerts';
-import { timeframeForHold, useAlertCandles } from './useAlertCandles';
-import { ModeControl } from '../home/ModeSheet';
-import { secondTab } from '../nav/second-tab';
+import { useAlertCandles } from './useAlertCandles';
+import { useAlertBookmarks } from './useAlertBookmarks';
+import { useAlertAttention } from './attention';
+import { pickPriority, rankActive } from './card-model';
+import { applyBoardFilter, filterIsActive, NO_FILTER, type BoardFilter } from './board-filter';
+import { BellGlyph, FilterGlyph, SearchGlyph } from './instruments';
+import { InvestList } from './InvestList';
 import { Avatar } from '../community/ui/Chrome';
 import { BeltChip, CommunityCallCard, MemberName, useDeskCalls } from '../social';
-import type { AlertBoardTab, AlertCard, AlertCardState, CommunityCall, GoalMode } from '../../lib/types';
+import type { AlertBoardTab, AlertCard, CommunityCall, GoalMode } from '../../lib/types';
 import { NOT_ADVICE_ALERTS } from '../legal/disclaimers';
+import { hitSlopFor } from '../../ui/touch';
 
-import { BrandMarkButton } from '../../ui/BrandMark';
-import { layout } from '../../ui/tokens';
 /**
- * Alerts — prototype board "Alerts" + docs/10 §1–§5.
+ * ALERTS — the V2 board (owner pack 2026-09-21, board V2 panel 2).
  *
- * Alerts are COMPLETE TRADE OBJECTS, not notifications, and one standard card
- * grammar runs across the board: grade medallion, qualitative scorecard (never
- * fractions), expandable evidence and ONE state-driven primary action that
- * routes into the Trade Portal with the alert context
- * (`/trade/[symbol]?alert=&ctx=alert`). There is no alert-detail destination
- * between the card and the portal. The natural-language composer has moved to
- * `/alert/new`, reached by the plus in this board's header (owner, 7 Sept).
+ *   app bar      brand mark · "Alerts" · search · filter · bell
+ *   mode         ONE segmented control: Day Trade | Swing | Invest (orange
+ *                selected) — it replaces the mode dropdown and writes the same
+ *                `PUT /mode` + profile patch the sheet always did, so the mode
+ *                is still one setting, not a second one for this screen
+ *   tabs         Active · Community · History, with counts
+ *   list         the ONE priority card (expanded, orange edge glow), then the
+ *                compact supporting cards
  *
- * This is the Day Trade and Swing face of the second tab. In Invest mode the
- * same tab draws the research desk instead, so the mode chip sits in the
- * header here: the person who changed the mode is the person who has to be
- * able to change it back, and Account is too far to hunt for.
+ * INVEST IS A SEGMENT HERE, NOT A DIFFERENT SCREEN. It draws the research
+ * watchlist in the same card language, with no tabs and no triggers —
+ * investing picks are not alerts (standing ruling).
  *
- * ── THREE TABS, AND WHICH THREE CHANGED (owner, 7 Sept) ──────────────────
- * It was Active · Watching · History. Watching was never a different KIND of
- * thing from Active — it is the same alert earlier in its life — so keeping it
- * behind its own tab meant checking two lists to answer the one question the
- * board exists for, "is there anything for me". The watching cards now sit IN
- * Active, unchanged, progress bars and all, sorted after the ones asking for a
- * decision. `ACTIVE_ORDER` below is what makes that one list rather than two
- * stuck together.
+ * WHICH CARD IS THE PRIORITY CARD is `pickPriority` (card-model.ts): a
+ * decision now beats something you are already doing, which beats a target to
+ * manage, which beats watching — then grade, then recency. Resolved cards, a
+ * crossed stop and a card Kai says to leave can never wear the glow.
  *
- * The tab it freed is COMMUNITY: what MEMBERS of this desk have called, newest
- * first, in the volt card that says a person wrote it. That belongs beside the
- * house's alerts and nowhere near inside them — the two are never mixed into a
- * single list, because volt and violet mean different authors and a list that
- * interleaved them would be teaching the opposite.
+ * Alerts are still COMPLETE TRADE OBJECTS; the whole card opens the Trade
+ * detail (`/trade/[symbol]?alert=&ctx=alert`, links.ts). The natural-language
+ * builder is `/alert/new`, reached from the foot of the Active list.
+ *
+ * WATCHING FOLDED INTO ACTIVE (owner, 7 Sept) and COMMUNITY is the desk's
+ * member calls — both unchanged, see `useAlertsRound4`.
  */
 
-const TABS: { key: AlertBoardTab; label: string }[] = [
-  { key: 'active', label: 'Active' },
-  { key: 'community', label: 'Community' },
-  { key: 'history', label: 'History' },
+const MODES: { key: GoalMode; label: string }[] = [
+  { key: 'day_trade', label: 'Day Trade' },
+  { key: 'swing', label: 'Swing' },
+  { key: 'invest', label: 'Invest' },
 ];
 
 /**
- * ONE LIST, ORDERED BY HOW MUCH IT WANTS YOU.
- *
- * Active holds what the server calls `active` and what it calls `watching`.
- * Concatenating them would show a triggered card, then a dormant one, then
- * another triggered one — the join visible as a stutter in the middle. Sorting
- * the whole set on this single gradient — happening now, ready for you, running,
- * planned, nearly there, being kept an eye on, over — makes the seam disappear,
- * and the sort is stable so the server's own ordering survives inside each rank.
- *
- * `closed` never reaches this list; it is on History. It is here so the record
- * is total and the next lifecycle state cannot be silently ranked zero.
+ * THE MODE, WRITTEN WHERE IT ALWAYS WAS. The segmented control shows the tap at
+ * once (`pending`) and the board re-reads when the profile patch lands; if the
+ * write fails the control falls back to the mode that is still true.
  */
-const ACTIVE_ORDER: Record<AlertCardState, number> = {
-  entry_reached: 0,
-  ready: 1,
-  order_pending: 2,
-  position_active: 3,
-  planned: 4,
-  forming: 5,
-  watching: 6,
-  invalidated: 7,
-  closed: 8,
-};
-
-function StateTabs({ value, onChange, counts }: {
-  value: AlertBoardTab; onChange: (t: AlertBoardTab) => void; counts: Record<AlertBoardTab, number>;
-}) {
-  return (
-    <View style={{ flexDirection: 'row', gap: 26, borderBottomWidth: 1, borderBottomColor: alpha.ivory08 }} testID="alerts-tabs">
-      {TABS.map((t) => {
-        const on = value === t.key;
-        return (
-          <Pressable
-            key={t.key}
-            onPress={() => onChange(t.key)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: on }}
-            accessibilityLabel={`${t.label}, ${counts[t.key]} alerts`}
-            testID={`alerts-tab-${t.key}`}
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 7,
-              paddingBottom: 9, marginBottom: -1,
-              borderBottomWidth: 2, borderBottomColor: on ? color.volt : 'transparent',
-            }}
-          >
-            <T variant="meta" weight="bold" c={on ? color.text : color.muted}>{t.label}</T>
-            {t.key === 'active' && counts.active ? (
-              <View style={{ minWidth: 17, height: 17, borderRadius: 9, backgroundColor: color.volt, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
-                <T variant="meta" weight="bold" c={color.bg}>{counts.active}</T>
-              </View>
-            ) : null}
-            {t.key !== 'active' && counts[t.key] ? (
-              <T variant="meta" c={color.muted}>{counts[t.key]}</T>
-            ) : null}
-          </Pressable>
-        );
-      })}
-    </View>
-  );
+function useModeSwitch(mode: GoalMode) {
+  const { patchProfile } = useSession();
+  const [pending, setPending] = useState<GoalMode | null>(null);
+  const choose = useCallback(async (m: GoalMode) => {
+    if (m === mode) return;
+    setPending(m);
+    try {
+      if (api.available()) await api.setMode(m);
+      await patchProfile({ primary_mode: m });
+    } catch {
+      /* the control returns to the mode that is still true */
+    } finally {
+      setPending(null);
+    }
+  }, [mode, patchProfile]);
+  return { shown: pending ?? mode, choose };
 }
 
 /**
- * A MEMBER'S CALL ON THE BOARD: the author, then the card.
- *
- * The compact card drops its own authorship block on purpose — in a room the
- * message row above it already carries the avatar, the name and the time. This
- * list is that row. It is also the tap target for the profile: the card's
- * insides are already pressable (the ticker), and on web react-native renders
- * `accessibilityRole="button"` as a real `<button>`, which cannot contain
- * another. So the name is the door, above the card, where a name belongs.
+ * A MEMBER'S CALL ON THE BOARD: the author, then the card. The name row is the
+ * door to the profile (a button may not contain another, so it sits above the
+ * card rather than inside it).
  */
 function BoardCallRow({ call }: { call: CommunityCall }) {
   const router = useRouter();
   return (
-    <View style={{ gap: 7 }} testID={`board-call-${call.id}`}>
+    <View style={{ gap: 8 }} testID={`board-call-${call.id}`}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${call.author.display_name}, open their profile`}
         accessibilityHint="Everything they have published, and how it turned out."
         testID={`board-call-author-${call.id}`}
         onPress={() => router.push(`/contributor/${encodeURIComponent(call.author.user_id)}` as never)}
-        style={({ pressed }) => ({
-          flexDirection: 'row', alignItems: 'center', gap: 8,
-          paddingHorizontal: 2, opacity: pressed ? 0.65 : 1,
-        })}
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 32, opacity: pressed ? 0.65 : 1 })}
+        hitSlop={hitSlopFor(200, 32)}
       >
-        <Avatar initial={call.author.initial} url={call.author.avatar_url} size={22} />
-        {/* NO `userId` HERE. The whole row above is already the door, and on
-            web react-native renders `accessibilityRole="button"` as a real
-            <button> — a second one inside it is illegal markup. This call is
-            only asking `MemberName` for the belt ink, so that a name is the
-            same colour on this board as it is everywhere else. */}
+        <Avatar initial={call.author.initial} url={call.author.avatar_url} size={24} />
         <MemberName
           name={call.author.display_name}
           belt={call.author.belt}
           handle={call.author.handle}
           showHandle
-          size={12.5}
-          handleSize={10.5}
+          size={13}
+          handleSize={12}
           testID={`board-call-name-${call.id}`}
         />
         <BeltChip belt={call.author.belt} />
         <View style={{ flex: 1 }} />
-        <T variant="meta" c={color.dim}>{call.time_label}</T>
+        <T variant="meta" c={color.textSecondary}>{call.time_label}</T>
       </Pressable>
       <CommunityCallCard call={call} compact />
     </View>
   );
 }
 
+/** One row of choices in the filter sheet. */
+function FilterRow<K extends string>({ label, options, value, onChange, testID }: {
+  label: string; options: { key: K; label: string }[]; value: K; onChange: (k: K) => void; testID: string;
+}) {
+  return (
+    <View style={{ gap: 8 }}>
+      <T variant="meta" c={color.textSecondary}>{label}</T>
+      <SegmentedControl options={options} value={value} onChange={onChange} testID={testID} />
+    </View>
+  );
+}
+
+/**
+ * The top of the board — app bar, mode control and (for the alert modes) the
+ * section tabs. Shared by both bodies so the chrome is identical in all three
+ * segments; only the list underneath changes.
+ */
+function BoardTop({ mode, tabs, filter }: {
+  mode: GoalMode;
+  tabs?: { value: AlertBoardTab; onChange: (t: AlertBoardTab) => void; counts: Record<AlertBoardTab, number> } | null;
+  filter?: { active: boolean; open: () => void } | null;
+}) {
+  const router = useRouter();
+  const { shown, choose } = useModeSwitch(mode);
+  const attention = useAlertAttention(mode !== 'invest');
+  const needs = attention.status === 'ready' && attention.needsAttention;
+  return (
+    <>
+      <AppBar
+        title="Alerts"
+        actions={(
+          <>
+            <IconButton icon={<SearchGlyph />} accessibilityLabel="Look up a company" onPress={() => router.push('/symbol/search' as never)} testID="alerts-search" />
+            {filter ? (
+              <IconButton
+                icon={<FilterGlyph c={filter.active ? color.action : color.textPrimary} />}
+                accessibilityLabel={filter.active ? 'Filter alerts, a filter is on' : 'Filter alerts'}
+                badge={filter.active}
+                onPress={filter.open}
+                testID="alerts-filter"
+              />
+            ) : null}
+            <IconButton
+              icon={<BellGlyph />}
+              accessibilityLabel={needs ? 'Notifications, something needs you' : 'Notifications'}
+              badge={needs}
+              onPress={() => router.push('/account/notifications' as never)}
+              testID="alerts-bell"
+            />
+          </>
+        )}
+      />
+      <View style={{ paddingHorizontal: layout.gutter, gap: 12, paddingBottom: 12 }}>
+        <SegmentedControl options={MODES} value={shown} onChange={(m) => { void choose(m); }} testID="alerts-mode" />
+        {tabs ? (
+          <SectionTabs
+            tabs={[
+              { key: 'active', label: 'Active', count: tabs.counts.active },
+              { key: 'community', label: 'Community', count: tabs.counts.community },
+              { key: 'history', label: 'History', count: tabs.counts.history },
+            ]}
+            value={tabs.value}
+            onChange={tabs.onChange}
+            testID="alerts-tabs"
+          />
+        ) : null}
+      </View>
+    </>
+  );
+}
+
+/** The second tab. Invest draws the research list; Day Trade and Swing draw alerts. */
 export function AlertsBoard({ mode }: { mode: GoalMode }) {
+  if (mode === 'invest') {
+    return (
+      <Screen variant="corner" layout="tab" testID="screen-alerts">
+        <BoardTop mode={mode} />
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: layout.gutter, paddingBottom: 24 }}
+          showsVerticalScrollIndicator={false}
+          testID="alerts-list-invest"
+        >
+          <InvestList />
+        </ScrollView>
+      </Screen>
+    );
+  }
+  return <TradeAlertsBoard mode={mode} />;
+}
+
+function TradeAlertsBoard({ mode }: { mode: GoalMode }) {
   const router = useRouter();
   /** Fixtures preview only — lets the owner and Playwright see the quiet day. */
   const params = useLocalSearchParams<{ fixture?: string }>();
-  /*
-   * THE MODE IS PART OF THE QUESTION, so it is an argument and not just a
-   * caption in the header.
-   *
-   * `/alerts` is scoped on the server by the profile's mode, and the app read
-   * it without ever mentioning which mode it was asking about. So the switch
-   * wrote the new mode, the header redrew, and the list underneath kept the
-   * answer to the old question — a day trader looking at swing picks until he
-   * happened to change tab. Passing it here is what makes the board re-ask.
-   */
   const { data, loading, error, isFixture, reload, tab, setTab, checkedAt } = useAlertsRound4(
     mode,
     env.FIXTURES && params.fixture === 'empty' ? 'empty' : 'default',
   );
   const actions = useAlertActions(reload);
-  /** The list, and where each active card starts in it — see `onOpen`. */
-  const listRef = useRef<ScrollView | null>(null);
-  const cardY = useRef<Record<string, number>>({});
-  const cardH = useRef<Record<string, number>>({});
-  const listH = useRef(0);
-  /** How far the action sits above the bottom of an opened card (why + ask row, padding). */
-  const ctaTail = useRef(64);
-  const second = secondTab(mode);
-  /** This desk's member calls. A separate route, never folded into `/alerts`. */
+  const bookmarks = useAlertBookmarks();
   const calls = useDeskCalls(mode);
   const callList = calls.data ?? [];
+  const [filter, setFilter] = useState<BoardFilter>(NO_FILTER);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filtering = filterIsActive(filter);
 
-  /**
-   * ACTIVE, FOLDED. The server's two lists become one, then sort onto the one
-   * gradient. Nothing is dropped and nothing is re-styled: a watching card is
-   * the same `StandardAlertCard` it always was, progress bar included.
-   */
+  /** Active + Watching as ONE list, filtered, in priority order. */
   const activeList = useMemo<AlertCard[]>(() => {
     if (!data) return [];
-    return [...data.active, ...data.watching]
-      .sort((a, b) => ACTIVE_ORDER[a.state] - ACTIVE_ORDER[b.state]);
-  }, [data]);
+    return rankActive(applyBoardFilter([...data.active, ...data.watching], filter, bookmarks.savedIds));
+  }, [data, filter, bookmarks.savedIds]);
+  const historyList = useMemo<AlertCard[]>(
+    () => applyBoardFilter(data?.history ?? [], filter, bookmarks.savedIds),
+    [data, filter, bookmarks.savedIds],
+  );
+  const priorityId = useMemo(() => pickPriority(activeList), [activeList]);
 
   /**
-   * THE BARS THE ALERT WIRE DOES NOT CARRY.
-   *
-   * The card draws its levels on a price map now, and an alert payload has no
-   * price history in it — the bars live behind `/market/candles`, the same
-   * lane the trade portal reads. Asking here rather than inside the card keeps
-   * one request per symbol for the whole board however many cards want it, and
-   * keeps the card a pure function of what it was handed.
-   *
-   * A daily bar is the wrong picture for an intraday plan, so the timeframe
-   * follows the hold: a day trade drawn on dailies would put every level
-   * inside a single candle. Anything the fetch does not return is simply
-   * absent, and the card falls back to the levels on an honest empty chart.
+   * THE BARS THE ALERT WIRE DOES NOT CARRY — five-minute bars for every card's
+   * 24h/72h microchart, one request per symbol for the whole board (the cache
+   * lives in useAlertCandles). A symbol the fetch does not return simply draws
+   * no chart.
    */
   const candleRequests = useMemo(
-    () => activeList.map((a) => ({ symbol: a.symbol, tf: timeframeForHold(a.trade.hold) })),
+    () => activeList.map((a) => ({ symbol: a.symbol, tf: '5m' as const })),
     [activeList],
   );
   const candles = useAlertCandles(candleRequests);
 
-  /**
-   * COUNTS THAT ARE TRUE, and each one true in its own way.
-   *
-   * Active is the server's own `active` + `watching` numbers added together —
-   * two counts the API sends, not a guess about a list we might only have half
-   * of. Community is `callList.length`, the calls actually on screen, because
-   * that route sends no count and inventing one would be the exact lie this
-   * board keeps not telling. History is unchanged.
-   */
+  /** Server counts when nothing is filtered; the filtered lengths when something is. */
   const counts = useMemo<Record<AlertBoardTab, number>>(() => ({
-    active: (data?.counts.active ?? data?.active.length ?? 0)
-      + (data?.counts.watching ?? data?.watching.length ?? 0),
+    active: filtering
+      ? activeList.length
+      : (data?.counts.active ?? data?.active.length ?? 0) + (data?.counts.watching ?? data?.watching.length ?? 0),
     community: callList.length,
-    history: data?.counts.history ?? data?.history.length ?? 0,
-  }), [data, callList.length]);
+    history: filtering ? historyList.length : (data?.counts.history ?? data?.history.length ?? 0),
+  }), [data, callList.length, filtering, activeList.length, historyList.length]);
+
+  const top = (
+    <BoardTop
+      mode={mode}
+      tabs={{ value: tab, onChange: setTab, counts }}
+      filter={{ active: filtering, open: () => setFilterOpen(true) }}
+    />
+  );
 
   if (!data && loading) {
     return (
       <Screen variant="corner" layout="tab" testID="screen-alerts">
+        {top}
         <ScreenLoading label="Checking what Kai is watching…" />
       </Screen>
     );
   }
 
-  /**
-   * A quiet day has to lead somewhere. Each offer below is a route that
-   * already exists — Kai on Home, the other tab, a company page, a member's
-   * own call — so an empty list is a fork in the road rather than a wall.
-   */
   const askKai = { label: 'Ask Kai what he sees', testID: 'alerts-empty-kai', onPress: () => router.push('/home') };
   const lookUp = { label: 'Look up a company', testID: 'alerts-empty-search', onPress: () => router.push('/symbol/search') };
+  const clearFilter = { label: 'Clear the filter', testID: 'alerts-empty-clear', onPress: () => setFilter(NO_FILTER) };
   const seeCommunity = {
     label: counts.community === 1 ? 'See the 1 member call' : `See the ${counts.community} member calls`,
     testID: 'alerts-empty-community',
     onPress: () => setTab('community'),
   };
-  const publishCall = {
-    label: 'Publish a call',
-    testID: 'alerts-empty-publish',
-    onPress: () => router.push('/community/call/new'),
-  };
-
+  const publishCall = { label: 'Publish a call', testID: 'alerts-empty-publish', onPress: () => router.push('/community/call/new') };
   const offers =
-    tab === 'active'
+    filtering && tab !== 'community'
+      ? [clearFilter]
+      : tab === 'active'
       ? (counts.community ? [seeCommunity, askKai] : [askKai, lookUp])
       : tab === 'community'
       ? [publishCall, lookUp]
       : [askKai];
 
   /**
-   * QUIET IS NOT THE SAME AS UNANSWERED — audit F18.
-   *
-   * This board used to render the empty state whenever the list was short and
-   * print the error, if there was one, as a grey line UNDERNEATH it. So a
-   * failed load looked exactly like a verified quiet day plus a footnote, which
-   * is the one confusion the finding says must not be possible: "a failed load
-   * cannot be mistaken for a verified empty list."
-   *
-   * `capabilityFor` is the shared decision (`ui/CapabilityState.tsx`). Three of
-   * its inputs are the whole argument:
-   *
-   *   · `verified` is TRUE only when a payload actually arrived and the last
-   *     request did not fail. Nothing else may produce a "Nothing here" screen.
-   *   · `failed` with data in hand is STALE, not failed — a poll that missed
-   *     must not throw away cards that were true when they landed.
-   *   · Community is asked separately because it is a separate route. Its
-   *     `notAvailable` is a stack that never shipped the endpoint, which is a
-   *     real answer about the service and not an empty list of calls.
+   * QUIET IS NOT THE SAME AS UNANSWERED — audit F18. Only an answered, unfailed
+   * request may draw "Nothing here"; a failed poll with cards in hand is STALE
+   * and keeps them. (`capabilityFor`, ui/CapabilityState.tsx.)
    */
   const visible: AlertCard[] | CommunityCall[] =
-    tab === 'history' ? (data?.history ?? []) : tab === 'community' ? callList : activeList;
+    tab === 'history' ? historyList : tab === 'community' ? callList : activeList;
   const answered = tab === 'community' ? calls.data != null : !!data;
   const failed = tab === 'community' ? !!calls.error || calls.notAvailable : !!error;
   const capability = capabilityFor({
@@ -316,8 +313,6 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
     verified: answered && !failed,
     empty: visible.length === 0,
   });
-
-  /** The sentence is always this board's, never the shared component's. */
   const failedPlain =
     tab === 'community'
       ? calls.notAvailable
@@ -325,51 +320,23 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
         : (calls.error ?? 'I could not read what members have called.')
       : (error ?? 'I could not read your alerts just now.');
   const retry = tab === 'community' ? calls.reload : reload;
-  /* A stack that has not shipped the route cannot be retried into existence. */
   const onRetry = tab === 'community' && calls.notAvailable ? undefined : retry;
+
+  const emptyCopy =
+    filtering && tab !== 'community'
+      ? 'Nothing matches this filter.'
+      : tab === 'history'
+      ? 'Nothing has finished yet. Executed, closed and invalidated alerts land here, and the record is worth more than the list.'
+      : tab === 'community'
+      ? 'Nobody on this desk has published a call yet. A call is a member saying what they are doing and letting it be checked later — yours can be the first.'
+      : data?.empty_copy ?? 'Nothing needs a decision right now. Kai moves an alert here the moment a verified event happens — no alert is better than a made-up one.';
 
   return (
     <Screen variant="corner" layout="tab" testID="screen-alerts">
-      <View style={{ paddingTop: 8, paddingHorizontal: layout.gutter, paddingBottom: 6, gap: 10 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 }}>
-            <BrandMarkButton />
-            <T variant="sectionTitle" weight="bold" numberOfLines={1}>{second.title}</T>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {/*
-              Where the natural-language bar went. `/alert/new` is the same
-              builder on its own screen, and it was reachable from a company
-              page and a plan but not from the board that is about alerts.
-            */}
-            <Pressable
-              testID="alerts-new"
-              accessibilityRole="button"
-              accessibilityLabel="New alert"
-              accessibilityHint="Describe what to watch and Kai reads it back before anything is set."
-              onPress={() => router.push('/alert/new' as never)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={({ pressed }) => ({
-                width: 30, height: 30, borderRadius: radius.pill,
-                alignItems: 'center', justifyContent: 'center',
-                borderWidth: 0.5, borderColor: alpha.ivory24,
-                opacity: pressed ? 0.7 : 1,
-              })}
-            >
-              <T variant="body" weight="regular" c={color.muted}>+</T>
-            </Pressable>
-            <ModeControl mode={mode} testID="alerts-mode-chip" />
-          </View>
-        </View>
-        <T variant="meta" lh={16} c={color.dim} testID="alerts-mode-note">{second.note}</T>
-        <StateTabs value={tab} onChange={setTab} counts={counts} />
-      </View>
-
+      {top}
       <ScrollView
-        ref={listRef}
-        onLayout={(e) => { listH.current = e.nativeEvent.layout.height; }}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: layout.gutter, paddingBottom: 10, gap: layout.cardGap }}
+        contentContainerStyle={{ paddingHorizontal: layout.gutter, paddingBottom: 16, gap: layout.cardGap }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         testID={`alerts-list-${tab}`}
@@ -385,27 +352,9 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
         ) : capability === 'loading' ? (
           <CapabilityNotice state="loading" plain="Checking what Kai is watching…" testID="alerts-loading" />
         ) : capability === 'quiet' ? (
-          <AlertsEmpty
-            copy={
-              tab === 'history'
-                ? 'Nothing has finished yet. Executed, closed and invalidated alerts land here, and the record is worth more than the list.'
-                : tab === 'community'
-                // NOT the alerts payload's `empty_copy`. That sentence is about
-                // what Kai is or is not seeing, and this list is not Kai's.
-                ? 'Nobody on this desk has published a call yet. A call is a member saying what they are doing and letting it be checked later — yours can be the first.'
-                // Active takes the server's sentence when there is one. The
-                // server is the half that knows which mode the board is in, and
-                // an empty Active tab means something different in Day Trade
-                // than it does in Swing. The string below is the fallback for an
-                // offline or fixture render, not a second opinion.
-                : data?.empty_copy ?? 'Nothing needs a decision right now. Kai moves an alert here the moment a verified event happens — no alert is better than a made-up one.'
-            }
-            offers={offers}
-          />
+          <AlertsEmpty copy={emptyCopy} offers={offers} />
         ) : (
           <>
-            {/* Cards that were true when they landed, and a refresh that did
-                not. Both facts on screen, neither pretending to be the other. */}
             {capability === 'stale' ? (
               <CapabilityNotice
                 state="stale"
@@ -417,91 +366,98 @@ export function AlertsBoard({ mode }: { mode: GoalMode }) {
               />
             ) : null}
             {tab === 'history'
-              ? (data?.history ?? []).map((a) => <HistoryAlertRow key={a.id} alert={a} />)
+              ? historyList.map((a) => <HistoryAlertRow key={a.id} alert={a} />)
               : tab === 'community'
               ? callList.map((c) => <BoardCallRow key={c.id} call={c} />)
-              : activeList.map((a) => (
-                  /* The bars are fetched by the board, not the card: one
-                     request per symbol however many cards want it, and the card
-                     stays a pure function of what it was handed. */
-                  <View
-                    key={a.id}
-                    onLayout={(e) => {
-                      cardY.current[a.id] = e.nativeEvent.layout.y;
-                      cardH.current[a.id] = e.nativeEvent.layout.height;
-                    }}
-                  >
+              : activeList.map((a) => {
+                  const top = a.id === priorityId;
+                  return (
                     <StandardAlertCard
+                      key={a.id}
                       alert={a}
+                      density={top ? 'priority' : 'compact'}
+                      priority={top}
                       candles={candles[a.symbol.toUpperCase()]}
-                      onOpen={() => {
-                        /*
-                         * After the card has grown, bring it into view: its top
-                         * at the top of the list when the whole card fits, or —
-                         * when it is taller than the list — far enough that its
-                         * action is on screen. The action sits under the verdict,
-                         * so what scrolls away first is the header row the member
-                         * just tapped, never the reason or the button.
-                         */
-                        setTimeout(() => {
-                          const y = cardY.current[a.id];
-                          const h = cardH.current[a.id] ?? 0;
-                          if (y == null) return;
-                          const room = listH.current || 0;
-                          const ctaFromTop = Math.max(0, h - ctaTail.current);
-                          const extra = room && ctaFromTop + 16 > room ? ctaFromTop + 16 - room : 0;
-                          listRef.current?.scrollTo({ y: Math.max(0, y - 4 + extra), animated: true });
-                        }, 120);
-                      }}
+                      bookmarked={bookmarks.isSaved(a.id)}
+                      onToggleBookmark={() => { void bookmarks.toggle(a.id, a.symbol); }}
                     />
-                  </View>
-                ))}
+                  );
+                })}
           </>
         )}
 
-        {actions.error ? <T variant="meta" c={color.red} align="center">{actions.error}</T> : null}
-        {isFixture ? <T variant="meta" c={color.dim} align="center">Sample alerts — the alerts service is not connected here.</T> : null}
-        <T variant="meta" lh={16} c={color.dim} align="center" style={{ marginTop: 6 }} testID="alerts-not-advice">
+        {tab === 'active' ? (
+          <Pressable
+            testID="alerts-new"
+            accessibilityRole="button"
+            accessibilityLabel="Create an alert"
+            accessibilityHint="Describe what to watch and Kai reads it back before anything is set."
+            onPress={() => router.push('/alert/new' as never)}
+            style={({ pressed }) => ({
+              minHeight: 44, borderRadius: radius.control, borderWidth: 1, borderStyle: 'dashed',
+              borderColor: alpha.border, alignItems: 'center', justifyContent: 'center',
+              backgroundColor: pressed ? color.raised : 'transparent',
+            })}
+          >
+            <T variant="meta" weight="semibold" c={color.textSecondary}>+ Create an alert</T>
+          </Pressable>
+        ) : null}
+
+        {bookmarks.error ? <T variant="meta" c={color.marketDown} align="center">{bookmarks.error}</T> : null}
+        {actions.error ? <T variant="meta" c={color.marketDown} align="center">{actions.error}</T> : null}
+        {isFixture ? <T variant="meta" c={color.textSecondary} align="center">Sample alerts — the alerts service is not connected here.</T> : null}
+        <T variant="meta" c={color.textSecondary} align="center" style={{ marginTop: 4 }} testID="alerts-not-advice">
           {NOT_ADVICE_ALERTS}
         </T>
       </ScrollView>
 
-      {/*
-        THE PREVIEW THAT BELONGED TO THE BAR WENT WITH IT.
+      {/* FILTER — local to this board, never saved; the dot on the icon says one is on. */}
+      <Sheet visible={filterOpen} onClose={() => setFilterOpen(false)} title="Filter alerts" testID="sheet-alerts-filter">
+        <View style={{ gap: 16 }}>
+          <FilterRow
+            label="Grade"
+            options={[{ key: 'any', label: 'Any' }, { key: 'a', label: 'A and above' }]}
+            value={filter.grade}
+            onChange={(grade) => setFilter((f) => ({ ...f, grade }))}
+            testID="filter-grade"
+          />
+          <FilterRow
+            label="Direction"
+            options={[{ key: 'any', label: 'Any' }, { key: 'long', label: 'Long' }, { key: 'short', label: 'Short' }]}
+            value={filter.direction}
+            onChange={(direction) => setFilter((f) => ({ ...f, direction }))}
+            testID="filter-direction"
+          />
+          <FilterRow
+            label="Show"
+            options={[{ key: 'all', label: 'All' }, { key: 'saved', label: 'Saved only' }]}
+            value={filter.saved ? 'saved' : 'all'}
+            onChange={(v) => setFilter((f) => ({ ...f, saved: v === 'saved' }))}
+            testID="filter-saved"
+          />
+          {!bookmarks.persisted && api.available() ? (
+            <T variant="meta" c={color.textSecondary}>Saved alerts are kept on this device until saving is live on the server.</T>
+          ) : null}
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Button label="Clear" kind="outline" height={44} onPress={() => setFilter(NO_FILTER)} testID="filter-clear" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button label="Done" height={44} onPress={() => setFilterOpen(false)} testID="filter-done" />
+            </View>
+          </View>
+        </View>
+      </Sheet>
 
-        `useAlertBuilder`'s preview card and its error line were only ever
-        reachable through the natural-language bar removed below: nothing else
-        on this board calls `builder.build()`, so with the bar gone the card
-        could not be made to appear by any sequence of taps. Leaving it would
-        have left forty lines of UI that reads as live and is not, which is the
-        kind of thing that gets "fixed" by somebody months from now who cannot
-        work out why it never shows. `/alert/new` has the same read-it-back step
-        on its own screen, where it is reachable.
-      */}
-
-      {/*
-        THE NOT-ADVICE LINE MOVED INTO THE LIST, AT ITS END (owner audit, 21
-        September). Pinned above the tab bar it cost ~90pt of every screen —
-        about half a card — on every visit, to repeat a sentence a member has
-        read before. It is still on every board, still the last thing in the
-        list, and still unmissable to anyone who reaches the end. The note
-        about the removed "Tell me when…" bar lives in git history.
-      */}
-
-      {/* NOT ON YOUR PLAN — SAID, NOT SOLD.
-          The title used to read "That needs the premium plan" and the action
-          was "See what premium adds", which opened a price ladder. Inside the
-          iOS app that is a route to a purchase, and App Store rule 3.1.3(b)
-          forbids it in an app that honours a subscription bought on the web.
-          The server's own sentence still explains exactly what happened. */}
+      {/* NOT ON YOUR PLAN — SAID, NOT SOLD (App Store 3.1.3(b)). */}
       <Sheet
         visible={!!actions.upgradeNeeded}
         onClose={actions.dismissUpgrade}
         title="Not on your plan"
         testID="sheet-entitlement"
       >
-        <T variant="meta" lh={20} c={color.muted}>{actions.upgradeNeeded}</T>
-        <Button label="Got it" kind="volt" height={48} onPress={actions.dismissUpgrade} />
+        <T variant="body" c={color.textSecondary}>{actions.upgradeNeeded}</T>
+        <Button label="Got it" height={48} onPress={actions.dismissUpgrade} />
       </Sheet>
     </Screen>
   );
