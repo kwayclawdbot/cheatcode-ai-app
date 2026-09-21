@@ -1,7 +1,7 @@
-/** GET /api/v1/health → {ok, supabase, anthropic}. No secrets in the response. */
+/** GET /api/v1/health → {ok, supabase, anthropic, anthropic_status, ...}. No secrets in the response. */
 import { HealthResponse } from '@shared/api';
 import { serviceClient, supabaseConfigured } from '@/lib/db';
-import { anthropicReachable } from '@/lib/kai/stream';
+import { anthropicHealth } from '@/lib/kai/anthropic-health';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,9 +15,18 @@ export async function GET() {
       supabase = false;
     }
   }
-  // `anthropic` means THE KEY IS ACCEPTED, not "a key is set". See
-  // `anthropicReachable` — the old presence-only check reported healthy through
-  // two days of every single Kai turn failing on a revoked key.
-  const anthropic = await anthropicReachable();
-  return Response.json(HealthResponse.parse({ ok: supabase && anthropic, supabase, anthropic }));
+  // `anthropic` means KAI CAN ACTUALLY ANSWER: a real one-token call, cached for
+  // five minutes. Listing models said "fine" through an empty credit balance.
+  // See lib/kai/anthropic-health.ts.
+  const probe = await anthropicHealth();
+  return Response.json(
+    HealthResponse.parse({
+      ok: supabase && probe.healthy,
+      supabase,
+      anthropic: probe.healthy,
+      anthropic_status: probe.status,
+      anthropic_message: probe.message,
+      anthropic_checked_at: probe.checked_at,
+    })
+  );
 }
